@@ -43,6 +43,15 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
+const registerSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  email: z.string().email("Valid email is required").optional(),
+  name: z.string().min(1, "Name is required").optional(),
+});
+
+type RegisterFormData = z.infer<typeof registerSchema>;
+
 export default function ManagerLogin() {
   // Managers use session-based authentication (like admins), not Firebase
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
@@ -85,12 +94,24 @@ export default function ManagerLogin() {
   const isManager = user?.role === 'manager';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
       username: "",
       password: "",
+    },
+  });
+
+  const registerForm = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      email: "",
+      name: "",
     },
   });
 
@@ -149,6 +170,74 @@ export default function ManagerLogin() {
     } catch (error: any) {
       console.error('Manager login error:', error);
       setErrorMessage(error.message || 'Failed to login');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onRegister = async (data: RegisterFormData) => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    
+    try {
+      console.log('Attempting manager registration with username:', data.username);
+      const response = await fetch('/api/manager-register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: data.username,
+          password: data.password,
+          email: data.email,
+          name: data.name,
+        }),
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Manager registration failed:', errorData);
+        throw new Error(errorData.error || 'Manager registration failed');
+      }
+      
+      const userData = await response.json();
+      console.log('Manager registration successful, user data:', userData);
+      
+      // Ensure we have valid manager user data
+      if (!userData?.id || userData.role !== 'manager') {
+        throw new Error('Invalid user data returned - must be manager');
+      }
+
+      // Store userId in localStorage for persistence
+      localStorage.setItem('userId', userData.id.toString());
+      console.log('Saved userId to localStorage:', userData.id);
+      
+      // Clear all cached data and force a complete refresh
+      queryClient.clear();
+      console.log('Cleared all query cache');
+      
+      setSuccessMessage('Account created successfully! Redirecting...');
+      
+      // Redirect based on password change requirement
+      let redirectPath;
+      // Managers must change password on first login (has_seen_welcome === false)
+      if (userData.has_seen_welcome === false) {
+        redirectPath = '/manager/change-password';
+      } else {
+        redirectPath = '/manager/dashboard';
+      }
+      
+      // Use window.location.href to force a complete page reload 
+      // This ensures the session cookie is properly established
+      setTimeout(() => {
+        window.location.href = redirectPath;
+      }, 1500);
+      
+    } catch (error: any) {
+      console.error('Manager registration error:', error);
+      setErrorMessage(error.message || 'Failed to register');
     } finally {
       setIsSubmitting(false);
     }
@@ -215,7 +304,7 @@ export default function ManagerLogin() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4 }}
             >
-              Welcome back
+              {isRegistering ? 'Create Manager Account' : 'Welcome back'}
             </motion.h1>
             <motion.p
               className="text-gray-600 mt-2 leading-relaxed"
@@ -223,8 +312,33 @@ export default function ManagerLogin() {
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4, delay: 0.1 }}
             >
-              Sign in to access your commercial kitchen dashboard and manage your location
+              {isRegistering 
+                ? 'Sign up to access your commercial kitchen dashboard and manage your location'
+                : 'Sign in to access your commercial kitchen dashboard and manage your location'}
             </motion.p>
+            
+            {/* Toggle between login and register */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+              className="mt-4"
+            >
+              <button
+                onClick={() => {
+                  setIsRegistering(!isRegistering);
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                  form.reset();
+                  registerForm.reset();
+                }}
+                className="text-sm text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+              >
+                {isRegistering 
+                  ? 'Already have an account? Sign in' 
+                  : "Don't have an account? Sign up"}
+              </button>
+            </motion.div>
           </motion.div>
 
           {/* Form Content */}
@@ -233,28 +347,186 @@ export default function ManagerLogin() {
             initial="hidden"
             animate="visible"
           >
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-5"
-                noValidate
-              >
-                {errorMessage && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    className="rounded-xl bg-red-50 border border-red-200 p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
-                        <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+            {isRegistering ? (
+              <Form {...registerForm}>
+                <form
+                  onSubmit={registerForm.handleSubmit(onRegister)}
+                  className="space-y-5"
+                  noValidate
+                >
+                  {errorMessage && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className="rounded-xl bg-red-50 border border-red-200 p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                          <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-medium text-red-800">{errorMessage}</p>
                       </div>
-                      <p className="text-sm font-medium text-red-800">{errorMessage}</p>
-                    </div>
+                    </motion.div>
+                  )}
+                  
+                  {successMessage && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className="rounded-xl bg-green-50 border border-green-200 p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-5 h-5 bg-green-100 rounded-full flex items-center justify-center">
+                          <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-medium text-green-800">{successMessage}</p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <motion.div variants={itemVariants}>
+                    <FormField
+                      control={registerForm.control}
+                      name="username"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium text-gray-700">Username</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                              <Input
+                                placeholder="Choose a username"
+                                {...field}
+                                disabled={isSubmitting}
+                                className="pl-10 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-11"
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </motion.div>
-                )}
+
+                  <motion.div variants={itemVariants}>
+                    <FormField
+                      control={registerForm.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium text-gray-700">Password</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                              <Input
+                                type="password"
+                                placeholder="Create a password (min 8 characters)"
+                                {...field}
+                                disabled={isSubmitting}
+                                className="pl-10 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-11"
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </motion.div>
+
+                  <motion.div variants={itemVariants}>
+                    <FormField
+                      control={registerForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium text-gray-700">Email (optional)</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                              <Input
+                                type="email"
+                                placeholder="your@email.com"
+                                {...field}
+                                disabled={isSubmitting}
+                                className="pl-10 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-11"
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </motion.div>
+
+                  <motion.div variants={itemVariants}>
+                    <FormField
+                      control={registerForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium text-gray-700">Full Name (optional)</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                              <Input
+                                placeholder="Your full name"
+                                {...field}
+                                disabled={isSubmitting}
+                                className="pl-10 bg-white border-gray-300 focus:border-blue-500 focus:ring-blue-500 h-11"
+                              />
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </motion.div>
+
+                  <motion.div variants={itemVariants}>
+                    <Button
+                      type="submit"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white h-11 font-medium text-base transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Creating account...
+                        </span>
+                      ) : (
+                        "Create Account"
+                      )}
+                    </Button>
+                  </motion.div>
+                </form>
+              </Form>
+            ) : (
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-5"
+                  noValidate
+                >
+                  {errorMessage && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className="rounded-xl bg-red-50 border border-red-200 p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-5 h-5 bg-red-100 rounded-full flex items-center justify-center">
+                          <svg className="w-3 h-3 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </div>
+                        <p className="text-sm font-medium text-red-800">{errorMessage}</p>
+                      </div>
+                    </motion.div>
+                  )}
 
                 <motion.div variants={itemVariants}>
                   <FormField
@@ -322,16 +594,17 @@ export default function ManagerLogin() {
                   </Button>
                 </motion.div>
 
-                <motion.div variants={itemVariants} className="text-center">
-                  <Link
-                    href="/forgot-password?role=manager"
-                    className="text-sm text-blue-600 hover:text-blue-700 hover:underline transition-colors"
-                  >
-                    Forgot your password?
-                  </Link>
-                </motion.div>
-              </form>
-            </Form>
+                  <motion.div variants={itemVariants} className="text-center">
+                    <Link
+                      href="/forgot-password?role=manager"
+                      className="text-sm text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                    >
+                      Forgot your password?
+                    </Link>
+                  </motion.div>
+                </form>
+              </Form>
+            )}
 
             {/* Footer */}
             <motion.div
