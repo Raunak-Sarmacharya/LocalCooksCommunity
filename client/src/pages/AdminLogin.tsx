@@ -18,6 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { queryClient } from "@/lib/queryClient";
+import { auth } from "@/lib/firebase";
+import { signInWithCustomToken } from "firebase/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChefHat, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -52,33 +54,125 @@ export default function AdminLogin() {
     setIsSubmitting(true);
     setErrorMessage(null);
     
+    const loginIdentifier = data.username.trim();
+    const isEmailFormat = loginIdentifier.includes('@');
+
+    // If it's not an email format (likely a username), try migration login first
+    if (!isEmailFormat) {
+      console.log('🔄 Username detected, trying migration login for old admin...');
+      
+      try {
+        const migrateResponse = await fetch('/api/admin-migrate-login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: loginIdentifier,
+            password: data.password
+          })
+        });
+
+        if (migrateResponse.ok) {
+          const migrateData = await migrateResponse.json();
+          
+          if (migrateData.customToken) {
+            // Sign in with custom token
+            await signInWithCustomToken(auth, migrateData.customToken);
+            console.log('✅ Migration login successful');
+            
+            // Clear all cached data
+            queryClient.clear();
+            
+            // Redirect will be handled by the redirect logic below
+            setIsSubmitting(false);
+            return;
+          }
+        } else {
+          // Migration login failed - try Firebase as fallback if it's an email
+          const errorData = await migrateResponse.json().catch(() => ({}));
+          console.log('Migration login failed:', errorData);
+        }
+      } catch (migrateError) {
+        console.log('Migration login error, trying Firebase as fallback:', migrateError);
+      }
+    }
+
+    // Try Firebase login (for email-based accounts or as fallback)
     try {
-      console.log('Attempting admin login with Firebase Auth:', data.username);
-      
-      // Use Firebase Auth login (email/password)
-      await login(data.username, data.password);
-      
-      // After successful login, verify user is admin
-      // The useFirebaseAuth hook will update the user state
-      // We'll check this in the redirect logic below
-      
-      console.log('Firebase login successful, checking admin role...');
-      
-      // Clear all cached data
-      queryClient.clear();
-      
-      // Redirect will be handled by the redirect logic below
-      // which checks if user.role === 'admin'
+      // Only try Firebase if it looks like an email, otherwise skip
+      if (isEmailFormat) {
+        console.log('Attempting admin login with Firebase Auth:', loginIdentifier);
+        
+        // Use Firebase Auth login (email/password)
+        await login(loginIdentifier, data.password);
+        
+        console.log('Firebase login successful, checking admin role...');
+        
+        // Clear all cached data
+        queryClient.clear();
+      } else {
+        // Username format and migration failed - show error
+        setErrorMessage('Incorrect username or password. Please check your credentials and try again.');
+        setIsSubmitting(false);
+        return;
+      }
       
     } catch (error: any) {
       console.error('Admin login error:', error);
       
+      // If Firebase login fails, try migration login for old admins (if we haven't already)
+      if (isEmailFormat && (error.message?.includes('invalid-credential') || error.message?.includes('wrong-password') || error.message?.includes('user-not-found'))) {
+        console.log('🔄 Firebase login failed, trying migration login for old admin...');
+        
+        try {
+          // Try migration login (for old admins with username/password in Neon DB)
+          // First try the email as username, then try without @ if it's an email
+          const usernameAttempts = [loginIdentifier];
+          if (loginIdentifier.includes('@')) {
+            // Try the part before @ as username
+            usernameAttempts.push(loginIdentifier.split('@')[0]);
+          }
+          
+          for (const usernameAttempt of usernameAttempts) {
+            const migrateResponse = await fetch('/api/admin-migrate-login', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                username: usernameAttempt,
+                password: data.password
+              })
+            });
+
+            if (migrateResponse.ok) {
+              const migrateData = await migrateResponse.json();
+              
+              if (migrateData.customToken) {
+                // Sign in with custom token
+                await signInWithCustomToken(auth, migrateData.customToken);
+                console.log('✅ Migration login successful');
+                
+                // Clear all cached data
+                queryClient.clear();
+                
+                setIsSubmitting(false);
+                return;
+              }
+            }
+          }
+        } catch (migrateError) {
+          console.log('Migration login also failed, continuing with Firebase error handling');
+        }
+      }
+      
       // Provide user-friendly error messages
       let errorMsg = 'Failed to login';
       if (error.message?.includes('invalid-credential') || error.message?.includes('wrong-password')) {
-        errorMsg = 'Invalid email or password';
+        errorMsg = 'Incorrect username or password. Please check your credentials and try again.';
       } else if (error.message?.includes('user-not-found')) {
-        errorMsg = 'No account found with this email';
+        errorMsg = 'No account found with this username/email';
       } else if (error.message?.includes('too-many-requests')) {
         errorMsg = 'Too many failed attempts. Please wait a few minutes.';
       } else {
