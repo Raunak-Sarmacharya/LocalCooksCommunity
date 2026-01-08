@@ -984,14 +984,28 @@ app.post('/api/manager-migrate-login', async (req, res) => {
     if (manager.firebase_uid) {
       console.log('✅ Manager already has Firebase UID:', manager.firebase_uid);
       // Manager already migrated - generate custom token for immediate login
-      const admin = require('firebase-admin');
+      const admin = await import('firebase-admin');
+      
+      // Initialize Firebase Admin if not already initialized
+      if (!admin.default.apps.length) {
+        const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+        if (projectId) {
+          try {
+            admin.default.initializeApp({
+              projectId: projectId,
+            });
+          } catch (e) {
+            console.error('Firebase Admin initialization error:', e);
+          }
+        }
+      }
       
       try {
         // Verify the Firebase user still exists
-        const firebaseUser = await admin.auth().getUser(manager.firebase_uid);
+        const firebaseUser = await admin.default.auth().getUser(manager.firebase_uid);
         
         // Generate custom token for login
-        const customToken = await admin.auth().createCustomToken(manager.firebase_uid);
+        const customToken = await admin.default.auth().createCustomToken(manager.firebase_uid);
         
         // Get email for response
         let email = manager.email;
@@ -1033,19 +1047,33 @@ app.post('/api/manager-migrate-login', async (req, res) => {
     }
     
     // Step 5: Create Firebase account using Admin SDK
-    const admin = require('firebase-admin');
+    const admin = await import('firebase-admin');
+    
+    // Initialize Firebase Admin if not already initialized
+    if (!admin.default.apps.length) {
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+      if (projectId) {
+        try {
+          admin.default.initializeApp({
+            projectId: projectId,
+          });
+        } catch (e) {
+          console.error('Firebase Admin initialization error:', e);
+        }
+      }
+    }
     
     let firebaseUser;
     try {
       // Check if Firebase user already exists with this email
       try {
-        firebaseUser = await admin.auth().getUserByEmail(email);
+        firebaseUser = await admin.default.auth().getUserByEmail(email);
         console.log('⚠️  Firebase user already exists with email:', email);
         // Link existing Firebase user to Neon DB
       } catch (error) {
         // User doesn't exist, create them
         console.log('➕ Creating Firebase account for manager:', email);
-        firebaseUser = await admin.auth().createUser({
+        firebaseUser = await admin.default.auth().createUser({
           email: email,
           password: password, // Use same password
           displayName: manager.display_name || manager.username,
@@ -1055,7 +1083,7 @@ app.post('/api/manager-migrate-login', async (req, res) => {
       }
 
       // Step 6: Set custom claims for manager role
-      await admin.auth().setCustomUserClaims(firebaseUser.uid, {
+      await admin.default.auth().setCustomUserClaims(firebaseUser.uid, {
         role: 'manager',
         isManager: true
       });
@@ -1073,7 +1101,7 @@ app.post('/api/manager-migrate-login', async (req, res) => {
       });
 
       // Step 8: Generate Firebase custom token for immediate login
-      const customToken = await admin.auth().createCustomToken(firebaseUser.uid);
+      const customToken = await admin.default.auth().createCustomToken(firebaseUser.uid);
 
       res.json({
         success: true,
@@ -8372,18 +8400,32 @@ app.get('/api/firebase-health', (req, res) => {
 // Utility function to create admin user in Firebase (run once)
 async function createAdminInFirebase() {
   try {
-    const admin = require('firebase-admin');
+    const admin = await import('firebase-admin');
+    
+    // Initialize Firebase Admin if not already initialized
+    if (!admin.default.apps.length) {
+      const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID;
+      if (projectId) {
+        try {
+          admin.default.initializeApp({
+            projectId: projectId,
+          });
+        } catch (e) {
+          console.error('Firebase Admin initialization error:', e);
+        }
+      }
+    }
     
     // Check if admin user exists in Firebase
     try {
-      const adminUser = await admin.auth().getUserByEmail('admin@localcooks.com');
+      const adminUser = await admin.default.auth().getUserByEmail('admin@localcooks.com');
       console.log('Admin user already exists in Firebase:', adminUser.uid);
       return adminUser;
     } catch (error) {
       // User doesn't exist, create them
       console.log('Creating admin user in Firebase...');
       
-      const adminUser = await admin.auth().createUser({
+      const adminUser = await admin.default.auth().createUser({
         email: 'admin@localcooks.com',
         password: 'localcooks',
         displayName: 'Admin',
@@ -8391,7 +8433,7 @@ async function createAdminInFirebase() {
       });
       
       // Set custom claims for admin role
-      await admin.auth().setCustomUserClaims(adminUser.uid, {
+      await admin.default.auth().setCustomUserClaims(adminUser.uid, {
         role: 'admin',
         isAdmin: true
       });
