@@ -98,13 +98,41 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
           
           if (migrateData.customToken) {
             // Sign in with custom token
-            await signInWithCustomToken(auth, migrateData.customToken);
+            const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
             console.log('✅ Migration login successful');
             
+            // Force token refresh to ensure it's available immediately
+            if (userCredential.user) {
+              await userCredential.user.getIdToken(true);
+              
+              // Trigger user sync with backend to ensure data is available
+              // The migration endpoint already linked Firebase UID to Neon user,
+              // but we need to ensure the frontend knows about it
+              try {
+                const token = await userCredential.user.getIdToken();
+                const syncResponse = await fetch('/api/user/profile', {
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  }
+                });
+                
+                if (syncResponse.ok) {
+                  console.log('✅ User profile synced after migration login');
+                } else {
+                  console.warn('⚠️ User profile sync returned non-OK status:', syncResponse.status);
+                }
+              } catch (syncError) {
+                console.error('❌ Error syncing user profile after migration:', syncError);
+                // Don't fail the login if sync fails - the middleware will handle it
+              }
+            }
+            
             setAuthState('success');
+            // Wait a bit longer for auth state to fully update before redirecting
             setTimeout(() => {
               if (onSuccess) onSuccess();
-            }, 1000);
+            }, 2000);
             return;
           }
         } else {
@@ -170,8 +198,30 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
               
               if (migrateData.customToken) {
                 // Sign in with custom token
-                await signInWithCustomToken(auth, migrateData.customToken);
+                const userCredential = await signInWithCustomToken(auth, migrateData.customToken);
                 console.log('✅ Migration login successful');
+                
+                // Force token refresh and sync user data
+                if (userCredential.user) {
+                  await userCredential.user.getIdToken(true);
+                  
+                  // Trigger user sync with backend
+                  try {
+                    const token = await userCredential.user.getIdToken();
+                    const syncResponse = await fetch('/api/user/profile', {
+                      headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                      }
+                    });
+                    
+                    if (syncResponse.ok) {
+                      console.log('✅ User profile synced after migration login');
+                    }
+                  } catch (syncError) {
+                    console.error('❌ Error syncing user profile after migration:', syncError);
+                  }
+                }
                 
                 setAuthState('success');
                 setTimeout(() => {
