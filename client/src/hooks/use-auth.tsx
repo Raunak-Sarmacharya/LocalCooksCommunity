@@ -271,7 +271,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = await cred.user.getIdToken();
       
       // Check if user is verified in our database
-      const response = await fetch('/api/user', {
+      const response = await fetch('/api/user/profile', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -569,9 +569,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         console.log(`🔍 Checking if user exists in backend: ${user.email}`);
         
-        // Check if user exists in our backend system
+        // Check if user exists in our backend system using /api/user/profile
         const token = await user.getIdToken();
-        const response = await fetch('/api/user', {
+        const response = await fetch('/api/user/profile', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -590,6 +590,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           // Some other error
           console.error('❌ Error checking user existence:', response.status);
+          const errorText = await response.text();
+          console.error('❌ Error response:', errorText);
           await auth.signOut();
           throw new Error('Failed to verify user account. Please try again.');
         }
@@ -719,7 +721,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       // Now fetch the updated user data from the API
-      const response = await fetch('/api/user', {
+      const response = await fetch('/api/user/profile', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

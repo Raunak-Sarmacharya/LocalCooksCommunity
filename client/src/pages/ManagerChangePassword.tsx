@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useQueryClient } from "@tanstack/react-query";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Loader2, Shield } from "lucide-react";
 import { useState } from "react";
@@ -41,18 +43,33 @@ export default function ManagerChangePassword() {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Verify user is a manager and needs to change password
+  // Verify user is a manager using Firebase auth
+  const { user: firebaseUser } = useFirebaseAuth();
+  
   const { data: user, isLoading } = useQuery({
-    queryKey: ["/api/user-session"],
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
-      const response = await fetch("/api/user-session", {
-        credentials: "include",
-      });
-      if (!response.ok) {
+      if (!firebaseUser) {
         throw new Error("Not authenticated");
       }
-      return response.json();
+      try {
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (!response.ok) {
+          throw new Error("Not authenticated");
+        }
+        return response.json();
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        throw error;
+      }
     },
+    enabled: !!firebaseUser,
   });
 
   const form = useForm<ChangePasswordFormData>({

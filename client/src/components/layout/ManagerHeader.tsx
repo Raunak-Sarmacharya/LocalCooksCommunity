@@ -3,18 +3,23 @@ import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
 import { Link } from "wouter";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 
 export default function ManagerHeader() {
-  // Check for session-based auth (managers use session auth)
-  const { data: sessionUser } = useQuery({
-    queryKey: ["/api/user-session"],
+  // Use Firebase auth for managers (session auth removed)
+  const { user: firebaseUser } = useFirebaseAuth();
+  
+  const { data: user } = useQuery({
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
+      if (!firebaseUser) return null;
       try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
           headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
         });
         
@@ -22,26 +27,22 @@ export default function ManagerHeader() {
           if (response.status === 401) {
             return null;
           }
-          throw new Error(`Session auth failed: ${response.status}`);
+          throw new Error(`Firebase auth failed: ${response.status}`);
         }
         
         const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
+        return userData;
       } catch (error) {
+        console.error('Error fetching user profile:', error);
         return null;
       }
     },
+    enabled: !!firebaseUser,
     retry: false,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    enabled: true
   });
-
-  const user = sessionUser;
 
   // Fetch manager's location(s) to get logo
   const { data: locations, isLoading: loadingLocations } = useQuery({
@@ -81,26 +82,21 @@ export default function ManagerHeader() {
   console.log('ManagerHeader - locationLogoUrl:', locationLogoUrl);
   console.log('ManagerHeader - Full location object:', locations && locations.length > 0 ? locations[0] : 'no locations');
   
+  const { logout } = useFirebaseAuth();
+  
   const handleLogout = async () => {
     try {
       console.log('Performing manager logout...');
       
-      // Clear localStorage
-      localStorage.clear();
-      console.log('Cleared all localStorage data');
-      
-      // Call logout endpoint
-      await fetch('/api/logout', {
-        method: 'POST',
-        credentials: 'include'
-      });
+      // Use Firebase logout
+      await logout();
       
       console.log('Manager logout successful, redirecting...');
-      window.location.href = '/portal';
+      window.location.href = '/manager/login';
     } catch (error) {
       console.error('Manager logout failed:', error);
       // Still redirect even if logout fails
-      window.location.href = '/portal';
+      window.location.href = '/manager/login';
     }
   };
 

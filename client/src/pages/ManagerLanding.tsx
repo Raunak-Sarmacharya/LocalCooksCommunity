@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import { Building2, Loader2, Lock, ArrowRight, Calendar, Users, Settings } from "lucide-react";
 import Logo from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
@@ -10,16 +12,19 @@ import FadeInSection from "@/components/ui/FadeInSection";
 export default function ManagerLanding() {
   const [, setLocation] = useLocation();
 
-  // Check if manager is logged in
+  // Check if manager is logged in using Firebase auth
+  const { user: firebaseUser } = useFirebaseAuth();
+  
   const { data: sessionUser, isLoading } = useQuery({
-    queryKey: ["/api/user-session"],
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
+      if (!firebaseUser) return null;
       try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
           headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
         });
         
@@ -27,19 +32,17 @@ export default function ManagerLanding() {
           if (response.status === 401) {
             return null;
           }
-          throw new Error(`Session auth failed: ${response.status}`);
+          throw new Error(`Firebase auth failed: ${response.status}`);
         }
         
         const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
+        return userData;
       } catch (error) {
-        console.error('ManagerLanding - Session auth error:', error);
+        console.error('ManagerLanding - Firebase auth error:', error);
         return null;
       }
     },
+    enabled: !!firebaseUser,
     retry: false,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,

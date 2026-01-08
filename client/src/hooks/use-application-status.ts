@@ -9,44 +9,55 @@ import { useQuery } from "@tanstack/react-query";
 export function useApplicationStatus() {
   const firebaseAuth = useFirebaseAuth();
   
-  // Check for session-based auth (for admin users)
-  const { data: sessionUser } = useQuery({
-    queryKey: ["/api/user-session"],
+  // Use Firebase auth for all users (session auth removed)
+  // Get user profile from Firebase auth
+  const { data: profileUser } = useQuery({
+    queryKey: ["/api/user/profile", firebaseAuth.user?.uid],
     queryFn: async () => {
+      if (!firebaseAuth.user) return null;
       try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth.currentUser;
+        if (!currentUser) return null;
+        
+        const token = await currentUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
           headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
         });
         
         if (!response.ok) {
           if (response.status === 401) {
-            return null; // Not authenticated via session
+            return null; // Not authenticated
           }
-          throw new Error(`Session auth failed: ${response.status}`);
+          throw new Error(`Firebase auth failed: ${response.status}`);
         }
         
         const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
+        return userData;
       } catch (error) {
+        console.error('useApplicationStatus - Firebase auth error:', error);
         return null;
       }
     },
+    enabled: !!firebaseAuth.user,
     retry: false,
     staleTime: 10 * 1000, // Shorter cache time to pick up role changes faster
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    enabled: true
   });
 
-  // Properly combine Firebase and session auth - prioritize session for admins, Firebase for regular users
-  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseAuth.user || sessionUser);
+  // Use Firebase profile data (all users now use Firebase)
+  const user = profileUser || (firebaseAuth.user ? {
+    ...firebaseAuth.user,
+    id: profileUser?.id,
+    role: profileUser?.role || firebaseAuth.user.role,
+    isChef: profileUser?.isChef || profileUser?.is_chef || (firebaseAuth.user as any)?.isChef,
+    isDeliveryPartner: profileUser?.isDeliveryPartner || profileUser?.is_delivery_partner || (firebaseAuth.user as any)?.isDeliveryPartner,
+    isManager: profileUser?.isManager || profileUser?.is_manager || (firebaseAuth.user as any)?.isManager,
+  } : null);
   
   // Debug logging for application status hook
   console.log('useApplicationStatus: Auth state', {

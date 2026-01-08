@@ -64,6 +64,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useToast } from "@/hooks/use-toast";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 import {
@@ -123,37 +125,38 @@ function AdminDashboard() {
     }
   }, [activeCategory, activeTab]);
 
-  // Admin uses ONLY session-based auth (NeonDB) - no Firebase needed
+  // Admin uses Firebase auth (session auth removed)
+  const { user: firebaseUser } = useFirebaseAuth();
+  
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
-    queryKey: ["/api/user-session"],
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
+      if (!firebaseUser) return null;
       try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
           headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
         });
         
         if (!response.ok) {
           if (response.status === 401) {
-            return null; // Not authenticated via session
+            return null; // Not authenticated
           }
-          throw new Error(`Session auth failed: ${response.status}`);
+          throw new Error(`Firebase auth failed: ${response.status}`);
         }
         
         const userData = await response.json();
-        console.log('Admin Dashboard - Session user data:', userData);
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
+        console.log('Admin Dashboard - Firebase user data:', userData);
+        return userData;
       } catch (error) {
-        console.error('Admin Dashboard - Session auth error:', error);
+        console.error('Admin Dashboard - Firebase auth error:', error);
         return null;
       }
     },
+    enabled: !!firebaseUser,
     retry: false,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,

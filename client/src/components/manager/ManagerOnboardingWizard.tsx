@@ -242,7 +242,7 @@ export default function ManagerOnboardingWizard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/user-session"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
     },
   });
 
@@ -288,7 +288,7 @@ export default function ManagerOnboardingWizard() {
     },
     onSuccess: (data) => {
       const skipped = data.skipped;
-      queryClient.invalidateQueries({ queryKey: ["/api/user-session"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
       setIsOpen(false);
       toast({
         title: skipped ? "Onboarding Skipped" : "Onboarding Completed",
