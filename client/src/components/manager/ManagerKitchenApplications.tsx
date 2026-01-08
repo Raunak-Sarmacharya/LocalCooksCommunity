@@ -19,7 +19,7 @@ import {
   User,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -82,6 +82,81 @@ export default function ManagerKitchenApplications({
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [showDocumentsDialog, setShowDocumentsDialog] = useState(false);
   const [documentsApplication, setDocumentsApplication] = useState<any | null>(null);
+  const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
+  const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+
+  // Function to get presigned URL for R2 files
+  const getPresignedUrl = async (fileUrl: string): Promise<string> => {
+    // Check if we already have a presigned URL cached
+    if (presignedUrls[fileUrl]) {
+      return presignedUrls[fileUrl];
+    }
+
+    // Check if URL is already being loaded
+    if (loadingUrls.has(fileUrl)) {
+      // Wait a bit and try again
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return getPresignedUrl(fileUrl);
+    }
+
+    // Check if it's an R2 URL (needs presigning)
+    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
+                    fileUrl.includes('cloudflare') ||
+                    (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+
+    if (!isR2Url) {
+      // Not an R2 URL, return as-is
+      return fileUrl;
+    }
+
+    try {
+      setLoadingUrls(prev => new Set(prev).add(fileUrl));
+      
+      // Get auth token
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      const token = currentUser ? await currentUser.getIdToken() : null;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      if (currentUser?.uid) {
+        headers['X-User-ID'] = currentUser.uid;
+      }
+
+      const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get presigned URL: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const presignedUrl = data.url || fileUrl;
+
+      // Cache the presigned URL
+      setPresignedUrls(prev => ({ ...prev, [fileUrl]: presignedUrl }));
+      return presignedUrl;
+    } catch (error) {
+      console.error('Error getting presigned URL:', error);
+      // Fallback to original URL
+      return fileUrl;
+    } finally {
+      setLoadingUrls(prev => {
+        const next = new Set(prev);
+        next.delete(fileUrl);
+        return next;
+      });
+    }
+  };
 
   // Filter by location if provided
   const filteredPending = locationId
@@ -159,9 +234,17 @@ export default function ManagerKitchenApplications({
     setShowReviewDialog(true);
   };
 
-  const openDocumentsDialog = (application: any) => {
+  const openDocumentsDialog = async (application: any) => {
     setDocumentsApplication(application);
     setShowDocumentsDialog(true);
+    
+    // Pre-fetch presigned URLs for documents
+    if (application.foodSafetyLicenseUrl) {
+      await getPresignedUrl(application.foodSafetyLicenseUrl);
+    }
+    if (application.foodEstablishmentCertUrl) {
+      await getPresignedUrl(application.foodEstablishmentCertUrl);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -462,10 +545,17 @@ export default function ManagerKitchenApplications({
                       <div className="flex items-center gap-2">
                         {selectedApplication.foodSafetyLicenseUrl && (
                           <a
-                            href={selectedApplication.foodSafetyLicenseUrl}
+                            href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || selectedApplication.foodSafetyLicenseUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:underline text-xs flex items-center"
+                            onClick={async (e) => {
+                              if (!presignedUrls[selectedApplication.foodSafetyLicenseUrl]) {
+                                e.preventDefault();
+                                const url = await getPresignedUrl(selectedApplication.foodSafetyLicenseUrl);
+                                window.open(url, '_blank');
+                              }
+                            }}
                           >
                             <ExternalLink className="h-3 w-3 mr-1" />
                             View
@@ -491,10 +581,17 @@ export default function ManagerKitchenApplications({
                       <div className="flex items-center gap-2">
                         {selectedApplication.foodEstablishmentCertUrl && (
                           <a
-                            href={selectedApplication.foodEstablishmentCertUrl}
+                            href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] || selectedApplication.foodEstablishmentCertUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:underline text-xs flex items-center"
+                            onClick={async (e) => {
+                              if (!presignedUrls[selectedApplication.foodEstablishmentCertUrl]) {
+                                e.preventDefault();
+                                const url = await getPresignedUrl(selectedApplication.foodEstablishmentCertUrl);
+                                window.open(url, '_blank');
+                              }
+                            }}
                           >
                             <ExternalLink className="h-3 w-3 mr-1" />
                             View
@@ -596,21 +693,46 @@ export default function ManagerKitchenApplications({
                   </div>
                   <div className="flex gap-2">
                     <a
-                      href={documentsApplication.foodSafetyLicenseUrl}
+                      href={presignedUrls[documentsApplication.foodSafetyLicenseUrl] || documentsApplication.foodSafetyLicenseUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={async (e) => {
+                        if (!presignedUrls[documentsApplication.foodSafetyLicenseUrl]) {
+                          e.preventDefault();
+                          const url = await getPresignedUrl(documentsApplication.foodSafetyLicenseUrl);
+                          window.open(url, '_blank');
+                        }
+                      }}
                     >
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
+                      <Button variant="outline" size="sm" disabled={loadingUrls.has(documentsApplication.foodSafetyLicenseUrl)}>
+                        {loadingUrls.has(documentsApplication.foodSafetyLicenseUrl) ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <ExternalLink className="h-4 w-4 mr-1" />
+                        )}
                         View Document
                       </Button>
                     </a>
                     <a
-                      href={documentsApplication.foodSafetyLicenseUrl}
+                      href={presignedUrls[documentsApplication.foodSafetyLicenseUrl] || documentsApplication.foodSafetyLicenseUrl}
                       download
+                      onClick={async (e) => {
+                        if (!presignedUrls[documentsApplication.foodSafetyLicenseUrl]) {
+                          e.preventDefault();
+                          const url = await getPresignedUrl(documentsApplication.foodSafetyLicenseUrl);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = '';
+                          a.click();
+                        }
+                      }}
                     >
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-1" />
+                      <Button variant="outline" size="sm" disabled={loadingUrls.has(documentsApplication.foodSafetyLicenseUrl)}>
+                        {loadingUrls.has(documentsApplication.foodSafetyLicenseUrl) ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4 mr-1" />
+                        )}
                         Download
                       </Button>
                     </a>
@@ -630,21 +752,46 @@ export default function ManagerKitchenApplications({
                   </div>
                   <div className="flex gap-2">
                     <a
-                      href={documentsApplication.foodEstablishmentCertUrl}
+                      href={presignedUrls[documentsApplication.foodEstablishmentCertUrl] || documentsApplication.foodEstablishmentCertUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={async (e) => {
+                        if (!presignedUrls[documentsApplication.foodEstablishmentCertUrl]) {
+                          e.preventDefault();
+                          const url = await getPresignedUrl(documentsApplication.foodEstablishmentCertUrl);
+                          window.open(url, '_blank');
+                        }
+                      }}
                     >
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4 mr-1" />
+                      <Button variant="outline" size="sm" disabled={loadingUrls.has(documentsApplication.foodEstablishmentCertUrl)}>
+                        {loadingUrls.has(documentsApplication.foodEstablishmentCertUrl) ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <ExternalLink className="h-4 w-4 mr-1" />
+                        )}
                         View Document
                       </Button>
                     </a>
                     <a
-                      href={documentsApplication.foodEstablishmentCertUrl}
+                      href={presignedUrls[documentsApplication.foodEstablishmentCertUrl] || documentsApplication.foodEstablishmentCertUrl}
                       download
+                      onClick={async (e) => {
+                        if (!presignedUrls[documentsApplication.foodEstablishmentCertUrl]) {
+                          e.preventDefault();
+                          const url = await getPresignedUrl(documentsApplication.foodEstablishmentCertUrl);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = '';
+                          a.click();
+                        }
+                      }}
                     >
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-1" />
+                      <Button variant="outline" size="sm" disabled={loadingUrls.has(documentsApplication.foodEstablishmentCertUrl)}>
+                        {loadingUrls.has(documentsApplication.foodEstablishmentCertUrl) ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4 mr-1" />
+                        )}
                         Download
                       </Button>
                     </a>
