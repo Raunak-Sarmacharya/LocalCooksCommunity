@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { useFirebaseAuth } from "./use-auth";
+import { auth } from "@/lib/firebase";
 
 interface Location {
   id: number;
@@ -47,15 +49,24 @@ interface Booking {
 }
 
 export function useManagerDashboard() {
+  const { user: firebaseUser } = useFirebaseAuth();
+  
   const getAuthHeaders = async (): Promise<HeadersInit> => {
-    const token = localStorage.getItem('firebaseToken');
-    if (token) {
-      return {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      };
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Get Firebase token if user is authenticated
+    if (firebaseUser) {
+      try {
+        const token = await firebaseUser.getIdToken();
+        headers['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        console.error('Error getting Firebase token:', error);
+      }
     }
-    return { 'Content-Type': 'application/json' };
+    
+    return headers;
   };
 
   // Get manager's locations

@@ -6455,20 +6455,23 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
           }
           
           try {
-            // Enforce mutually exclusive roles - users can only be chef OR delivery partner, not both
-            // Exception: Admin users have access to both chef and delivery partner data/functionality
-            const isChef = (role === 'chef' || role === 'admin');
-            const isDeliveryPartner = (role === 'delivery_partner' || role === 'admin');
+            // Handle role assignment - manager role is separate from chef/delivery_partner
+            let finalRole = role || 'chef';
+            const isChef = (finalRole === 'chef' || finalRole === 'admin');
+            const isDeliveryPartner = (finalRole === 'delivery_partner' || finalRole === 'admin');
+            const isManager = (finalRole === 'manager');
             
-            if (role === 'admin') {
+            if (finalRole === 'admin') {
               console.log(`🎯 Admin role assignment: role="admin" → isChef=true, isDeliveryPartner=true (admin has full access)`);
+            } else if (finalRole === 'manager') {
+              console.log(`🎯 Manager role assignment: role="manager" → isManager=true`);
             } else {
-              console.log(`🎯 Exclusive role assignment: role="${role}" → isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner} (mutually exclusive)`);
+              console.log(`🎯 Exclusive role assignment: role="${finalRole}" → isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner} (mutually exclusive)`);
             }
             
             const insertResult = await pool.query(
-              'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-              [email, hashedPassword, role || 'chef', uid, isUserVerified, false, isChef, isDeliveryPartner]
+              'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
+              [email, hashedPassword, finalRole, uid, isUserVerified, false, isChef, isDeliveryPartner, isManager]
             );
             user = insertResult.rows[0];
             wasCreated = true;
@@ -7172,6 +7175,26 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Manager Role Verification
+// Must be used after requireFirebaseAuthWithUser
+function requireManager(req, res, next) {
+  if (!req.neonUser) {
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Authentication required' 
+    });
+  }
+
+  if (req.neonUser.role !== 'manager') {
+    return res.status(403).json({ 
+      error: 'Forbidden', 
+      message: 'Manager access required' 
+    });
+  }
+
+  next();
+}
+
 // Session-based admin middleware (for admin endpoints that use session auth)
 // IMPORTANT: This middleware ONLY checks session auth and IGNORES any Firebase tokens
 async function requireSessionAdmin(req, res, next) {
@@ -7271,17 +7294,37 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
       return;
     }
 
+    // Fetch full user data from database to get onboarding fields
+    let fullUserData = null;
+    if (pool) {
+      try {
+        const userResult = await pool.query(
+          'SELECT * FROM users WHERE id = $1',
+          [req.neonUser.id]
+        );
+        if (userResult.rows.length > 0) {
+          fullUserData = userResult.rows[0];
+        }
+      } catch (dbError) {
+        console.error('Error fetching full user data:', dbError);
+      }
+    }
+
     const response = {
       id: req.neonUser.id,
       username: req.neonUser.username || '',
       role: req.neonUser.role || null,
-      is_verified: req.neonUser.isVerified !== undefined ? req.neonUser.isVerified : true,
-      has_seen_welcome: req.neonUser.hasSeenWelcome !== undefined ? req.neonUser.hasSeenWelcome : false,
+      is_verified: req.neonUser.isVerified !== undefined ? req.neonUser.isVerified : (fullUserData?.is_verified ?? true),
+      has_seen_welcome: req.neonUser.hasSeenWelcome !== undefined ? req.neonUser.hasSeenWelcome : (fullUserData?.has_seen_welcome ?? false),
       isChef: req.neonUser.isChef || false,
       isDeliveryPartner: req.neonUser.isDeliveryPartner || false,
+      isManager: req.neonUser.role === 'manager' || fullUserData?.is_manager || false,
       firebaseUid: req.firebaseUser.uid || null,
       email: req.firebaseUser.email || null,
-      emailVerified: req.firebaseUser.email_verified || false
+      emailVerified: req.firebaseUser.email_verified || false,
+      // Manager onboarding fields
+      manager_onboarding_completed: fullUserData?.manager_onboarding_completed || false,
+      manager_onboarding_skipped: fullUserData?.manager_onboarding_skipped || false
     };
 
     console.log('✅ /api/user/profile - Returning profile for user:', req.neonUser.id);
@@ -12669,17 +12712,10 @@ app.delete("/api/admin/managers/:id", async (req, res) => {
 // ===================================
 
 // Get all locations for manager
-app.get("/api/manager/locations", async (req, res) => {
+app.get("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     // Get locations for this manager
     if (!pool) {
@@ -12723,21 +12759,14 @@ app.get("/api/manager/locations", async (req, res) => {
 });
 
 // Update location cancellation policy (manager only)
-app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, res) => {
+app.put("/api/manager/locations/:locationId/cancellation-policy", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
     locationId: req.params.locationId,
     body: req.body
   });
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { locationId } = req.params;
     const locationIdNum = parseInt(locationId);
@@ -12940,17 +12969,10 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", async (req, re
 });
 
 // Get kitchens for a location (manager)
-app.get("/api/manager/kitchens/:locationId", async (req, res) => {
+app.get("/api/manager/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const locationId = parseInt(req.params.locationId);
     if (isNaN(locationId) || locationId <= 0) {
@@ -12978,17 +13000,10 @@ app.get("/api/manager/kitchens/:locationId", async (req, res) => {
 });
 
 // Update kitchen image (manager)
-app.put("/api/manager/kitchens/:kitchenId/image", async (req, res) => {
+app.put("/api/manager/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -13038,17 +13053,10 @@ app.put("/api/manager/kitchens/:kitchenId/image", async (req, res) => {
 });
 
 // Update kitchen details (manager) - name, description, etc.
-app.put("/api/manager/kitchens/:kitchenId", async (req, res) => {
+app.put("/api/manager/kitchens/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -13118,17 +13126,10 @@ app.put("/api/manager/kitchens/:kitchenId", async (req, res) => {
 });
 
 // Get kitchen pricing
-app.get("/api/manager/kitchens/:kitchenId/pricing", async (req, res) => {
+app.get("/api/manager/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -13177,17 +13178,10 @@ app.get("/api/manager/kitchens/:kitchenId/pricing", async (req, res) => {
 });
 
 // Update kitchen pricing
-app.put("/api/manager/kitchens/:kitchenId/pricing", async (req, res) => {
+app.put("/api/manager/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -13303,16 +13297,10 @@ app.put("/api/manager/kitchens/:kitchenId/pricing", async (req, res) => {
 // ===== STORAGE LISTINGS API =====
 
 // Get storage listings for a kitchen
-app.get("/api/manager/kitchens/:kitchenId/storage-listings", async (req, res) => {
+app.get("/api/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -13386,16 +13374,10 @@ app.get("/api/manager/kitchens/:kitchenId/storage-listings", async (req, res) =>
 });
 
 // Get equipment listings by kitchen ID
-app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) => {
+app.get("/api/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -13482,16 +13464,10 @@ app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req, res) 
 });
 
 // Get single storage listing
-app.get("/api/manager/storage-listings/:listingId", async (req, res) => {
+app.get("/api/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const listingId = parseInt(req.params.listingId);
     if (isNaN(listingId) || listingId <= 0) {
@@ -13602,16 +13578,10 @@ app.get("/api/manager/storage-listings/:listingId", async (req, res) => {
 });
 
 // Create storage listing
-app.post("/api/manager/storage-listings", async (req, res) => {
+app.post("/api/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { kitchenId, ...listingData } = req.body;
 
@@ -13752,16 +13722,10 @@ app.post("/api/manager/storage-listings", async (req, res) => {
 });
 
 // Update storage listing
-app.put("/api/manager/storage-listings/:listingId", async (req, res) => {
+app.put("/api/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const listingId = parseInt(req.params.listingId);
     if (isNaN(listingId) || listingId <= 0) {
@@ -13982,16 +13946,10 @@ app.put("/api/manager/storage-listings/:listingId", async (req, res) => {
 });
 
 // Delete storage listing
-app.delete("/api/manager/storage-listings/:listingId", async (req, res) => {
+app.delete("/api/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const listingId = parseInt(req.params.listingId);
     if (isNaN(listingId) || listingId <= 0) {
@@ -14048,16 +14006,10 @@ app.delete("/api/manager/storage-listings/:listingId", async (req, res) => {
 // ===== EQUIPMENT LISTINGS ENDPOINTS =====
 
 // Get equipment listing by ID
-app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
+app.get("/api/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const listingId = parseInt(req.params.listingId);
     if (isNaN(listingId) || listingId <= 0) {
@@ -14221,16 +14173,10 @@ app.get("/api/manager/equipment-listings/:listingId", async (req, res) => {
 });
 
 // Create equipment listing
-app.post("/api/manager/equipment-listings", async (req, res) => {
+app.post("/api/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { kitchenId, ...listingData } = req.body;
 
@@ -14450,16 +14396,10 @@ app.post("/api/manager/equipment-listings", async (req, res) => {
 });
 
 // Update equipment listing
-app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
+app.put("/api/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const listingId = parseInt(req.params.listingId);
     if (isNaN(listingId) || listingId <= 0) {
@@ -14750,16 +14690,10 @@ app.put("/api/manager/equipment-listings/:listingId", async (req, res) => {
 });
 
 // Delete equipment listing
-app.delete("/api/manager/equipment-listings/:listingId", async (req, res) => {
+app.delete("/api/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const listingId = parseInt(req.params.listingId);
     if (isNaN(listingId) || listingId <= 0) {
@@ -14804,17 +14738,10 @@ app.delete("/api/manager/equipment-listings/:listingId", async (req, res) => {
 
 // Get all bookings for manager
 // Manager: Get chef profiles for locations managed by this manager
-app.get("/api/manager/chef-profiles", async (req, res) => {
+app.get("/api/manager/chef-profiles", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     if (!pool) {
       return res.status(500).json({ error: "Database not available" });
@@ -14907,17 +14834,10 @@ app.get("/api/manager/chef-profiles", async (req, res) => {
 });
 
 // Manager: Complete onboarding
-app.post("/api/manager/complete-onboarding", async (req, res) => {
+app.post("/api/manager/complete-onboarding", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { skipped } = req.body;
 
@@ -14942,17 +14862,10 @@ app.post("/api/manager/complete-onboarding", async (req, res) => {
 });
 
 // Manager: Update location (for onboarding)
-app.put("/api/manager/locations/:id", async (req, res) => {
+app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const locationId = parseInt(req.params.id);
     if (isNaN(locationId)) {
@@ -15029,27 +14942,16 @@ app.options("/api/manager/chef-location-access", (req, res) => {
   res.status(200).end();
 });
 
-app.delete("/api/manager/chef-location-access", async (req, res) => {
+app.delete("/api/manager/chef-location-access", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   console.log('[DELETE] /api/manager/chef-location-access - Request received', {
     method: req.method,
     path: req.path,
-    body: req.body,
-    hasSession: !!req.session?.userId,
-    hasHeader: !!req.headers['x-user-id']
+    body: req.body
   });
 
   try {
-    // Use getAuthenticatedUser for better Firebase auth support
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      console.log('[DELETE] /api/manager/chef-location-access - Not authenticated');
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    if (user.role !== "manager") {
-      console.log('[DELETE] /api/manager/chef-location-access - Not a manager', { role: user.role });
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { chefId, locationId } = req.body;
     
@@ -15117,17 +15019,10 @@ app.delete("/api/manager/chef-location-access", async (req, res) => {
 });
 
 // Manager: Approve or reject chef profile
-app.put("/api/manager/chef-profiles/:id/status", async (req, res) => {
+app.put("/api/manager/chef-profiles/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const profileId = parseInt(req.params.id);
     const { status, reviewFeedback } = req.body;
@@ -15242,17 +15137,10 @@ app.put("/api/manager/chef-profiles/:id/status", async (req, res) => {
 });
 
 // Manager: Get portal user applications for review
-app.get("/api/manager/portal-applications", async (req, res) => {
+app.get("/api/manager/portal-applications", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     console.log(`[Manager Portal Applications] Fetching for manager ID: ${user.id}`);
 
@@ -15373,17 +15261,10 @@ app.get("/api/manager/portal-applications", async (req, res) => {
 });
 
 // Manager: Approve or reject portal user application
-app.put("/api/manager/portal-applications/:id/status", async (req, res) => {
+app.put("/api/manager/portal-applications/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const applicationId = parseInt(req.params.id);
     const { status, feedback } = req.body;
@@ -15530,17 +15411,10 @@ app.put("/api/manager/portal-applications/:id/status", async (req, res) => {
 // ==============================
 
 // Manager: Get chef kitchen applications for review
-app.get("/api/manager/kitchen-applications", async (req, res) => {
+app.get("/api/manager/kitchen-applications", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     console.log(`[Manager Kitchen Applications] Fetching for manager ID: ${user.id}`);
 
@@ -15657,17 +15531,10 @@ app.get("/api/manager/kitchen-applications", async (req, res) => {
 });
 
 // Manager: Approve or reject chef kitchen application
-app.patch("/api/manager/kitchen-applications/:id/status", async (req, res) => {
+app.patch("/api/manager/kitchen-applications/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const applicationId = parseInt(req.params.id);
     if (isNaN(applicationId)) {
@@ -15752,17 +15619,10 @@ app.patch("/api/manager/kitchen-applications/:id/status", async (req, res) => {
 });
 
 // Manager: Verify kitchen application documents
-app.patch("/api/manager/kitchen-applications/:id/verify-documents", async (req, res) => {
+app.patch("/api/manager/kitchen-applications/:id/verify-documents", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const applicationId = parseInt(req.params.id);
     if (isNaN(applicationId)) {
@@ -15847,17 +15707,10 @@ app.patch("/api/manager/kitchen-applications/:id/verify-documents", async (req, 
 });
 
 // Manager: Revoke chef access to location
-app.delete("/api/manager/chef-location-access/:chefId/:locationId", async (req, res) => {
+app.delete("/api/manager/chef-location-access/:chefId/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const chefId = parseInt(req.params.chefId);
     const locationId = parseInt(req.params.locationId);
@@ -15901,17 +15754,10 @@ app.delete("/api/manager/chef-location-access/:chefId/:locationId", async (req, 
   }
 });
 
-app.get("/api/manager/bookings", async (req, res) => {
+app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     // Get all locations for this manager
     if (!pool) {
@@ -16040,17 +15886,10 @@ app.get("/api/manager/bookings", async (req, res) => {
 });
 
 // Set kitchen availability (manager)
-app.post("/api/manager/availability", async (req, res) => {
+app.post("/api/manager/availability", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
     if (!kitchenId || dayOfWeek === undefined || !startTime || !endTime) {
@@ -16103,17 +15942,10 @@ app.post("/api/manager/availability", async (req, res) => {
 });
 
 // Get kitchen availability (manager)
-app.get("/api/manager/availability/:kitchenId", async (req, res) => {
+app.get("/api/manager/availability/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -16152,17 +15984,10 @@ app.get("/api/manager/availability/:kitchenId", async (req, res) => {
 });
 
 // Set kitchen availability (manager)
-app.post("/api/manager/availability", async (req, res) => {
+app.post("/api/manager/availability", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
 
@@ -16221,17 +16046,10 @@ app.post("/api/manager/availability", async (req, res) => {
 });
 
 // Manager change password endpoint
-app.post("/api/manager/change-password", async (req, res) => {
+app.post("/api/manager/change-password", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-    
-    const user = await getUser(rawUserId);
-    if (!user || user.role !== "manager") {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const { currentPassword, newPassword } = req.body;
 
@@ -18200,32 +18018,10 @@ app.get("/api/chef/profiles", requireChef, async (req, res) => {
 // ===================================================================
 
 // Get date overrides for a kitchen
-app.get("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => {
+app.get("/api/manager/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    // Authentication check
-    const sessionUserId = req.session?.userId;
-    if (!sessionUserId && !req.headers.authorization) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    let user;
-    if (req.headers.authorization) {
-      // Firebase auth
-      const token = req.headers.authorization.replace('Bearer ', '');
-      // Simplified - assume valid for now
-      user = { role: 'manager' };
-    } else {
-      // Session auth
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = result.rows[0];
-    }
-
-    if (user.role !== 'manager') {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     const result = await pool.query(`
@@ -18242,28 +18038,10 @@ app.get("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => {
 });
 
 // Create date override
-app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => {
+app.post("/api/manager/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    // Authentication check
-    const sessionUserId = req.session?.userId;
-    if (!sessionUserId && !req.headers.authorization) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    let user;
-    if (req.headers.authorization) {
-      user = { role: 'manager' };
-    } else {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = result.rows[0];
-    }
-
-    if (user.role !== 'manager') {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     const { specificDate, startTime, endTime, isAvailable, reason, maxSlotsPerChef } = req.body;
@@ -18312,28 +18090,10 @@ app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req, res) => 
   }
 });
 // Update date override
-app.put("/api/manager/date-overrides/:id", async (req, res) => {
+app.put("/api/manager/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    // Authentication check
-    const sessionUserId = req.session?.userId;
-    if (!sessionUserId && !req.headers.authorization) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    let user;
-    if (req.headers.authorization) {
-      user = { role: 'manager' };
-    } else {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = result.rows[0];
-    }
-
-    if (user.role !== 'manager') {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const id = parseInt(req.params.id);
     const { startTime, endTime, isAvailable, reason, maxSlotsPerChef } = req.body;
@@ -18362,28 +18122,10 @@ app.put("/api/manager/date-overrides/:id", async (req, res) => {
 });
 
 // Delete date override
-app.delete("/api/manager/date-overrides/:id", async (req, res) => {
+app.delete("/api/manager/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    // Authentication check
-    const sessionUserId = req.session?.userId;
-    if (!sessionUserId && !req.headers.authorization) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    let user;
-    if (req.headers.authorization) {
-      user = { role: 'manager' };
-    } else {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = result.rows[0];
-    }
-
-    if (user.role !== 'manager') {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const id = parseInt(req.params.id);
     await pool.query('DELETE FROM kitchen_date_overrides WHERE id = $1', [id]);
@@ -18396,28 +18138,10 @@ app.delete("/api/manager/date-overrides/:id", async (req, res) => {
 });
 
 // Get bookings for a kitchen
-app.get("/api/manager/kitchens/:kitchenId/bookings", async (req, res) => {
+app.get("/api/manager/kitchens/:kitchenId/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    // Authentication check
-    const sessionUserId = req.session?.userId;
-    if (!sessionUserId && !req.headers.authorization) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    let user;
-    if (req.headers.authorization) {
-      user = { role: 'manager' };
-    } else {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = result.rows[0];
-    }
-
-    if (user.role !== 'manager') {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const kitchenId = parseInt(req.params.kitchenId);
     const result = await pool.query(`
@@ -18434,15 +18158,11 @@ app.get("/api/manager/kitchens/:kitchenId/bookings", async (req, res) => {
 });
 
 // Get all bookings for manager
-app.get("/api/manager/bookings", async (req, res) => {
+app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    // Authentication check
-    const sessionUserId = req.session?.userId;
-    if (!sessionUserId && !req.headers.authorization) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    let userId;
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
+    const userId = user.id;
     if (req.headers.authorization) {
       // For now, return empty for Firebase auth (would need to decode token)
       return res.json([]);
@@ -18586,28 +18306,10 @@ app.get("/api/manager/bookings", async (req, res) => {
 });
 
 // Update booking status
-app.put("/api/manager/bookings/:id/status", async (req, res) => {
+app.put("/api/manager/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
-    // Authentication check
-    const sessionUserId = req.session?.userId;
-    if (!sessionUserId && !req.headers.authorization) {
-      return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    let user;
-    if (req.headers.authorization) {
-      user = { role: 'manager' };
-    } else {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [sessionUserId]);
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: "User not found" });
-      }
-      user = result.rows[0];
-    }
-
-    if (user.role !== 'manager') {
-      return res.status(403).json({ error: "Manager access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
 
     const id = parseInt(req.params.id);
     const { status } = req.body;

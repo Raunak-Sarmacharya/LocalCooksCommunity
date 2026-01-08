@@ -1,6 +1,8 @@
 import { Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 
 interface ManagerProtectedRouteProps {
   children: React.ReactNode;
@@ -8,8 +10,50 @@ interface ManagerProtectedRouteProps {
 
 export default function ManagerProtectedRoute({ children }: ManagerProtectedRouteProps) {
   const [, setLocation] = useLocation();
+  const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
   
-  const { data: sessionUser, isLoading: sessionLoading, error: sessionError } = useQuery({
+  // Try Firebase auth first
+  const { data: firebaseUserData, isLoading: firebaseProfileLoading, error: firebaseProfileError } = useQuery({
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) return null;
+      try {
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            return null;
+          }
+          throw new Error(`Firebase auth failed: ${response.status}`);
+        }
+        
+        const userData = await response.json();
+        return {
+          ...userData,
+          authMethod: 'firebase'
+        };
+      } catch (error) {
+        console.error('ManagerProtectedRoute - Firebase auth error:', error);
+        return null;
+      }
+    },
+    enabled: !!firebaseUser,
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  // Fallback to session auth if Firebase auth fails (backward compatibility)
+  const { data: sessionUserData, isLoading: sessionLoading, error: sessionError } = useQuery({
     queryKey: ["/api/user-session"],
     queryFn: async () => {
       try {
@@ -38,24 +82,29 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
         return null;
       }
     },
+    enabled: !firebaseUser && !firebaseLoading, // Only try session if Firebase is not available
     retry: false,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
-  const user = sessionUser;
-  const loading = sessionLoading;
-  const error = sessionError;
+  // Use Firebase user if available, otherwise fall back to session user
+  const user = firebaseUserData || sessionUserData;
+  const loading = firebaseLoading || (firebaseUser ? firebaseProfileLoading : sessionLoading);
+  const error = firebaseProfileError || sessionError;
   
-  const isManager = user?.role === 'manager';
+  const isManager = user?.role === 'manager' || user?.isManager;
 
-  console.log('ManagerProtectedRoute - Session-only auth state:', {
+  console.log('ManagerProtectedRoute - Hybrid auth state:', {
     loading,
-    hasSessionUser: !!sessionUser,
+    hasFirebaseUser: !!firebaseUser,
+    hasFirebaseUserData: !!firebaseUserData,
+    hasSessionUserData: !!sessionUserData,
     finalUser: !!user,
     userRole: user?.role,
     isManager,
+    authMethod: user?.authMethod,
     error
   });
 

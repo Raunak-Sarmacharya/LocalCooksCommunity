@@ -75,9 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (currentPath === '/driver-auth') {
           finalRole = 'delivery_partner';
           console.log('🚚 Auto-setting role to delivery_partner based on /driver-auth URL');
-        } else if (currentPath === '/manager-register' || currentPath === '/manager/register') {
+        } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
           finalRole = 'manager';
-          console.log('🏢 Auto-setting role to manager based on /manager-register URL');
+          console.log('🏢 Auto-setting role to manager based on manager URL path');
         } else if (currentPath === '/auth') {
           finalRole = 'chef';
           console.log('👨‍🍳 Auto-setting role to chef based on /auth URL');

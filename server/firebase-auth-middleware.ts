@@ -176,4 +176,27 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
 
   next();
+}
+
+/**
+ * Manager role verification middleware
+ * Must be used after requireFirebaseAuthWithUser
+ * NO SESSIONS - Role check based on Neon user data
+ */
+export function requireManager(req: Request, res: Response, next: NextFunction) {
+  if (!req.neonUser) {
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Authentication required' 
+    });
+  }
+
+  if (req.neonUser.role !== 'manager') {
+    return res.status(403).json({ 
+      error: 'Forbidden', 
+      message: 'Manager access required' 
+    });
+  }
+
+  next();
 } 

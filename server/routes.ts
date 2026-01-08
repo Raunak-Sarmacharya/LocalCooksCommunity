@@ -16,6 +16,7 @@ import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
+import { requireFirebaseAuthWithUser, requireManager } from "./firebase-auth-middleware";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
 import { eq, inArray, and, desc } from "drizzle-orm";
@@ -946,7 +947,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Manager login endpoint (for commercial kitchen managers)
+  // DEPRECATED: Manager login endpoint - Managers now use Firebase auth
+  // This endpoint is kept for backward compatibility but should not be used for new registrations
+  // Managers should use Firebase auth via /manager/login page
   app.post("/api/manager-login", async (req, res) => {
     try {
       const { username, password } = req.body;
@@ -3319,23 +3322,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // to avoid Express routing conflicts. Specific routes must come before generic ones.
   
   // Update location cancellation policy (manager only)
-  app.put("/api/manager/locations/:locationId/cancellation-policy", async (req: Request, res: Response) => {
+  app.put("/api/manager/locations/:locationId/cancellation-policy", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
       locationId: req.params.locationId,
       body: req.body
     });
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const { locationId } = req.params;
       const locationIdNum = parseInt(locationId);
@@ -3563,20 +3557,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/manager/locations", async (req: Request, res: Response) => {
+  app.get("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
       
@@ -3619,20 +3603,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get kitchens for a location (manager)
-  app.get("/api/manager/kitchens/:locationId", async (req: Request, res: Response) => {
+  app.get("/api/manager/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const locationId = parseInt(req.params.locationId);
       if (isNaN(locationId) || locationId <= 0) {
@@ -3655,20 +3629,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update kitchen image (manager)
-  app.put("/api/manager/kitchens/:kitchenId/image", async (req: Request, res: Response) => {
+  app.put("/api/manager/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -3702,20 +3666,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update kitchen details (manager) - name, description, etc.
-  app.put("/api/manager/kitchens/:kitchenId", async (req: Request, res: Response) => {
+  app.put("/api/manager/kitchens/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -3753,20 +3707,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get kitchen pricing
-  app.get("/api/manager/kitchens/:kitchenId/pricing", async (req: Request, res: Response) => {
+  app.get("/api/manager/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -3800,20 +3744,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update kitchen pricing
-  app.put("/api/manager/kitchens/:kitchenId/pricing", async (req: Request, res: Response) => {
+  app.put("/api/manager/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -3877,19 +3811,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== STORAGE LISTINGS API =====
 
   // Get storage listings for a kitchen
-  app.get("/api/manager/kitchens/:kitchenId/storage-listings", async (req: Request, res: Response) => {
+  app.get("/api/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -3917,19 +3842,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single storage listing
-  app.get("/api/manager/storage-listings/:listingId", async (req: Request, res: Response) => {
+  app.get("/api/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const listingId = parseInt(req.params.listingId);
       if (isNaN(listingId) || listingId <= 0) {
@@ -3961,19 +3877,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create storage listing
-  app.post("/api/manager/storage-listings", async (req: Request, res: Response) => {
+  app.post("/api/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const { kitchenId, ...listingData } = req.body;
 
@@ -4012,19 +3919,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update storage listing
-  app.put("/api/manager/storage-listings/:listingId", async (req: Request, res: Response) => {
+  app.put("/api/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const listingId = parseInt(req.params.listingId);
       if (isNaN(listingId) || listingId <= 0) {
@@ -4059,19 +3957,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete storage listing
-  app.delete("/api/manager/storage-listings/:listingId", async (req: Request, res: Response) => {
+  app.delete("/api/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const listingId = parseInt(req.params.listingId);
       if (isNaN(listingId) || listingId <= 0) {
@@ -4108,19 +3997,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== EQUIPMENT LISTINGS ENDPOINTS =====
 
   // Get equipment listings by kitchen ID
-  app.get("/api/manager/kitchens/:kitchenId/equipment-listings", async (req: Request, res: Response) => {
+  app.get("/api/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -4148,19 +4028,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get equipment listing by ID
-  app.get("/api/manager/equipment-listings/:listingId", async (req: Request, res: Response) => {
+  app.get("/api/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const listingId = parseInt(req.params.listingId);
       if (isNaN(listingId) || listingId <= 0) {
@@ -4192,19 +4063,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create equipment listing
-  app.post("/api/manager/equipment-listings", async (req: Request, res: Response) => {
+  app.post("/api/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const { kitchenId, ...listingData } = req.body;
 
@@ -4256,19 +4118,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update equipment listing
-  app.put("/api/manager/equipment-listings/:listingId", async (req: Request, res: Response) => {
+  app.put("/api/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const listingId = parseInt(req.params.listingId);
       if (isNaN(listingId) || listingId <= 0) {
@@ -4303,19 +4156,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete equipment listing
-  app.delete("/api/manager/equipment-listings/:listingId", async (req: Request, res: Response) => {
+  app.delete("/api/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const listingId = parseInt(req.params.listingId);
       if (isNaN(listingId) || listingId <= 0) {
@@ -4350,20 +4194,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Set kitchen availability
-  app.post("/api/manager/availability", async (req: Request, res: Response) => {
+  app.post("/api/manager/availability", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
       
       const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
       await firebaseStorage.setKitchenAvailability(kitchenId, { dayOfWeek, startTime, endTime, isAvailable });
@@ -4441,20 +4275,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get kitchen availability
-  app.get("/api/manager/availability/:kitchenId", async (req: Request, res: Response) => {
+  app.get("/api/manager/availability/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
       
       const kitchenId = parseInt(req.params.kitchenId);
       const availability = await firebaseStorage.getKitchenAvailability(kitchenId);
@@ -4466,20 +4290,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all bookings for manager
-  app.get("/api/manager/bookings", async (req: Request, res: Response) => {
+  app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const bookings = await firebaseStorage.getBookingsByManager(user.id);
       res.json(bookings);
@@ -4490,19 +4304,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manager: Get chef profiles for review
-  app.get("/api/manager/chef-profiles", async (req: Request, res: Response) => {
+  app.get("/api/manager/chef-profiles", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const profiles = await firebaseStorage.getChefProfilesForManager(user.id);
       res.json(profiles);
@@ -4513,19 +4318,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manager: Get portal user applications for review
-  app.get("/api/manager/portal-applications", async (req: Request, res: Response) => {
+  app.get("/api/manager/portal-applications", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       // Get all locations managed by this manager
       const { users } = await import('@shared/schema');
@@ -4607,19 +4403,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manager: Approve or reject portal user application
-  app.put("/api/manager/portal-applications/:id/status", async (req: Request, res: Response) => {
+  app.put("/api/manager/portal-applications/:id/status", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const applicationId = parseInt(req.params.id);
       const { status, feedback } = req.body;
@@ -4752,19 +4539,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manager: Approve or reject chef profile
-  app.put("/api/manager/chef-profiles/:id/status", async (req: Request, res: Response) => {
+  app.put("/api/manager/chef-profiles/:id/status", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const profileId = parseInt(req.params.id);
       const { status, reviewFeedback } = req.body;
@@ -4822,19 +4600,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manager: Revoke chef location access
-  app.delete("/api/manager/chef-location-access", async (req: Request, res: Response) => {
+  app.delete("/api/manager/chef-location-access", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const { chefId, locationId } = req.body;
       
@@ -4896,20 +4665,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get bookings for a specific kitchen (for availability management)
-  app.get("/api/manager/kitchens/:kitchenId/bookings", async (req: Request, res: Response) => {
+  app.get("/api/manager/kitchens/:kitchenId/bookings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       console.log(`📋 Fetching bookings for kitchen ${kitchenId}`);
@@ -4926,20 +4685,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get a single booking with add-on details (Manager)
-  app.get("/api/manager/bookings/:id", async (req: Request, res: Response) => {
+  app.get("/api/manager/bookings/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const id = parseInt(req.params.id);
       if (isNaN(id) || id <= 0) {
@@ -5012,20 +4761,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update booking status
-  app.put("/api/manager/bookings/:id/status", async (req: Request, res: Response) => {
+  app.put("/api/manager/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
       
       const id = parseInt(req.params.id);
       const { status } = req.body;
@@ -5314,20 +5053,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get date overrides for a kitchen
-  app.get("/api/manager/kitchens/:kitchenId/date-overrides", async (req: Request, res: Response) => {
+  app.get("/api/manager/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       const { startDate, endDate } = req.query;
@@ -5344,20 +5073,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a date override
-  app.post("/api/manager/kitchens/:kitchenId/date-overrides", async (req: Request, res: Response) => {
+  app.post("/api/manager/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const kitchenId = parseInt(req.params.kitchenId);
       const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
@@ -5489,20 +5208,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update a date override
-  app.put("/api/manager/date-overrides/:id", async (req: Request, res: Response) => {
+  app.put("/api/manager/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const id = parseInt(req.params.id);
       const { startTime, endTime, isAvailable, reason } = req.body;
@@ -5628,20 +5337,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a date override
-  app.delete("/api/manager/date-overrides/:id", async (req: Request, res: Response) => {
+  app.delete("/api/manager/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const id = parseInt(req.params.id);
       await firebaseStorage.deleteKitchenDateOverride(id);
@@ -7554,20 +7253,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Manager change password endpoint
-  app.post("/api/manager/change-password", async (req: Request, res: Response) => {
+  app.post("/api/manager/change-password", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-      // Check authentication - support both session and Firebase auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
 
       const { currentPassword, newPassword } = req.body;
 

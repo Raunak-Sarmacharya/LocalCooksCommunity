@@ -211,7 +211,9 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Manager registration endpoint - allows managers to self-register
+  // DEPRECATED: Manager registration endpoint - Managers now use Firebase auth
+  // This endpoint is kept for backward compatibility but should not be used for new registrations
+  // Managers should use Firebase auth via /manager/login page
   app.post("/api/manager-register", async (req, res) => {
     try {
       const { username, password, email, name } = req.body;
