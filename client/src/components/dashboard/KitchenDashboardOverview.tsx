@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import {
   Calendar,
   Clock,
@@ -93,7 +94,11 @@ export default function KitchenDashboardOverview({
         throw new Error('Not authenticated');
       }
       
-      const token = await firebaseUser.getIdToken();
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error('Not authenticated');
+      }
+      const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,

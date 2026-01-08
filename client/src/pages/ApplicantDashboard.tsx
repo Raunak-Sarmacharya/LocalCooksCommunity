@@ -1443,11 +1443,11 @@ export default function ApplicantDashboard() {
                                         {defaultApp.foodSafetyLicenseStatus.charAt(0).toUpperCase() + defaultApp.foodSafetyLicenseStatus.slice(1)}
                                       </span>
                                     </div>
-                                    {defaultApp.foodSafetyLicenseExpiry && (
+                                    {isChefApplication(defaultApp) && (defaultApp as any).foodSafetyLicenseExpiry && (
                                       <div className="flex justify-between items-center">
                                         <span className="text-gray-500 text-xs">Expiry Date:</span>
                                         <span className="text-xs font-medium text-gray-700">
-                                          {new Date(defaultApp.foodSafetyLicenseExpiry).toLocaleDateString()}
+                                          {new Date((defaultApp as any).foodSafetyLicenseExpiry).toLocaleDateString()}
                                         </span>
                                       </div>
                                     )}
@@ -1465,11 +1465,11 @@ export default function ApplicantDashboard() {
                                         {defaultApp.foodEstablishmentCertStatus.charAt(0).toUpperCase() + defaultApp.foodEstablishmentCertStatus.slice(1)}
                                       </span>
                                     </div>
-                                    {defaultApp.foodEstablishmentCertExpiry && (
+                                    {isChefApplication(defaultApp) && (defaultApp as any).foodEstablishmentCertExpiry && (
                                       <div className="flex justify-between items-center">
                                         <span className="text-gray-500 text-xs">Expiry Date:</span>
                                         <span className="text-xs font-medium text-gray-700">
-                                          {new Date(defaultApp.foodEstablishmentCertExpiry).toLocaleDateString()}
+                                          {new Date((defaultApp as any).foodEstablishmentCertExpiry).toLocaleDateString()}
                                         </span>
                                       </div>
                                     )}

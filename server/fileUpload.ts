@@ -3,6 +3,19 @@ import path from 'path';
 import fs from 'fs';
 import { uploadToR2, isR2Configured } from './r2-storage';
 
+// Extend Express Request type for passport-based auth (legacy routes)
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: number;
+        username: string;
+        role: string;
+      };
+    }
+  }
+}
+
 // Check if we're in production (Vercel)
 const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 

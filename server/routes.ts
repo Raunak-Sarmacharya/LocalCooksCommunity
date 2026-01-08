@@ -1,6 +1,32 @@
 import type { User } from "@shared/schema";
 import { insertApplicationSchema, updateApplicationStatusSchema, updateDeliveryPartnerApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
 import type { Express, Request, Response } from "express";
+
+// Note: Express Request.user type is already defined by @types/passport
+// We use type assertions where needed for isChef/isDeliveryPartner properties
+
+// Helper function to get authenticated user (supports both session and Firebase auth)
+async function getAuthenticatedUser(req: Request): Promise<{ id: number; username: string; role: string } | null> {
+  // Try Firebase auth first
+  if (req.neonUser) {
+    return {
+      id: req.neonUser.id,
+      username: req.neonUser.username,
+      role: req.neonUser.role || '',
+    };
+  }
+  
+  // Fall back to session auth
+        if (req.isAuthenticated && req.isAuthenticated() && req.user) {
+    return {
+      id: req.user.id,
+      username: req.user.username,
+      role: req.user.role,
+    };
+  }
+  
+  return null;
+}
 import fs from "fs";
 import { createServer, type Server } from "http";
 import passport from "passport";
@@ -5195,7 +5221,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Fall back to session authentication
-      if (req.isAuthenticated?.() && req.user?.isChef) {
+      if (req.isAuthenticated && req.isAuthenticated() && (req.user as any)?.isChef) {
         console.log(`✅ Chef authenticated via session: ${req.user.username} (ID: ${req.user.id})`);
         return next();
       }

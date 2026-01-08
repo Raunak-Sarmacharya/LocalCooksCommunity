@@ -142,7 +142,9 @@ export default function ManagerOnboardingWizard() {
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
       if (!firebaseUser) return null;
-      const token = await firebaseUser.getIdToken();
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) return null;
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch("/api/user/profile", {
         headers: {
           'Authorization': `Bearer ${token}`,
