@@ -48,6 +48,8 @@ import { Link } from "wouter";
 import { useChefKitchenAccessStatus } from "@/hooks/use-chef-kitchen-access";
 import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
+import { useSubdomain } from "@/hooks/use-subdomain";
+import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
 
 // Union type for handling both application types
 type AnyApplication = Application | DeliveryPartnerApplication;
@@ -132,6 +134,7 @@ export default function ApplicantDashboard() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null);
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
+  const subdomain = useSubdomain();
   
   // Call hook unconditionally at top level (Rules of Hooks)
   // Old hook - keeping for backwards compatibility during transition
@@ -169,6 +172,45 @@ export default function ApplicantDashboard() {
       localStorageUserId: localStorage.getItem('userId')
     });
   }, [user]);
+
+  // Validate subdomain-role matching
+  useEffect(() => {
+    if (!user || !subdomain || subdomain === 'main') return; // Skip validation on main domain or if no user
+    
+    const userRole = (user as any)?.role;
+    const isChef = (user as any)?.isChef || false;
+    const isManager = (user as any)?.isManager || false;
+    const isDeliveryPartner = (user as any)?.isDeliveryPartner || false;
+    const isPortalUser = (user as any)?.isPortalUser || false;
+    
+    // Determine effective role
+    let effectiveRole = userRole;
+    if (!effectiveRole) {
+      if (isManager) {
+        effectiveRole = 'manager';
+      } else if (isDeliveryPartner && !isChef) {
+        effectiveRole = 'delivery_partner';
+      } else if (isChef) {
+        effectiveRole = 'chef';
+      }
+    }
+    
+    // Portal users can access from kitchen subdomain
+    if (isPortalUser && subdomain === 'kitchen') {
+      return; // Allow portal users on kitchen subdomain
+    }
+    
+    // Get required subdomain for this role
+    const requiredSubdomain = getRequiredSubdomainForRole(effectiveRole);
+    
+    // If user has a role but is on wrong subdomain, redirect them
+    if (requiredSubdomain && subdomain !== requiredSubdomain) {
+      console.warn(`⚠️ User with role "${effectiveRole}" is on wrong subdomain "${subdomain}". Redirecting to ${requiredSubdomain} subdomain.`);
+      const correctUrl = getSubdomainUrl(requiredSubdomain, 'localcooks.ca') + '/dashboard';
+      window.location.href = correctUrl;
+      return;
+    }
+  }, [user, subdomain]);
 
   // Helper function to determine user type and appropriate applications to display
   const getUserDisplayInfo = (applications: Application[], deliveryApplications: DeliveryPartnerApplication[], isLoading: boolean, isLoadingDelivery: boolean, error: any, deliveryError: any) => {
