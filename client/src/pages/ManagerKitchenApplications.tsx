@@ -23,7 +23,7 @@ import {
   Shield,
   Ban
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -65,6 +65,81 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
   const [selectedApplication, setSelectedApplication] = useState<any | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
+  const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+
+  // Function to get presigned URL for R2 files
+  const getPresignedUrl = async (fileUrl: string): Promise<string> => {
+    // Check if we already have a presigned URL cached
+    if (presignedUrls[fileUrl]) {
+      return presignedUrls[fileUrl];
+    }
+
+    // Check if URL is already being loaded
+    if (loadingUrls.has(fileUrl)) {
+      // Wait a bit and try again
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return getPresignedUrl(fileUrl);
+    }
+
+    // Check if it's an R2 URL (needs presigning)
+    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
+                    fileUrl.includes('cloudflare') ||
+                    (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+
+    if (!isR2Url) {
+      // Not an R2 URL, return as-is
+      return fileUrl;
+    }
+
+    try {
+      setLoadingUrls(prev => new Set(prev).add(fileUrl));
+      
+      // Get auth token
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      const token = currentUser ? await currentUser.getIdToken() : null;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      if (currentUser?.uid) {
+        headers['X-User-ID'] = currentUser.uid;
+      }
+
+      const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get presigned URL: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const presignedUrl = data.url || fileUrl;
+
+      // Cache the presigned URL
+      setPresignedUrls(prev => ({ ...prev, [fileUrl]: presignedUrl }));
+      return presignedUrl;
+    } catch (error) {
+      console.error('Error getting presigned URL:', error);
+      // Fallback to original URL
+      return fileUrl;
+    } finally {
+      setLoadingUrls(prev => {
+        const next = new Set(prev);
+        next.delete(fileUrl);
+        return next;
+      });
+    }
+  };
 
   const handleApprove = async (applicationId: number) => {
     try {
@@ -449,21 +524,46 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     {selectedApplication.foodSafetyLicenseUrl && (
                       <div className="flex gap-2">
                         <a
-                          href={selectedApplication.foodSafetyLicenseUrl}
+                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || selectedApplication.foodSafetyLicenseUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 hover:bg-green-100 rounded-lg transition-colors"
                           title="View document"
+                          onClick={async (e) => {
+                            if (!presignedUrls[selectedApplication.foodSafetyLicenseUrl]) {
+                              e.preventDefault();
+                              const url = await getPresignedUrl(selectedApplication.foodSafetyLicenseUrl);
+                              window.open(url, '_blank');
+                            }
+                          }}
                         >
-                          <Eye className="h-4 w-4 text-green-600" />
+                          {loadingUrls.has(selectedApplication.foodSafetyLicenseUrl) ? (
+                            <Loader2 className="h-4 w-4 text-green-600 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-green-600" />
+                          )}
                         </a>
                         <a
-                          href={selectedApplication.foodSafetyLicenseUrl}
+                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || selectedApplication.foodSafetyLicenseUrl}
                           download
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                           title="Download document"
+                          onClick={async (e) => {
+                            if (!presignedUrls[selectedApplication.foodSafetyLicenseUrl]) {
+                              e.preventDefault();
+                              const url = await getPresignedUrl(selectedApplication.foodSafetyLicenseUrl);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = '';
+                              a.click();
+                            }
+                          }}
                         >
-                          <Download className="h-4 w-4 text-gray-600" />
+                          {loadingUrls.has(selectedApplication.foodSafetyLicenseUrl) ? (
+                            <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4 text-gray-600" />
+                          )}
                         </a>
                       </div>
                     )}
@@ -487,21 +587,46 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     {selectedApplication.foodEstablishmentCertUrl && (
                       <div className="flex gap-2">
                         <a
-                          href={selectedApplication.foodEstablishmentCertUrl}
+                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] || selectedApplication.foodEstablishmentCertUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
                           title="View document"
+                          onClick={async (e) => {
+                            if (!presignedUrls[selectedApplication.foodEstablishmentCertUrl]) {
+                              e.preventDefault();
+                              const url = await getPresignedUrl(selectedApplication.foodEstablishmentCertUrl);
+                              window.open(url, '_blank');
+                            }
+                          }}
                         >
-                          <Eye className="h-4 w-4 text-blue-600" />
+                          {loadingUrls.has(selectedApplication.foodEstablishmentCertUrl) ? (
+                            <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-blue-600" />
+                          )}
                         </a>
                         <a
-                          href={selectedApplication.foodEstablishmentCertUrl}
+                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] || selectedApplication.foodEstablishmentCertUrl}
                           download
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                           title="Download document"
+                          onClick={async (e) => {
+                            if (!presignedUrls[selectedApplication.foodEstablishmentCertUrl]) {
+                              e.preventDefault();
+                              const url = await getPresignedUrl(selectedApplication.foodEstablishmentCertUrl);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = '';
+                              a.click();
+                            }
+                          }}
                         >
-                          <Download className="h-4 w-4 text-gray-600" />
+                          {loadingUrls.has(selectedApplication.foodEstablishmentCertUrl) ? (
+                            <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4 text-gray-600" />
+                          )}
                         </a>
                       </div>
                     )}
