@@ -21049,7 +21049,6 @@ app.get('/api/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, 
         cka.*,
         l.name as "locationName",
         l.address as "locationAddress",
-        l.city as "locationCity",
         l.logo_url as "locationLogoUrl",
         l.brand_image_url as "locationBrandImageUrl"
       FROM chef_kitchen_applications cka
@@ -21085,7 +21084,6 @@ app.get('/api/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, 
         id: row.location_id,
         name: row.locationName,
         address: row.locationAddress,
-        city: row.locationCity,
         logoUrl: row.locationLogoUrl,
         brandImageUrl: row.locationBrandImageUrl
       } : null
@@ -21113,7 +21111,6 @@ app.get('/api/firebase/chef/approved-kitchens', requireFirebaseAuthWithUser, asy
         l.id,
         l.name,
         l.address,
-        l.city,
         l.logo_url as "logoUrl",
         l.brand_image_url as "brandImageUrl",
         cka.id as "applicationId",
@@ -21328,12 +21325,12 @@ app.post('/api/firebase/chef/kitchen-applications',
         kitchenPreference,
         businessDescription || null,
         cookingExperience || null,
-        foodSafetyLicense || 'willProvide',
+        foodSafetyLicense || 'notSure',
         foodSafetyLicenseUrl,
-        foodSafetyLicenseUrl ? 'pending' : 'pending',
-        foodEstablishmentCert || 'willProvide',
+        'pending',
+        foodEstablishmentCert || 'notSure',
         foodEstablishmentCertUrl,
-        foodEstablishmentCertUrl ? 'pending' : 'pending',
+        'pending',
         'inReview'
       ]);
       
