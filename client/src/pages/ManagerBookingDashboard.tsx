@@ -478,59 +478,83 @@ export default function ManagerBookingDashboard() {
 
             {/* Main Content Area */}
             <div className="lg:col-span-9">
-              {activeView === 'overview' && (
-                <KitchenDashboardOverview 
-                  selectedLocation={selectedLocation}
-                  onNavigate={(view: ViewType) => setActiveView(view)}
-                />
-              )}
-              
-              {activeView === 'bookings' && (
-                <ManagerBookingsPanel embedded={true} />
-              )}
-              
-              {activeView === 'availability' && selectedLocation && (
-                <KitchenAvailabilityManagement embedded={true} />
-              )}
-              
-              {activeView === 'pricing' && (
-                <KitchenPricingManagement embedded={true} />
-              )}
-              
-              {activeView === 'storage-listings' && (
-                <StorageListingManagement embedded={true} />
-              )}
-              
-              {activeView === 'equipment-listings' && (
-                <EquipmentListingManagement embedded={true} />
-              )}
-              
-              {activeView === 'applications' && (
-                <ManagerKitchenApplications embedded={true} />
-              )}
-              
-              {activeView === 'settings' && selectedLocation && (
-                <SettingsView 
-                  location={(locationDetails || selectedLocation) as Location}
-                  onUpdateSettings={updateLocationSettings}
-                  isUpdating={updateLocationSettings.isPending}
-                />
-              )}
-
-              {activeView === 'availability' && !selectedLocation && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-                  <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-                  <p className="text-gray-500">Choose a location to manage availability</p>
+              {/* Show onboarding prompt if manager has no locations */}
+              {locations.length === 0 && !isLoadingLocations ? (
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-12 text-center">
+                  <Building2 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">No Locations Yet</h3>
+                  <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                    You need to complete the setup wizard to create your first location and start accepting bookings.
+                  </p>
+                  <Button
+                    onClick={() => {
+                      const event = new CustomEvent('open-onboarding');
+                      window.dispatchEvent(event);
+                    }}
+                    size="lg"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <FileText className="h-5 w-5 mr-2" />
+                    Start Setup Wizard
+                  </Button>
                 </div>
-              )}
+              ) : (
+                <>
+                  {activeView === 'overview' && (
+                    <KitchenDashboardOverview 
+                      selectedLocation={selectedLocation}
+                      onNavigate={(view: ViewType) => setActiveView(view)}
+                    />
+                  )}
+                  
+                  {activeView === 'bookings' && (
+                    <ManagerBookingsPanel embedded={true} />
+                  )}
+                  
+                  {activeView === 'availability' && selectedLocation && (
+                    <KitchenAvailabilityManagement embedded={true} />
+                  )}
+                  
+                  {activeView === 'pricing' && (
+                    <KitchenPricingManagement embedded={true} />
+                  )}
+                  
+                  {activeView === 'storage-listings' && (
+                    <StorageListingManagement embedded={true} />
+                  )}
+                  
+                  {activeView === 'equipment-listings' && (
+                    <EquipmentListingManagement embedded={true} />
+                  )}
+                  
+                  {activeView === 'applications' && (
+                    <ManagerKitchenApplications embedded={true} />
+                  )}
+                  
+                  {activeView === 'settings' && selectedLocation && (
+                    <SettingsView 
+                      location={(locationDetails || selectedLocation) as Location}
+                      onUpdateSettings={updateLocationSettings}
+                      isUpdating={updateLocationSettings.isPending}
+                    />
+                  )}
 
-              {activeView === 'settings' && !selectedLocation && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-                  <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-                  <p className="text-gray-500">Choose a location to manage settings</p>
-                </div>
+                  {activeView === 'availability' && !selectedLocation && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                      <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+                      <p className="text-gray-500">Choose a location to manage availability</p>
+                    </div>
+                  )}
+
+                  {activeView === 'settings' && !selectedLocation && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+                      <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+                      <p className="text-gray-500">Choose a location to manage settings</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

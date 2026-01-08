@@ -59,11 +59,10 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   
   const isManager = user?.role === 'manager' || user?.isManager;
 
-  console.log('ManagerProtectedRoute - Hybrid auth state:', {
+  console.log('ManagerProtectedRoute - Firebase auth state:', {
     loading,
     hasFirebaseUser: !!firebaseUser,
     hasFirebaseUserData: !!firebaseUserData,
-    hasSessionUserData: !!sessionUserData,
     finalUser: !!user,
     userRole: user?.role,
     isManager,

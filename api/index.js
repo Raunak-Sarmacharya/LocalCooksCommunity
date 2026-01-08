@@ -939,10 +939,142 @@ app.post('/api/admin-login', async (req, res) => {
   res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
 });
 
-// REMOVED: Manager login endpoint - Managers now use Firebase auth exclusively
-// Use Firebase Auth via /manager/login page
-app.post('/api/manager-login', async (req, res) => {
-  res.status(410).json({ error: 'Session-based authentication removed. Please use Firebase Auth.' });
+// Manager migration login endpoint - for old managers with username/password
+// This endpoint allows old managers to sign in with username/password,
+// creates a Firebase account for them, and links it to their Neon DB record
+app.post('/api/manager-migrate-login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required' });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    console.log('🔄 Manager migration login attempt for:', username);
+
+    // Step 1: Find manager in Neon database
+    const userResult = await pool.query(
+      'SELECT * FROM users WHERE username = $1 AND role = $2',
+      [username, 'manager']
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    const manager = userResult.rows[0];
+
+    // Step 2: Verify password
+    if (!manager.password) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    const passwordMatches = await comparePasswords(password, manager.password);
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Incorrect username or password' });
+    }
+
+    console.log('✅ Password verified for manager:', manager.id);
+
+    // Step 3: Check if manager already has Firebase account
+    if (manager.firebase_uid) {
+      console.log('✅ Manager already has Firebase UID:', manager.firebase_uid);
+      // Manager already migrated - they should use Firebase login
+      return res.status(400).json({ 
+        error: 'This account has already been migrated to Firebase',
+        message: 'Please use email/password login with your email address instead of username',
+        firebaseUid: manager.firebase_uid
+      });
+    }
+
+    // Step 4: Get email for Firebase account creation
+    // Check if username is already an email, otherwise construct one
+    let email = manager.email;
+    if (!email) {
+      // Check if username is already an email format
+      if (manager.username && manager.username.includes('@')) {
+        email = manager.username;
+      } else {
+        // Construct email from username
+        email = `${manager.username}@localcooks.com`;
+      }
+    }
+    
+    // Step 5: Create Firebase account using Admin SDK
+    const admin = require('firebase-admin');
+    
+    let firebaseUser;
+    try {
+      // Check if Firebase user already exists with this email
+      try {
+        firebaseUser = await admin.auth().getUserByEmail(email);
+        console.log('⚠️  Firebase user already exists with email:', email);
+        // Link existing Firebase user to Neon DB
+      } catch (error) {
+        // User doesn't exist, create them
+        console.log('➕ Creating Firebase account for manager:', email);
+        firebaseUser = await admin.auth().createUser({
+          email: email,
+          password: password, // Use same password
+          displayName: manager.display_name || manager.username,
+          emailVerified: manager.is_verified || false,
+        });
+        console.log('✅ Firebase account created:', firebaseUser.uid);
+      }
+
+      // Step 6: Set custom claims for manager role
+      await admin.auth().setCustomUserClaims(firebaseUser.uid, {
+        role: 'manager',
+        isManager: true
+      });
+
+      // Step 7: Link Firebase UID to Neon DB record
+      await pool.query(
+        'UPDATE users SET firebase_uid = $1 WHERE id = $2',
+        [firebaseUser.uid, manager.id]
+      );
+
+      console.log('✅ Manager migration complete:', {
+        neonUserId: manager.id,
+        firebaseUid: firebaseUser.uid,
+        email: email
+      });
+
+      // Step 8: Generate Firebase custom token for immediate login
+      const customToken = await admin.auth().createCustomToken(firebaseUser.uid);
+
+      res.json({
+        success: true,
+        message: 'Account migrated successfully. You can now use Firebase authentication.',
+        customToken: customToken, // Frontend will use this to sign in
+        user: {
+          id: manager.id,
+          username: manager.username,
+          email: email,
+          firebaseUid: firebaseUser.uid,
+          role: 'manager'
+        }
+      });
+
+    } catch (firebaseError) {
+      console.error('❌ Firebase account creation error:', firebaseError);
+      return res.status(500).json({ 
+        error: 'Failed to create Firebase account',
+        message: firebaseError.message 
+      });
+    }
+
+  } catch (error) {
+    console.error('Manager migration login error:', error);
+    res.status(500).json({ 
+      error: 'Migration login failed',
+      message: error.message 
+    });
+  }
 });
 
 // Removed redundant manual sync endpoint - sync is handled automatically by auth system
