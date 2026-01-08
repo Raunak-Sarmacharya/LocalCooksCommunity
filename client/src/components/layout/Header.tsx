@@ -37,35 +37,37 @@ export default function Header() {
     return currentSubdomain === 'kitchen';
   }, [currentSubdomain]);
   
-  // Always check for session-based auth, not just for admin routes
+  // Use Firebase auth (session auth removed)
+  const { user: firebaseUser } = useFirebaseAuth();
+  
   const { data: sessionUser } = useQuery({
-    queryKey: ["/api/user-session"],
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
+      if (!firebaseUser) return null;
       try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
           headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
         });
         
         if (!response.ok) {
           if (response.status === 401) {
-            return null; // Not authenticated via session
+            return null; // Not authenticated
           }
-          throw new Error(`Session auth failed: ${response.status}`);
+          throw new Error(`Firebase auth failed: ${response.status}`);
         }
         
         const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
+        return userData;
       } catch (error) {
+        console.error('Header - Firebase auth error:', error);
         return null;
       }
     },
+    enabled: !!firebaseUser,
     retry: false,
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,

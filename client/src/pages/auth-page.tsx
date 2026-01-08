@@ -92,7 +92,7 @@ export default function AuthPage() {
             const token = await firebaseUser.getIdToken();
             console.log('🔥 FETCHING USER META - Firebase UID:', firebaseUser.uid);
             
-            const response = await fetch('/api/user', {
+            const response = await fetch('/api/user/profile', {
               headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'

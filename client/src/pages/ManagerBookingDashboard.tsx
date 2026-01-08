@@ -11,6 +11,8 @@ import CalendarComponent from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
@@ -75,16 +77,29 @@ export default function ManagerBookingDashboard() {
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('overview');
 
-  // Check onboarding status
+  // Check onboarding status using Firebase auth
+  const { user: firebaseUser } = useFirebaseAuth();
+  
   const { data: userData } = useQuery({
-    queryKey: ["/api/user-session"],
+    queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
-      const response = await fetch("/api/user-session", {
-        credentials: "include",
-      });
-      if (!response.ok) return null;
-      return response.json();
+      if (!firebaseUser) return null;
+      try {
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("/api/user/profile", {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (!response.ok) return null;
+        return response.json();
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        return null;
+      }
     },
+    enabled: !!firebaseUser,
   });
 
   const needsOnboarding =

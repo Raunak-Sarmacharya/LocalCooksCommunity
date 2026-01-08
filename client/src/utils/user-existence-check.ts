@@ -41,9 +41,9 @@ export async function checkUserExistsForGoogleAuth(): Promise<UserExistenceResul
     
     console.log(`🔍 Checking if user exists in backend: ${email}`);
     
-    // Check if user exists in our backend system
+    // Check if user exists in our backend system using /api/user/profile
     const token = await user.getIdToken();
-    const response = await fetch('/api/user', {
+    const response = await fetch('/api/user/profile', {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
