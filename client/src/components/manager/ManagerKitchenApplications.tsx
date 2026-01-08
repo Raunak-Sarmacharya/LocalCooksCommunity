@@ -456,41 +456,61 @@ export default function ManagerKitchenApplications({
                   <span className="capitalize">{selectedApplication.kitchenPreference}</span>
                 </div>
                 {selectedApplication.foodSafetyLicense === "yes" && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Food Safety License:</span>
-                    <div className="flex items-center gap-2">
-                      {selectedApplication.foodSafetyLicenseUrl && (
-                        <a
-                          href={selectedApplication.foodSafetyLicenseUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline text-xs flex items-center"
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          View
-                        </a>
-                      )}
-                      {getDocStatusBadge(selectedApplication.foodSafetyLicenseStatus)}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Food Safety License:</span>
+                      <div className="flex items-center gap-2">
+                        {selectedApplication.foodSafetyLicenseUrl && (
+                          <a
+                            href={selectedApplication.foodSafetyLicenseUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline text-xs flex items-center"
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View
+                          </a>
+                        )}
+                        {getDocStatusBadge(selectedApplication.foodSafetyLicenseStatus)}
+                      </div>
                     </div>
+                    {selectedApplication.foodSafetyLicenseExpiry && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs">Expiry Date:</span>
+                        <span className="text-xs font-medium text-gray-700">
+                          {new Date(selectedApplication.foodSafetyLicenseExpiry).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 {selectedApplication.foodEstablishmentCert === "yes" && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Establishment Cert:</span>
-                    <div className="flex items-center gap-2">
-                      {selectedApplication.foodEstablishmentCertUrl && (
-                        <a
-                          href={selectedApplication.foodEstablishmentCertUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline text-xs flex items-center"
-                        >
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          View
-                        </a>
-                      )}
-                      {getDocStatusBadge(selectedApplication.foodEstablishmentCertStatus)}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Establishment Cert:</span>
+                      <div className="flex items-center gap-2">
+                        {selectedApplication.foodEstablishmentCertUrl && (
+                          <a
+                            href={selectedApplication.foodEstablishmentCertUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline text-xs flex items-center"
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            View
+                          </a>
+                        )}
+                        {getDocStatusBadge(selectedApplication.foodEstablishmentCertStatus)}
+                      </div>
                     </div>
+                    {selectedApplication.foodEstablishmentCertExpiry && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs">Expiry Date:</span>
+                        <span className="text-xs font-medium text-gray-700">
+                          {new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
