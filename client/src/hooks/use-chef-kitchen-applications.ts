@@ -7,7 +7,8 @@ interface KitchenApplicationWithLocation extends ChefKitchenApplication {
     id: number;
     name: string;
     address: string;
-    city?: string;
+    logoUrl?: string;
+    brandImageUrl?: string;
   } | null;
 }
 
@@ -296,14 +297,12 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
 export function useChefApprovedKitchens() {
   const approvedQuery = useQuery<
     Array<{
+      id: number;
+      name: string;
+      address: string;
+      logoUrl?: string;
+      brandImageUrl?: string;
       applicationId: number;
-      locationId: number;
-      location: {
-        id: number;
-        name: string;
-        address: string;
-        city?: string;
-      } | null;
       approvedAt: string | null;
     }>,
     Error
