@@ -107,12 +107,8 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     return <Redirect to="/" />;
   }
 
-  // Force password change if manager hasn't changed their password yet
-  // has_seen_welcome === false means they need to change password
-  if ((user as any).has_seen_welcome === false) {
-    return <Redirect to="/manager/change-password" />;
-  }
-
+  // Managers go to dashboard - ManagerOnboardingWizard will show if onboarding is needed
+  // No password change redirect - managers use onboarding wizard for setup
   return <>{children}</>;
 }
 

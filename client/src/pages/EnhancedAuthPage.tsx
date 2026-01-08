@@ -10,7 +10,7 @@ import WelcomeScreen from "@/pages/welcome-screen";
 import { motion } from "framer-motion";
 import { LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Redirect } from "wouter";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 
@@ -251,10 +251,23 @@ export default function EnhancedAuthPage() {
     }
 
     if (!loading && !isInitialLoad && user && hasAttemptedLogin && userMeta) {
-      // Check if user needs welcome screen
+      // Skip welcome screen for admins and managers
+      // Admins: Go straight to admin dashboard
+      // Managers: Go to dashboard where ManagerOnboardingWizard will show
+      // Other users: Show welcome screen if needed
       if (userMeta.is_verified && !userMeta.has_seen_welcome) {
-        console.log('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
-        return; // Don't redirect, show welcome screen
+        if (userMeta.role === 'admin') {
+          console.log('👑 Admin user - skipping welcome screen, redirecting to admin');
+          setLocation('/admin');
+          return;
+        } else if (userMeta.role === 'manager') {
+          console.log('🏢 Manager user - skipping welcome screen, redirecting to manager dashboard');
+          setLocation('/manager/dashboard');
+          return;
+        } else {
+          console.log('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
+          return; // Don't redirect, show welcome screen for chefs/delivery partners
+        }
       }
 
       // User has completed welcome or doesn't need it - proceed with redirect
@@ -265,6 +278,8 @@ export default function EnhancedAuthPage() {
       if (redirectPath === '/' || redirectPath === '/dashboard') {
         if (userMeta.role === 'admin') {
           targetPath = '/admin';
+        } else if (userMeta.role === 'manager') {
+          targetPath = '/manager/dashboard';
         } else if (userMeta.isDeliveryPartner && !userMeta.isChef) {
           // Pure delivery partner - might want different default behavior
           targetPath = '/dashboard';
@@ -302,9 +317,18 @@ export default function EnhancedAuthPage() {
     setHasAttemptedLogin(true);
   };
 
-  // Show welcome screen if user is verified but hasn't seen welcome
+  // Skip welcome screen for admins and managers
+  // Admins: Go straight to admin dashboard
+  // Managers: Go to dashboard where ManagerOnboardingWizard will show
+  // Only show welcome screen for chefs/delivery partners
   if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
-    return <WelcomeScreen onContinue={handleWelcomeContinue} />;
+    if (userMeta.role === 'admin') {
+      return <Redirect to="/admin" />;
+    } else if (userMeta.role === 'manager') {
+      return <Redirect to="/manager/dashboard" />;
+    } else {
+      return <WelcomeScreen onContinue={handleWelcomeContinue} />;
+    }
   }
 
   // Show the main auth form

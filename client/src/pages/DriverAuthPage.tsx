@@ -9,7 +9,7 @@ import WelcomeScreen from "@/pages/welcome-screen";
 import { motion } from "framer-motion";
 import { LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Redirect } from "wouter";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 
 export default function DriverAuthPage() {
@@ -339,9 +339,16 @@ export default function DriverAuthPage() {
     setHasAttemptedLogin(true);
   };
 
-  // Show welcome screen if user is verified but hasn't seen welcome
+  // Skip welcome screen for admins and managers
+  // Only show welcome screen for delivery partners/chefs
   if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
-    return <WelcomeScreen onContinue={handleWelcomeContinue} />;
+    if (userMeta.role === 'admin') {
+      return <Redirect to="/admin" />;
+    } else if (userMeta.role === 'manager') {
+      return <Redirect to="/manager/dashboard" />;
+    } else {
+      return <WelcomeScreen onContinue={handleWelcomeContinue} />;
+    }
   }
 
   // Show the main auth form

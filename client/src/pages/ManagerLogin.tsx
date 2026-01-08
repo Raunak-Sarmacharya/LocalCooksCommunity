@@ -4,7 +4,7 @@ import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
-import WelcomeScreen from "@/pages/welcome-screen";
+// WelcomeScreen removed - managers use ManagerOnboardingWizard instead
 import { motion } from "framer-motion";
 import { Building2, LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -119,23 +119,16 @@ export default function ManagerLogin() {
               return;
             }
             
-            // Show welcome screen if user is verified but hasn't seen welcome
-            if (userData.is_verified && !userData.has_seen_welcome) {
-              console.log('🎉 WELCOME SCREEN REQUIRED - Manager needs onboarding');
-              return;
-            }
-            
             // Check if user needs email verification
             if (!userData.is_verified) {
               console.log('📧 EMAIL VERIFICATION REQUIRED');
+              return;
             }
             
-            // User is verified and has seen welcome - redirect to manager dashboard
-            if (userData.has_seen_welcome === false) {
-              setLocation('/manager/change-password');
-            } else {
-              setLocation('/manager/dashboard');
-            }
+            // Managers go to dashboard - ManagerOnboardingWizard will show if needed
+            // has_seen_welcome === false means they need onboarding wizard
+            console.log('✅ Manager verified - redirecting to dashboard (wizard will show if needed)');
+            setLocation('/manager/dashboard');
           }
         } catch (error) {
           console.error('Error fetching user metadata:', error);
@@ -149,13 +142,11 @@ export default function ManagerLogin() {
   }, [loading, user, setLocation]);
 
   // Redirect if already logged in as manager
+  // Managers go to dashboard - ManagerOnboardingWizard will show if needed
   if (!loading && user && userMeta) {
     const isManager = userMeta.role === 'manager' || userMeta.isManager;
     
     if (isManager) {
-      if (userMeta.has_seen_welcome === false) {
-        return <Redirect to="/manager/change-password" />;
-      }
       return <Redirect to="/manager/dashboard" />;
     }
   }
@@ -172,17 +163,8 @@ export default function ManagerLogin() {
     );
   }
 
-  // Show welcome screen if needed
-  if (user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
-    return (
-      <WelcomeScreen
-        onComplete={async () => {
-          await refreshUserData();
-          setLocation('/manager/dashboard');
-        }}
-      />
-    );
-  }
+  // Managers don't use WelcomeScreen - they use ManagerOnboardingWizard on dashboard
+  // No welcome screen check needed here
 
   // Show login/register form
   return (
