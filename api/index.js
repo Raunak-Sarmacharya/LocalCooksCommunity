@@ -21029,6 +21029,409 @@ app.get("/api/portal/bookings", requirePortalUser, async (req, res) => {
   }
 });
 
+// ============================================
+// 🍳 Chef Kitchen Applications Routes
+// Direct application flow for chefs to apply to specific kitchens
+// ============================================
+
+// GET /api/firebase/chef/kitchen-applications - Get all applications for current chef
+app.get('/api/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const chefId = req.neonUser.id;
+    console.log(`🍳 GET /api/firebase/chef/kitchen-applications - Chef ${chefId}`);
+    
+    const result = await pool.query(`
+      SELECT 
+        cka.*,
+        l.name as "locationName",
+        l.address as "locationAddress",
+        l.city as "locationCity",
+        l.logo_url as "locationLogoUrl",
+        l.brand_image_url as "locationBrandImageUrl"
+      FROM chef_kitchen_applications cka
+      LEFT JOIN locations l ON l.id = cka.location_id
+      WHERE cka.chef_id = $1
+      ORDER BY cka.created_at DESC
+    `, [chefId]);
+    
+    // Transform to include location object
+    const applications = result.rows.map(row => ({
+      id: row.id,
+      chefId: row.chef_id,
+      locationId: row.location_id,
+      fullName: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      kitchenPreference: row.kitchen_preference,
+      businessDescription: row.business_description,
+      cookingExperience: row.cooking_experience,
+      foodSafetyLicense: row.food_safety_license,
+      foodSafetyLicenseUrl: row.food_safety_license_url,
+      foodSafetyLicenseStatus: row.food_safety_license_status,
+      foodEstablishmentCert: row.food_establishment_cert,
+      foodEstablishmentCertUrl: row.food_establishment_cert_url,
+      foodEstablishmentCertStatus: row.food_establishment_cert_status,
+      status: row.status,
+      feedback: row.feedback,
+      reviewedBy: row.reviewed_by,
+      reviewedAt: row.reviewed_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      location: row.locationName ? {
+        id: row.location_id,
+        name: row.locationName,
+        address: row.locationAddress,
+        city: row.locationCity,
+        logoUrl: row.locationLogoUrl,
+        brandImageUrl: row.locationBrandImageUrl
+      } : null
+    }));
+    
+    res.json(applications);
+  } catch (error) {
+    console.error('Error fetching chef kitchen applications:', error);
+    res.status(500).json({ error: 'Failed to fetch applications' });
+  }
+});
+
+// GET /api/firebase/chef/approved-kitchens - Get approved kitchen locations for a chef
+app.get('/api/firebase/chef/approved-kitchens', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const chefId = req.neonUser.id;
+    console.log(`🍳 GET /api/firebase/chef/approved-kitchens - Chef ${chefId}`);
+    
+    const result = await pool.query(`
+      SELECT 
+        l.id,
+        l.name,
+        l.address,
+        l.city,
+        l.logo_url as "logoUrl",
+        l.brand_image_url as "brandImageUrl",
+        cka.id as "applicationId",
+        cka.created_at as "approvedAt"
+      FROM chef_kitchen_applications cka
+      INNER JOIN locations l ON l.id = cka.location_id
+      WHERE cka.chef_id = $1 AND cka.status = 'approved'
+      ORDER BY cka.updated_at DESC
+    `, [chefId]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching approved kitchens:', error);
+    res.status(500).json({ error: 'Failed to fetch approved kitchens' });
+  }
+});
+
+// GET /api/firebase/chef/kitchen-applications/location/:locationId - Get application for specific location
+app.get('/api/firebase/chef/kitchen-applications/location/:locationId', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const chefId = req.neonUser.id;
+    const locationId = parseInt(req.params.locationId);
+    
+    if (isNaN(locationId)) {
+      return res.status(400).json({ error: 'Invalid location ID' });
+    }
+    
+    console.log(`🍳 GET /api/firebase/chef/kitchen-applications/location/${locationId} - Chef ${chefId}`);
+    
+    const result = await pool.query(`
+      SELECT 
+        cka.*,
+        l.name as "locationName",
+        l.address as "locationAddress"
+      FROM chef_kitchen_applications cka
+      LEFT JOIN locations l ON l.id = cka.location_id
+      WHERE cka.chef_id = $1 AND cka.location_id = $2
+    `, [chefId, locationId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    const row = result.rows[0];
+    res.json({
+      id: row.id,
+      chefId: row.chef_id,
+      locationId: row.location_id,
+      fullName: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      kitchenPreference: row.kitchen_preference,
+      businessDescription: row.business_description,
+      cookingExperience: row.cooking_experience,
+      foodSafetyLicense: row.food_safety_license,
+      foodSafetyLicenseUrl: row.food_safety_license_url,
+      foodSafetyLicenseStatus: row.food_safety_license_status,
+      foodEstablishmentCert: row.food_establishment_cert,
+      foodEstablishmentCertUrl: row.food_establishment_cert_url,
+      foodEstablishmentCertStatus: row.food_establishment_cert_status,
+      status: row.status,
+      feedback: row.feedback,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      location: {
+        id: row.location_id,
+        name: row.locationName,
+        address: row.locationAddress
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching kitchen application:', error);
+    res.status(500).json({ error: 'Failed to fetch application' });
+  }
+});
+
+// POST /api/firebase/chef/kitchen-applications - Submit a new kitchen application
+app.post('/api/firebase/chef/kitchen-applications', 
+  requireFirebaseAuthWithUser,
+  upload.fields([
+    { name: 'foodSafetyLicenseFile', maxCount: 1 },
+    { name: 'foodEstablishmentCertFile', maxCount: 1 }
+  ]),
+  async (req, res) => {
+    try {
+      if (!req.neonUser) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+      
+      const chefId = req.neonUser.id;
+      console.log(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${chefId}`);
+      console.log('Request body:', req.body);
+      
+      const {
+        locationId,
+        fullName,
+        email,
+        phone,
+        kitchenPreference,
+        businessDescription,
+        cookingExperience,
+        foodSafetyLicense,
+        foodEstablishmentCert
+      } = req.body;
+      
+      // Validate required fields
+      if (!locationId || !fullName || !email || !phone || !kitchenPreference) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      
+      const parsedLocationId = parseInt(locationId);
+      if (isNaN(parsedLocationId)) {
+        return res.status(400).json({ error: 'Invalid location ID' });
+      }
+      
+      // Check if application already exists
+      const existingResult = await pool.query(
+        'SELECT id, status FROM chef_kitchen_applications WHERE chef_id = $1 AND location_id = $2',
+        [chefId, parsedLocationId]
+      );
+      
+      if (existingResult.rows.length > 0) {
+        const existing = existingResult.rows[0];
+        if (existing.status !== 'rejected' && existing.status !== 'cancelled') {
+          return res.status(409).json({ 
+            error: 'Application already exists',
+            existingStatus: existing.status 
+          });
+        }
+      }
+      
+      // Handle file uploads
+      let foodSafetyLicenseUrl = null;
+      let foodEstablishmentCertUrl = null;
+      
+      const files = req.files;
+      if (files) {
+        // Upload food safety license if provided
+        if (files.foodSafetyLicenseFile && files.foodSafetyLicenseFile[0]) {
+          const file = files.foodSafetyLicenseFile[0];
+          try {
+            foodSafetyLicenseUrl = await uploadToR2(file, chefId, 'kitchen-applications');
+            console.log('✅ Uploaded food safety license:', foodSafetyLicenseUrl);
+          } catch (uploadError) {
+            console.error('❌ Failed to upload food safety license:', uploadError);
+          }
+        }
+        
+        // Upload food establishment cert if provided
+        if (files.foodEstablishmentCertFile && files.foodEstablishmentCertFile[0]) {
+          const file = files.foodEstablishmentCertFile[0];
+          try {
+            foodEstablishmentCertUrl = await uploadToR2(file, chefId, 'kitchen-applications');
+            console.log('✅ Uploaded food establishment cert:', foodEstablishmentCertUrl);
+          } catch (uploadError) {
+            console.error('❌ Failed to upload food establishment cert:', uploadError);
+          }
+        }
+      }
+      
+      // Insert new application
+      const insertResult = await pool.query(`
+        INSERT INTO chef_kitchen_applications (
+          chef_id,
+          location_id,
+          full_name,
+          email,
+          phone,
+          kitchen_preference,
+          business_description,
+          cooking_experience,
+          food_safety_license,
+          food_safety_license_url,
+          food_safety_license_status,
+          food_establishment_cert,
+          food_establishment_cert_url,
+          food_establishment_cert_status,
+          status,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+        ON CONFLICT (chef_id, location_id) 
+        DO UPDATE SET
+          full_name = EXCLUDED.full_name,
+          email = EXCLUDED.email,
+          phone = EXCLUDED.phone,
+          kitchen_preference = EXCLUDED.kitchen_preference,
+          business_description = EXCLUDED.business_description,
+          cooking_experience = EXCLUDED.cooking_experience,
+          food_safety_license = EXCLUDED.food_safety_license,
+          food_safety_license_url = COALESCE(EXCLUDED.food_safety_license_url, chef_kitchen_applications.food_safety_license_url),
+          food_safety_license_status = 'pending',
+          food_establishment_cert = EXCLUDED.food_establishment_cert,
+          food_establishment_cert_url = COALESCE(EXCLUDED.food_establishment_cert_url, chef_kitchen_applications.food_establishment_cert_url),
+          food_establishment_cert_status = 'pending',
+          status = 'inReview',
+          feedback = NULL,
+          reviewed_by = NULL,
+          reviewed_at = NULL,
+          updated_at = NOW()
+        RETURNING *
+      `, [
+        chefId,
+        parsedLocationId,
+        fullName,
+        email,
+        phone,
+        kitchenPreference,
+        businessDescription || null,
+        cookingExperience || null,
+        foodSafetyLicense || 'willProvide',
+        foodSafetyLicenseUrl,
+        foodSafetyLicenseUrl ? 'pending' : 'pending',
+        foodEstablishmentCert || 'willProvide',
+        foodEstablishmentCertUrl,
+        foodEstablishmentCertUrl ? 'pending' : 'pending',
+        'inReview'
+      ]);
+      
+      console.log('✅ Application created/updated:', insertResult.rows[0].id);
+      res.status(201).json({
+        success: true,
+        application: insertResult.rows[0]
+      });
+    } catch (error) {
+      console.error('Error creating kitchen application:', error);
+      res.status(500).json({ error: 'Failed to create application' });
+    }
+  }
+);
+
+// PATCH /api/firebase/chef/kitchen-applications/:id/cancel - Cancel an application
+app.patch('/api/firebase/chef/kitchen-applications/:id/cancel', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const chefId = req.neonUser.id;
+    const applicationId = parseInt(req.params.id);
+    
+    if (isNaN(applicationId)) {
+      return res.status(400).json({ error: 'Invalid application ID' });
+    }
+    
+    console.log(`🍳 PATCH /api/firebase/chef/kitchen-applications/${applicationId}/cancel - Chef ${chefId}`);
+    
+    // Verify ownership and status
+    const checkResult = await pool.query(
+      'SELECT id, status FROM chef_kitchen_applications WHERE id = $1 AND chef_id = $2',
+      [applicationId, chefId]
+    );
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    const application = checkResult.rows[0];
+    if (application.status === 'approved') {
+      return res.status(400).json({ error: 'Cannot cancel an approved application' });
+    }
+    
+    // Update status to cancelled
+    const updateResult = await pool.query(`
+      UPDATE chef_kitchen_applications
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [applicationId]);
+    
+    res.json({
+      success: true,
+      application: updateResult.rows[0]
+    });
+  } catch (error) {
+    console.error('Error cancelling application:', error);
+    res.status(500).json({ error: 'Failed to cancel application' });
+  }
+});
+
+// GET /api/firebase/chef/kitchen-access-status/:locationId - Check if chef can book at a location
+app.get('/api/firebase/chef/kitchen-access-status/:locationId', requireFirebaseAuthWithUser, async (req, res) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    
+    const chefId = req.neonUser.id;
+    const locationId = parseInt(req.params.locationId);
+    
+    if (isNaN(locationId)) {
+      return res.status(400).json({ error: 'Invalid location ID' });
+    }
+    
+    const result = await pool.query(
+      `SELECT id, status FROM chef_kitchen_applications 
+       WHERE chef_id = $1 AND location_id = $2 AND status = 'approved'`,
+      [chefId, locationId]
+    );
+    
+    res.json({
+      hasAccess: result.rows.length > 0,
+      applicationId: result.rows[0]?.id || null
+    });
+  } catch (error) {
+    console.error('Error checking kitchen access:', error);
+    res.status(500).json({ error: 'Failed to check access' });
+  }
+});
+
+// ============================================
+// End Chef Kitchen Applications Routes
+// ============================================
+
 // Process-level error handlers to catch unhandled errors
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Promise Rejection:', reason);
