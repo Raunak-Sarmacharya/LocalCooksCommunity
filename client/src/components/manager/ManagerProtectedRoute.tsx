@@ -52,47 +52,10 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     refetchOnMount: true,
   });
 
-  // Fallback to session auth if Firebase auth fails (backward compatibility)
-  const { data: sessionUserData, isLoading: sessionLoading, error: sessionError } = useQuery({
-    queryKey: ["/api/user-session"],
-    queryFn: async () => {
-      try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        });
-        
-        if (!response.ok) {
-          if (response.status === 401) {
-            return null;
-          }
-          throw new Error(`Session auth failed: ${response.status}`);
-        }
-        
-        const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
-      } catch (error) {
-        console.error('ManagerProtectedRoute - Session auth error:', error);
-        return null;
-      }
-    },
-    enabled: !firebaseUser && !firebaseLoading, // Only try session if Firebase is not available
-    retry: false,
-    staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-  });
-
-  // Use Firebase user if available, otherwise fall back to session user
-  const user = firebaseUserData || sessionUserData;
-  const loading = firebaseLoading || (firebaseUser ? firebaseProfileLoading : sessionLoading);
-  const error = firebaseProfileError || sessionError;
+  // Firebase Auth only - no session fallback
+  const user = firebaseUserData;
+  const loading = firebaseLoading || firebaseProfileLoading;
+  const error = firebaseProfileError;
   
   const isManager = user?.role === 'manager' || user?.isManager;
 

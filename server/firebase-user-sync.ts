@@ -65,33 +65,47 @@ export async function syncFirebaseUserToNeon(params: {
     let isDeliveryPartner = false;
     let isManager = false;
     
-    if (role === 'manager') {
-      finalRole = 'manager';
-      isManager = true;
-      console.log(`🎯 Manager role assignment: role="manager" → isManager=true`);
-    } else if (role === 'admin') {
+    // Log the role received for debugging
+    console.log(`🔍 Role received in syncFirebaseUserToNeon: "${role}"`);
+    
+    // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
+    if (!role || role === 'null' || role === 'undefined') {
+      console.error(`❌ ERROR: No role provided in syncFirebaseUserToNeon during registration. Cannot create user without role.`);
+      console.error(`   - Received role value: ${role}`);
+      console.error(`   - This should not happen - role should be detected from URL path in frontend`);
+      throw new Error('Role is required for user registration. Please register from the appropriate page (admin, manager, chef, or delivery partner).');
+    }
+    
+    if (role === 'admin') {
       finalRole = 'admin';
       isChef = true;
       isDeliveryPartner = true;
       console.log(`🎯 Admin role assignment: role="admin" → isChef=true, isDeliveryPartner=true (admin has full access)`);
+    } else if (role === 'manager') {
+      finalRole = 'manager';
+      isManager = true;
+      console.log(`🎯 Manager role assignment: role="manager" → isManager=true`);
     } else if (role === 'delivery_partner') {
       finalRole = 'delivery_partner';
       isDeliveryPartner = true;
       console.log(`🎯 Delivery partner role assignment: role="delivery_partner" → isDeliveryPartner=true`);
-    } else {
-      // Default to chef
+    } else if (role === 'chef') {
       finalRole = 'chef';
       isChef = true;
       console.log(`🎯 Chef role assignment: role="chef" → isChef=true`);
+    } else {
+      // Unknown role value - don't default, throw error
+      console.error(`❌ ERROR: Unknown role value "${role}" in syncFirebaseUserToNeon`);
+      throw new Error(`Invalid role: ${role}. Valid roles are: admin, manager, chef, delivery_partner`);
     }
     
     const userData: CreateUserData = {
       username: displayName || email,
       password: '', // Empty for Firebase users
       role: finalRole,
-      isChef: false,
-      isDeliveryPartner: isDeliveryPartner,
-      isManager: isManager,
+      isChef: isChef, // Set correctly based on role (admin or chef)
+      isDeliveryPartner: isDeliveryPartner, // Set correctly based on role (admin or delivery_partner)
+      isManager: isManager, // Set correctly for manager role
       isPortalUser: false,
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification

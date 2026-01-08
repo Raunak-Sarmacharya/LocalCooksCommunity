@@ -155,21 +155,8 @@ export default function ManagerOnboardingWizard() {
     enabled: !!firebaseUser,
   });
 
-  // Fallback to session auth if Firebase is not available (backward compatibility)
-  const { data: sessionUserData } = useQuery({
-    queryKey: ["/api/user-session"],
-    queryFn: async () => {
-      const response = await fetch("/api/user-session", {
-        credentials: "include",
-      });
-      if (!response.ok) return null;
-      return response.json();
-    },
-    enabled: !firebaseUser, // Only try session if Firebase is not available
-  });
-
-  // Use Firebase user if available, otherwise fall back to session user
-  const userData = firebaseUserData || sessionUserData;
+  // Firebase Auth only - no session fallback
+  const userData = firebaseUserData;
 
   const isManager = userData?.role === "manager";
   const shouldAutoOpen = 

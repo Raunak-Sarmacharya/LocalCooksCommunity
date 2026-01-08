@@ -123,7 +123,11 @@ export class FirebaseStorage {
           [
             insertUser.username,
             insertUser.password || '', // Empty password for Firebase users
-            insertUser.role || 'applicant',
+            insertUser.role || (() => {
+              console.error(`❌ CRITICAL ERROR: No role provided to createUser in storage-firebase.ts!`);
+              console.error(`   - This should not happen - role should always be provided for Firebase users`);
+              throw new Error('Role is required when creating a Firebase user. This is a programming error.');
+            })(),
             insertUser.firebaseUid,
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
@@ -146,7 +150,10 @@ export class FirebaseStorage {
       .values({
         username: insertUser.username,
         password: insertUser.password || '',
-        role: insertUser.role || "applicant",
+        role: insertUser.role || (() => {
+          console.error(`❌ CRITICAL ERROR: No role provided to createUser (fallback) in storage-firebase.ts!`);
+          throw new Error('Role is required when creating a Firebase user. This is a programming error.');
+        })(),
         isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
         isChef: insertUser.isChef !== undefined ? insertUser.isChef : false,

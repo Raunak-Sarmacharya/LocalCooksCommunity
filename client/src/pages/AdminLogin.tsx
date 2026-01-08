@@ -46,55 +46,46 @@ export default function AdminLogin() {
     },
   });
 
+  const { login } = useFirebaseAuth();
+
   const onSubmit = async (data: LoginFormData) => {
     setIsSubmitting(true);
     setErrorMessage(null);
     
     try {
-      console.log('Attempting admin login with username:', data.username);
-      const response = await fetch('/api/admin-login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-        credentials: 'include',
-      });
+      console.log('Attempting admin login with Firebase Auth:', data.username);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Admin login failed:', errorData);
-        throw new Error(errorData.error || 'Admin login failed');
-      }
+      // Use Firebase Auth login (email/password)
+      await login(data.username, data.password);
       
-      const userData = await response.json();
-      console.log('Admin login successful, user data:', userData);
+      // After successful login, verify user is admin
+      // The useFirebaseAuth hook will update the user state
+      // We'll check this in the redirect logic below
       
-      // Ensure we have valid admin user data
-      if (!userData?.id || userData.role !== 'admin') {
-        throw new Error('Invalid user data returned - must be admin');
-      }
-
-      // Store userId in localStorage for persistence
-      localStorage.setItem('userId', userData.id.toString());
-      console.log('Saved userId to localStorage:', userData.id);
+      console.log('Firebase login successful, checking admin role...');
       
-      // Clear all cached data and force a complete refresh
+      // Clear all cached data
       queryClient.clear();
-      console.log('Cleared all query cache');
       
-      console.log('Admin login successful, reloading page to establish session...');
-      
-      // Redirect to admin dashboard
-      const redirectPath = '/admin';
-      
-      // Use window.location.href to force a complete page reload 
-      // This ensures the session cookie is properly established
-      window.location.href = redirectPath;
+      // Redirect will be handled by the redirect logic below
+      // which checks if user.role === 'admin'
       
     } catch (error: any) {
       console.error('Admin login error:', error);
-      setErrorMessage(error.message || 'Failed to login');
+      
+      // Provide user-friendly error messages
+      let errorMsg = 'Failed to login';
+      if (error.message?.includes('invalid-credential') || error.message?.includes('wrong-password')) {
+        errorMsg = 'Invalid email or password';
+      } else if (error.message?.includes('user-not-found')) {
+        errorMsg = 'No account found with this email';
+      } else if (error.message?.includes('too-many-requests')) {
+        errorMsg = 'Too many failed attempts. Please wait a few minutes.';
+      } else {
+        errorMsg = error.message || 'Failed to login';
+      }
+      
+      setErrorMessage(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
