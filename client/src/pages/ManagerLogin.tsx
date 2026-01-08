@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { Building2, LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 
@@ -20,7 +21,6 @@ export default function ManagerLogin() {
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [userMeta, setUserMeta] = useState<any>(null);
-  const [userMetaLoading, setUserMetaLoading] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
 
@@ -72,84 +72,95 @@ export default function ManagerLogin() {
   }, [loading]);
 
   // Fetch user metadata to check welcome screen status
-  useEffect(() => {
-    if (!loading && user && !hasCheckedUser.current) {
-      hasCheckedUser.current = true;
-      
-      const fetchUserMeta = async () => {
-        try {
-          setUserMetaLoading(true);
-          const firebaseUser = auth.currentUser;
-          if (!firebaseUser) {
-            console.error('❌ No Firebase user available');
-            return;
+  // Use React Query to share cache with ManagerProtectedRoute
+  const { data: userMetaData, isLoading: userMetaLoading } = useQuery({
+    queryKey: ["/api/user/profile", user?.uid],
+    queryFn: async () => {
+      if (!user) return null;
+      try {
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) return null;
+        
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch('/api/user/profile', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
-          
-          const token = await firebaseUser.getIdToken();
-          
-          const response = await fetch('/api/user/profile', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (response.ok) {
-            const userData = await response.json();
-            console.log('✅ MANAGER USER DATA FETCHED:', {
-              id: userData.id,
-              username: userData.username,
-              is_verified: userData.is_verified,
-              has_seen_welcome: userData.has_seen_welcome,
-              role: userData.role,
-              isManager: userData.isManager
-            });
-            
-            setUserMeta(userData);
-            
-            // Check if user is a manager
-            if (userData.role !== 'manager' && !userData.isManager) {
-              console.warn('⚠️ User is not a manager, redirecting...');
-              // Redirect non-managers to appropriate page
-              if (userData.role === 'admin') {
-                setLocation('/admin');
-              } else {
-                setLocation('/dashboard');
-              }
-              return;
-            }
-            
-            // Check if user needs email verification
-            if (!userData.is_verified) {
-              console.log('📧 EMAIL VERIFICATION REQUIRED');
-              return;
-            }
-            
-            // Managers go to dashboard - ManagerOnboardingWizard will show if needed
-            // has_seen_welcome === false means they need onboarding wizard
-            console.log('✅ Manager verified - redirecting to dashboard (wizard will show if needed)');
-            setLocation('/manager/dashboard');
-          }
-        } catch (error) {
-          console.error('Error fetching user metadata:', error);
-        } finally {
-          setUserMetaLoading(false);
+        });
+        
+        if (!response.ok) {
+          return null;
         }
-      };
-      
-      fetchUserMeta();
+        
+        const userData = await response.json();
+        console.log('✅ MANAGER USER DATA FETCHED:', {
+          id: userData.id,
+          username: userData.username,
+          is_verified: userData.is_verified,
+          has_seen_welcome: userData.has_seen_welcome,
+          role: userData.role,
+          isManager: userData.isManager
+        });
+        
+        return userData;
+      } catch (error) {
+        console.error('Error fetching user metadata:', error);
+        return null;
+      }
+    },
+    enabled: !!user && !loading,
+    retry: false,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+  });
+
+  // Update userMeta state for backward compatibility
+  useEffect(() => {
+    if (userMetaData) {
+      setUserMeta(userMetaData);
     }
-  }, [loading, user, setLocation]);
+  }, [userMetaData]);
 
   // Redirect if already logged in as manager
-  // Managers go to dashboard - ManagerOnboardingWizard will show if needed
-  if (!loading && user && userMeta) {
-    const isManager = userMeta.role === 'manager' || userMeta.isManager;
-    
-    if (isManager) {
-      return <Redirect to="/manager/dashboard" />;
+  // Only redirect once when user data is loaded and we're on the login page
+  // Use a ref to prevent multiple redirects
+  const hasRedirected = useRef(false);
+  
+  useEffect(() => {
+    // Only redirect if:
+    // 1. Not loading
+    // 2. User data is loaded
+    // 3. We're on the login page
+    // 4. Haven't redirected yet
+    if (!loading && !userMetaLoading && user && userMetaData && location === '/manager/login' && !hasRedirected.current) {
+      const isManager = userMetaData.role === 'manager' || userMetaData.isManager;
+      
+      if (isManager && userMetaData.is_verified) {
+        console.log('✅ Manager verified - redirecting to dashboard (wizard will show if needed)');
+        hasRedirected.current = true;
+        setLocation('/manager/dashboard');
+      } else if (isManager && !userMetaData.is_verified) {
+        console.log('📧 EMAIL VERIFICATION REQUIRED');
+        // Stay on login page to show verification message
+      } else if (!isManager) {
+        console.warn('⚠️ User is not a manager, redirecting...');
+        hasRedirected.current = true;
+        // Redirect non-managers to appropriate page
+        if (userMetaData.role === 'admin') {
+          setLocation('/admin');
+        } else {
+          setLocation('/dashboard');
+        }
+      }
     }
-  }
+    
+    // Reset redirect flag if user logs out or location changes away from login
+    if (!user || location !== '/manager/login') {
+      hasRedirected.current = false;
+    }
+  }, [loading, userMetaLoading, user, userMetaData, location, setLocation]);
 
   // Show loading state
   if (loading || isInitialLoad || userMetaLoading) {

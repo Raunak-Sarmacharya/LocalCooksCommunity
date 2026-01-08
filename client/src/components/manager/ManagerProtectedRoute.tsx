@@ -48,8 +48,8 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     enabled: !!firebaseUser,
     retry: false,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    refetchOnWindowFocus: false, // Prevent refetch on focus to avoid loops
+    refetchOnMount: false, // Prevent refetch on mount to avoid loops
   });
 
   // Firebase Auth only - no session fallback
@@ -70,6 +70,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     error
   });
 
+  // Show loading state while checking authentication
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -82,6 +83,7 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     );
   }
 
+  // Show error state if authentication failed
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -98,11 +100,15 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     );
   }
 
+  // Redirect to login if no user found (only after loading is complete)
   if (!user) {
+    console.log('ManagerProtectedRoute - No user found, redirecting to login');
     return <Redirect to="/manager/login" />;
   }
 
+  // Redirect if user is not a manager (only after loading is complete)
   if (!isManager) {
+    console.log('ManagerProtectedRoute - User is not a manager, redirecting');
     return <Redirect to="/" />;
   }
 
