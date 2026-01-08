@@ -6317,11 +6317,14 @@ async function syncFirebaseUser(uid, email, emailVerified, displayName, role, pa
               throw new Error(`Invalid role "${finalRole}" - cannot create user without valid role`);
             }
             
-            console.log(`🔍 FINAL INSERT VALUES: role="${finalRole}", isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner}, isManager=${isManager}`);
+            // Admins and managers should skip the welcome screen
+            const hasSeenWelcome = finalRole === 'admin' || finalRole === 'manager';
+            
+            console.log(`🔍 FINAL INSERT VALUES: role="${finalRole}", isChef=${isChef}, isDeliveryPartner=${isDeliveryPartner}, isManager=${isManager}, hasSeenWelcome=${hasSeenWelcome}`);
             
             const insertResult = await pool.query(
               'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-              [email, hashedPassword, finalRole, uid, isUserVerified, false, isChef, isDeliveryPartner, isManager]
+              [email, hashedPassword, finalRole, uid, isUserVerified, hasSeenWelcome, isChef, isDeliveryPartner, isManager]
             );
             user = insertResult.rows[0];
             wasCreated = true;

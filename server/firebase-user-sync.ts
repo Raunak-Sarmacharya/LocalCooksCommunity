@@ -19,6 +19,7 @@ interface CreateUserData {
   isPortalUser: boolean;
   firebaseUid: string;
   isVerified: boolean;
+  hasSeenWelcome?: boolean;
 }
 
 /**
@@ -99,6 +100,9 @@ export async function syncFirebaseUserToNeon(params: {
       throw new Error(`Invalid role: ${role}. Valid roles are: admin, manager, chef, delivery_partner`);
     }
     
+    // Admins and managers should skip the welcome screen
+    const hasSeenWelcome = finalRole === 'admin' || finalRole === 'manager';
+    
     const userData: CreateUserData = {
       username: displayName || email,
       password: '', // Empty for Firebase users
@@ -109,12 +113,17 @@ export async function syncFirebaseUserToNeon(params: {
       isPortalUser: false,
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
+      hasSeenWelcome: hasSeenWelcome, // Admins and managers skip welcome screen
     };
 
     console.log(`➕ CREATING NEW USER with data:`, userData);
-    const newUser = await firebaseStorage.createUser(userData);
+    const newUser = await firebaseStorage.createUser({
+      ...userData,
+      has_seen_welcome: hasSeenWelcome
+    });
     console.log(`✅ USER CREATED: ${newUser.id} (${newUser.username})`);
     console.log(`   - is_verified in DB: ${(newUser as any).isVerified}`);
+    console.log(`   - has_seen_welcome in DB: ${(newUser as any).has_seen_welcome} (admins/managers skip welcome screen)`);
 
     // Handle email notifications based on user type
     if (!isGoogleUser && email) {
