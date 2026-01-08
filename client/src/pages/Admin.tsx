@@ -128,14 +128,21 @@ function AdminDashboard() {
   // Admin uses Firebase auth (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
   
+  // Helper function to get Firebase token for API calls
+  const getFirebaseToken = async (): Promise<string> => {
+    const currentFirebaseUser = auth.currentUser;
+    if (!currentFirebaseUser) {
+      throw new Error("Firebase user not available");
+    }
+    return await currentFirebaseUser.getIdToken();
+  };
+  
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
       if (!firebaseUser) return null;
       try {
-        const currentFirebaseUser = auth.currentUser;
-        if (!currentFirebaseUser) return null;
-        const token = await currentFirebaseUser.getIdToken();
+        const token = await getFirebaseToken();
         const response = await fetch("/api/user/profile", {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -182,9 +189,11 @@ function AdminDashboard() {
   const { data: pendingLicensesCount = 0 } = useQuery({
     queryKey: ['/api/admin/locations/pending-licenses-count'],
     queryFn: async () => {
+      const token = await getFirebaseToken();
       const response = await fetch('/api/admin/locations/pending-licenses', {
         credentials: 'include',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
@@ -192,23 +201,29 @@ function AdminDashboard() {
       const data = await response.json();
       return Array.isArray(data) ? data.length : 0;
     },
+    enabled: !!firebaseUser && isAdmin,
     refetchInterval: 30000,
   });
 
-  // Fetch all applications - session-based auth only
+  // Fetch all applications - Firebase auth
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
-    queryKey: ["/api/applications"],
+    queryKey: ["/api/firebase/admin/applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user) {
+      if (!firebaseUser) {
         throw new Error("Admin not authenticated");
       }
       
-      console.log('Admin: Fetching applications data via session auth...', {
+      console.log('Admin: Fetching applications data via Firebase auth...', {
         endpoint: queryKey[0],
-        hasSessionUser: !!sessionUser
+        hasFirebaseUser: !!firebaseUser
       });
       
+      // Get Firebase token for authentication
+      const token = await getFirebaseToken();
+      
       const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
         // Add cache busting headers to ensure fresh data
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
@@ -267,7 +282,7 @@ function AdminDashboard() {
       console.log('Admin: Normalized application data', normalizedData);
       return normalizedData;
     },
-    enabled: !!user && isAdmin, // Only fetch if user is admin
+    enabled: !!firebaseUser && isAdmin, // Only fetch if user is admin
     // Intelligent auto-refresh for admin dashboard
     refetchInterval: (data) => {
       if (!data || !Array.isArray(data)) return 20000; // 20 seconds if no data or invalid data
@@ -305,15 +320,15 @@ function AdminDashboard() {
     gcTime: 10000, // Keep in cache for only 10 seconds (updated property name)
   });
 
-  // Fetch all delivery partner applications - session-based auth only
+  // Fetch all delivery partner applications - Firebase auth
   const { data: deliveryApplications = [], isLoading: isLoadingDelivery, error: deliveryError } = useQuery<any[]>({
-    queryKey: ["/api/delivery-partner-applications"],
+    queryKey: ["/api/firebase/admin/delivery-partner-applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user) {
+      if (!firebaseUser) {
         throw new Error("Admin not authenticated");
       }
       
-      console.log('Admin: Fetching delivery partner applications data via session auth...', {
+      console.log('Admin: Fetching delivery partner applications data via Firebase auth...', {
         endpoint: queryKey[0],
         hasSessionUser: !!sessionUser
       });
@@ -384,7 +399,7 @@ function AdminDashboard() {
       console.log('Admin: Normalized delivery partner application data', normalizedData);
       return normalizedData;
     },
-    enabled: !!user && isAdmin, // Only fetch if user is admin
+    enabled: !!firebaseUser && isAdmin, // Only fetch if user is admin
     // Intelligent auto-refresh for admin dashboard
     refetchInterval: (data) => {
       if (!data || !Array.isArray(data)) return 20000; // 20 seconds if no data or invalid data
@@ -429,16 +444,18 @@ function AdminDashboard() {
       try {
         console.log(`Updating application ${id} status to ${status}`);
         
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
-        
-        const response = await fetch(`/api/applications/${id}/status`, {
-          method: 'PATCH',
-          headers,
-          credentials: 'include',
-          body: JSON.stringify({ status })
-        });
+      const token = await getFirebaseToken();
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      const response = await fetch(`/api/applications/${id}/status`, {
+        method: 'PATCH',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ status })
+      });
         
         if (!response.ok) {
           const errorData = await response.json();
@@ -458,7 +475,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -481,7 +498,9 @@ function AdminDashboard() {
   // Mutation to update document verification status
   const updateDocumentStatusMutation = useMutation({
     mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
+      const token = await getFirebaseToken();
       const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
       
@@ -506,7 +525,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
       
@@ -542,7 +561,9 @@ function AdminDashboard() {
       try {
         console.log(`Updating delivery partner application ${id} status to ${status}`);
         
+        const token = await getFirebaseToken();
         const headers: Record<string, string> = {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         };
         
@@ -571,7 +592,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/delivery-partner-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/delivery-partner-applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] })
       ]);
       
@@ -594,7 +615,9 @@ function AdminDashboard() {
   // Mutation to update delivery partner document verification status
   const updateDeliveryDocumentStatusMutation = useMutation({
     mutationFn: async ({ id, field, status }: { id: number, field: string, status: string }) => {
+      const token = await getFirebaseToken();
       const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
       
@@ -619,7 +642,7 @@ function AdminDashboard() {
       
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/delivery-partner-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/delivery-partner-applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] })
       ]);
       
@@ -983,7 +1006,7 @@ function AdminDashboard() {
       console.error('Admin: Force refresh failed', error);
       // Fallback: try to refresh just the admin query
       try {
-        await queryClient.refetchQueries({ queryKey: ["/api/applications"] });
+        await queryClient.refetchQueries({ queryKey: ["/api/firebase/admin/applications"] });
         console.log('Admin: Fallback refresh completed');
       } catch (fallbackError) {
         console.error('Admin: Fallback refresh also failed', fallbackError);
@@ -2661,9 +2684,15 @@ function KitchenLicenseApprovalView() {
   const { data: pendingLicenses = [], isLoading, refetch } = useQuery({
     queryKey: ['/api/admin/locations/pending-licenses'],
     queryFn: async () => {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch('/api/admin/locations/pending-licenses', {
         credentials: 'include',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
@@ -2678,10 +2707,16 @@ function KitchenLicenseApprovalView() {
   // Approve/Reject license mutation
   const approveLicenseMutation = useMutation({
     mutationFn: async ({ locationId, status, feedbackText }: { locationId: number; status: 'approved' | 'rejected'; feedbackText?: string }) => {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      const token = await currentFirebaseUser.getIdToken();
       const response = await fetch(`/api/admin/locations/${locationId}/kitchen-license`, {
         method: 'PUT',
         credentials: 'include',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -2870,9 +2905,7 @@ function PlatformSettingsView() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch current service fee rate
-  // NOTE: Admins use session-based auth, not Firebase tokens
-  // IMPORTANT: Do NOT send Authorization header - this endpoint uses session auth only
+  // Fetch current service fee rate - Firebase auth
   const { data: currentRate, isLoading: isLoadingRate, error: rateError } = useQuery<{
     key: string;
     value: string;
@@ -2883,13 +2916,18 @@ function PlatformSettingsView() {
   }>({
     queryKey: ['/api/admin/platform-settings/service-fee-rate'],
     queryFn: async () => {
-      // Create headers object without Authorization to prevent Firebase auth
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
       
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
-        credentials: 'include', // Essential for session-based admin auth
+        credentials: 'include',
         headers,
       });
       if (!response.ok) {
@@ -2915,9 +2953,7 @@ function PlatformSettingsView() {
     }
   }, [currentRate, rateError, toast]);
 
-  // Update mutation
-  // NOTE: Admins use session-based auth, not Firebase tokens
-  // IMPORTANT: Do NOT send Authorization header - this endpoint uses session auth only
+  // Update mutation - Firebase auth
   const updateMutation = useMutation<{
     key: string;
     value: string;
@@ -2928,14 +2964,19 @@ function PlatformSettingsView() {
     message?: string;
   }, Error, number>({
     mutationFn: async (rate: number) => {
-      // Create headers object without Authorization to prevent Firebase auth
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      const token = await currentFirebaseUser.getIdToken();
       const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
       
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
         method: 'PUT',
-        credentials: 'include', // Essential for session-based admin auth
+        credentials: 'include',
         headers,
         body: JSON.stringify({ rate }),
       });
