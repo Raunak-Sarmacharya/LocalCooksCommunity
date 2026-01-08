@@ -109,7 +109,7 @@ try {
       },
       filename: (req, file, cb) => {
         // Generate unique filename: userId_documentType_timestamp_originalname
-        const userId = req.session.userId || req.headers['x-user-id'] || 'unknown';
+        const userId = req.session?.userId || req.headers['x-user-id'] || req.neonUser?.id || 'unknown';
         const timestamp = Date.now();
         const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
         const ext = path.extname(file.originalname);
@@ -191,7 +191,10 @@ app.use((req, res, next) => {
   
   // Log subdomain info for debugging
   if (req.path.startsWith('/api/')) {
-    console.log(`${req.method} ${req.path} - Subdomain: ${subdomain || 'main'} - Session ID: ${req.session.id}, User ID: ${req.session.userId || 'none'}`);
+    // Session-based auth removed - session may not exist
+    const sessionId = req.session?.id || 'no-session';
+    const userId = req.session?.userId || req.neonUser?.id || 'none';
+    console.log(`${req.method} ${req.path} - Subdomain: ${subdomain || 'main'} - Session ID: ${sessionId}, User ID: ${userId}`);
   }
   
   next();
@@ -1942,22 +1945,34 @@ app.get('/api/health', async (req, res) => {
       SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'not set',
     },
     session: {
-      id: req.session.id,
-      active: !!req.session.userId,
-      userId: req.session.userId || null
+      id: req.session?.id || 'no-session',
+      active: !!req.session?.userId,
+      userId: req.session?.userId || req.neonUser?.id || null
     }
   });
 });
 // Test endpoint to debug session persistence
 app.get('/api/session-test', (req, res) => {
+  // Session-based auth removed - session may not exist
+  if (!req.session) {
+    return res.status(200).json({
+      sessionId: 'no-session',
+      counter: 0,
+      userId: req.neonUser?.id || null,
+      isAuthenticated: !!req.neonUser,
+      cookiePresent: !!req.headers.cookie,
+      message: 'Session-based auth removed - using Firebase Auth'
+    });
+  }
+  
   const sessionCounter = req.session.counter || 0;
   req.session.counter = sessionCounter + 1;
 
   res.status(200).json({
     sessionId: req.session.id,
     counter: req.session.counter,
-    userId: req.session.userId || null,
-    isAuthenticated: !!req.session.userId,
+    userId: req.session.userId || req.neonUser?.id || null,
+    isAuthenticated: !!req.session.userId || !!req.neonUser,
     cookiePresent: !!req.headers.cookie
   });
 });
