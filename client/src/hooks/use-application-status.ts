@@ -61,7 +61,7 @@ export function useApplicationStatus() {
   
   // Debug logging for application status hook
   console.log('useApplicationStatus: Auth state', {
-    sessionUser: sessionUser ? { role: sessionUser.role, id: sessionUser.id } : null,
+    profileUser: profileUser ? { role: profileUser.role, id: profileUser.id } : null,
     firebaseUser: firebaseAuth.user ? { 
       role: firebaseAuth.user.role, 
       uid: firebaseAuth.user.uid,
