@@ -56,9 +56,10 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
   const isAdmin = user?.role === 'admin';
 
   // Debug logging
-  console.log('AdminProtectedRoute - Session-only auth state:', {
+  console.log('AdminProtectedRoute - Firebase auth state:', {
     loading,
-    hasSessionUser: !!sessionUser,
+    hasFirebaseUser: !!firebaseUser,
+    hasProfileUser: !!user,
     finalUser: !!user,
     userRole: user?.role,
     isAdmin,

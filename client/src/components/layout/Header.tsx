@@ -95,12 +95,12 @@ export default function Header() {
   const { data: applications } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user?.uid) {
+      if (!user || (!user.uid && !user.id)) {
         throw new Error("User not authenticated");
       }
 
       const headers: Record<string, string> = {
-        'X-User-ID': user.uid.toString()
+        'X-User-ID': (user.uid || user.id).toString()
       };
 
       const response = await fetch(queryKey[0] as string, {
