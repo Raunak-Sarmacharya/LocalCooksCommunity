@@ -15,7 +15,7 @@ import EmailVerificationScreen from "./EmailVerificationScreen";
 import LoadingOverlay from "./LoadingOverlay";
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
+  email: z.string().min(1, "Email or username is required"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -74,92 +74,145 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
     setFormError(null);
     setAuthState('loading');
 
-    try {
-      // Try Firebase login first
-      await login(data.email, data.password);
-      // Only set success if we reach this point without errors
-      setAuthState('success');
+    const loginIdentifier = data.email.trim();
+    const isEmailFormat = loginIdentifier.includes('@');
+
+    // If it's not an email format (likely a username), try migration login first
+    if (!isEmailFormat) {
+      console.log('🔄 Username detected, trying migration login for old manager...');
       
-      setTimeout(() => {
-        if (onSuccess) onSuccess();
-      }, 1000);
+      try {
+        const migrateResponse = await fetch('/api/manager-migrate-login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: loginIdentifier,
+            password: data.password
+          })
+        });
+
+        if (migrateResponse.ok) {
+          const migrateData = await migrateResponse.json();
+          
+          if (migrateData.customToken) {
+            // Sign in with custom token
+            await signInWithCustomToken(auth, migrateData.customToken);
+            console.log('✅ Migration login successful');
+            
+            setAuthState('success');
+            setTimeout(() => {
+              if (onSuccess) onSuccess();
+            }, 1000);
+            return;
+          }
+        } else {
+          // Migration login failed - try Firebase as fallback if it's an email
+          const errorData = await migrateResponse.json().catch(() => ({}));
+          console.log('Migration login failed:', errorData);
+        }
+      } catch (migrateError) {
+        console.log('Migration login error, trying Firebase as fallback:', migrateError);
+      }
+    }
+
+    // Try Firebase login (for email-based accounts or as fallback)
+    try {
+      // Only try Firebase if it looks like an email, otherwise skip
+      if (isEmailFormat) {
+        await login(loginIdentifier, data.password);
+        // Only set success if we reach this point without errors
+        setAuthState('success');
+        
+        setTimeout(() => {
+          if (onSuccess) onSuccess();
+        }, 1000);
+      } else {
+        // Username format and migration failed - show error
+        setAuthState('error');
+        showAlert({
+          title: "Sign In Failed",
+          description: "Incorrect username or password. Please check your credentials and try again.",
+          type: "error"
+        });
+        setTimeout(() => setAuthState('idle'), 2000);
+      }
 
     } catch (e: any) {
-      // If Firebase login fails, try migration login for old managers
-      if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
+      // If Firebase login fails, try migration login for old managers (if we haven't already)
+      if (isEmailFormat && (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found'))) {
         console.log('🔄 Firebase login failed, trying migration login for old manager...');
         
         try {
           // Try migration login (for old managers with username/password in Neon DB)
-          const migrateResponse = await fetch('/api/manager-migrate-login', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              username: data.email, // Try email as username first
-              password: data.password
-            })
-          });
+          // First try the email as username, then try without @ if it's an email
+          const usernameAttempts = [loginIdentifier];
+          if (loginIdentifier.includes('@')) {
+            // Try the part before @ as username
+            usernameAttempts.push(loginIdentifier.split('@')[0]);
+          }
+          
+          for (const usernameAttempt of usernameAttempts) {
+            const migrateResponse = await fetch('/api/manager-migrate-login', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                username: usernameAttempt,
+                password: data.password
+              })
+            });
 
-          if (migrateResponse.ok) {
-            const migrateData = await migrateResponse.json();
-            
-            if (migrateData.customToken) {
-              // Sign in with custom token
-              await signInWithCustomToken(auth, migrateData.customToken);
-              console.log('✅ Migration login successful');
+            if (migrateResponse.ok) {
+              const migrateData = await migrateResponse.json();
               
-              setAuthState('success');
-              setTimeout(() => {
-                if (onSuccess) onSuccess();
-              }, 1000);
-              return;
-            }
-          } else if (migrateResponse.status === 400) {
-            const errorData = await migrateResponse.json();
-            if (errorData.message && errorData.message.includes('already been migrated')) {
-              // Account already migrated - tell user to use email
-              showAlert({
-                title: "Account Already Migrated",
-                description: "This account has been migrated to Firebase. Please use your email address to sign in instead of username.",
-                type: "info"
-              });
-              setAuthState('error');
-              setTimeout(() => setAuthState('idle'), 2000);
-              return;
+              if (migrateData.customToken) {
+                // Sign in with custom token
+                await signInWithCustomToken(auth, migrateData.customToken);
+                console.log('✅ Migration login successful');
+                
+                setAuthState('success');
+                setTimeout(() => {
+                  if (onSuccess) onSuccess();
+                }, 1000);
+                return;
+              }
             }
           }
         } catch (migrateError) {
           console.log('Migration login also failed, continuing with Firebase error handling');
         }
-        
-        // Other Firebase errors (not credential-related)
-        setShowLoadingOverlay(false);
-        setAuthState('error');
-        
-        // Handle different Firebase error types with user-friendly messages via custom alerts
-        let errorTitle = "Sign In Failed";
-        let errorMessage = "";
-        
-        if (e.message.includes('too-many-requests')) {
-          errorMessage = "Too many failed attempts. Please wait a few minutes before trying again.";
-        } else if (e.message.includes('network-request-failed')) {
-          errorMessage = "Network error. Please check your connection and try again.";
-        } else if (e.message.includes('user-disabled')) {
-          errorMessage = "This account has been disabled. Please contact support.";
-        } else {
-          errorMessage = "Unable to sign in at this time. Please try again later.";
-        }
-        
-        showAlert({
-          title: errorTitle,
-          description: errorMessage,
-          type: "error"
-        });
-        
-        setTimeout(() => setAuthState('idle'), 2000);
       }
+      
+      // Other Firebase errors (not credential-related)
+      setShowLoadingOverlay(false);
+      setAuthState('error');
+      
+      // Handle different Firebase error types with user-friendly messages via custom alerts
+      let errorTitle = "Sign In Failed";
+      let errorMessage = "";
+      
+      if (e.message.includes('too-many-requests')) {
+        errorMessage = "Too many failed attempts. Please wait a few minutes before trying again.";
+      } else if (e.message.includes('network-request-failed')) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      } else if (e.message.includes('user-disabled')) {
+        errorMessage = "This account has been disabled. Please contact support.";
+      } else if (e.message.includes('invalid-credential') || e.message.includes('wrong-password') || e.message.includes('user-not-found')) {
+        errorMessage = "Incorrect email/username or password. Please check your credentials and try again.";
+      } else {
+        errorMessage = "Unable to sign in at this time. Please try again later.";
+      }
+      
+      showAlert({
+        title: errorTitle,
+        description: errorMessage,
+        type: "error"
+      });
+      
+      setTimeout(() => setAuthState('idle'), 2000);
     }
   };
 
@@ -306,8 +359,8 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
 
           <motion.div variants={itemVariants}>
             <AnimatedInput
-              label="Email Address"
-              type="email"
+              label="Email Address or Username"
+              type="text"
               icon={<Mail className="w-4 h-4" />}
               validationState={
                 form.formState.errors.email ? 'invalid' : 

@@ -983,12 +983,40 @@ app.post('/api/manager-migrate-login', async (req, res) => {
     // Step 3: Check if manager already has Firebase account
     if (manager.firebase_uid) {
       console.log('✅ Manager already has Firebase UID:', manager.firebase_uid);
-      // Manager already migrated - they should use Firebase login
-      return res.status(400).json({ 
-        error: 'This account has already been migrated to Firebase',
-        message: 'Please use email/password login with your email address instead of username',
-        firebaseUid: manager.firebase_uid
-      });
+      // Manager already migrated - generate custom token for immediate login
+      const admin = require('firebase-admin');
+      
+      try {
+        // Verify the Firebase user still exists
+        const firebaseUser = await admin.auth().getUser(manager.firebase_uid);
+        
+        // Generate custom token for login
+        const customToken = await admin.auth().createCustomToken(manager.firebase_uid);
+        
+        // Get email for response
+        let email = manager.email;
+        if (!email) {
+          email = firebaseUser.email || `${manager.username}@localcooks.com`;
+        }
+        
+        console.log('✅ Returning custom token for migrated manager');
+        return res.json({
+          success: true,
+          message: 'Login successful',
+          customToken: customToken,
+          user: {
+            id: manager.id,
+            username: manager.username,
+            email: email,
+            firebaseUid: manager.firebase_uid,
+            role: 'manager'
+          }
+        });
+      } catch (firebaseError) {
+        console.error('Error getting Firebase user:', firebaseError);
+        // If Firebase user doesn't exist, continue with migration flow
+        // (will create new Firebase account below)
+      }
     }
 
     // Step 4: Get email for Firebase account creation
