@@ -404,12 +404,26 @@ export default function KitchenPreviewPage() {
   const [selectedKitchen, setSelectedKitchen] = useState<PublicKitchen | null>(null);
 
   // Check if chef has an approved application for this location
+  // Only check if user is authenticated
   const { 
     application, 
     hasApplication, 
     canBook, 
     isLoading: applicationLoading 
-  } = useChefKitchenApplicationForLocation(locationId);
+  } = useChefKitchenApplicationForLocation(isAuthenticated ? locationId : null);
+
+  // Debug logging
+  useEffect(() => {
+    if (isAuthenticated && locationId) {
+      console.log('[KitchenPreviewPage] Application status:', {
+        hasApplication,
+        canBook,
+        applicationStatus: application?.status,
+        isLoading: applicationLoading,
+        locationId
+      });
+    }
+  }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
 
   const { data: locationData, isLoading, error } = useQuery<{ 
     location: PublicLocation; 
@@ -526,9 +540,21 @@ export default function KitchenPreviewPage() {
                 onClick={handleGetStarted}
                 className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
                 size="sm"
+                disabled={isAuthenticated && applicationLoading}
               >
-                {isAuthenticated && canBook ? 'Book Now' : isAuthenticated ? 'Apply to Kitchen' : 'Sign In to Book'}
-                <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                {applicationLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                    Checking...
+                  </>
+                ) : isAuthenticated && canBook ? (
+                  'Book Now'
+                ) : isAuthenticated ? (
+                  'Apply to Kitchen'
+                ) : (
+                  'Sign In to Book'
+                )}
+                {!applicationLoading && <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />}
               </Button>
             </div>
           </div>

@@ -263,7 +263,26 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
       );
 
       if (!response.ok) {
-        // For any error, return no application state
+        // 404 means no application found - that's expected, not an error
+        if (response.status === 404) {
+          try {
+            const errorData = await response.json();
+            // API returns structured error with hasApplication and canBook
+            return {
+              hasApplication: errorData.hasApplication ?? false,
+              canBook: errorData.canBook ?? false,
+              application: null,
+            } as any;
+          } catch {
+            // If JSON parsing fails, return default no application state
+            return {
+              hasApplication: false,
+              canBook: false,
+              application: null,
+            } as any;
+          }
+        }
+        // For other errors, return no application state
         console.warn(`Failed to fetch application for location ${locationId}: ${response.status}`);
         return {
           hasApplication: false,
@@ -273,17 +292,27 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
       }
 
       const data = await response.json();
-      return data;
+      // Ensure the response has the expected structure
+      return {
+        ...data,
+        hasApplication: data.hasApplication ?? (!!data.id),
+        canBook: data.canBook ?? (data.status === 'approved'),
+      };
     },
     enabled: !!locationId,
     retry: 1,
     staleTime: 30000,
   });
 
+  // Ensure we properly extract canBook from the response
+  const responseData = applicationsQuery.data;
+  const hasApplication = responseData?.hasApplication ?? (!!responseData?.id);
+  const canBook = responseData?.canBook ?? (responseData?.status === 'approved');
+  
   return {
-    application: applicationsQuery.data?.hasApplication ? applicationsQuery.data : null,
-    hasApplication: applicationsQuery.data?.hasApplication ?? false,
-    canBook: applicationsQuery.data?.canBook ?? false,
+    application: hasApplication ? responseData : null,
+    hasApplication,
+    canBook,
     isLoading: applicationsQuery.isLoading,
     error: applicationsQuery.error,
     refetch: applicationsQuery.refetch,
