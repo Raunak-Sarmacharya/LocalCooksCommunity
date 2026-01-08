@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Building2, MapPin, Loader2, ArrowRight, Calendar, Lock, 
-  ChevronLeft, ChevronRight, Utensils, Sparkles, Check, ImageOff
+  ChevronLeft, ChevronRight, Utensils, Sparkles, Check, ImageOff, FileText, Clock, XCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +12,8 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import useEmblaCarousel from 'embla-carousel-react';
 import kitchenTableIcon from "@assets/kitchen-table.png";
+import { useFirebaseAuth } from "@/hooks/use-auth";
+import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 
 interface PublicLocation {
   id: number;
@@ -230,7 +232,17 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
 }
 
 // Mini Calendar Component - Mobile Responsive
-function MiniCalendarPreview() {
+function MiniCalendarPreview({ 
+  isAuthenticated, 
+  canBook, 
+  onBookClick, 
+  onApplyClick 
+}: { 
+  isAuthenticated: boolean; 
+  canBook: boolean;
+  onBookClick: () => void;
+  onApplyClick: () => void;
+}) {
   const today = new Date();
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
@@ -290,16 +302,35 @@ function MiniCalendarPreview() {
         </div>
       </div>
 
-      {/* Overlay - Semi-transparent to show calendar underneath */}
-      <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-b-lg">
-        <div className="text-center px-3 sm:px-4 py-2.5 sm:py-3 bg-white/90 rounded-xl shadow-lg border border-gray-100 mx-2">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1.5 sm:mb-2 bg-[#F51042]/10 rounded-full flex items-center justify-center">
-            <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-[#F51042]" />
+      {/* Overlay - Only show if not authenticated or can't book */}
+      {(!isAuthenticated || !canBook) && (
+        <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-b-lg">
+          <div className="text-center px-3 sm:px-4 py-2.5 sm:py-3 bg-white/90 rounded-xl shadow-lg border border-gray-100 mx-2">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-1.5 sm:mb-2 bg-[#F51042]/10 rounded-full flex items-center justify-center">
+              <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-[#F51042]" />
+            </div>
+            <p className="text-xs sm:text-sm font-semibold text-gray-800">
+              {!isAuthenticated ? 'Sign in to book' : 'Apply to book'}
+            </p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-1">View availability & reserve</p>
           </div>
-          <p className="text-xs sm:text-sm font-semibold text-gray-800">Sign in to book</p>
-          <p className="text-[10px] sm:text-xs text-gray-500 mt-1">View availability & reserve</p>
         </div>
-      </div>
+      )}
+
+      {/* Book Button - Only show if authenticated and can book */}
+      {isAuthenticated && canBook && (
+        <div className="p-3 sm:p-4 pt-0">
+          <Button
+            onClick={onBookClick}
+            className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2 mt-3"
+            size="sm"
+          >
+            <Calendar className="mr-2 h-3.5 w-3.5" />
+            Book This Kitchen
+            <ArrowRight className="ml-2 h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -364,11 +395,21 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
 
 export default function KitchenPreviewPage() {
   const [locationPath, navigate] = useLocation();
+  const { user } = useFirebaseAuth();
+  const isAuthenticated = !!user;
   
   const locationIdMatch = locationPath.match(/\/kitchen-preview\/(\d+)/);
   const locationId = locationIdMatch ? parseInt(locationIdMatch[1]) : null;
 
   const [selectedKitchen, setSelectedKitchen] = useState<PublicKitchen | null>(null);
+
+  // Check if chef has an approved application for this location
+  const { 
+    application, 
+    hasApplication, 
+    canBook, 
+    isLoading: applicationLoading 
+  } = useChefKitchenApplicationForLocation(locationId);
 
   const { data: locationData, isLoading, error } = useQuery<{ 
     location: PublicLocation; 
@@ -390,7 +431,30 @@ export default function KitchenPreviewPage() {
   }, [locationData?.kitchens, selectedKitchen]);
 
   const handleGetStarted = () => {
-    navigate(`/auth?redirect=/portal/book`);
+    if (isAuthenticated) {
+      if (canBook) {
+        // Navigate to booking page with location filter
+        navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
+      } else {
+        // Navigate to application page
+        navigate(`/apply-kitchen/${locationId}`);
+      }
+    } else {
+      // Navigate to auth page with redirect
+      navigate(`/auth?redirect=/kitchen-preview/${locationId}`);
+    }
+  };
+
+  const handleBookClick = () => {
+    if (canBook) {
+      navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
+    } else {
+      navigate(`/apply-kitchen/${locationId}`);
+    }
+  };
+
+  const handleApplyClick = () => {
+    navigate(`/apply-kitchen/${locationId}`);
   };
 
   if (isLoading) {
@@ -463,7 +527,7 @@ export default function KitchenPreviewPage() {
                 className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
                 size="sm"
               >
-                Sign In to Book
+                {isAuthenticated && canBook ? 'Book Now' : isAuthenticated ? 'Apply to Kitchen' : 'Sign In to Book'}
                 <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
             </div>
@@ -507,7 +571,12 @@ export default function KitchenPreviewPage() {
                   </div>
                 </div>
                 <CardContent className="p-0">
-                  <MiniCalendarPreview />
+                  <MiniCalendarPreview 
+                    isAuthenticated={isAuthenticated} 
+                    canBook={canBook}
+                    onBookClick={handleBookClick}
+                    onApplyClick={handleApplyClick}
+                  />
                 </CardContent>
               </Card>
 
@@ -525,23 +594,47 @@ export default function KitchenPreviewPage() {
                   <p className="text-xs text-gray-600 mb-3 sm:mb-4 leading-relaxed">
                     Join LocalCooks and get instant access to professional kitchen spaces. Book your slot today and bring your culinary vision to life.
                   </p>
-                  <Button 
-                    onClick={handleGetStarted}
-                    className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
-                    size="sm"
-                  >
-                    Create Free Account
-                    <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                  </Button>
-                  <p className="text-center text-xs text-gray-500 mt-2 sm:mt-3">
-                    Already have an account?{' '}
-                    <button 
-                      onClick={() => navigate('/auth')} 
-                      className="text-[#F51042] hover:underline font-medium"
+                  {isAuthenticated && canBook ? (
+                    <Button 
+                      onClick={handleBookClick}
+                      className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
+                      size="sm"
                     >
-                      Log in
-                    </button>
-                  </p>
+                      <Calendar className="mr-2 h-3.5 w-3.5" />
+                      Book This Kitchen
+                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                    </Button>
+                  ) : isAuthenticated ? (
+                    <Button 
+                      onClick={handleApplyClick}
+                      className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
+                      size="sm"
+                    >
+                      <FileText className="mr-2 h-3.5 w-3.5" />
+                      Apply to Kitchen
+                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <>
+                      <Button 
+                        onClick={handleGetStarted}
+                        className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
+                        size="sm"
+                      >
+                        Create Free Account
+                        <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                      </Button>
+                      <p className="text-center text-xs text-gray-500 mt-2 sm:mt-3">
+                        Already have an account?{' '}
+                        <button 
+                          onClick={() => navigate('/auth')} 
+                          className="text-[#F51042] hover:underline font-medium"
+                        >
+                          Log in
+                        </button>
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
