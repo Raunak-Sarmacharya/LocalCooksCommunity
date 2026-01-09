@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
+import { auth } from "@/lib/firebase";
 
 interface Booking {
   id: number;
@@ -34,6 +35,20 @@ interface Booking {
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
+  // Use Firebase auth to get fresh token (same as KitchenDashboardOverview)
+  const currentFirebaseUser = auth.currentUser;
+  if (currentFirebaseUser) {
+    try {
+      const token = await currentFirebaseUser.getIdToken();
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+    } catch (error) {
+      console.error('Error getting Firebase token:', error);
+    }
+  }
+  // Fallback to localStorage token if Firebase auth is not available
   const token = localStorage.getItem('firebaseToken');
   if (token) {
     return {
@@ -62,35 +77,59 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
 
   // Fetch all bookings for this manager with real-time polling
-  const { data: bookings = [], isLoading } = useQuery({
+  const { data: bookings = [], isLoading, error: bookingsError } = useQuery({
     queryKey: ['managerBookings'],
     queryFn: async () => {
-      const headers = await getAuthHeaders();
-      const response = await fetch('/api/manager/bookings', {
-        headers,
-        credentials: "include",
-      });
-      if (!response.ok) {
-        let errorMessage = 'Failed to fetch bookings';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch (jsonError) {
+      try {
+        const headers = await getAuthHeaders();
+        console.log('📋 ManagerBookingsPanel: Fetching bookings', { 
+          hasAuth: !!headers.Authorization 
+        });
+        
+        const response = await fetch('/api/manager/bookings', {
+          headers,
+          credentials: "include",
+        });
+        
+        console.log('📋 ManagerBookingsPanel: Response status:', response.status);
+        
+        if (!response.ok) {
+          let errorMessage = 'Failed to fetch bookings';
           try {
-            const text = await response.text();
-            errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
-          } catch (textError) {
-            errorMessage = `Server returned ${response.status} ${response.statusText}`;
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorData.error || errorMessage;
+            console.error('❌ ManagerBookingsPanel: Error response:', errorData);
+          } catch (jsonError) {
+            try {
+              const text = await response.text();
+              errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
+              console.error('❌ ManagerBookingsPanel: Error text:', text);
+            } catch (textError) {
+              errorMessage = `Server returned ${response.status} ${response.statusText}`;
+            }
           }
+          throw new Error(errorMessage);
         }
-        throw new Error(errorMessage);
+        
+        const contentType = response.headers.get('content-type');
+        let data;
+        if (contentType && contentType.includes('application/json')) {
+          data = await response.json();
+        } else {
+          const text = await response.text();
+          data = text ? JSON.parse(text) : [];
+        }
+        
+        console.log(`✅ ManagerBookingsPanel: Received ${Array.isArray(data) ? data.length : 0} bookings`);
+        if (Array.isArray(data) && data.length > 0) {
+          console.log('📋 ManagerBookingsPanel: Sample booking:', data[0]);
+        }
+        
+        return data;
+      } catch (error) {
+        console.error('❌ ManagerBookingsPanel: Fetch error:', error);
+        throw error;
       }
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
-      }
-      const text = await response.text();
-      return text ? JSON.parse(text) : [];
     },
     // Real-time polling - check frequently for new bookings or changes
     refetchInterval: (data) => {
