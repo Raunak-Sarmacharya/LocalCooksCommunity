@@ -3551,16 +3551,13 @@ app.get('/api/init-db', async (req, res) => {
 // Serve uploaded document files - Works with R2 URLs and local files
 app.get("/api/files/documents/:filename", async (req, res) => {
   try {
-    // Check if user is authenticated
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    // Convert Firebase UID to integer user ID
-    const user = await getUser(rawUserId);
+    // Check if user is authenticated (supports both Firebase Bearer token and session/x-user-id)
+    const user = await getAuthenticatedUser(req);
     if (!user) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({ 
+        error: "Not authenticated",
+        message: "Authentication required. Please provide a valid Firebase token or session." 
+      });
     }
 
     const filename = req.params.filename;
@@ -3568,18 +3565,33 @@ app.get("/api/files/documents/:filename", async (req, res) => {
 
     // In production, files are in R2 - need to find the file URL from database
     if (isProduction) {
-      // Try to find the file URL in applications table
+      // Try to find the file URL in applications table or chef_kitchen_applications table
       if (pool) {
-        const result = await pool.query(`
+        // First check chef_kitchen_applications (for kitchen applications)
+        let result = await pool.query(`
           SELECT 
-            id, user_id, 
+            id, chef_id as user_id, 
             food_safety_license_url, 
             food_establishment_cert_url
-          FROM applications 
+          FROM chef_kitchen_applications 
           WHERE food_safety_license_url LIKE $1 
              OR food_establishment_cert_url LIKE $1
           LIMIT 1
         `, [`%${filename}%`]);
+
+        // If not found, check applications table (for platform applications)
+        if (result.rows.length === 0) {
+          result = await pool.query(`
+            SELECT 
+              id, user_id, 
+              food_safety_license_url, 
+              food_establishment_cert_url
+            FROM applications 
+            WHERE food_safety_license_url LIKE $1 
+               OR food_establishment_cert_url LIKE $1
+            LIMIT 1
+          `, [`%${filename}%`]);
+        }
 
         if (result.rows.length > 0) {
           const application = result.rows[0];
@@ -3588,13 +3600,34 @@ app.get("/api/files/documents/:filename", async (req, res) => {
             : application.food_establishment_cert_url;
 
           // Access control: Allow if user owns the application, is admin, or is manager
-          const canAccess = 
+          // For chef_kitchen_applications, managers should be able to view documents for applications at their locations
+          let canAccess = 
             application.user_id === user.id || 
             user.role === 'admin' || 
             user.role === 'manager';
 
+          // Additional check: If manager, verify they manage the location for chef_kitchen_applications
+          if (user.role === 'manager' && !canAccess) {
+            // Check if this is a chef_kitchen_application and manager owns the location
+            const locationCheck = await pool.query(`
+              SELECT l.id, l.manager_id
+              FROM chef_kitchen_applications cka
+              JOIN locations l ON l.id = cka.location_id
+              WHERE (cka.food_safety_license_url LIKE $1 OR cka.food_establishment_cert_url LIKE $1)
+                AND l.manager_id = $2
+              LIMIT 1
+            `, [`%${filename}%`, user.id]);
+            
+            if (locationCheck.rows.length > 0) {
+              canAccess = true;
+            }
+          }
+
           if (!canAccess) {
-            return res.status(403).json({ message: "Access denied" });
+            return res.status(403).json({ 
+              error: "Access denied",
+              message: "You don't have permission to access this file" 
+            });
           }
 
           if (fileUrl) {
@@ -3838,21 +3871,21 @@ app.get("/api/files/kitchen-license/:locationId", async (req, res) => {
 // Proxy endpoint to generate presigned URLs for R2 files (for managers and admins)
 app.get("/api/files/r2-presigned", async (req, res) => {
   try {
-    // Check if user is authenticated
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    // Convert Firebase UID to integer user ID
-    const user = await getUser(rawUserId);
+    // Check if user is authenticated (supports both Firebase Bearer token and session/x-user-id)
+    const user = await getAuthenticatedUser(req);
     if (!user) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({ 
+        error: "Not authenticated",
+        message: "Authentication required. Please provide a valid Firebase token or session." 
+      });
     }
 
     // Only managers and admins can access files
     if (user.role !== 'admin' && user.role !== 'manager') {
-      return res.status(403).json({ message: "Manager or admin access required" });
+      return res.status(403).json({ 
+        error: "Access denied",
+        message: "Manager or admin access required" 
+      });
     }
 
     const fileUrl = req.query.url;
