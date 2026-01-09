@@ -439,27 +439,80 @@ export default function BookingControlPanel({
   const handleDownloadInvoice = async (bookingId: number, bookingDate: string) => {
     setDownloadingInvoiceId(bookingId);
     try {
+      console.log('Starting invoice download for booking:', bookingId);
+      
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;
+      
       if (!currentUser) {
+        console.error('No current user found for invoice download');
         toast({
           title: "Authentication Required",
           description: "Please log in to download invoice",
           variant: "destructive",
         });
+        setDownloadingInvoiceId(null);
         return;
       }
 
+      console.log('Getting Firebase token for user:', currentUser.uid);
       const token = await currentUser.getIdToken();
+      
+      if (!token) {
+        console.error('Failed to get Firebase token');
+        toast({
+          title: "Authentication Error",
+          description: "Failed to get authentication token. Please try again.",
+          variant: "destructive",
+        });
+        setDownloadingInvoiceId(null);
+        return;
+      }
+
+      console.log('Fetching invoice from:', `/api/bookings/${bookingId}/invoice`);
       const response = await fetch(`/api/bookings/${bookingId}/invoice`, {
         credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
+      
+      console.log('Invoice response status:', response.status, response.statusText);
 
       if (!response.ok) {
-        throw new Error('Failed to generate invoice');
+        // Try to get error message from response
+        let errorMessage = 'Failed to generate invoice';
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+          } else {
+            const text = await response.text();
+            if (text) {
+              errorMessage = text;
+            } else {
+              errorMessage = `Server returned ${response.status} ${response.statusText}`;
+            }
+          }
+        } catch (parseError) {
+          errorMessage = `Server returned ${response.status} ${response.statusText}`;
+        }
+        
+        console.error('Invoice download failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorMessage,
+        });
+        
+        throw new Error(errorMessage);
+      }
+
+      // Check if response is actually a PDF
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/pdf')) {
+        console.error('Unexpected content type:', contentType);
+        throw new Error('Server did not return a PDF file');
       }
 
       // Handle PDF download
