@@ -172,7 +172,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           {/* Quick actions */}
           <div className="space-y-2">
             {hasAnyApproved && (
-              <Link href="/book-kitchen">
+              <Link href="/compare-kitchens">
                 <Button className="w-full" size="sm">
                   <Calendar className="mr-2 h-4 w-4" />
                   Book a Kitchen
