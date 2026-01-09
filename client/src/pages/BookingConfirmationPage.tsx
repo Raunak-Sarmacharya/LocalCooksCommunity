@@ -53,6 +53,7 @@ export default function BookingConfirmationPage() {
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [isCreatingPaymentIntent, setIsCreatingPaymentIntent] = useState(false);
   const [paymentCurrency, setPaymentCurrency] = useState<string>('CAD');
+  const [isProcessingBooking, setIsProcessingBooking] = useState(false);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
     serviceFee: number;
@@ -322,7 +323,11 @@ export default function BookingConfirmationPage() {
 
   // Handle payment success
   const handlePaymentSuccess = async (paymentIntentId: string, paymentMethodId: string) => {
-    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0 || isProcessingBooking) {
+      return;
+    }
+
+    setIsProcessingBooking(true);
 
     const sortedSlots = [...selectedSlots].sort();
     const startTime = sortedSlots[0];

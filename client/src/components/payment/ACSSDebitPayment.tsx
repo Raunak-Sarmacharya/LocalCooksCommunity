@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { loadStripe, StripeElementsOptions } from '@stripe/stripe-js';
 import {
   Elements,
@@ -29,6 +29,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const hasCalledSuccessRef = useRef(false);
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     if (elements) {
@@ -39,50 +41,129 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!stripe || !elements) {
+    if (!stripe || !elements || isProcessing || isSubmittingRef.current || hasCalledSuccessRef.current) {
       return;
     }
 
+    // Check payment status first to avoid confirming already confirmed payments
+    try {
+      const retrieved = await stripe.retrievePaymentIntent(clientSecret);
+      if (retrieved.paymentIntent) {
+        const pi = retrieved.paymentIntent;
+        if (pi.status === 'succeeded' || pi.status === 'processing') {
+          // Payment already confirmed
+          let paymentMethodId = '';
+          if (typeof pi.payment_method === 'string') {
+            paymentMethodId = pi.payment_method;
+          } else if (pi.payment_method && typeof pi.payment_method === 'object') {
+            paymentMethodId = (pi.payment_method as any).id || '';
+          }
+
+          if (!hasCalledSuccessRef.current && paymentMethodId) {
+            hasCalledSuccessRef.current = true;
+            console.log('Payment already confirmed:', pi.id);
+            onSuccess(pi.id, paymentMethodId);
+          }
+          return;
+        }
+      }
+    } catch (checkError) {
+      console.error('Error checking payment status:', checkError);
+      // Continue with confirmation if check fails
+    }
+
+    isSubmittingRef.current = true;
     setIsProcessing(true);
     setError(null);
 
     try {
-      // Submit payment
+      // For ACSS debit, confirmPayment will collect the mandate and automatically confirm
       const { error: submitError, paymentIntent } = await stripe.confirmPayment({
         elements,
         clientSecret,
         confirmParams: {
           return_url: window.location.href,
         },
-        redirect: 'if_required', // Don't redirect, handle in-app
+        redirect: 'if_required', // Only redirect if required (3DS, etc.)
       });
 
       if (submitError) {
         setError(submitError.message || 'Payment failed');
         onError(submitError.message || 'Payment failed');
+        isSubmittingRef.current = false;
         setIsProcessing(false);
         return;
       }
 
+      // Check payment intent status
       if (paymentIntent) {
+        // For ACSS debit, payment might be processing or succeeded
         if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
-          // Get payment method from payment intent
-          const paymentMethodId = paymentIntent.payment_method as string;
-          onSuccess(paymentIntent.id, paymentMethodId);
+          // Get payment method ID - can be string or object
+          let paymentMethodId = '';
+          if (typeof paymentIntent.payment_method === 'string') {
+            paymentMethodId = paymentIntent.payment_method;
+          } else if (paymentIntent.payment_method && typeof paymentIntent.payment_method === 'object') {
+            paymentMethodId = (paymentIntent.payment_method as any).id || '';
+          }
+
+          // Only call onSuccess once
+          if (!hasCalledSuccessRef.current && paymentMethodId) {
+            hasCalledSuccessRef.current = true;
+            console.log('Payment confirmed successfully:', paymentIntent.id);
+            onSuccess(paymentIntent.id, paymentMethodId);
+            return; // Exit early to prevent further processing
+          }
+        } else if (paymentIntent.status === 'requires_payment_method') {
+          // Still needs payment method - mandate collection might have failed
+          setError('Please complete the bank account information and try again.');
+          onError('Payment method collection incomplete');
+        } else if (paymentIntent.status === 'canceled') {
+          setError('Payment was canceled');
+          onError('Payment was canceled');
         } else {
           const errorMsg = `Payment status: ${paymentIntent.status}`;
           setError(errorMsg);
           onError(errorMsg);
         }
       } else {
-        setError('Payment confirmation failed');
-        onError('Payment confirmation failed');
+        // If no paymentIntent returned, retrieve it to check status
+        try {
+          const retrieved = await stripe.retrievePaymentIntent(clientSecret);
+          if (retrieved.paymentIntent) {
+            const pi = retrieved.paymentIntent;
+            if (pi.status === 'succeeded' || pi.status === 'processing') {
+              let paymentMethodId = '';
+              if (typeof pi.payment_method === 'string') {
+                paymentMethodId = pi.payment_method;
+              } else if (pi.payment_method && typeof pi.payment_method === 'object') {
+                paymentMethodId = (pi.payment_method as any).id || '';
+              }
+
+              if (!hasCalledSuccessRef.current && paymentMethodId) {
+                hasCalledSuccessRef.current = true;
+                console.log('Payment confirmed successfully (retrieved):', pi.id);
+                onSuccess(pi.id, paymentMethodId);
+                return;
+              }
+            } else {
+              setError(`Payment status: ${pi.status}`);
+              onError(`Payment status: ${pi.status}`);
+            }
+          }
+        } catch (retrieveError: any) {
+          console.error('Error retrieving payment intent:', retrieveError);
+          setError('Unable to verify payment status. Please check your booking status.');
+          onError('Unable to verify payment status');
+        }
       }
     } catch (err: any) {
+      console.error('Payment submission error:', err);
       const errorMsg = err.message || 'An unexpected error occurred';
       setError(errorMsg);
       onError(errorMsg);
     } finally {
+      isSubmittingRef.current = false;
       setIsProcessing(false);
     }
   };
@@ -135,14 +216,19 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
 
       <Button
         type="submit"
-        disabled={!stripe || !elements || isProcessing || !isReady}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+        disabled={!stripe || !elements || isProcessing || !isReady || hasCalledSuccessRef.current}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
         size="lg"
       >
         {isProcessing ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Processing Payment...
+          </>
+        ) : hasCalledSuccessRef.current ? (
+          <>
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            Payment Confirmed
           </>
         ) : (
           <>
@@ -199,8 +285,11 @@ export default function ACSSDebitPayment({ clientSecret, amount, currency, onSuc
     },
   };
 
+  // Use useMemo to prevent Elements from re-initializing on every render
+  const elementsOptions = useMemo(() => options, [clientSecret]);
+
   return (
-    <Elements stripe={stripePromise} options={options}>
+    <Elements stripe={stripePromise} options={elementsOptions} key={clientSecret}>
       <PaymentForm
         clientSecret={clientSecret}
         amount={amount}
