@@ -18,6 +18,10 @@ import {
   Filter,
   Plus,
   Clock,
+  Wrench,
+  Package,
+  Snowflake,
+  Info,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Header from "@/components/layout/Header";
@@ -28,6 +32,34 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
+
+interface EquipmentListing {
+  id: number;
+  category: string;
+  equipmentType: string;
+  brand?: string;
+  model?: string;
+  availabilityType: 'included' | 'rental';
+  hourlyRate?: number;
+  dailyRate?: number;
+  currency?: string;
+}
+
+interface StorageListing {
+  id: number;
+  storageType: string;
+  name: string;
+  description?: string;
+  basePrice?: number;
+  pricePerCubicFoot?: number;
+  pricingModel: string;
+  dimensionsLength?: number;
+  dimensionsWidth?: number;
+  dimensionsHeight?: number;
+  totalVolume?: number;
+  climateControl?: boolean;
+  currency?: string;
+}
 
 interface Kitchen {
   id: number;
@@ -45,6 +77,11 @@ interface Kitchen {
   amenities?: string[];
   hourlyRate?: number;
   currency?: string;
+  equipment?: {
+    included: EquipmentListing[];
+    rental: EquipmentListing[];
+  };
+  storage?: StorageListing[];
 }
 
 interface LocationWithKitchens {
@@ -181,14 +218,17 @@ export default function KitchenComparisonPage() {
         .filter((loc) => !appliedLocationIds.has(loc.id))
         .map((loc) => loc.id);
       
-      return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
+      const filteredKitchens = (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         return notAppliedLocationIds.includes(locationId);
-      }).map((k: any) => {
+      });
+
+      // Fetch equipment and storage for each kitchen
+      const kitchenPromises = filteredKitchens.map(async (k: any) => {
         const locationId = k.locationId ?? k.location_id;
         const location = publicLocations.find((loc) => loc.id === locationId);
         
-        return {
+        const baseKitchen = {
           id: k.id,
           name: k.name,
           description: k.description,
@@ -203,43 +243,194 @@ export default function KitchenComparisonPage() {
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
         };
+
+        // Fetch equipment listings (public info, no auth needed for preview)
+        let equipment = { included: [], rental: [] };
+        try {
+          const equipmentResponse = await fetch(`/api/chef/kitchens/${k.id}/equipment-listings`, {
+            credentials: "include",
+            headers,
+          });
+          if (equipmentResponse.ok) {
+            const equipmentData = await equipmentResponse.json();
+            equipment = {
+              included: (equipmentData.included || []).map((e: any) => ({
+                id: e.id,
+                category: e.category,
+                equipmentType: e.equipmentType,
+                brand: e.brand,
+                model: e.model,
+                availabilityType: e.availabilityType,
+                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                currency: e.currency || "CAD",
+              })),
+              rental: (equipmentData.rental || []).map((e: any) => ({
+                id: e.id,
+                category: e.category,
+                equipmentType: e.equipmentType,
+                brand: e.brand,
+                model: e.model,
+                availabilityType: e.availabilityType,
+                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                currency: e.currency || "CAD",
+              })),
+            };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch equipment for kitchen ${k.id}:`, error);
+        }
+
+        // Fetch storage listings
+        let storage: StorageListing[] = [];
+        try {
+          const storageResponse = await fetch(`/api/chef/kitchens/${k.id}/storage-listings`, {
+            credentials: "include",
+            headers,
+          });
+          if (storageResponse.ok) {
+            const storageData = await storageResponse.json();
+            storage = (storageData || []).map((s: any) => ({
+              id: s.id,
+              storageType: s.storageType,
+              name: s.name,
+              description: s.description,
+              basePrice: s.basePrice,
+              pricePerCubicFoot: s.pricePerCubicFoot,
+              pricingModel: s.pricingModel,
+              dimensionsLength: s.dimensionsLength,
+              dimensionsWidth: s.dimensionsWidth,
+              dimensionsHeight: s.dimensionsHeight,
+              totalVolume: s.totalVolume,
+              climateControl: s.climateControl,
+              currency: s.currency || "CAD",
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to fetch storage for kitchen ${k.id}:`, error);
+        }
+
+        return {
+          ...baseKitchen,
+          equipment,
+          storage,
+        };
       });
+
+      return Promise.all(kitchenPromises);
     },
     enabled: !!publicLocations && publicLocations.length > 0,
     staleTime: 60000,
   });
 
-  // Fetch pricing for approved kitchens
+  // Fetch pricing, equipment, and storage for approved kitchens
   const { data: approvedKitchensWithPricing, isLoading: pricingLoading } = useQuery<Kitchen[]>({
-    queryKey: ["/api/chef/kitchens/pricing", approvedKitchens],
+    queryKey: ["/api/chef/kitchens/pricing-and-addons", approvedKitchens],
     queryFn: async () => {
       if (!approvedKitchens || approvedKitchens.length === 0) return [];
 
       const headers = await getAuthHeaders();
       
-      // Fetch pricing for all kitchens in parallel
-      const pricingPromises = approvedKitchens.map(async (kitchen) => {
+      // Fetch pricing, equipment, and storage for all kitchens in parallel
+      const kitchenPromises = approvedKitchens.map(async (kitchen) => {
         try {
-          const response = await fetch(`/api/chef/kitchens/${kitchen.id}/pricing`, {
+          // Fetch pricing
+          const pricingResponse = await fetch(`/api/chef/kitchens/${kitchen.id}/pricing`, {
             credentials: "include",
             headers,
           });
 
-          if (response.ok) {
-            const pricing = await response.json();
-            return {
-              ...kitchen,
-              hourlyRate: pricing.hourlyRate > 100 ? pricing.hourlyRate / 100 : pricing.hourlyRate,
-              currency: pricing.currency || "CAD",
-            };
+          let hourlyRate = kitchen.hourlyRate;
+          let currency = kitchen.currency || "CAD";
+          
+          if (pricingResponse.ok) {
+            const pricing = await pricingResponse.json();
+            hourlyRate = pricing.hourlyRate > 100 ? pricing.hourlyRate / 100 : pricing.hourlyRate;
+            currency = pricing.currency || "CAD";
           }
+
+          // Fetch equipment listings
+          let equipment = { included: [], rental: [] };
+          try {
+            const equipmentResponse = await fetch(`/api/chef/kitchens/${kitchen.id}/equipment-listings`, {
+              credentials: "include",
+              headers,
+            });
+            if (equipmentResponse.ok) {
+              const equipmentData = await equipmentResponse.json();
+              equipment = {
+                included: (equipmentData.included || []).map((e: any) => ({
+                  id: e.id,
+                  category: e.category,
+                  equipmentType: e.equipmentType,
+                  brand: e.brand,
+                  model: e.model,
+                  availabilityType: e.availabilityType,
+                  hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                  dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                  currency: e.currency || currency,
+                })),
+                rental: (equipmentData.rental || []).map((e: any) => ({
+                  id: e.id,
+                  category: e.category,
+                  equipmentType: e.equipmentType,
+                  brand: e.brand,
+                  model: e.model,
+                  availabilityType: e.availabilityType,
+                  hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                  dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                  currency: e.currency || currency,
+                })),
+              };
+            }
+          } catch (error) {
+            console.error(`Failed to fetch equipment for kitchen ${kitchen.id}:`, error);
+          }
+
+          // Fetch storage listings
+          let storage: StorageListing[] = [];
+          try {
+            const storageResponse = await fetch(`/api/chef/kitchens/${kitchen.id}/storage-listings`, {
+              credentials: "include",
+              headers,
+            });
+            if (storageResponse.ok) {
+              const storageData = await storageResponse.json();
+              storage = (storageData || []).map((s: any) => ({
+                id: s.id,
+                storageType: s.storageType,
+                name: s.name,
+                description: s.description,
+                basePrice: s.basePrice,
+                pricePerCubicFoot: s.pricePerCubicFoot,
+                pricingModel: s.pricingModel,
+                dimensionsLength: s.dimensionsLength,
+                dimensionsWidth: s.dimensionsWidth,
+                dimensionsHeight: s.dimensionsHeight,
+                totalVolume: s.totalVolume,
+                climateControl: s.climateControl,
+                currency: s.currency || currency,
+              }));
+            }
+          } catch (error) {
+            console.error(`Failed to fetch storage for kitchen ${kitchen.id}:`, error);
+          }
+
+          return {
+            ...kitchen,
+            hourlyRate,
+            currency,
+            equipment,
+            storage,
+          };
         } catch (error) {
-          console.error(`Failed to fetch pricing for kitchen ${kitchen.id}:`, error);
+          console.error(`Failed to fetch data for kitchen ${kitchen.id}:`, error);
+          return kitchen;
         }
-        return kitchen;
       });
 
-      return Promise.all(pricingPromises);
+      return Promise.all(kitchenPromises);
     },
     enabled: !!approvedKitchens && approvedKitchens.length > 0,
     staleTime: 60000,
@@ -563,6 +754,114 @@ export default function KitchenComparisonPage() {
                                 </div>
                               </div>
                             )}
+
+                            {/* Equipment Information */}
+                            {kitchen.equipment && (
+                              <div className="mb-3 space-y-2">
+                                {kitchen.equipment.included && kitchen.equipment.included.length > 0 && (
+                                  <div className="bg-green-50 border border-green-200 rounded p-2">
+                                    <div className="flex items-center gap-1 mb-1">
+                                      <Wrench className="h-3 w-3 text-green-600" />
+                                      <p className="text-xs font-medium text-green-800">
+                                        Included Equipment ({kitchen.equipment.included.length})
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {kitchen.equipment.included.slice(0, 2).map((eq, idx) => (
+                                        <Badge
+                                          key={idx}
+                                          variant="outline"
+                                          className="text-xs bg-white border-green-300 text-green-700"
+                                        >
+                                          {eq.equipmentType}
+                                        </Badge>
+                                      ))}
+                                      {kitchen.equipment.included.length > 2 && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs bg-white border-green-300 text-green-700"
+                                        >
+                                          +{kitchen.equipment.included.length - 2} more
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                {kitchen.equipment.rental && kitchen.equipment.rental.length > 0 && (
+                                  <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                                    <div className="flex items-center gap-1 mb-1">
+                                      <Wrench className="h-3 w-3 text-blue-600" />
+                                      <p className="text-xs font-medium text-blue-800">
+                                        Rental Equipment ({kitchen.equipment.rental.length})
+                                      </p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      {kitchen.equipment.rental.slice(0, 2).map((eq, idx) => (
+                                        <div key={idx} className="text-xs text-blue-700">
+                                          <span className="font-medium">{eq.equipmentType}</span>
+                                          {eq.hourlyRate && (
+                                            <span className="ml-1 text-blue-600">
+                                              ${eq.hourlyRate.toFixed(2)}/hr
+                                            </span>
+                                          )}
+                                          {eq.dailyRate && !eq.hourlyRate && (
+                                            <span className="ml-1 text-blue-600">
+                                              ${eq.dailyRate.toFixed(2)}/day
+                                            </span>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {kitchen.equipment.rental.length > 2 && (
+                                        <p className="text-xs text-blue-600 italic">
+                                          +{kitchen.equipment.rental.length - 2} more available
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Storage Information */}
+                            {kitchen.storage && kitchen.storage.length > 0 && (
+                              <div className="mb-3 bg-purple-50 border border-purple-200 rounded p-2">
+                                <div className="flex items-center gap-1 mb-1">
+                                  <Package className="h-3 w-3 text-purple-600" />
+                                  <p className="text-xs font-medium text-purple-800">
+                                    Storage Available ({kitchen.storage.length})
+                                  </p>
+                                </div>
+                                <div className="space-y-1">
+                                  {kitchen.storage.slice(0, 2).map((storage, idx) => (
+                                    <div key={idx} className="text-xs text-purple-700">
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-medium">{storage.name || storage.storageType}</span>
+                                        {storage.basePrice && (
+                                          <span className="text-purple-600">
+                                            ${storage.basePrice.toFixed(2)}
+                                            {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
+                                              <span className="text-xs"> + ${storage.pricePerCubicFoot.toFixed(2)}/ft³</span>
+                                            )}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {storage.climateControl && (
+                                        <div className="flex items-center gap-1 mt-0.5">
+                                          <Snowflake className="h-2.5 w-2.5 text-purple-500" />
+                                          <span className="text-purple-600">Climate Controlled</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {kitchen.storage.length > 2 && (
+                                    <p className="text-xs text-purple-600 italic">
+                                      +{kitchen.storage.length - 2} more storage options
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
                             <div className="flex gap-2 mt-4">
                               <Button
                                 size="sm"
@@ -694,6 +993,114 @@ export default function KitchenComparisonPage() {
                                       </div>
                                     </div>
                                   )}
+
+                                  {/* Equipment Information */}
+                                  {kitchen.equipment && (
+                                    <div className="mb-3 space-y-2">
+                                      {kitchen.equipment.included && kitchen.equipment.included.length > 0 && (
+                                        <div className="bg-green-50 border border-green-200 rounded p-2">
+                                          <div className="flex items-center gap-1 mb-1">
+                                            <Wrench className="h-3 w-3 text-green-600" />
+                                            <p className="text-xs font-medium text-green-800">
+                                              Included Equipment ({kitchen.equipment.included.length})
+                                            </p>
+                                          </div>
+                                          <div className="flex flex-wrap gap-1">
+                                            {kitchen.equipment.included.slice(0, 2).map((eq, idx) => (
+                                              <Badge
+                                                key={idx}
+                                                variant="outline"
+                                                className="text-xs bg-white border-green-300 text-green-700"
+                                              >
+                                                {eq.equipmentType}
+                                              </Badge>
+                                            ))}
+                                            {kitchen.equipment.included.length > 2 && (
+                                              <Badge
+                                                variant="outline"
+                                                className="text-xs bg-white border-green-300 text-green-700"
+                                              >
+                                                +{kitchen.equipment.included.length - 2} more
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {kitchen.equipment.rental && kitchen.equipment.rental.length > 0 && (
+                                        <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                                          <div className="flex items-center gap-1 mb-1">
+                                            <Wrench className="h-3 w-3 text-blue-600" />
+                                            <p className="text-xs font-medium text-blue-800">
+                                              Rental Equipment ({kitchen.equipment.rental.length})
+                                            </p>
+                                          </div>
+                                          <div className="space-y-1">
+                                            {kitchen.equipment.rental.slice(0, 2).map((eq, idx) => (
+                                              <div key={idx} className="text-xs text-blue-700">
+                                                <span className="font-medium">{eq.equipmentType}</span>
+                                                {eq.hourlyRate && (
+                                                  <span className="ml-1 text-blue-600">
+                                                    ${eq.hourlyRate.toFixed(2)}/hr
+                                                  </span>
+                                                )}
+                                                {eq.dailyRate && !eq.hourlyRate && (
+                                                  <span className="ml-1 text-blue-600">
+                                                    ${eq.dailyRate.toFixed(2)}/day
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ))}
+                                            {kitchen.equipment.rental.length > 2 && (
+                                              <p className="text-xs text-blue-600 italic">
+                                                +{kitchen.equipment.rental.length - 2} more available
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Storage Information */}
+                                  {kitchen.storage && kitchen.storage.length > 0 && (
+                                    <div className="mb-3 bg-purple-50 border border-purple-200 rounded p-2">
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <Package className="h-3 w-3 text-purple-600" />
+                                        <p className="text-xs font-medium text-purple-800">
+                                          Storage Available ({kitchen.storage.length})
+                                        </p>
+                                      </div>
+                                      <div className="space-y-1">
+                                        {kitchen.storage.slice(0, 2).map((storage, idx) => (
+                                          <div key={idx} className="text-xs text-purple-700">
+                                            <div className="flex items-center justify-between">
+                                              <span className="font-medium">{storage.name || storage.storageType}</span>
+                                              {storage.basePrice && (
+                                                <span className="text-purple-600">
+                                                  ${storage.basePrice.toFixed(2)}
+                                                  {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
+                                                    <span className="text-xs"> + ${storage.pricePerCubicFoot.toFixed(2)}/ft³</span>
+                                                  )}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {storage.climateControl && (
+                                              <div className="flex items-center gap-1 mt-0.5">
+                                                <Snowflake className="h-2.5 w-2.5 text-purple-500" />
+                                                <span className="text-purple-600">Climate Controlled</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ))}
+                                        {kitchen.storage.length > 2 && (
+                                          <p className="text-xs text-purple-600 italic">
+                                            +{kitchen.storage.length - 2} more storage options
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
                                   <div className="flex gap-2 mt-4">
                                     <Button
                                       size="sm"
