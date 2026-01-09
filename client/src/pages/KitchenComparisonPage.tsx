@@ -23,7 +23,6 @@ import {
   Snowflake,
   Info,
 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -91,6 +90,7 @@ interface LocationWithKitchens {
   logoUrl?: string;
   brandImageUrl?: string;
   kitchens: Kitchen[];
+  isApproved?: boolean;
 }
 
 // Helper function to get Firebase auth headers
@@ -115,7 +115,6 @@ export default function KitchenComparisonPage() {
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLocationFilter, setSelectedLocationFilter] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState("available");
 
   // Scroll to top on mount
   useEffect(() => {
@@ -439,7 +438,7 @@ export default function KitchenComparisonPage() {
   const isLoading = locationsLoading || kitchensLoading || pricingLoading || authLoading || 
                     applicationsLoading || publicLocationsLoading || availableKitchensLoading;
 
-  // Group approved kitchens by location (for "Available to Book" tab)
+  // Group approved kitchens by location
   const approvedLocationsWithKitchens: LocationWithKitchens[] = approvedLocations.map((location) => {
     const locationKitchens = (approvedKitchensWithPricing || approvedKitchens || []).filter(
       (k) => k.locationId === location.id
@@ -452,11 +451,12 @@ export default function KitchenComparisonPage() {
       logoUrl: location.logoUrl || undefined,
       brandImageUrl: location.brandImageUrl || undefined,
       kitchens: locationKitchens,
+      isApproved: true,
     };
   }).filter((loc) => loc.kitchens.length > 0);
 
-  // Group available to apply kitchens by location (for "Available to Apply" tab)
-  const availableToApplyLocations = (publicLocations || [])
+  // Group available to apply kitchens by location
+  const availableToApplyLocations: (LocationWithKitchens & { isApproved: boolean })[] = (publicLocations || [])
     .filter((loc) => !appliedLocationIds.has(loc.id))
     .map((location) => {
       const locationKitchens = (availableToApplyKitchens || []).filter(
@@ -470,44 +470,46 @@ export default function KitchenComparisonPage() {
         logoUrl: location.logoUrl || undefined,
         brandImageUrl: location.brandImageUrl || undefined,
         kitchens: locationKitchens,
+        isApproved: false,
       };
     })
     .filter((loc) => loc.kitchens.length > 0);
 
-  // Filter function for locations
-  const filterLocations = (locations: LocationWithKitchens[]) => {
-    return locations
-      .filter((loc) => {
-        if (selectedLocationFilter && loc.id !== selectedLocationFilter) return false;
-        if (!searchQuery) return true;
-        
-        const query = searchQuery.toLowerCase();
-        return (
-          loc.name.toLowerCase().includes(query) ||
-          loc.address.toLowerCase().includes(query) ||
-          loc.kitchens.some(
-            (k) =>
-              k.name.toLowerCase().includes(query) ||
-              (k.description && k.description.toLowerCase().includes(query))
-          )
-        );
-      })
-      .map((loc) => ({
-        ...loc,
-        kitchens: loc.kitchens.filter((k) => {
-          if (!searchQuery) return true;
-          const query = searchQuery.toLowerCase();
-          return (
+  // Combine all locations into a single list
+  const allLocationsWithKitchens = [
+    ...approvedLocationsWithKitchens,
+    ...availableToApplyLocations,
+  ];
+
+  // Filter all locations
+  const filteredLocations = allLocationsWithKitchens
+    .filter((loc) => {
+      if (selectedLocationFilter && loc.id !== selectedLocationFilter) return false;
+      if (!searchQuery) return true;
+      
+      const query = searchQuery.toLowerCase();
+      return (
+        loc.name.toLowerCase().includes(query) ||
+        loc.address.toLowerCase().includes(query) ||
+        loc.kitchens.some(
+          (k) =>
             k.name.toLowerCase().includes(query) ||
             (k.description && k.description.toLowerCase().includes(query))
-          );
-        }),
-      }))
-      .filter((loc) => loc.kitchens.length > 0);
-  };
-
-  const filteredApprovedLocations = filterLocations(approvedLocationsWithKitchens);
-  const filteredAvailableToApplyLocations = filterLocations(availableToApplyLocations);
+        )
+      );
+    })
+    .map((loc) => ({
+      ...loc,
+      kitchens: loc.kitchens.filter((k) => {
+        if (!searchQuery) return true;
+        const query = searchQuery.toLowerCase();
+        return (
+          k.name.toLowerCase().includes(query) ||
+          (k.description && k.description.toLowerCase().includes(query))
+        );
+      }),
+    }))
+    .filter((loc) => loc.kitchens.length > 0);
 
   const handleBookKitchen = (locationId: number) => {
     navigate(`/book-kitchen?location=${locationId}`);
@@ -588,7 +590,7 @@ export default function KitchenComparisonPage() {
                 Compare Available Kitchens
               </h1>
               <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-                Browse and compare kitchens you can book now, or discover new kitchens to apply for.
+                Browse and compare all available kitchens. Approved kitchens can be booked immediately, while others require an application.
               </p>
             </motion.div>
           </FadeInSection>
@@ -629,79 +631,80 @@ export default function KitchenComparisonPage() {
             </Card>
           </FadeInSection>
 
-          {/* Tabs for Available to Book vs Available to Apply */}
+          {/* All Kitchen Listings */}
           <FadeInSection delay={2}>
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-6">
-                <TabsTrigger value="available" className="flex items-center gap-2">
-                  <Check className="h-4 w-4" />
-                  Available to Book ({filteredApprovedLocations.reduce((sum, loc) => sum + loc.kitchens.length, 0)})
-                </TabsTrigger>
-                <TabsTrigger value="apply" className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Available to Apply ({filteredAvailableToApplyLocations.reduce((sum, loc) => sum + loc.kitchens.length, 0)})
-                </TabsTrigger>
-              </TabsList>
-
-              {/* Available to Book Tab */}
-              <TabsContent value="available" className="space-y-8">
-                {filteredApprovedLocations.length === 0 ? (
-            <FadeInSection>
-              <Card>
-                <CardContent className="text-center py-12">
-                  <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600 font-medium">
-                    {searchQuery || selectedLocationFilter
-                      ? "No kitchens match your search"
-                      : "No kitchens available"}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {searchQuery || selectedLocationFilter
-                      ? "Try adjusting your search or filters"
-                      : "Check back later for available kitchens"}
-                  </p>
-                </CardContent>
-              </Card>
-            </FadeInSection>
-                ) : (
-                  <div className="space-y-8">
-                    {filteredApprovedLocations.map((location) => (
-                <FadeInSection key={location.id}>
-                  <Card className="overflow-hidden">
-                    <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-4 flex-1">
-                          {location.brandImageUrl ? (
-                            <img
-                              src={location.brandImageUrl}
-                              alt={location.name}
-                              className="w-16 h-16 rounded-lg object-cover"
-                            />
-                          ) : location.logoUrl ? (
-                            <img
-                              src={location.logoUrl}
-                              alt={location.name}
-                              className="w-16 h-16 rounded-lg object-cover"
-                            />
-                          ) : (
-                            <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                              <Building2 className="h-8 w-8 text-white" />
+            {filteredLocations.length === 0 ? (
+              <FadeInSection>
+                <Card>
+                  <CardContent className="text-center py-12">
+                    <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-600 font-medium">
+                      {searchQuery || selectedLocationFilter
+                        ? "No kitchens match your search"
+                        : "No kitchens available"}
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {searchQuery || selectedLocationFilter
+                        ? "Try adjusting your search or filters"
+                        : "Check back later for available kitchens"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </FadeInSection>
+            ) : (
+              <div className="space-y-8">
+                {filteredLocations.map((location) => (
+                  <FadeInSection key={location.id}>
+                    <Card className="overflow-hidden">
+                      <CardHeader className={`border-b ${
+                        location.isApproved 
+                          ? "bg-gradient-to-r from-blue-50 to-indigo-50" 
+                          : "bg-gradient-to-r from-yellow-50 to-orange-50"
+                      }`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-4 flex-1">
+                            {location.brandImageUrl ? (
+                              <img
+                                src={location.brandImageUrl}
+                                alt={location.name}
+                                className="w-16 h-16 rounded-lg object-cover"
+                              />
+                            ) : location.logoUrl ? (
+                              <img
+                                src={location.logoUrl}
+                                alt={location.name}
+                                className="w-16 h-16 rounded-lg object-cover"
+                              />
+                            ) : (
+                              <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                location.isApproved
+                                  ? "bg-gradient-to-br from-blue-500 to-blue-600"
+                                  : "bg-gradient-to-br from-yellow-500 to-orange-600"
+                              }`}>
+                                <Building2 className="h-8 w-8 text-white" />
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <CardTitle className="text-xl mb-1">{location.name}</CardTitle>
+                              <CardDescription className="flex items-center gap-1 mt-1">
+                                <MapPin className="h-3.5 w-3.5" />
+                                {location.address}
+                              </CardDescription>
                             </div>
-                          )}
-                          <div className="flex-1">
-                            <CardTitle className="text-xl mb-1">{location.name}</CardTitle>
-                            <CardDescription className="flex items-center gap-1 mt-1">
-                              <MapPin className="h-3.5 w-3.5" />
-                              {location.address}
-                            </CardDescription>
                           </div>
+                          {location.isApproved ? (
+                            <Badge className="bg-green-100 text-green-800 border-green-200">
+                              <Check className="h-3 w-3 mr-1" />
+                              Approved
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Apply to Book
+                            </Badge>
+                          )}
                         </div>
-                        <Badge className="bg-green-100 text-green-800 border-green-200">
-                          <Check className="h-3 w-3 mr-1" />
-                          Approved
-                        </Badge>
-                      </div>
-                    </CardHeader>
+                      </CardHeader>
                     <CardContent className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {location.kitchens.map((kitchen) => (
@@ -709,7 +712,11 @@ export default function KitchenComparisonPage() {
                             key={kitchen.id}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all"
+                            className={`border-2 rounded-lg p-4 transition-all ${
+                              location.isApproved
+                                ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
+                                : "border-gray-200 hover:border-yellow-500 hover:shadow-md"
+                            }`}
                           >
                             {kitchen.imageUrl && (
                               <img
@@ -871,265 +878,35 @@ export default function KitchenComparisonPage() {
                               >
                                 View Details
                               </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => handleBookKitchen(location.id)}
-                                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                              >
-                                <Calendar className="mr-2 h-4 w-4" />
-                                Book Now
-                              </Button>
+                              {location.isApproved ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleBookKitchen(location.id)}
+                                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                >
+                                  <Calendar className="mr-2 h-4 w-4" />
+                                  Book Now
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleApplyKitchen(location.id)}
+                                  className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                                >
+                                  <Plus className="mr-2 h-4 w-4" />
+                                  Apply Now
+                                </Button>
+                              )}
                             </div>
                           </motion.div>
                         ))}
                       </div>
                     </CardContent>
-                      </Card>
-                    </FadeInSection>
-                  ))}
-                </div>
-                )}
-              </TabsContent>
-
-              {/* Available to Apply Tab */}
-              <TabsContent value="apply" className="space-y-8">
-                {filteredAvailableToApplyLocations.length === 0 ? (
-                  <FadeInSection>
-                    <Card>
-                      <CardContent className="text-center py-12">
-                        <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-gray-600 font-medium">
-                          {searchQuery || selectedLocationFilter
-                            ? "No kitchens match your search"
-                            : "No new kitchens available to apply"}
-                        </p>
-                        <p className="text-sm text-gray-500 mt-1">
-                          {searchQuery || selectedLocationFilter
-                            ? "Try adjusting your search or filters"
-                            : "You've applied to all available kitchens"}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </FadeInSection>
-                ) : (
-                  <div className="space-y-8">
-                    {filteredAvailableToApplyLocations.map((location) => (
-                      <FadeInSection key={location.id}>
-                        <Card className="overflow-hidden">
-                          <CardHeader className="bg-gradient-to-r from-yellow-50 to-orange-50 border-b">
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-start gap-4 flex-1">
-                                {location.brandImageUrl ? (
-                                  <img
-                                    src={location.brandImageUrl}
-                                    alt={location.name}
-                                    className="w-16 h-16 rounded-lg object-cover"
-                                  />
-                                ) : location.logoUrl ? (
-                                  <img
-                                    src={location.logoUrl}
-                                    alt={location.name}
-                                    className="w-16 h-16 rounded-lg object-cover"
-                                  />
-                                ) : (
-                                  <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center flex-shrink-0">
-                                    <Building2 className="h-8 w-8 text-white" />
-                                  </div>
-                                )}
-                                <div className="flex-1">
-                                  <CardTitle className="text-xl mb-1">{location.name}</CardTitle>
-                                  <CardDescription className="flex items-center gap-1 mt-1">
-                                    <MapPin className="h-3.5 w-3.5" />
-                                    {location.address}
-                                  </CardDescription>
-                                </div>
-                              </div>
-                              <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
-                                <Clock className="h-3 w-3 mr-1" />
-                                Apply to Book
-                              </Badge>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {location.kitchens.map((kitchen) => (
-                                <motion.div
-                                  key={kitchen.id}
-                                  initial={{ opacity: 0, y: 20 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="border-2 border-gray-200 rounded-lg p-4 hover:border-yellow-500 hover:shadow-md transition-all"
-                                >
-                                  {kitchen.imageUrl && (
-                                    <img
-                                      src={kitchen.imageUrl}
-                                      alt={kitchen.name}
-                                      className="w-full h-32 object-cover rounded-lg mb-3"
-                                    />
-                                  )}
-                                  <h3 className="font-semibold text-lg mb-2">{kitchen.name}</h3>
-                                  {kitchen.description && (
-                                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                                      {kitchen.description}
-                                    </p>
-                                  )}
-                                  {kitchen.amenities && kitchen.amenities.length > 0 && (
-                                    <div className="mb-3">
-                                      <p className="text-xs text-gray-500 mb-1">Amenities:</p>
-                                      <div className="flex flex-wrap gap-1">
-                                        {kitchen.amenities.slice(0, 3).map((amenity, idx) => (
-                                          <Badge
-                                            key={idx}
-                                            variant="outline"
-                                            className="text-xs"
-                                          >
-                                            {amenity}
-                                          </Badge>
-                                        ))}
-                                        {kitchen.amenities.length > 3 && (
-                                          <Badge variant="outline" className="text-xs">
-                                            +{kitchen.amenities.length - 3} more
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Equipment Information */}
-                                  {kitchen.equipment && (
-                                    <div className="mb-3 space-y-2">
-                                      {kitchen.equipment.included && kitchen.equipment.included.length > 0 && (
-                                        <div className="bg-green-50 border border-green-200 rounded p-2">
-                                          <div className="flex items-center gap-1 mb-1">
-                                            <Wrench className="h-3 w-3 text-green-600" />
-                                            <p className="text-xs font-medium text-green-800">
-                                              Included Equipment ({kitchen.equipment.included.length})
-                                            </p>
-                                          </div>
-                                          <div className="flex flex-wrap gap-1">
-                                            {kitchen.equipment.included.slice(0, 2).map((eq, idx) => (
-                                              <Badge
-                                                key={idx}
-                                                variant="outline"
-                                                className="text-xs bg-white border-green-300 text-green-700"
-                                              >
-                                                {eq.equipmentType}
-                                              </Badge>
-                                            ))}
-                                            {kitchen.equipment.included.length > 2 && (
-                                              <Badge
-                                                variant="outline"
-                                                className="text-xs bg-white border-green-300 text-green-700"
-                                              >
-                                                +{kitchen.equipment.included.length - 2} more
-                                              </Badge>
-                                            )}
-                                          </div>
-                                        </div>
-                                      )}
-                                      {kitchen.equipment.rental && kitchen.equipment.rental.length > 0 && (
-                                        <div className="bg-blue-50 border border-blue-200 rounded p-2">
-                                          <div className="flex items-center gap-1 mb-1">
-                                            <Wrench className="h-3 w-3 text-blue-600" />
-                                            <p className="text-xs font-medium text-blue-800">
-                                              Rental Equipment ({kitchen.equipment.rental.length})
-                                            </p>
-                                          </div>
-                                          <div className="space-y-1">
-                                            {kitchen.equipment.rental.slice(0, 2).map((eq, idx) => (
-                                              <div key={idx} className="text-xs text-blue-700">
-                                                <span className="font-medium">{eq.equipmentType}</span>
-                                                {eq.hourlyRate && (
-                                                  <span className="ml-1 text-blue-600">
-                                                    ${eq.hourlyRate.toFixed(2)}/hr
-                                                  </span>
-                                                )}
-                                                {eq.dailyRate && !eq.hourlyRate && (
-                                                  <span className="ml-1 text-blue-600">
-                                                    ${eq.dailyRate.toFixed(2)}/day
-                                                  </span>
-                                                )}
-                                              </div>
-                                            ))}
-                                            {kitchen.equipment.rental.length > 2 && (
-                                              <p className="text-xs text-blue-600 italic">
-                                                +{kitchen.equipment.rental.length - 2} more available
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* Storage Information */}
-                                  {kitchen.storage && kitchen.storage.length > 0 && (
-                                    <div className="mb-3 bg-purple-50 border border-purple-200 rounded p-2">
-                                      <div className="flex items-center gap-1 mb-1">
-                                        <Package className="h-3 w-3 text-purple-600" />
-                                        <p className="text-xs font-medium text-purple-800">
-                                          Storage Available ({kitchen.storage.length})
-                                        </p>
-                                      </div>
-                                      <div className="space-y-1">
-                                        {kitchen.storage.slice(0, 2).map((storage, idx) => (
-                                          <div key={idx} className="text-xs text-purple-700">
-                                            <div className="flex items-center justify-between">
-                                              <span className="font-medium">{storage.name || storage.storageType}</span>
-                                              {storage.basePrice && (
-                                                <span className="text-purple-600">
-                                                  ${storage.basePrice.toFixed(2)}
-                                                  {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
-                                                    <span className="text-xs"> + ${storage.pricePerCubicFoot.toFixed(2)}/ft³</span>
-                                                  )}
-                                                </span>
-                                              )}
-                                            </div>
-                                            {storage.climateControl && (
-                                              <div className="flex items-center gap-1 mt-0.5">
-                                                <Snowflake className="h-2.5 w-2.5 text-purple-500" />
-                                                <span className="text-purple-600">Climate Controlled</span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        ))}
-                                        {kitchen.storage.length > 2 && (
-                                          <p className="text-xs text-purple-600 italic">
-                                            +{kitchen.storage.length - 2} more storage options
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  <div className="flex gap-2 mt-4">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleViewDetails(location.id)}
-                                      className="flex-1"
-                                    >
-                                      View Details
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleApplyKitchen(location.id)}
-                                      className="flex-1 bg-yellow-600 hover:bg-yellow-700"
-                                    >
-                                      <Plus className="mr-2 h-4 w-4" />
-                                      Apply Now
-                                    </Button>
-                                  </div>
-                                </motion.div>
-                              ))}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </FadeInSection>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+                  </Card>
+                </FadeInSection>
+              ))}
+            </div>
+            )}
           </FadeInSection>
         </div>
       </main>
