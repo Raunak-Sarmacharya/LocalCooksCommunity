@@ -3,10 +3,12 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Building2, MapPin, Loader2, ArrowRight, Calendar, Lock, 
-  ChevronLeft, ChevronRight, Utensils, Sparkles, Check, ImageOff, FileText, Clock, XCircle
+  ChevronLeft, ChevronRight, Utensils, Sparkles, Check, ImageOff, FileText, Clock, XCircle,
+  Wrench, Package, Snowflake, DollarSign
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -23,6 +25,34 @@ interface PublicLocation {
   brandImageUrl?: string | null;
 }
 
+interface EquipmentListing {
+  id: number;
+  category: string;
+  equipmentType: string;
+  brand?: string;
+  model?: string;
+  availabilityType: 'included' | 'rental';
+  hourlyRate?: number;
+  dailyRate?: number;
+  currency?: string;
+}
+
+interface StorageListing {
+  id: number;
+  storageType: string;
+  name: string;
+  description?: string;
+  basePrice?: number;
+  pricePerCubicFoot?: number;
+  pricingModel: string;
+  dimensionsLength?: number;
+  dimensionsWidth?: number;
+  dimensionsHeight?: number;
+  totalVolume?: number;
+  climateControl?: boolean;
+  currency?: string;
+}
+
 interface PublicKitchen {
   id: number;
   name: string;
@@ -33,6 +63,11 @@ interface PublicKitchen {
   locationId: number;
   locationName?: string | null;
   locationAddress?: string | null;
+  equipment?: {
+    included: EquipmentListing[];
+    rental: EquipmentListing[];
+  };
+  storage?: StorageListing[];
 }
 
 // Helper functions for mini calendar
@@ -343,6 +378,12 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
   if (kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) {
     allImages.push(...kitchen.galleryImages.filter(img => img && typeof img === 'string'));
   }
+  
+  const hasEquipment = kitchen.equipment && (
+    (kitchen.equipment.included && kitchen.equipment.included.length > 0) ||
+    (kitchen.equipment.rental && kitchen.equipment.rental.length > 0)
+  );
+  const hasStorage = kitchen.storage && kitchen.storage.length > 0;
 
   return (
     <motion.div
@@ -387,6 +428,156 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
               </div>
             </div>
           )}
+
+          {/* Equipment Information */}
+          {hasEquipment && (
+            <div className="border-t border-gray-100 pt-4 sm:pt-5 space-y-3 sm:space-y-4">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                Equipment Available
+              </h3>
+              
+              {kitchen.equipment?.included && kitchen.equipment.included.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                    <Wrench className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+                    <h4 className="text-sm sm:text-base font-semibold text-green-800">
+                      Included Equipment ({kitchen.equipment.included.length})
+                    </h4>
+                    <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
+                      Free
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {kitchen.equipment.included.map((eq, idx) => (
+                      <Badge
+                        key={idx}
+                        variant="outline"
+                        className="text-xs sm:text-sm bg-white border-green-300 text-green-700"
+                      >
+                        {eq.equipmentType}
+                        {eq.brand && eq.model && (
+                          <span className="ml-1 text-green-600">
+                            ({eq.brand} {eq.model})
+                          </span>
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {kitchen.equipment?.rental && kitchen.equipment.rental.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
+                    <Wrench className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                    <h4 className="text-sm sm:text-base font-semibold text-blue-800">
+                      Rental Equipment ({kitchen.equipment.rental.length})
+                    </h4>
+                    <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
+                      Paid
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {kitchen.equipment.rental.map((eq, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-blue-200">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-blue-900">
+                            {eq.equipmentType}
+                            {eq.brand && eq.model && (
+                              <span className="ml-1 text-blue-700 text-xs">
+                                ({eq.brand} {eq.model})
+                              </span>
+                            )}
+                          </p>
+                          {eq.category && (
+                            <p className="text-xs text-blue-600 mt-0.5 capitalize">{eq.category}</p>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          {eq.hourlyRate && (
+                            <p className="text-sm font-semibold text-blue-700">
+                              ${eq.hourlyRate.toFixed(2)}/hr
+                            </p>
+                          )}
+                          {eq.dailyRate && !eq.hourlyRate && (
+                            <p className="text-sm font-semibold text-blue-700">
+                              ${eq.dailyRate.toFixed(2)}/day
+                            </p>
+                          )}
+                          {eq.currency && eq.currency !== 'CAD' && (
+                            <p className="text-xs text-blue-600">{eq.currency}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Storage Information */}
+          {hasStorage && (
+            <div className="border-t border-gray-100 pt-4 sm:pt-5">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                Storage Available
+              </h3>
+              <div className="space-y-3">
+                {kitchen.storage?.map((storage, idx) => (
+                  <div key={idx} className="bg-purple-50 border border-purple-200 rounded-lg p-3 sm:p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
+                          <h4 className="text-sm sm:text-base font-semibold text-purple-900">
+                            {storage.name || storage.storageType}
+                          </h4>
+                          {storage.climateControl && (
+                            <Badge className="bg-purple-100 text-purple-700 border-purple-300 text-xs">
+                              <Snowflake className="h-3 w-3 mr-1" />
+                              Climate Controlled
+                            </Badge>
+                          )}
+                        </div>
+                        {storage.description && (
+                          <p className="text-xs sm:text-sm text-purple-700 mt-1">{storage.description}</p>
+                        )}
+                        {(storage.dimensionsLength || storage.totalVolume) && (
+                          <div className="mt-2 text-xs text-purple-600">
+                            {storage.dimensionsLength && storage.dimensionsWidth && storage.dimensionsHeight && (
+                              <span>
+                                {storage.dimensionsLength}" × {storage.dimensionsWidth}" × {storage.dimensionsHeight}"
+                              </span>
+                            )}
+                            {storage.totalVolume && (
+                              <span className={storage.dimensionsLength ? " ml-2" : ""}>
+                                {storage.totalVolume} ft³
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {storage.basePrice && (
+                        <div className="text-right ml-4">
+                          <p className="text-sm sm:text-base font-semibold text-purple-700">
+                            ${storage.basePrice.toFixed(2)}
+                            {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
+                              <span className="text-xs ml-1">
+                                + ${storage.pricePerCubicFoot.toFixed(2)}/ft³
+                              </span>
+                            )}
+                          </p>
+                          {storage.currency && storage.currency !== 'CAD' && (
+                            <p className="text-xs text-purple-600">{storage.currency}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </motion.div>
@@ -402,6 +593,9 @@ export default function KitchenPreviewPage() {
   const locationId = locationIdMatch ? parseInt(locationIdMatch[1]) : null;
 
   const [selectedKitchen, setSelectedKitchen] = useState<PublicKitchen | null>(null);
+  const [kitchenEquipment, setKitchenEquipment] = useState<{ included: EquipmentListing[]; rental: EquipmentListing[] } | null>(null);
+  const [kitchenStorage, setKitchenStorage] = useState<StorageListing[] | null>(null);
+  const [isLoadingAddons, setIsLoadingAddons] = useState(false);
 
   // Check if chef has an approved application for this location
   // Only check if user is authenticated
@@ -443,6 +637,117 @@ export default function KitchenPreviewPage() {
       setSelectedKitchen(locationData.kitchens[0]);
     }
   }, [locationData?.kitchens, selectedKitchen]);
+
+  // Fetch equipment and storage when kitchen is selected
+  useEffect(() => {
+    const fetchKitchenAddons = async () => {
+      if (!selectedKitchen) {
+        setKitchenEquipment(null);
+        setKitchenStorage(null);
+        return;
+      }
+
+      setIsLoadingAddons(true);
+      try {
+        // Helper to get auth headers if authenticated
+        const getAuthHeaders = async () => {
+          if (!isAuthenticated) return {};
+          try {
+            const { auth } = await import("@/lib/firebase");
+            const currentUser = auth.currentUser;
+            if (currentUser) {
+              const token = await currentUser.getIdToken();
+              return { Authorization: `Bearer ${token}` };
+            }
+          } catch (error) {
+            console.error("Error getting Firebase token:", error);
+          }
+          return {};
+        };
+
+        const headers = await getAuthHeaders();
+
+        // Fetch equipment listings
+        try {
+          const equipmentResponse = await fetch(`/api/chef/kitchens/${selectedKitchen.id}/equipment-listings`, {
+            credentials: "include",
+            headers,
+          });
+          if (equipmentResponse.ok) {
+            const equipmentData = await equipmentResponse.json();
+            setKitchenEquipment({
+              included: (equipmentData.included || []).map((e: any) => ({
+                id: e.id,
+                category: e.category,
+                equipmentType: e.equipmentType,
+                brand: e.brand,
+                model: e.model,
+                availabilityType: e.availabilityType,
+                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                currency: e.currency || "CAD",
+              })),
+              rental: (equipmentData.rental || []).map((e: any) => ({
+                id: e.id,
+                category: e.category,
+                equipmentType: e.equipmentType,
+                brand: e.brand,
+                model: e.model,
+                availabilityType: e.availabilityType,
+                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                currency: e.currency || "CAD",
+              })),
+            });
+          } else {
+            setKitchenEquipment({ included: [], rental: [] });
+          }
+        } catch (error) {
+          console.error(`Failed to fetch equipment for kitchen ${selectedKitchen.id}:`, error);
+          setKitchenEquipment({ included: [], rental: [] });
+        }
+
+        // Fetch storage listings
+        try {
+          const storageResponse = await fetch(`/api/chef/kitchens/${selectedKitchen.id}/storage-listings`, {
+            credentials: "include",
+            headers,
+          });
+          if (storageResponse.ok) {
+            const storageData = await storageResponse.json();
+            setKitchenStorage((storageData || []).map((s: any) => ({
+              id: s.id,
+              storageType: s.storageType,
+              name: s.name,
+              description: s.description,
+              basePrice: s.basePrice,
+              pricePerCubicFoot: s.pricePerCubicFoot,
+              pricingModel: s.pricingModel,
+              dimensionsLength: s.dimensionsLength,
+              dimensionsWidth: s.dimensionsWidth,
+              dimensionsHeight: s.dimensionsHeight,
+              totalVolume: s.totalVolume,
+              climateControl: s.climateControl,
+              currency: s.currency || "CAD",
+            })));
+          } else {
+            setKitchenStorage([]);
+          }
+        } catch (error) {
+          console.error(`Failed to fetch storage for kitchen ${selectedKitchen.id}:`, error);
+          setKitchenStorage([]);
+        }
+      } catch (error) {
+        console.error('Error fetching kitchen addons:', error);
+        setKitchenEquipment({ included: [], rental: [] });
+        setKitchenStorage([]);
+      } finally {
+        setIsLoadingAddons(false);
+      }
+    };
+
+    fetchKitchenAddons();
+  }, [selectedKitchen, isAuthenticated]);
 
   const handleGetStarted = () => {
     if (isAuthenticated) {
@@ -669,7 +974,14 @@ export default function KitchenPreviewPage() {
             <div className="lg:col-span-9 order-1 lg:order-2">
               <AnimatePresence mode="wait">
                 {selectedKitchen ? (
-                  <KitchenDetailsSection key={selectedKitchen.id} kitchen={selectedKitchen} />
+                  <KitchenDetailsSection 
+                    key={selectedKitchen.id} 
+                    kitchen={{
+                      ...selectedKitchen,
+                      equipment: kitchenEquipment || undefined,
+                      storage: kitchenStorage || undefined,
+                    }} 
+                  />
                 ) : (
                   <motion.div
                     initial={{ opacity: 0 }}
