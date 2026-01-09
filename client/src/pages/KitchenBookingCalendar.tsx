@@ -1,5 +1,5 @@
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat } from "lucide-react";
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, Lock, FileText } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -270,37 +270,7 @@ export default function KitchenBookingCalendar() {
     return `${y}-${m}-${day}`;
   };
 
-  // Check application status and redirect if needed when kitchen is selected
-  // Use a ref to prevent multiple redirects
-  const hasRedirectedRef = useRef(false);
-  
-  useEffect(() => {
-    // Reset redirect flag when location changes
-    if (selectedLocationId) {
-      hasRedirectedRef.current = false;
-    } else {
-      hasRedirectedRef.current = false;
-    }
-  }, [selectedLocationId]);
-  
-  useEffect(() => {
-    if (selectedLocationId && !isLoadingApplication && !hasRedirectedRef.current) {
-      if (!hasApplication || !canBook) {
-        hasRedirectedRef.current = true;
-        // Redirect to application page
-        toast({
-          title: "Application Required",
-          description: hasApplication 
-            ? "Your application is pending approval. Please wait for manager approval before booking."
-            : "You must apply to this kitchen before booking. Redirecting to application page...",
-          variant: "destructive",
-        });
-        setLocation(`/apply-kitchen/${selectedLocationId}`);
-        // Clear selected kitchen to prevent further interaction
-        setSelectedKitchen(null);
-      }
-    }
-  }, [selectedLocationId, hasApplication, canBook, isLoadingApplication, setLocation, toast]);
+  // No redirect - show overlay instead
 
   // Load available slots when date changes
   useEffect(() => {
@@ -619,18 +589,9 @@ export default function KitchenBookingCalendar() {
     if (date < new Date(new Date().setHours(0, 0, 0, 0))) return; // Prevent past dates
     if (date.getMonth() !== currentMonth) return; // Only current month
     
-    // Check if chef has approved application before allowing date selection
-    if (selectedLocationId && !isLoadingApplication) {
-      if (!hasApplication || !canBook) {
-        toast({
-          title: "Application Required",
-          description: "You must apply to this kitchen and get manager approval before booking.",
-          variant: "destructive",
-        });
-        // Redirect to application page
-        setLocation(`/apply-kitchen/${selectedLocationId}`);
-        return;
-      }
+    // Only allow date selection if application is approved
+    if (selectedLocationId && (!hasApplication || !canBook)) {
+      return; // Overlay will handle the interaction
     }
     
     setSelectedDate(date);
@@ -1156,49 +1117,11 @@ export default function KitchenBookingCalendar() {
                     )}
 
                     {/* Step 2: Date Selection (Calendar) */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 relative">
                       <div className="flex items-center gap-2 mb-6">
                         <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-semibold">2</div>
                         <h2 className="text-xl font-bold text-gray-900">Choose a Date</h2>
                       </div>
-
-                      {/* Application Status Check */}
-                      {selectedLocationId && (
-                        <>
-                          {isLoadingApplication ? (
-                            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                              <div className="flex items-center gap-3">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                                <span className="text-blue-700">Checking application status...</span>
-                              </div>
-                            </div>
-                          ) : !hasApplication || !canBook ? (
-                            <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
-                              <div className="flex items-start gap-3">
-                                <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5" />
-                                <div className="flex-1">
-                                  <h4 className="font-semibold text-orange-900 mb-1">Application Required</h4>
-                                  <p className="text-sm text-orange-700 mb-3">
-                                    {!hasApplication 
-                                      ? "You must apply to this kitchen before booking. Please submit an application first."
-                                      : application?.status === 'inReview'
-                                      ? "Your application is pending manager review. Please wait for approval before booking."
-                                      : application?.status === 'rejected'
-                                      ? "Your application was rejected. You can re-apply with updated documents."
-                                      : "Your application is not approved. Please contact the location manager."}
-                                  </p>
-                                  <button
-                                    onClick={() => setLocation(`/apply-kitchen/${selectedLocationId}`)}
-                                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium transition-colors text-sm"
-                                  >
-                                    {!hasApplication ? "Apply to Kitchen" : "View Application"}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ) : null}
-                        </>
-                      )}
 
                       {/* Calendar Header */}
                       <div className="flex items-center justify-between mb-6">
@@ -1263,7 +1186,7 @@ export default function KitchenBookingCalendar() {
                               borderColor = 'border-blue-500 border-2';
                             }
 
-                            // Disable date selection if application is not approved
+                            // Disable date selection if application is not approved (overlay will handle interaction)
                             const canSelectDate = !selectedLocationId || (hasApplication && canBook && !isLoadingApplication);
                             const isDisabled = isPastDate || !isCurrent || !canSelectDate;
 
@@ -1278,7 +1201,6 @@ export default function KitchenBookingCalendar() {
                                   ${isDisabled ? 'opacity-40' : ''}
                                   relative
                                 `}
-                                title={!canSelectDate ? "Application approval required" : undefined}
                               >
                                 <span className="text-sm font-medium">{date.getDate()}</span>
                                 {isSelected && (
@@ -1309,6 +1231,46 @@ export default function KitchenBookingCalendar() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Overlay - Show if application is not approved */}
+                      {selectedLocationId && (!isLoadingApplication && (!hasApplication || !canBook)) && (
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
+                          <div className="text-center px-4 py-3 bg-white/95 rounded-xl shadow-lg border border-gray-200 mx-4 max-w-sm">
+                            <div className="w-10 h-10 mx-auto mb-2 bg-[#F51042]/10 rounded-full flex items-center justify-center">
+                              <Lock className="w-5 h-5 text-[#F51042]" />
+                            </div>
+                            <p className="text-sm font-semibold text-gray-800 mb-1">
+                              Apply to book
+                            </p>
+                            <p className="text-xs text-gray-500 mb-4">
+                              {!hasApplication 
+                                ? "Submit an application to book this kitchen"
+                                : application?.status === 'inReview'
+                                ? "Your application is pending manager review"
+                                : application?.status === 'rejected'
+                                ? "Your application was rejected. Re-apply with updated documents"
+                                : "Application approval required"}
+                            </p>
+                            <button
+                              onClick={() => setLocation(`/apply-kitchen/${selectedLocationId}`)}
+                              className="w-full px-4 py-2 bg-[#F51042] hover:bg-[#D90E3A] text-white rounded-lg font-medium transition-colors text-sm flex items-center justify-center gap-2"
+                            >
+                              <FileText className="w-4 h-4" />
+                              {!hasApplication ? "Apply to Kitchen" : "View Application"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Loading overlay while checking application */}
+                      {selectedLocationId && isLoadingApplication && (
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
+                          <div className="text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#F51042] mx-auto mb-2"></div>
+                            <p className="text-sm text-gray-600">Checking application status...</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Step 3: Time Slot Selection */}
