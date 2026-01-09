@@ -69,8 +69,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
         acss_debit: {
           mandate_options: {
             payment_schedule: 'sporadic', // Bookings are irregular/one-time
-            transaction_type: 'personal', // Default to personal, can be made configurable
-            interval_description: 'on completion of checkout',
+            transaction_type: 'personal' // Default to personal, can be made configurable
           },
         },
       },
