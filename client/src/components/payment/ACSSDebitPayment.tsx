@@ -77,8 +77,21 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
     setError(null);
 
     try {
+      // Step 1: Submit elements to validate and collect payment method
+      // This must be called before confirmPayment() per Stripe's deferred payment pattern
+      const { error: submitError } = await elements.submit();
+
+      if (submitError) {
+        setError(submitError.message || 'Payment form validation failed');
+        onError(submitError.message || 'Payment form validation failed');
+        isSubmittingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+
+      // Step 2: Confirm payment after successful submission
       // For ACSS debit, confirmPayment will collect the mandate and automatically confirm
-      const { error: submitError, paymentIntent } = await stripe.confirmPayment({
+      const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
         elements,
         clientSecret,
         confirmParams: {
@@ -87,9 +100,9 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
         redirect: 'if_required', // Only redirect if required (3DS, etc.)
       });
 
-      if (submitError) {
-        setError(submitError.message || 'Payment failed');
-        onError(submitError.message || 'Payment failed');
+      if (confirmError) {
+        setError(confirmError.message || 'Payment failed');
+        onError(confirmError.message || 'Payment failed');
         isSubmittingRef.current = false;
         setIsProcessing(false);
         return;
