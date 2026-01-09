@@ -301,11 +301,23 @@ export default function ManagerOnboardingWizard() {
     mutationFn: async (file: File) => {
       setUploadingLicense(true);
       try {
+        // Get Firebase token for authentication
+        const { auth } = await import('@/lib/firebase');
+        const currentFirebaseUser = auth.currentUser;
+        if (!currentFirebaseUser) {
+          throw new Error("Firebase user not available");
+        }
+        
+        const token = await currentFirebaseUser.getIdToken();
+        
         const formData = new FormData();
         formData.append("file", file);
 
         const response = await fetch("/api/upload-file", {
           method: "POST",
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
           credentials: "include",
           body: formData,
         });
