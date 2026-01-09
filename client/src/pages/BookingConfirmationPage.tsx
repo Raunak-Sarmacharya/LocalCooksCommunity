@@ -1,5 +1,5 @@
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -22,15 +22,15 @@ export default function BookingConfirmationPage() {
   const equipmentStr = searchParams.get('equipment');
   const notesParam = searchParams.get('notes') || '';
 
-  // Parse data from URL
-  const selectedDate = dateStr ? new Date(dateStr) : null;
-  const selectedSlots = slotsStr ? slotsStr.split(',') : [];
-  const selectedStorage = storageStr ? JSON.parse(decodeURIComponent(storageStr)).map((s: any) => ({
+  // Parse data from URL - use useMemo to prevent recreating arrays on every render
+  const selectedDate = useMemo(() => dateStr ? new Date(dateStr) : null, [dateStr]);
+  const selectedSlots = useMemo(() => slotsStr ? slotsStr.split(',') : [], [slotsStr]);
+  const selectedStorage = useMemo(() => storageStr ? JSON.parse(decodeURIComponent(storageStr)).map((s: any) => ({
     storageListingId: s.storageListingId,
     startDate: s.startDate ? new Date(s.startDate) : new Date(),
     endDate: s.endDate ? new Date(s.endDate) : new Date(),
-  })) : [];
-  const selectedEquipmentIds = equipmentStr ? equipmentStr.split(',').map(id => parseInt(id)).filter(id => !isNaN(id)) : [];
+  })) : [], [storageStr]);
+  const selectedEquipmentIds = useMemo(() => equipmentStr ? equipmentStr.split(',').map(id => parseInt(id)).filter(id => !isNaN(id)) : [], [equipmentStr]);
   const [notes, setNotes] = useState(notesParam);
 
   // Find selected kitchen
@@ -69,10 +69,21 @@ export default function BookingConfirmationPage() {
     rental: any[];
   }>({ all: [], included: [], rental: [] });
   const [isLoadingAddons, setIsLoadingAddons] = useState(false);
+  const lastFetchedKitchenIdRef = useRef<number | null>(null);
+  const lastFetchedSlotsCountRef = useRef<number>(0);
 
   // Load kitchen pricing and addons
   useEffect(() => {
-    if (!selectedKitchen) return;
+    if (!selectedKitchen || isLoadingAddons) return; // Prevent multiple simultaneous fetches
+
+    // Check if we've already fetched for this kitchen and slot count
+    const kitchenId = selectedKitchen.id;
+    const slotsCount = selectedSlots.length;
+    if (lastFetchedKitchenIdRef.current === kitchenId && lastFetchedSlotsCountRef.current === slotsCount) {
+      return; // Already fetched this data
+    }
+
+    let isCancelled = false; // Flag to prevent state updates if component unmounts or effect re-runs
 
     const loadKitchenData = async () => {
       setIsLoadingAddons(true);
@@ -113,22 +124,25 @@ export default function BookingConfirmationPage() {
           if (hourlyRate > 100) {
             hourlyRate = hourlyRate / 100;
           }
-          setKitchenPricing({
-            hourlyRate,
-            currency: pricing.currency || 'CAD',
-            minimumBookingHours: pricing.minimumBookingHours || 1,
-          });
-
-          // Calculate estimated price
-          if (hourlyRate && selectedSlots.length > 0) {
-            const basePrice = hourlyRate * selectedSlots.length;
-            const serviceFee = Math.round(basePrice * 0.05 * 100) / 100;
-            setEstimatedPrice({
-              basePrice,
-              serviceFee,
-              totalPrice: basePrice + serviceFee,
-              durationHours: selectedSlots.length,
+          
+          if (!isCancelled) {
+            setKitchenPricing({
+              hourlyRate,
+              currency: pricing.currency || 'CAD',
+              minimumBookingHours: pricing.minimumBookingHours || 1,
             });
+
+            // Calculate estimated price
+            if (hourlyRate && selectedSlots.length > 0) {
+              const basePrice = hourlyRate * selectedSlots.length;
+              const serviceFee = Math.round(basePrice * 0.05 * 100) / 100;
+              setEstimatedPrice({
+                basePrice,
+                serviceFee,
+                totalPrice: basePrice + serviceFee,
+                durationHours: selectedSlots.length,
+              });
+            }
           }
         }
 
@@ -141,9 +155,13 @@ export default function BookingConfirmationPage() {
 
         if (storageRes.ok) {
           const storageData = await storageRes.json();
-          setStorageListings(storageData);
+          if (!isCancelled) {
+            setStorageListings(storageData);
+          }
         } else {
-          setStorageListings([]);
+          if (!isCancelled) {
+            setStorageListings([]);
+          }
         }
 
         // Fetch equipment listings
@@ -155,19 +173,33 @@ export default function BookingConfirmationPage() {
 
         if (equipmentRes.ok) {
           const equipmentData = await equipmentRes.json();
-          setEquipmentListings(equipmentData);
+          if (!isCancelled) {
+            setEquipmentListings(equipmentData);
+          }
         } else {
-          setEquipmentListings({ all: [], included: [], rental: [] });
+          if (!isCancelled) {
+            setEquipmentListings({ all: [], included: [], rental: [] });
+          }
         }
       } catch (error) {
         console.error('Error fetching kitchen data:', error);
       } finally {
-        setIsLoadingAddons(false);
+        if (!isCancelled) {
+          setIsLoadingAddons(false);
+          // Mark as fetched
+          lastFetchedKitchenIdRef.current = kitchenId;
+          lastFetchedSlotsCountRef.current = slotsCount;
+        }
       }
     };
 
     loadKitchenData();
-  }, [selectedKitchen, selectedSlots]);
+
+    // Cleanup function
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedKitchen?.id, selectedSlots.length]); // Only depend on kitchen ID and slots length, not the arrays themselves
 
   // Calculate storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
