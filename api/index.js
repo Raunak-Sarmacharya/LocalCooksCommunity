@@ -19638,11 +19638,12 @@ app.get("/api/public/locations/:locationId/details", async (req, res) => {
       return res.status(500).json({ error: "Database not available" });
     }
 
-    // Get location
+    // Get location with license status
     const locationResult = await pool.query(`
       SELECT id, name, address, 
              logo_url as "logoUrl",
-             brand_image_url as "brandImageUrl"
+             brand_image_url as "brandImageUrl",
+             kitchen_license_status as "kitchenLicenseStatus"
       FROM locations 
       WHERE id = $1
     `, [locationId]);
@@ -19654,6 +19655,7 @@ app.get("/api/public/locations/:locationId/details", async (req, res) => {
     const location = locationResult.rows[0];
 
     // Get kitchens for this location with all details
+    // Include kitchens even if location license is pending (but still filter inactive kitchens)
     const kitchensResult = await pool.query(`
       SELECT k.id, k.name, k.description, 
              k.image_url as "imageUrl",
@@ -19663,7 +19665,8 @@ app.get("/api/public/locations/:locationId/details", async (req, res) => {
              l.name as "locationName",
              l.address as "locationAddress",
              l.brand_image_url as "locationBrandImageUrl",
-             l.logo_url as "locationLogoUrl"
+             l.logo_url as "locationLogoUrl",
+             l.kitchen_license_status as "locationLicenseStatus"
       FROM kitchens k
       JOIN locations l ON k.location_id = l.id
       WHERE k.location_id = $1 AND k.is_active != false
@@ -19693,6 +19696,7 @@ app.get("/api/public/locations/:locationId/details", async (req, res) => {
         address: location.address,
         logoUrl: location.logoUrl || null,
         brandImageUrl: location.brandImageUrl || null,
+        kitchenLicenseStatus: location.kitchenLicenseStatus || 'pending',
       },
       kitchens: locationKitchens,
     });

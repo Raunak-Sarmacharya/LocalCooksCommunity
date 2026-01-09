@@ -9432,14 +9432,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
       );
       
-      // Filter locations to only those with active kitchens
+      // Filter locations to only those with active kitchens (including pending approval locations)
       const locationsWithKitchens = allLocations
         .filter((location: any) => locationIdsWithKitchens.has(location.id))
         .map((location: any) => {
           // Count kitchens per location
-          const kitchenCount = activeKitchens.filter((kitchen: any) => 
+          const kitchenCount = activeKitchens.filter((kitchen: any) =>
             (kitchen.locationId || kitchen.location_id) === location.id
           ).length;
+          
+          // Include kitchen license status
+          const kitchenLicenseStatus = (location as any).kitchenLicenseStatus || (location as any).kitchen_license_status || 'pending';
           
           // Get first kitchen image as featured for this location if location doesn't have its own brand image
           const locationKitchens = activeKitchens.filter((kitchen: any) => 
@@ -9539,6 +9542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             logoUrl: normalizedLogoUrl,
             brandImageUrl: normalizedBrandImageUrl,
             featuredKitchenImage: featuredKitchenImage, // Already normalized above
+            kitchenLicenseStatus: kitchenLicenseStatus,
           };
         });
       
@@ -9562,7 +9566,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid location ID" });
       }
 
-      // Get location
+      // Get location with license status
       const allLocations = await firebaseStorage.getAllLocations();
       const location = allLocations.find((loc: any) => loc.id === locationId);
       
@@ -9571,6 +9575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get kitchens for this location
+      // Include kitchens even if location license is pending (but still filter inactive kitchens)
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
       const locationKitchens = allKitchens
         .filter((kitchen: any) => {
@@ -9615,6 +9620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           address: location.address,
           logoUrl: normalizedLocationLogoUrl,
           brandImageUrl: normalizedLocationBrandImageUrl,
+          kitchenLicenseStatus: (location as any).kitchenLicenseStatus || (location as any).kitchen_license_status || 'pending',
         },
         kitchens: locationKitchens,
       });
