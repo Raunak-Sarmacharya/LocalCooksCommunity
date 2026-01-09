@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2
 } from "lucide-react";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
@@ -76,6 +76,12 @@ export default function ManagerBookingDashboard() {
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('overview');
+  const [showCreateLocation, setShowCreateLocation] = useState(false);
+  const [newLocationName, setNewLocationName] = useState('');
+  const [newLocationAddress, setNewLocationAddress] = useState('');
+  const [newLocationNotificationEmail, setNewLocationNotificationEmail] = useState('');
+  const [newLocationNotificationPhone, setNewLocationNotificationPhone] = useState('');
+  const [isCreatingLocation, setIsCreatingLocation] = useState(false);
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
@@ -383,27 +389,219 @@ export default function ManagerBookingDashboard() {
                 ) : locations.length === 0 ? (
                   <div className="text-sm text-gray-500">No locations available</div>
                 ) : locations.length === 1 ? (
-                  <div className="px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
-                    {locations[0].name}
+                  <div className="space-y-2">
+                    <div className="px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
+                      {locations[0].name}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowCreateLocation(true)}
+                      className="w-full text-xs"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Location
+                    </Button>
                   </div>
                 ) : (
-                  <select
-                    value={selectedLocation?.id || ""}
-                    onChange={(e) => {
-                      const loc = locations.find((l: any) => l.id === parseInt(e.target.value));
-                      setSelectedLocation(loc || null);
-                    }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Choose location...</option>
-                    {locations.map((loc: any) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-2">
+                    <select
+                      value={selectedLocation?.id || ""}
+                      onChange={(e) => {
+                        const loc = locations.find((l: any) => l.id === parseInt(e.target.value));
+                        setSelectedLocation(loc || null);
+                      }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Choose location...</option>
+                      {locations.map((loc: any) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowCreateLocation(true)}
+                      className="w-full text-xs"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Location
+                    </Button>
+                  </div>
                 )}
               </div>
+              
+              {/* Create Location Dialog */}
+              {showCreateLocation && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Create New Location</h3>
+                      <button
+                        onClick={() => {
+                          setShowCreateLocation(false);
+                          setNewLocationName('');
+                          setNewLocationAddress('');
+                          setNewLocationNotificationEmail('');
+                          setNewLocationNotificationPhone('');
+                        }}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Location Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={newLocationName}
+                          onChange={(e) => setNewLocationName(e.target.value)}
+                          placeholder="e.g., The Lantern"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Address *
+                        </label>
+                        <input
+                          type="text"
+                          value={newLocationAddress}
+                          onChange={(e) => setNewLocationAddress(e.target.value)}
+                          placeholder="e.g., 123 Main St, St. John's, NL"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Notification Email (Optional)
+                        </label>
+                        <input
+                          type="email"
+                          value={newLocationNotificationEmail}
+                          onChange={(e) => setNewLocationNotificationEmail(e.target.value)}
+                          placeholder="notifications@example.com"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Notification Phone (Optional)
+                        </label>
+                        <input
+                          type="tel"
+                          value={newLocationNotificationPhone}
+                          onChange={(e) => setNewLocationNotificationPhone(e.target.value)}
+                          placeholder="(709) 555-1234"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          onClick={async () => {
+                            if (!newLocationName.trim() || !newLocationAddress.trim()) {
+                              toast({
+                                title: "Missing Information",
+                                description: "Please fill in location name and address",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            
+                            setIsCreatingLocation(true);
+                            try {
+                              const currentFirebaseUser = auth.currentUser;
+                              if (!currentFirebaseUser) {
+                                throw new Error("Firebase user not available");
+                              }
+                              
+                              const token = await currentFirebaseUser.getIdToken();
+                              const response = await fetch(`/api/manager/locations`, {
+                                method: "POST",
+                                headers: {
+                                  'Authorization': `Bearer ${token}`,
+                                  'Content-Type': 'application/json',
+                                },
+                                credentials: "include",
+                                body: JSON.stringify({
+                                  name: newLocationName.trim(),
+                                  address: newLocationAddress.trim(),
+                                  notificationEmail: newLocationNotificationEmail.trim() || undefined,
+                                  notificationPhone: newLocationNotificationPhone.trim() || undefined,
+                                }),
+                              });
+                              
+                              if (!response.ok) {
+                                const error = await response.json();
+                                throw new Error(error.error || "Failed to create location");
+                              }
+                              
+                              const newLocation = await response.json();
+                              queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+                              toast({
+                                title: "Location Created",
+                                description: `${newLocation.name} has been created successfully.`,
+                              });
+                              
+                              setNewLocationName('');
+                              setNewLocationAddress('');
+                              setNewLocationNotificationEmail('');
+                              setNewLocationNotificationPhone('');
+                              setShowCreateLocation(false);
+                              setSelectedLocation(newLocation);
+                            } catch (error: any) {
+                              toast({
+                                title: "Error",
+                                description: error.message || "Failed to create location",
+                                variant: "destructive",
+                              });
+                            } finally {
+                              setIsCreatingLocation(false);
+                            }
+                          }}
+                          disabled={isCreatingLocation}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {isCreatingLocation ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-4 w-4 mr-1" />
+                              Create Location
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowCreateLocation(false);
+                            setNewLocationName('');
+                            setNewLocationAddress('');
+                            setNewLocationNotificationEmail('');
+                            setNewLocationNotificationPhone('');
+                          }}
+                          disabled={isCreatingLocation}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Navigation */}
               <nav className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2 hover:shadow-xl transition-all duration-300">
@@ -1001,6 +1199,10 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [updatingKitchenId, setUpdatingKitchenId] = useState<number | null>(null);
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [isUploadingLicense, setIsUploadingLicense] = useState(false);
+  const [showCreateKitchen, setShowCreateKitchen] = useState(false);
+  const [newKitchenName, setNewKitchenName] = useState('');
+  const [newKitchenDescription, setNewKitchenDescription] = useState('');
+  const [isCreatingKitchen, setIsCreatingKitchen] = useState(false);
   const timezoneOptions = getTimezoneOptions();
 
   // Fetch kitchens for this location
@@ -1676,12 +1878,155 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             </div>
 
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-medium text-gray-700">Kitchens</h4>
+                {!showCreateKitchen && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowCreateKitchen(true)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Kitchen
+                  </Button>
+                )}
+              </div>
+              
+              {showCreateKitchen && (
+                <div className="bg-white rounded-lg border border-amber-300 p-4 mb-4">
+                  <h5 className="text-sm font-semibold text-gray-900 mb-3">Create New Kitchen</h5>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Kitchen Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={newKitchenName}
+                        onChange={(e) => setNewKitchenName(e.target.value)}
+                        placeholder="e.g., Main Kitchen"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Description (Optional)
+                      </label>
+                      <textarea
+                        value={newKitchenDescription}
+                        onChange={(e) => setNewKitchenDescription(e.target.value)}
+                        placeholder="Describe your kitchen..."
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          if (!newKitchenName.trim()) {
+                            toast({
+                              title: "Missing Information",
+                              description: "Please enter a kitchen name",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          setIsCreatingKitchen(true);
+                          try {
+                            const currentFirebaseUser = auth.currentUser;
+                            if (!currentFirebaseUser) {
+                              throw new Error("Firebase user not available");
+                            }
+                            
+                            const token = await currentFirebaseUser.getIdToken();
+                            const response = await fetch(`/api/manager/kitchens`, {
+                              method: "POST",
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                              },
+                              credentials: "include",
+                              body: JSON.stringify({
+                                locationId: location.id,
+                                name: newKitchenName.trim(),
+                                description: newKitchenDescription.trim() || undefined,
+                              }),
+                            });
+                            
+                            if (!response.ok) {
+                              const error = await response.json();
+                              throw new Error(error.error || "Failed to create kitchen");
+                            }
+                            
+                            const newKitchen = await response.json();
+                            queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                            toast({
+                              title: "Kitchen Created",
+                              description: `${newKitchen.name} has been created successfully.`,
+                            });
+                            
+                            setNewKitchenName('');
+                            setNewKitchenDescription('');
+                            setShowCreateKitchen(false);
+                          } catch (error: any) {
+                            toast({
+                              title: "Error",
+                              description: error.message || "Failed to create kitchen",
+                              variant: "destructive",
+                            });
+                          } finally {
+                            setIsCreatingKitchen(false);
+                          }
+                        }}
+                        disabled={isCreatingKitchen}
+                        className="bg-amber-600 hover:bg-amber-700 text-white"
+                      >
+                        {isCreatingKitchen ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4 mr-1" />
+                            Create Kitchen
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowCreateKitchen(false);
+                          setNewKitchenName('');
+                          setNewKitchenDescription('');
+                        }}
+                        disabled={isCreatingKitchen}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {isLoadingKitchens ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
                 </div>
-              ) : kitchens.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">No kitchens found for this location</p>
+              ) : kitchens.length === 0 && !showCreateKitchen ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500 mb-3">No kitchens found for this location</p>
+                  <Button
+                    size="sm"
+                    onClick={() => setShowCreateKitchen(true)}
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Create Your First Kitchen
+                  </Button>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {kitchens.map((kitchen) => (
