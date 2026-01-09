@@ -114,6 +114,7 @@ export class MemStorage implements IStorage {
       has_seen_welcome: true,
       managerOnboardingCompleted: false,
       managerOnboardingSkipped: false,
+      managerOnboardingStepsCompleted: {},
       isManager: false,
       isChef: false,
       isDeliveryPartner: false,
@@ -191,6 +192,7 @@ export class MemStorage implements IStorage {
       applicationType: (insertUser as any).applicationType || null,
       managerOnboardingCompleted: (insertUser as any).managerOnboardingCompleted !== undefined ? (insertUser as any).managerOnboardingCompleted : false,
       managerOnboardingSkipped: (insertUser as any).managerOnboardingSkipped !== undefined ? (insertUser as any).managerOnboardingSkipped : false,
+      managerOnboardingStepsCompleted: (insertUser as any).managerOnboardingStepsCompleted !== undefined ? (insertUser as any).managerOnboardingStepsCompleted : {},
     };
 
     this.users.set(user.id, user);
