@@ -18158,7 +18158,7 @@ app.get("/api/chef/bookings", requireChef, async (req, res) => {
       return res.json([]);
     }
     
-    // Get bookings with kitchen and location information
+    // Get bookings with kitchen and location information including cancellation policies
     const result = await pool.query(`
       SELECT 
         kb.id, kb.chef_id as "chefId", kb.kitchen_id as "kitchenId", 
@@ -18166,7 +18166,9 @@ app.get("/api/chef/bookings", requireChef, async (req, res) => {
         kb.end_time as "endTime", kb.status, kb.special_notes as "specialNotes",
         kb.created_at as "createdAt", kb.updated_at as "updatedAt",
         k.name as "kitchenName", k.location_id as "locationId",
-        l.name as "locationName", l.timezone as "locationTimezone"
+        l.name as "locationName", l.timezone as "locationTimezone",
+        l.cancellation_policy_hours as "cancellationPolicyHours",
+        l.cancellation_policy_message as "cancellationPolicyMessage"
       FROM kitchen_bookings kb
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       LEFT JOIN locations l ON k.location_id = l.id
@@ -18174,12 +18176,19 @@ app.get("/api/chef/bookings", requireChef, async (req, res) => {
       ORDER BY kb.booking_date DESC, kb.start_time DESC
     `, [req.user.id]);
     
-    // Map the results to include locationTimezone with default fallback
+    // Map the results to include locationTimezone with default fallback and location object with cancellation policy
     const enrichedBookings = result.rows.map(booking => ({
       ...booking,
       locationTimezone: booking.locationTimezone || DEFAULT_TIMEZONE,
       locationName: booking.locationName || null,
       kitchenName: booking.kitchenName || null,
+      // Include location object with cancellation policy for frontend use
+      location: booking.locationId ? {
+        id: booking.locationId,
+        name: booking.locationName,
+        cancellationPolicyHours: booking.cancellationPolicyHours ?? 24,
+        cancellationPolicyMessage: booking.cancellationPolicyMessage || `Bookings cannot be cancelled within ${booking.cancellationPolicyHours ?? 24} hours of the scheduled time.`,
+      } : undefined,
     }));
     
     res.json(enrichedBookings);

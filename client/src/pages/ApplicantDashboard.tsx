@@ -43,13 +43,15 @@ import {
     Share2,
     AlertCircle
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useChefKitchenAccessStatus } from "@/hooks/use-chef-kitchen-access";
 import { useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
 import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 import { useSubdomain } from "@/hooks/use-subdomain";
 import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
+import BookingControlPanel from "@/components/booking/BookingControlPanel";
+import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 
 // Union type for handling both application types
 type AnyApplication = Application | DeliveryPartnerApplication;
@@ -148,6 +150,78 @@ export default function ApplicantDashboard() {
     pendingCount: pendingKitchensCount,
     isLoading: kitchenAppsLoading 
   } = useChefKitchenApplicationsStatus();
+
+  // Fetch bookings for chefs with approved kitchen access
+  const { bookings, isLoadingBookings, cancelBooking: cancelBookingMutation, kitchens } = useKitchenBookings();
+  
+  // Enrich bookings with kitchen and location information
+  const enrichedBookings = useMemo(() => {
+    if (!bookings || !Array.isArray(bookings)) return [];
+    if (bookings.length === 0) return [];
+    
+    if (!kitchens || !Array.isArray(kitchens)) {
+      return bookings.map((b: any) => ({
+        ...b,
+        location: b.location ? {
+          id: b.location.id,
+          name: b.location.name,
+          cancellationPolicyHours: b.location.cancellationPolicyHours,
+          cancellationPolicyMessage: b.location.cancellationPolicyMessage,
+        } : undefined,
+      }));
+    }
+    
+    return bookings.map((booking: any) => {
+      if (!booking || typeof booking.kitchenId !== 'number') {
+        return {
+          ...booking,
+          location: booking.location ? {
+            id: booking.location.id,
+            name: booking.location.name,
+            cancellationPolicyHours: booking.location.cancellationPolicyHours,
+            cancellationPolicyMessage: booking.location.cancellationPolicyMessage,
+          } : undefined,
+        };
+      }
+      
+      const kitchen = kitchens.find((k) => k && k.id === booking.kitchenId) as any;
+      return {
+        ...booking,
+        kitchenName: kitchen?.name || booking.kitchenName,
+        locationName: kitchen?.locationName || kitchen?.location?.name || booking.locationName,
+        location: booking.location ? {
+          id: booking.location.id,
+          name: booking.location.name,
+          cancellationPolicyHours: booking.location.cancellationPolicyHours,
+          cancellationPolicyMessage: booking.location.cancellationPolicyMessage,
+        } : (kitchen?.location ? {
+          id: kitchen.location.id,
+          name: kitchen.location.name,
+          cancellationPolicyHours: kitchen.location.cancellationPolicyHours,
+          cancellationPolicyMessage: kitchen.location.cancellationPolicyMessage,
+        } : undefined),
+      };
+    });
+  }, [bookings, kitchens]);
+  
+  // Handle cancel booking
+  const handleCancelBooking = (bookingId: number) => {
+    cancelBookingMutation.mutate(bookingId, {
+      onSuccess: () => {
+        toast({
+          title: "Booking Cancelled",
+          description: "Your booking has been cancelled successfully.",
+        });
+      },
+      onError: (error: any) => {
+        toast({
+          title: "Cancellation Failed",
+          description: error.message || "Failed to cancel booking. Please try again.",
+          variant: "destructive",
+        });
+      },
+    });
+  };
   
   // Use localStorage to track if vendor popup has been shown for this user
   const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(() => {
@@ -2277,6 +2351,41 @@ export default function ApplicantDashboard() {
                     </div>
                     <p className="text-sm text-gray-600">Simple online booking and management</p>
                   </div>
+                </div>
+              </motion.div>
+            );
+          })()}
+
+          {/* My Bookings Section - Show for chefs with approved kitchen access */}
+          {(() => {
+            const approvedChefApp = userDisplayInfo.applications?.find(
+              (app): app is Application => 
+                isChefApplication(app) && 
+                app.status === 'approved' && 
+                app.kitchenPreference === 'commercial'
+            );
+
+            // Only show if chef has approved kitchen application
+            if (!approvedChefApp || !hasApprovedKitchenApplication) return null;
+
+            return (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.0 }}
+                className="mb-8"
+              >
+                <div className="mb-4">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">My Bookings</h2>
+                  <p className="text-gray-600">View and manage your kitchen bookings</p>
+                </div>
+                <div className="max-w-4xl">
+                  <BookingControlPanel
+                    bookings={enrichedBookings}
+                    isLoading={isLoadingBookings}
+                    onCancelBooking={handleCancelBooking}
+                    kitchens={kitchens || []}
+                  />
                 </div>
               </motion.div>
             );
