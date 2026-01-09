@@ -92,6 +92,7 @@ export function useKitchenBookings() {
       
       // Normalize snake_case to camelCase (matching pattern used elsewhere in app)
       // This ensures compatibility regardless of what Drizzle returns
+      // IMPORTANT: Preserve location object with cancellation policy information
       const normalizedBookings = (Array.isArray(rawData) ? rawData : []).map((booking: any) => ({
         id: booking.id,
         chefId: booking.chef_id || booking.chefId,
@@ -103,6 +104,17 @@ export function useKitchenBookings() {
         specialNotes: booking.special_notes || booking.specialNotes,
         createdAt: booking.created_at || booking.createdAt,
         updatedAt: booking.updated_at || booking.updatedAt,
+        // Preserve location data with cancellation policy
+        location: booking.location ? {
+          id: booking.location.id,
+          name: booking.location.name,
+          cancellationPolicyHours: booking.location.cancellationPolicyHours ?? booking.location.cancellation_policy_hours ?? 24,
+          cancellationPolicyMessage: booking.location.cancellationPolicyMessage || booking.location.cancellation_policy_message || `Bookings cannot be cancelled within ${booking.location.cancellationPolicyHours ?? booking.location.cancellation_policy_hours ?? 24} hours of the scheduled time.`,
+        } : undefined,
+        // Preserve other location-related fields
+        locationName: booking.locationName || booking.location_name,
+        locationTimezone: booking.locationTimezone || booking.location_timezone,
+        kitchenName: booking.kitchenName || booking.kitchen_name,
       }));
       
       return normalizedBookings;
