@@ -124,6 +124,44 @@ export default function KitchenDashboardOverview({
     refetchOnWindowFocus: true,
   });
 
+  // Fetch chef kitchen applications for this manager
+  const { data: applications = [], isLoading: isLoadingApplications } = useQuery({
+    queryKey: ['managerKitchenApplications', firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) {
+        throw new Error('Not authenticated');
+      }
+      
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error('Not authenticated');
+      }
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+      
+      const response = await fetch('/api/manager/kitchen-applications', {
+        headers,
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch applications');
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      return [];
+    },
+    enabled: !!firebaseUser,
+    refetchInterval: 10000, // Real-time updates
+    refetchOnWindowFocus: true,
+  });
+
   // Calculate dashboard metrics
   const dashboardMetrics = useMemo(() => {
     // Helper function to normalize date to YYYY-MM-DD in local timezone
@@ -670,9 +708,10 @@ export default function KitchenDashboardOverview({
 
         {/* Customer Management */}
         <CustomerManagementPanel 
-          bookings={bookings} 
+          bookings={bookings}
+          applications={applications}
           onNavigate={onNavigate}
-          isLoading={isLoadingBookings}
+          isLoading={isLoadingBookings || isLoadingApplications}
         />
       </div>
 
@@ -686,16 +725,25 @@ export default function KitchenDashboardOverview({
 
 interface CustomerManagementPanelProps {
   bookings: any[];
+  applications: any[];
   onNavigate: (view: ViewType) => void;
   isLoading: boolean;
 }
 
-function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerManagementPanelProps) {
+function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading }: CustomerManagementPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'recent'>('all');
+  
+  // Count pending applications to set default filter
+  const pendingCount = useMemo(() => {
+    return applications.filter((app: any) => app.status === 'inReview').length;
+  }, [applications]);
+  
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'recent' | 'pending'>(
+    pendingCount > 0 ? 'pending' : 'all'
+  );
 
   // Extract unique chefs from bookings
-  const chefs = useMemo(() => {
+  const chefsFromBookings = useMemo(() => {
     const chefMap = new Map<string, {
       id: string;
       name: string;
@@ -743,12 +791,125 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
       }
     });
 
-    return Array.from(chefMap.values()).sort((a, b) => {
-      if (!a.lastBookingDate) return 1;
-      if (!b.lastBookingDate) return -1;
-      return b.lastBookingDate.getTime() - a.lastBookingDate.getTime();
-    });
+    return Array.from(chefMap.values());
   }, [bookings]);
+
+  // Extract unique chefs from applications
+  const chefsFromApplications = useMemo(() => {
+    const chefMap = new Map<string, {
+      id: string;
+      name: string;
+      email?: string;
+      phone?: string;
+      applicationStatus: string;
+      applicationDate: Date | null;
+      locationName?: string;
+      isPending: boolean;
+    }>();
+
+    applications.forEach((application: any) => {
+      const chefId = application.chefId || application.chef?.id;
+      const chefName = application.fullName || application.chef?.username || 'Unknown Chef';
+      const chefEmail = application.email;
+      const chefPhone = application.phone;
+      
+      if (!chefId && !chefName) return;
+      
+      const key = chefId?.toString() || chefName;
+      const applicationDate = new Date(application.createdAt);
+      const isPending = application.status === 'inReview';
+      
+      // If chef already exists, keep the most recent application
+      const existing = chefMap.get(key);
+      if (!existing || applicationDate > (existing.applicationDate || new Date(0))) {
+        chefMap.set(key, {
+          id: key,
+          name: chefName,
+          email: chefEmail,
+          phone: chefPhone,
+          applicationStatus: application.status,
+          applicationDate: applicationDate,
+          locationName: application.location?.name,
+          isPending: isPending,
+        });
+      }
+    });
+
+    return Array.from(chefMap.values());
+  }, [applications]);
+
+  // Combine chefs from bookings and applications, prioritizing applications
+  const chefs = useMemo(() => {
+    const combinedMap = new Map<string, {
+      id: string;
+      name: string;
+      email?: string;
+      phone?: string;
+      totalBookings: number;
+      confirmedBookings: number;
+      lastBookingDate: Date | null;
+      isActive: boolean;
+      applicationStatus?: string;
+      applicationDate?: Date | null;
+      locationName?: string;
+      isPending?: boolean;
+      hasApplication: boolean;
+    }>();
+
+    // First, add chefs from bookings
+    chefsFromBookings.forEach(chef => {
+      combinedMap.set(chef.id, {
+        ...chef,
+        hasApplication: false,
+      });
+    });
+
+    // Then, add/update with chefs from applications
+    chefsFromApplications.forEach(chef => {
+      const existing = combinedMap.get(chef.id);
+      if (existing) {
+        // Update existing chef with application info
+        existing.applicationStatus = chef.applicationStatus;
+        existing.applicationDate = chef.applicationDate;
+        existing.locationName = chef.locationName;
+        existing.isPending = chef.isPending;
+        existing.hasApplication = true;
+        // Use application email/phone if booking doesn't have them
+        if (!existing.email && chef.email) existing.email = chef.email;
+        if (!existing.phone && chef.phone) existing.phone = chef.phone;
+      } else {
+        // New chef from application only
+        combinedMap.set(chef.id, {
+          id: chef.id,
+          name: chef.name,
+          email: chef.email,
+          phone: chef.phone,
+          totalBookings: 0,
+          confirmedBookings: 0,
+          lastBookingDate: null,
+          isActive: false,
+          applicationStatus: chef.applicationStatus,
+          applicationDate: chef.applicationDate,
+          locationName: chef.locationName,
+          isPending: chef.isPending,
+          hasApplication: true,
+        });
+      }
+    });
+
+    return Array.from(combinedMap.values()).sort((a, b) => {
+      // Sort by: pending applications first, then by most recent activity
+      if (a.isPending && !b.isPending) return -1;
+      if (!a.isPending && b.isPending) return 1;
+      
+      const aDate = a.applicationDate || a.lastBookingDate;
+      const bDate = b.applicationDate || b.lastBookingDate;
+      
+      if (!aDate) return 1;
+      if (!bDate) return -1;
+      return bDate.getTime() - aDate.getTime();
+    });
+  }, [chefsFromBookings, chefsFromApplications]);
 
   // Filter chefs based on search and filter
   const filteredChefs = useMemo(() => {
@@ -759,7 +920,8 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
       const query = searchQuery.toLowerCase();
       result = result.filter(chef => 
         chef.name.toLowerCase().includes(query) ||
-        chef.email?.toLowerCase().includes(query)
+        chef.email?.toLowerCase().includes(query) ||
+        chef.locationName?.toLowerCase().includes(query)
       );
     }
     
@@ -769,9 +931,12 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
     } else if (activeFilter === 'recent') {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      result = result.filter(chef => 
-        chef.lastBookingDate && chef.lastBookingDate > sevenDaysAgo
-      );
+      result = result.filter(chef => {
+        const date = chef.applicationDate || chef.lastBookingDate;
+        return date && date > sevenDaysAgo;
+      });
+    } else if (activeFilter === 'pending') {
+      result = result.filter(chef => chef.isPending);
     }
     
     return result.slice(0, 5); // Show top 5
@@ -779,11 +944,13 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
 
   const filterTabs = [
     { id: 'all' as const, label: 'All', count: chefs.length },
+    { id: 'pending' as const, label: 'Pending', count: chefs.filter(c => c.isPending).length },
     { id: 'active' as const, label: 'Active', count: chefs.filter(c => c.isActive).length },
-    { id: 'recent' as const, label: 'This Week', count: chefs.filter(c => {
+    { id: 'recent' as const, label: 'Recent', count: chefs.filter(c => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      return c.lastBookingDate && c.lastBookingDate > sevenDaysAgo;
+      const date = c.applicationDate || c.lastBookingDate;
+      return date && date > sevenDaysAgo;
     }).length },
   ];
 
@@ -865,6 +1032,9 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
               {tab.id === 'active' && (
                 <span className={`w-1.5 h-1.5 rounded-full ${activeFilter === tab.id ? 'bg-rose-500' : 'bg-emerald-500'}`} />
               )}
+              {tab.id === 'pending' && (
+                <span className={`w-1.5 h-1.5 rounded-full ${activeFilter === tab.id ? 'bg-rose-500' : 'bg-amber-500'}`} />
+              )}
               <span>{tab.label}</span>
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                 activeFilter === tab.id 
@@ -890,7 +1060,7 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
             <div className="text-center py-6 flex-1 flex flex-col items-center justify-center">
               <Users className="h-10 w-10 text-gray-300 mx-auto mb-2" />
               <p className="text-gray-500 text-sm">No chefs found</p>
-              <p className="text-gray-400 text-xs">Chefs who book your kitchen will appear here</p>
+              <p className="text-gray-400 text-xs">Chef applications and bookings will appear here</p>
             </div>
           ) : (
             filteredChefs.map((chef, idx) => (
@@ -908,7 +1078,13 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-medium text-gray-900 text-sm leading-tight break-words">{chef.name}</p>
-                    {chef.isActive && (
+                    {chef.isPending && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md text-[10px] font-medium border border-amber-100">
+                        <span className="w-1 h-1 rounded-full bg-amber-500" />
+                        Pending
+                      </span>
+                    )}
+                    {chef.isActive && !chef.isPending && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded-md text-[10px] font-medium border border-emerald-100">
                         <span className="w-1 h-1 rounded-full bg-emerald-500" />
                         Active
@@ -916,15 +1092,32 @@ function CustomerManagementPanel({ bookings, onNavigate, isLoading }: CustomerMa
                     )}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5 leading-tight break-words">
-                    {chef.email || `${chef.totalBookings} booking${chef.totalBookings !== 1 ? 's' : ''}`}
+                    {chef.email || chef.locationName || `${chef.totalBookings} booking${chef.totalBookings !== 1 ? 's' : ''}`}
                   </p>
+                  {chef.locationName && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">{chef.locationName}</p>
+                  )}
                 </div>
 
-                {/* Booking Count Badge */}
+                {/* Status Badge */}
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-900">{chef.confirmedBookings}</p>
-                    <p className="text-[10px] text-gray-400">bookings</p>
+                    {chef.hasApplication && chef.isPending ? (
+                      <>
+                        <p className="text-sm font-semibold text-amber-600">Review</p>
+                        <p className="text-[10px] text-gray-400">needed</p>
+                      </>
+                    ) : chef.totalBookings > 0 ? (
+                      <>
+                        <p className="text-sm font-semibold text-gray-900">{chef.confirmedBookings}</p>
+                        <p className="text-[10px] text-gray-400">bookings</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm font-semibold text-gray-500">New</p>
+                        <p className="text-[10px] text-gray-400">applicant</p>
+                      </>
+                    )}
                   </div>
                   <ArrowRight className="h-4 w-4 text-gray-300 opacity-0 group-hover:opacity-60 transition-opacity" />
                 </div>
