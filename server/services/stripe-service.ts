@@ -80,6 +80,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
         booking_type: 'kitchen',
         kitchen_id: kitchenId.toString(),
         chef_id: chefId.toString(),
+        expected_amount: amount.toString(), // Store expected amount for verification
         ...metadata,
       },
     });
@@ -171,8 +172,26 @@ export async function verifyPaymentIntentForBooking(
       return { valid: false, status: paymentIntent.status, error: 'Payment intent does not belong to this chef' };
     }
 
-    // Verify amount matches (allow small rounding differences)
-    if (Math.abs(paymentIntent.amount - expectedAmount) > 1) {
+    // Verify amount matches
+    // First, try to use the stored expected amount from metadata (most reliable)
+    const storedExpectedAmount = paymentIntent.metadata?.expected_amount 
+      ? parseInt(paymentIntent.metadata.expected_amount) 
+      : null;
+    
+    // Use stored amount if available, otherwise use calculated amount
+    const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
+    
+    // Allow small rounding differences (up to 5 cents) due to service fee calculations
+    const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
+    if (amountDifference > 5) {
+      console.error('Payment amount mismatch:', {
+        paymentIntentAmount: paymentIntent.amount,
+        expectedAmount: amountToCompare,
+        storedExpectedAmount,
+        calculatedExpectedAmount: expectedAmount,
+        difference: amountDifference,
+        differenceDollars: (amountDifference / 100).toFixed(2)
+      });
       return { valid: false, status: paymentIntent.status, error: 'Payment amount does not match booking amount' };
     }
 
