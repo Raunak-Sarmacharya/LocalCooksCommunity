@@ -5650,7 +5650,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             if (storageResult.rows.length > 0) {
               const storageListing = storageResult.rows[0];
-              const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
+              // Parse base_price as numeric (stored in cents in database)
+              const basePriceCents = storageListing.base_price ? Math.round(parseFloat(String(storageListing.base_price))) : 0;
               const minDays = storageListing.minimum_booking_duration || 1;
               
               const startDate = new Date(storage.startDate);
@@ -5685,8 +5686,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             if (equipmentResult.rows.length > 0) {
               const equipmentListing = equipmentResult.rows[0];
-              const sessionRateCents = equipmentListing.session_rate ? parseInt(equipmentListing.session_rate) : 0;
-              const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
+              // Parse session_rate and damage_deposit as numeric (stored in cents in database)
+              const sessionRateCents = equipmentListing.session_rate ? Math.round(parseFloat(String(equipmentListing.session_rate))) : 0;
+              const damageDepositCents = equipmentListing.damage_deposit ? Math.round(parseFloat(String(equipmentListing.damage_deposit))) : 0;
               
               totalPriceCents += sessionRateCents + damageDepositCents;
             }
