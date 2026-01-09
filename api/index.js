@@ -17337,8 +17337,8 @@ app.post("/api/payments/create-intent", requireChef, async (req, res) => {
     const { createPaymentIntent } = await import('../server/services/stripe-service.js');
     const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('../server/services/pricing-service.js');
 
-    // Calculate kitchen booking price
-    const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+    // Calculate kitchen booking price (pass pool for production compatibility)
+    const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
     let totalPriceCents = kitchenPricing.totalPriceCents;
 
     // Calculate storage add-ons
