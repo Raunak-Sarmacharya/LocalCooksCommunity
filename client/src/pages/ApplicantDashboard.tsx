@@ -2246,7 +2246,7 @@ export default function ApplicantDashboard() {
                   {/* CTA Button */}
                   <div className="w-full md:w-auto">
                     <Button asChild className="w-full md:w-auto rounded-xl bg-blue-600 hover:bg-blue-700 px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all">
-                      <Link href="/book-kitchen">
+                      <Link href="/compare-kitchens">
                         <Clock className="mr-2 h-5 w-5" />
                         View Kitchen Timings & Book
                       </Link>

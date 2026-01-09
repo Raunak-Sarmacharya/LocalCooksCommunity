@@ -67,6 +67,7 @@ const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenAppl
 const PortalRegister = lazy(() => import("@/pages/PortalRegister"));
 const PortalBookingsPage = lazy(() => import("@/pages/PortalBookingsPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
+const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 
 
 // Loading component
@@ -296,6 +297,7 @@ function Router() {
         {/* Kitchen Application Routes (New - Replaces Share Profile) */}
         <SubdomainRoute path="/explore-kitchens" component={ExploreKitchens} subdomain={subdomain} />
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
+        <SubdomainRoute path="/compare-kitchens" component={KitchenComparisonPage} subdomain={subdomain} />
         
         <SubdomainRoute path="/admin/login" component={AdminLogin} subdomain={subdomain} />
         <SubdomainRoute path="/admin-register" component={AdminRegister} subdomain={subdomain} />
