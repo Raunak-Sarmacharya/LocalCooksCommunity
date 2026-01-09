@@ -19,6 +19,7 @@ interface CreateBookingData {
   startTime: string;
   endTime: string;
   specialNotes?: string;
+  paymentIntentId?: string;
   selectedStorage?: Array<{
     storageListingId: number;
     startDate: string; // ISO date string

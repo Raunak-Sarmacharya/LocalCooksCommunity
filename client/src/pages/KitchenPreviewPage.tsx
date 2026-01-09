@@ -650,7 +650,7 @@ export default function KitchenPreviewPage() {
       setIsLoadingAddons(true);
       try {
         // Helper to get auth headers if authenticated
-        const getAuthHeaders = async () => {
+        const getAuthHeaders = async (): Promise<Record<string, string>> => {
           if (!isAuthenticated) return {};
           try {
             const { auth } = await import("@/lib/firebase");

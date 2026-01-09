@@ -1,4 +1,4 @@
-import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
@@ -6,6 +6,7 @@ import Footer from "@/components/layout/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
+import ACSSDebitPayment from "@/components/payment/ACSSDebitPayment";
 
 export default function BookingConfirmationPage() {
   const [location, setLocation] = useLocation();
@@ -44,6 +45,14 @@ export default function BookingConfirmationPage() {
     currency: string;
     minimumBookingHours: number;
   } | null>(null);
+
+  // Payment state
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [isCreatingPaymentIntent, setIsCreatingPaymentIntent] = useState(false);
+  const [paymentCurrency, setPaymentCurrency] = useState<string>('CAD');
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
     serviceFee: number;
@@ -244,6 +253,135 @@ export default function BookingConfirmationPage() {
     return `${y}-${m}-${day}`;
   };
 
+  // Create payment intent
+  const createPaymentIntent = async () => {
+    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+
+    setIsCreatingPaymentIntent(true);
+    try {
+      const sortedSlots = [...selectedSlots].sort();
+      const startTime = sortedSlots[0];
+      const [startHours, startMins] = startTime.split(':').map(Number);
+      const totalDurationMins = selectedSlots.length * 60;
+      const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+      const endHours = Math.floor(endTotalMins / 60);
+      const endMins = endTotalMins % 60;
+      const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+
+      const bookingDateStr = toLocalDateString(selectedDate);
+      const [year, month, day] = bookingDateStr.split('-').map(Number);
+      const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+
+      // Get auth headers
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      const token = currentUser ? await currentUser.getIdToken() : '';
+
+      const response = await fetch('/api/payments/create-intent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          kitchenId: selectedKitchen.id,
+          bookingDate: bookingDate.toISOString(),
+          startTime,
+          endTime,
+          selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
+            storageListingId: s.storageListingId,
+            startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
+            endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
+          })) : undefined,
+          selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create payment intent');
+      }
+
+      const data = await response.json();
+      setPaymentIntentId(data.paymentIntentId);
+      setClientSecret(data.clientSecret);
+      setPaymentAmount(data.amount);
+      setPaymentCurrency(data.currency);
+      setShowPayment(true);
+    } catch (error: any) {
+      toast({
+        title: "Payment Setup Failed",
+        description: error.message || "Failed to initialize payment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingPaymentIntent(false);
+    }
+  };
+
+  // Handle payment success
+  const handlePaymentSuccess = async (paymentIntentId: string, paymentMethodId: string) => {
+    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
+
+    const sortedSlots = [...selectedSlots].sort();
+    const startTime = sortedSlots[0];
+    const [startHours, startMins] = startTime.split(':').map(Number);
+    const totalDurationMins = selectedSlots.length * 60;
+    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+    const endHours = Math.floor(endTotalMins / 60);
+    const endMins = endTotalMins % 60;
+    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
+
+    const bookingDateStr = toLocalDateString(selectedDate);
+    const [year, month, day] = bookingDateStr.split('-').map(Number);
+    const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+
+    createBooking.mutate(
+      {
+        kitchenId: selectedKitchen.id,
+        bookingDate: bookingDate.toISOString(),
+        startTime,
+        endTime,
+        specialNotes: notes,
+        paymentIntentId,
+        selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
+          storageListingId: s.storageListingId,
+          startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
+          endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
+        })) : undefined,
+        selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
+      },
+      {
+        onSuccess: () => {
+          const addonsCount = selectedEquipmentIds.length;
+          const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
+          toast({
+            title: "Booking Created!",
+            description: `Your ${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
+          });
+          setLocation('/book-kitchen');
+        },
+        onError: (error: any) => {
+          toast({
+            title: "Booking Failed",
+            description: error.message || "Failed to create booking. Please try again.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
+  const handlePaymentError = (error: string) => {
+    toast({
+      title: "Payment Failed",
+      description: error,
+      variant: "destructive",
+    });
+  };
+
+  // Handle booking submission for free bookings (no payment required)
   const handleBookingSubmit = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
@@ -627,30 +765,62 @@ export default function BookingConfirmationPage() {
                 )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={handleBack}
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back
-                </button>
-                <button
-                  onClick={handleBookingSubmit}
-                  disabled={createBooking.isPending}
-                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors"
-                >
-                  {createBooking.isPending ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Booking...
-                    </span>
-                  ) : (
-                    "Confirm Booking"
-                  )}
-                </button>
-              </div>
+              {/* Payment Section */}
+              {showPayment && clientSecret ? (
+                <div className="pt-6 border-t">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-blue-600" />
+                    Payment
+                  </h3>
+                  <ACSSDebitPayment
+                    clientSecret={clientSecret}
+                    amount={paymentAmount}
+                    currency={paymentCurrency}
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                  />
+                  <button
+                    onClick={() => {
+                      setShowPayment(false);
+                      setClientSecret(null);
+                      setPaymentIntentId(null);
+                    }}
+                    className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors text-gray-700"
+                  >
+                    Cancel Payment
+                  </button>
+                </div>
+              ) : (
+                /* Action Buttons */
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={handleBack}
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back
+                  </button>
+                  <button
+                    onClick={grandTotal > 0 ? createPaymentIntent : handleBookingSubmit}
+                    disabled={createBooking.isPending || isCreatingPaymentIntent}
+                    className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    {createBooking.isPending || isCreatingPaymentIntent ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        {isCreatingPaymentIntent ? 'Preparing Payment...' : 'Booking...'}
+                      </span>
+                    ) : grandTotal > 0 ? (
+                      <>
+                        <CreditCard className="h-4 w-4" />
+                        Proceed to Payment
+                      </>
+                    ) : (
+                      "Confirm Booking"
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
