@@ -13183,6 +13183,66 @@ app.get("/api/manager/kitchens/:locationId", requireFirebaseAuthWithUser, requir
   }
 });
 
+// Create kitchen (manager)
+app.post("/api/manager/kitchens", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
+
+    const { locationId, name, description } = req.body;
+
+    // Validate required fields
+    if (!locationId || !name) {
+      return res.status(400).json({ error: "Location ID and name are required" });
+    }
+
+    // Validate locationId is a valid number
+    const locationIdNum = parseInt(locationId.toString());
+    if (isNaN(locationIdNum) || locationIdNum <= 0) {
+      return res.status(400).json({ error: "Invalid location ID format" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this location
+    const locationResult = await pool.query(`
+      SELECT id FROM locations WHERE manager_id = $1 AND id = $2
+    `, [user.id, locationIdNum]);
+
+    if (locationResult.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied to this location" });
+    }
+
+    // Validate that the location exists
+    const location = await getLocationById(locationIdNum);
+    if (!location) {
+      return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
+    }
+
+    const kitchen = await createKitchen({ 
+      locationId: locationIdNum, 
+      name, 
+      description: description || undefined, 
+      isActive: true 
+    });
+    
+    console.log(`✅ Kitchen created by manager ${user.id} for location ${locationIdNum}`);
+    res.status(201).json(kitchen);
+  } catch (error) {
+    console.error("Error creating kitchen:", error);
+    console.error("Error details:", error.message, error.stack);
+    // Provide better error messages
+    if (error.code === '23503') { // Foreign key constraint violation
+      return res.status(400).json({ error: 'The selected location does not exist or is invalid.' });
+    } else if (error.code === '23505') { // Unique constraint violation
+      return res.status(400).json({ error: 'A kitchen with this name already exists in this location.' });
+    }
+    res.status(500).json({ error: error.message || "Failed to create kitchen" });
+  }
+});
+
 // Update kitchen image (manager)
 app.put("/api/manager/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
