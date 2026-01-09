@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
-import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus } from "lucide-react";
+import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
-import { format, differenceInDays, startOfToday } from "date-fns";
+import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
 
 interface Booking {
   id: number;
@@ -59,6 +60,9 @@ export default function BookingControlPanel({
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
   const [expandedStorageBookings, setExpandedStorageBookings] = useState<Set<number>>(new Set());
   const [extendDialogOpen, setExtendDialogOpen] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "kitchen" | "status">("date");
+  const [groupBy, setGroupBy] = useState<"date" | "kitchen" | "none">("date");
 
   // Fetch storage bookings
   const { data: storageBookings = [], isLoading: isLoadingStorage } = useQuery({
@@ -172,7 +176,7 @@ export default function BookingControlPanel({
   // Memoize current time for use in render - recalculate periodically but stable within render
   const now = useMemo(() => new Date(), []);
 
-  // Apply filters
+  // Apply filters and search
   const filteredBookings = useMemo(() => {
     let filtered: Booking[];
 
@@ -190,8 +194,132 @@ export default function BookingControlPanel({
       filtered = filtered.filter((b) => b.status === statusFilter);
     }
 
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((b) => {
+        const kitchenName = kitchens.find((k) => k.id === b.kitchenId)?.name || b.kitchenName || `Kitchen #${b.kitchenId}`;
+        const locationName = kitchens.find((k) => k.id === b.kitchenId)?.locationName || b.locationName || "Unknown Location";
+        const searchableText = [
+          kitchenName,
+          locationName,
+          formatDate(b.bookingDate),
+          formatTime(b.startTime),
+          formatTime(b.endTime),
+          b.specialNotes || '',
+        ].join(' ').toLowerCase();
+        return searchableText.includes(query);
+      });
+    }
+
+    // Apply sorting
+    filtered = [...filtered].sort((a, b) => {
+      if (sortBy === "date") {
+        try {
+          const dateStrA = a.bookingDate?.split('T')[0] || a.bookingDate;
+          const dateStrB = b.bookingDate?.split('T')[0] || b.bookingDate;
+          const dateA = new Date(`${dateStrA}T${a.startTime}`).getTime();
+          const dateB = new Date(`${dateStrB}T${b.startTime}`).getTime();
+          return viewType === "past" ? dateB - dateA : dateA - dateB;
+        } catch {
+          return 0;
+        }
+      } else if (sortBy === "kitchen") {
+        const kitchenA = getKitchenInfo(a).name.toLowerCase();
+        const kitchenB = getKitchenInfo(b).name.toLowerCase();
+        return kitchenA.localeCompare(kitchenB);
+      } else if (sortBy === "status") {
+        const statusOrder = { confirmed: 0, pending: 1, cancelled: 2 };
+        return (statusOrder[a.status as keyof typeof statusOrder] ?? 3) - 
+               (statusOrder[b.status as keyof typeof statusOrder] ?? 3);
+      }
+      return 0;
+    });
+
     return filtered;
-  }, [viewType, statusFilter, upcomingBookings, pastBookings, allBookings]);
+  }, [viewType, statusFilter, upcomingBookings, pastBookings, allBookings, searchQuery, sortBy, kitchens]);
+
+  // Group bookings by date or kitchen
+  const groupedBookings = useMemo(() => {
+    if (groupBy === "none") {
+      return { "All Bookings": filteredBookings };
+    }
+
+    if (groupBy === "kitchen") {
+      const groups: Record<string, Booking[]> = {};
+      filteredBookings.forEach((booking) => {
+        const kitchen = kitchens.find((k) => k.id === booking.kitchenId);
+        const kitchenName = kitchen?.name || booking.kitchenName || `Kitchen #${booking.kitchenId}`;
+        const locationName = kitchen?.locationName || booking.locationName || "Unknown Location";
+        const key = `${kitchenName} - ${locationName}`;
+        if (!groups[key]) {
+          groups[key] = [];
+        }
+        groups[key].push(booking);
+      });
+      return groups;
+    }
+
+    // Group by date
+    const groups: Record<string, Booking[]> = {};
+    const today = startOfToday();
+
+    filteredBookings.forEach((booking) => {
+      try {
+        const dateStr = booking.bookingDate?.split('T')[0] || booking.bookingDate;
+        const bookingDate = startOfDay(parseISO(dateStr));
+        
+        let groupKey: string;
+        if (isToday(bookingDate)) {
+          groupKey = "Today";
+        } else if (isTomorrow(bookingDate)) {
+          groupKey = "Tomorrow";
+        } else if (isThisWeek(bookingDate)) {
+          groupKey = "This Week";
+        } else {
+          // Check if it's next week
+          const nextWeekStart = startOfWeek(addWeeks(today, 1));
+          const nextWeekEnd = startOfWeek(addWeeks(today, 2));
+          if (bookingDate >= nextWeekStart && bookingDate < nextWeekEnd) {
+            groupKey = "Next Week";
+          } else if (bookingDate > today) {
+            groupKey = format(bookingDate, "MMMM yyyy");
+          } else {
+            groupKey = "Past";
+          }
+        }
+
+        if (!groups[groupKey]) {
+          groups[groupKey] = [];
+        }
+        groups[groupKey].push(booking);
+      } catch (error) {
+        // Fallback to "Other" if date parsing fails
+        if (!groups["Other"]) {
+          groups["Other"] = [];
+        }
+        groups["Other"].push(booking);
+      }
+    });
+
+    // Sort group keys
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      const order = ["Today", "Tomorrow", "This Week", "Next Week", "Past", "Other"];
+      const indexA = order.indexOf(a);
+      const indexB = order.indexOf(b);
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    const sortedGroups: Record<string, Booking[]> = {};
+    sortedKeys.forEach((key) => {
+      sortedGroups[key] = groups[key];
+    });
+
+    return sortedGroups;
+  }, [filteredBookings, groupBy, kitchens]);
 
   const toggleExpanded = (bookingId: number) => {
     setExpandedBookings((prev) => {
@@ -375,6 +503,48 @@ export default function BookingControlPanel({
           </div>
         </div>
 
+        {/* Search Bar */}
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search by kitchen, location, date, or time..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 w-full"
+            />
+          </div>
+        </div>
+
+        {/* Sort and Group Controls */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+            <ArrowUpDown className="h-3 w-3 text-gray-600" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "date" | "kitchen" | "status")}
+              className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer"
+            >
+              <option value="date">Sort by Date</option>
+              <option value="kitchen">Sort by Kitchen</option>
+              <option value="status">Sort by Status</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+            <Filter className="h-3 w-3 text-gray-600" />
+            <select
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as "date" | "kitchen" | "none")}
+              className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer"
+            >
+              <option value="date">Group by Date</option>
+              <option value="kitchen">Group by Kitchen</option>
+              <option value="none">No Grouping</option>
+            </select>
+          </div>
+        </div>
+
         {/* View Type Tabs */}
         <div className="flex gap-1 mb-4 bg-gray-50 p-1 rounded-lg">
           {[
@@ -452,8 +622,28 @@ export default function BookingControlPanel({
           </p>
         </div>
       ) : (
-        <div className="space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
-          {filteredBookings.map((booking) => {
+        <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
+          {Object.entries(groupedBookings).map(([groupKey, groupBookings]) => {
+            if (groupBookings.length === 0) return null;
+            
+            return (
+              <div key={groupKey} className="space-y-2">
+                {/* Group Header */}
+                {groupBy !== "none" && (
+                  <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 py-2 px-3 -mx-2">
+                    <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {groupKey}
+                      <span className="text-xs font-normal text-gray-500 ml-1">
+                        ({groupBookings.length})
+                      </span>
+                    </h3>
+                  </div>
+                )}
+                
+                {/* Bookings in this group */}
+                <div className="space-y-3">
+                  {groupBookings.map((booking) => {
             if (!booking || !booking.id) return null;
             
             const isExpanded = expandedBookings.has(booking.id);
@@ -628,6 +818,10 @@ export default function BookingControlPanel({
                     )}
                   </div>
                 )}
+              </div>
+            );
+                  })}
+                </div>
               </div>
             );
           })}

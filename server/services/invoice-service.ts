@@ -109,7 +109,10 @@ export async function generateInvoicePDF(
   // Now generate PDF
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ margin: 50 });
+      const doc = new PDFDocument({ 
+        margin: 50,
+        size: 'LETTER'
+      });
       const buffers: Buffer[] = [];
 
       doc.on('data', buffers.push.bind(buffers));
@@ -119,11 +122,11 @@ export async function generateInvoicePDF(
       });
       doc.on('error', reject);
 
-      // Header
-      doc.fontSize(24).text('INVOICE', { align: 'left' });
-      doc.moveDown(0.5);
+      // Header Section
+      doc.fontSize(28).font('Helvetica-Bold').text('INVOICE', 50, 50);
+      doc.fontSize(10).font('Helvetica');
       
-      // Invoice details
+      // Invoice details (right-aligned)
       const invoiceDate = new Date().toLocaleDateString('en-US', { 
         year: 'numeric', 
         month: 'long', 
@@ -131,32 +134,46 @@ export async function generateInvoicePDF(
       });
       const invoiceNumber = `LC-${booking.id}-${new Date().getFullYear()}`;
       
-      doc.fontSize(10).text(`Invoice #: ${invoiceNumber}`, { align: 'right' });
-      doc.text(`Date: ${invoiceDate}`, { align: 'right' });
+      const rightMargin = 550;
+      let rightY = 50;
+      doc.fontSize(10).font('Helvetica-Bold').text('Invoice #:', rightMargin - 100, rightY, { width: 100, align: 'right' });
+      doc.font('Helvetica').text(invoiceNumber, rightMargin, rightY);
+      rightY += 15;
+      
+      doc.font('Helvetica-Bold').text('Date:', rightMargin - 100, rightY, { width: 100, align: 'right' });
+      doc.font('Helvetica').text(invoiceDate, rightMargin, rightY);
+      rightY += 15;
+      
       if (paymentIntentId) {
-        doc.text(`Payment ID: ${paymentIntentId}`, { align: 'right' });
+        doc.font('Helvetica-Bold').text('Payment ID:', rightMargin - 100, rightY, { width: 100, align: 'right' });
+        doc.font('Helvetica').text(paymentIntentId.substring(0, 20) + '...', rightMargin, rightY);
       }
-      doc.moveDown(1);
+      
+      // Company info section
+      let leftY = 120;
+      doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks Community', 50, leftY);
+      leftY += 18;
+      doc.fontSize(10).font('Helvetica').text('support@localcooks.ca', 50, leftY);
+      leftY += 30;
 
-      // Company info
-      doc.fontSize(12).text('Local Cooks Community', { align: 'left' });
-      doc.fontSize(10).text('support@localcooks.ca', { align: 'left' });
-      doc.moveDown(1);
-
-      // Bill to
-      doc.fontSize(12).text('Bill To:', { align: 'left' });
-      doc.fontSize(10);
+      // Bill To section
+      doc.fontSize(12).font('Helvetica-Bold').text('Bill To:', 50, leftY);
+      leftY += 18;
+      doc.fontSize(10).font('Helvetica');
       if (chef) {
-        doc.text(chef.username || chef.email || 'Chef', { align: 'left' });
+        doc.text(chef.username || chef.email || 'Chef', 50, leftY);
+        leftY += 15;
         if (chef.email) {
-          doc.text(chef.email, { align: 'left' });
+          doc.text(chef.email, 50, leftY);
+          leftY += 15;
         }
       }
-      doc.moveDown(1);
+      leftY += 20;
 
-      // Booking details
-      doc.fontSize(12).text('Booking Details:', { align: 'left' });
-      doc.fontSize(10);
+      // Booking details section
+      doc.fontSize(12).font('Helvetica-Bold').text('Booking Details:', 50, leftY);
+      leftY += 18;
+      doc.fontSize(10).font('Helvetica');
       
       const bookingDateStr = booking.bookingDate ? new Date(booking.bookingDate).toLocaleDateString('en-US', {
         weekday: 'long',
@@ -165,68 +182,96 @@ export async function generateInvoicePDF(
         day: 'numeric'
       }) : 'N/A';
       
-      doc.text(`Kitchen: ${kitchen?.name || 'Kitchen'}`, { align: 'left' });
+      doc.text(`Kitchen: ${kitchen?.name || 'Kitchen'}`, 50, leftY);
+      leftY += 15;
       if (location?.name) {
-        doc.text(`Location: ${location.name}`, { align: 'left' });
+        doc.text(`Location: ${location.name}`, 50, leftY);
+        leftY += 15;
       }
-      doc.text(`Date: ${bookingDateStr}`, { align: 'left' });
-      doc.text(`Time: ${booking.startTime || booking.start_time || 'N/A'} - ${booking.endTime || booking.end_time || 'N/A'}`, { align: 'left' });
-      doc.moveDown(1);
+      doc.text(`Date: ${bookingDateStr}`, 50, leftY);
+      leftY += 15;
+      doc.text(`Time: ${booking.startTime || booking.start_time || 'N/A'} - ${booking.endTime || booking.end_time || 'N/A'}`, 50, leftY);
+      leftY += 30;
 
       // Items table
-      doc.moveDown(1);
-      doc.fontSize(10);
+      const tableTop = leftY;
       
-      // Table header
-      const tableTop = doc.y;
-      doc.text('Description', 50, tableTop);
-      doc.text('Qty', 300, tableTop);
-      doc.text('Rate', 350, tableTop, { align: 'right' });
-      doc.text('Amount', 450, tableTop, { align: 'right' });
+      // Table header with background
+      doc.rect(50, tableTop, 500, 25).fill('#f3f4f6');
+      doc.fontSize(10).font('Helvetica-Bold');
+      doc.fillColor('#000000');
+      doc.text('Description', 60, tableTop + 8);
+      doc.text('Qty', 320, tableTop + 8);
+      doc.text('Rate', 380, tableTop + 8, { align: 'right' });
+      doc.text('Amount', 500, tableTop + 8, { align: 'right' });
       
-      // Draw line
-      doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+      // Draw header border
+      doc.moveTo(50, tableTop + 25).lineTo(550, tableTop + 25).stroke();
       
-      let currentY = tableTop + 25;
+      let currentY = tableTop + 35;
       
-      // Items
-      items.forEach(item => {
-        doc.text(item.description, 50, currentY, { width: 240 });
-        doc.text(item.quantity.toString(), 300, currentY);
-        doc.text(`$${item.rate.toFixed(2)}`, 350, currentY, { align: 'right' });
-        doc.text(`$${item.amount.toFixed(2)}`, 450, currentY, { align: 'right' });
+      // Items rows
+      items.forEach((item, index) => {
+        // Alternate row background
+        if (index % 2 === 0) {
+          doc.rect(50, currentY - 5, 500, 20).fill('#fafafa');
+        }
+        
+        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        doc.text(item.description, 60, currentY, { width: 250 });
+        doc.text(item.quantity.toString(), 320, currentY);
+        doc.text(`$${item.rate.toFixed(2)}`, 380, currentY, { align: 'right', width: 110 });
+        doc.text(`$${item.amount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
         currentY += 20;
       });
       
-      // Totals
+      // Totals section
       currentY += 10;
       doc.moveTo(50, currentY).lineTo(550, currentY).stroke();
       currentY += 15;
       
-      doc.text('Subtotal:', 350, currentY, { align: 'right' });
-      doc.text(`$${totalAmount.toFixed(2)}`, 450, currentY, { align: 'right' });
+      // Subtotal
+      doc.fontSize(10).font('Helvetica').text('Subtotal:', 380, currentY, { align: 'right', width: 110 });
+      doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
-      doc.text('Service Fee (5%):', 350, currentY, { align: 'right' });
-      doc.text(`$${serviceFee.toFixed(2)}`, 450, currentY, { align: 'right' });
+      // Service Fee
+      doc.text('Service Fee (5%):', 380, currentY, { align: 'right', width: 110 });
+      doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
+      // Total (bold and larger)
+      doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
+      currentY += 10;
       doc.fontSize(12).font('Helvetica-Bold');
-      doc.text('Total:', 350, currentY, { align: 'right' });
-      doc.text(`$${grandTotal.toFixed(2)}`, 450, currentY, { align: 'right' });
+      doc.text('Total:', 380, currentY, { align: 'right', width: 110 });
+      doc.text(`$${grandTotal.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       doc.font('Helvetica').fontSize(10);
       
-      // Payment info
-      doc.moveDown(2);
-      doc.fontSize(10);
-      doc.text('Payment Method: Pre-Authorized Debit', { align: 'left' });
-      doc.text('Payment Status: Authorized', { align: 'left' });
-      doc.text('Note: Payment will be processed within 3-5 business days.', { align: 'left' });
+      // Payment info section
+      currentY += 40;
+      doc.rect(50, currentY, 500, 60).stroke('#e5e7eb');
+      doc.rect(50, currentY, 500, 60).fill('#f9fafb');
+      currentY += 15;
+      
+      doc.fontSize(10).font('Helvetica-Bold').text('Payment Information', 60, currentY);
+      currentY += 18;
+      doc.font('Helvetica');
+      doc.text('Payment Method: Pre-Authorized Debit', 60, currentY);
+      currentY += 15;
+      doc.text('Payment Status: Authorized', 60, currentY);
+      currentY += 15;
+      doc.fontSize(9).fillColor('#6b7280').text('Note: Payment will be processed within 3-5 business days.', 60, currentY);
+      doc.fillColor('#000000');
       
       // Footer
-      doc.moveDown(2);
-      doc.fontSize(8).text('Thank you for your business!', { align: 'center' });
-      doc.text('For questions, contact support@localcooks.ca', { align: 'center' });
+      const pageHeight = doc.page.height;
+      const footerY = pageHeight - 80;
+      
+      doc.moveTo(50, footerY).lineTo(550, footerY).stroke('#e5e7eb');
+      doc.fontSize(9).fillColor('#6b7280').text('Thank you for your business!', 50, footerY + 15, { align: 'center', width: 500 });
+      doc.text('For questions, contact support@localcooks.ca', 50, footerY + 30, { align: 'center', width: 500 });
+      doc.fillColor('#000000');
 
       doc.end();
     } catch (error) {
