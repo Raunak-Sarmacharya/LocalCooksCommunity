@@ -2822,6 +2822,8 @@ export class FirebaseStorage {
     bookingType?: 'chef' | 'external' | 'manager_blocked';
     createdBy?: number | null;
     chefId?: number | null;
+    paymentIntentId?: string;
+    paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
     externalContact?: {
       name: string;
       email: string;
@@ -2864,7 +2866,8 @@ export class FirebaseStorage {
         durationHours: pricing.durationHours.toString(),
         serviceFee: serviceFeeCents.toString(),
         currency: pricing.currency,
-        paymentStatus: 'pending',
+        paymentStatus: bookingData.paymentStatus || 'pending',
+        paymentIntentId: bookingData.paymentIntentId || null,
         storageItems: [],
         equipmentItems: [],
       };

@@ -5620,10 +5620,183 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Payment endpoints
+  // Create PaymentIntent for booking
+  app.post("/api/payments/create-intent", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds } = req.body;
+      const chefId = req.user!.id;
+
+      if (!kitchenId || !bookingDate || !startTime || !endTime) {
+        return res.status(400).json({ error: "Missing required booking fields" });
+      }
+
+      // Import Stripe service and pricing service
+      const { createPaymentIntent } = await import('./services/stripe-service');
+      const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+
+      // Calculate kitchen booking price
+      const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+      let totalPriceCents = kitchenPricing.totalPriceCents;
+
+      // Calculate storage add-ons
+      if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0 && pool) {
+        for (const storage of selectedStorage) {
+          try {
+            const storageResult = await pool.query(
+              `SELECT id, pricing_model, base_price, minimum_booking_duration FROM storage_listings WHERE id = $1`,
+              [storage.storageListingId]
+            );
+            
+            if (storageResult.rows.length > 0) {
+              const storageListing = storageResult.rows[0];
+              const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
+              const minDays = storageListing.minimum_booking_duration || 1;
+              
+              const startDate = new Date(storage.startDate);
+              const endDate = new Date(storage.endDate);
+              const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+              const effectiveDays = Math.max(days, minDays);
+              
+              let storagePrice = basePriceCents * effectiveDays;
+              if (storageListing.pricing_model === 'hourly') {
+                const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
+                storagePrice = basePriceCents * durationHours;
+              } else if (storageListing.pricing_model === 'monthly-flat') {
+                storagePrice = basePriceCents;
+              }
+              
+              totalPriceCents += storagePrice;
+            }
+          } catch (error) {
+            console.error('Error calculating storage price:', error);
+          }
+        }
+      }
+
+      // Calculate equipment add-ons
+      if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0 && pool) {
+        for (const equipmentListingId of selectedEquipmentIds) {
+          try {
+            const equipmentResult = await pool.query(
+              `SELECT id, session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`,
+              [equipmentListingId]
+            );
+            
+            if (equipmentResult.rows.length > 0) {
+              const equipmentListing = equipmentResult.rows[0];
+              const sessionRateCents = equipmentListing.session_rate ? parseInt(equipmentListing.session_rate) : 0;
+              const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
+              
+              totalPriceCents += sessionRateCents + damageDepositCents;
+            }
+          } catch (error) {
+            console.error('Error calculating equipment price:', error);
+          }
+        }
+      }
+
+      // Calculate service fee (5% of total)
+      const serviceFeeCents = calculatePlatformFee(totalPriceCents, 0.05);
+      const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, serviceFeeCents, 0);
+
+      // Skip payment if total is zero
+      if (totalWithFeesCents <= 0) {
+        return res.status(400).json({ error: "Booking total is zero. Payment not required." });
+      }
+
+      // Create PaymentIntent
+      const paymentIntent = await createPaymentIntent({
+        amount: totalWithFeesCents,
+        currency: kitchenPricing.currency.toLowerCase(),
+        chefId,
+        kitchenId,
+        metadata: {
+          booking_date: bookingDate,
+          start_time: startTime,
+          end_time: endTime,
+        },
+      });
+
+      res.json({
+        paymentIntentId: paymentIntent.id,
+        clientSecret: paymentIntent.clientSecret,
+        amount: totalWithFeesCents,
+        currency: kitchenPricing.currency,
+      });
+    } catch (error: any) {
+      console.error('Error creating payment intent:', error);
+      res.status(500).json({ 
+        error: "Failed to create payment intent",
+        message: error.message 
+      });
+    }
+  });
+
+  // Confirm PaymentIntent
+  app.post("/api/payments/confirm", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { paymentIntentId, paymentMethodId } = req.body;
+      const chefId = req.user!.id;
+
+      if (!paymentIntentId || !paymentMethodId) {
+        return res.status(400).json({ error: "Missing paymentIntentId or paymentMethodId" });
+      }
+
+      const { confirmPaymentIntent, getPaymentIntent } = await import('./services/stripe-service');
+
+      // Verify payment intent belongs to chef
+      const paymentIntent = await getPaymentIntent(paymentIntentId);
+      if (!paymentIntent) {
+        return res.status(404).json({ error: "Payment intent not found" });
+      }
+
+      // Confirm payment
+      const confirmed = await confirmPaymentIntent(paymentIntentId, paymentMethodId);
+
+      res.json({
+        paymentIntentId: confirmed.id,
+        status: confirmed.status,
+      });
+    } catch (error: any) {
+      console.error('Error confirming payment:', error);
+      res.status(500).json({ 
+        error: "Failed to confirm payment",
+        message: error.message 
+      });
+    }
+  });
+
+  // Get PaymentIntent status
+  app.get("/api/payments/intent/:id/status", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const chefId = req.user!.id;
+
+      const { getPaymentIntent } = await import('./services/stripe-service');
+      const paymentIntent = await getPaymentIntent(id);
+
+      if (!paymentIntent) {
+        return res.status(404).json({ error: "Payment intent not found" });
+      }
+
+      res.json({
+        paymentIntentId: paymentIntent.id,
+        status: paymentIntent.status,
+      });
+    } catch (error: any) {
+      console.error('Error getting payment intent status:', error);
+      res.status(500).json({ 
+        error: "Failed to get payment intent status",
+        message: error.message 
+      });
+    }
+  });
+
   // Create a booking
   app.post("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
-      const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds } = req.body;
+      const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
       const chefId = req.user!.id;
       
       // Get the location for this kitchen
@@ -5780,16 +5953,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Step 0: Verify payment if paymentIntentId is provided
+      let paymentStatus = 'pending';
+      if (paymentIntentId) {
+        console.log(`💳 STEP 0: Verifying payment intent ${paymentIntentId}...`);
+        const { verifyPaymentIntentForBooking } = await import('./services/stripe-service');
+        const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+
+        // Calculate expected total for verification
+        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+        let expectedTotal = kitchenPricing.totalPriceCents;
+
+        // Add storage and equipment prices
+        if (pool && selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
+          for (const storage of selectedStorage) {
+            try {
+              const storageResult = await pool.query(
+                `SELECT base_price, pricing_model, minimum_booking_duration FROM storage_listings WHERE id = $1`,
+                [storage.storageListingId]
+              );
+              if (storageResult.rows.length > 0) {
+                const sl = storageResult.rows[0];
+                const basePrice = parseInt(sl.base_price || '0');
+                const startDate = new Date(storage.startDate);
+                const endDate = new Date(storage.endDate);
+                const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                const effectiveDays = Math.max(days, sl.minimum_booking_duration || 1);
+                let storagePrice = basePrice * effectiveDays;
+                if (sl.pricing_model === 'hourly') {
+                  const hours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
+                  storagePrice = basePrice * hours;
+                } else if (sl.pricing_model === 'monthly-flat') {
+                  storagePrice = basePrice;
+                }
+                expectedTotal += storagePrice;
+              }
+            } catch (e) {
+              console.error('Error calculating storage for verification:', e);
+            }
+          }
+        }
+
+        if (pool && selectedEquipmentIds && Array.isArray(selectedEquipmentIds)) {
+          for (const equipmentId of selectedEquipmentIds) {
+            try {
+              const equipmentResult = await pool.query(
+                `SELECT session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`,
+                [equipmentId]
+              );
+              if (equipmentResult.rows.length > 0) {
+                const eq = equipmentResult.rows[0];
+                expectedTotal += parseInt(eq.session_rate || '0') + parseInt(eq.damage_deposit || '0');
+              }
+            } catch (e) {
+              console.error('Error calculating equipment for verification:', e);
+            }
+          }
+        }
+
+        const serviceFee = calculatePlatformFee(expectedTotal, 0.05);
+        expectedTotal = calculateTotalWithFees(expectedTotal, serviceFee, 0);
+
+        const verification = await verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedTotal);
+        
+        if (!verification.valid) {
+          return res.status(400).json({ 
+            error: verification.error || 'Payment verification failed',
+            paymentStatus: verification.status
+          });
+        }
+
+        paymentStatus = verification.status === 'succeeded' ? 'paid' : 'pending';
+        console.log(`✅ STEP 0 COMPLETE: Payment verified with status: ${paymentStatus}`);
+      } else {
+        // If no payment intent, check if booking requires payment
+        const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+        const serviceFee = calculatePlatformFee(kitchenPricing.totalPriceCents, 0.05);
+        const total = calculateTotalWithFees(kitchenPricing.totalPriceCents, serviceFee, 0);
+        
+        if (total > 0) {
+          return res.status(400).json({ 
+            error: 'Payment required for this booking. Please complete payment first.',
+            requiresPayment: true
+          });
+        }
+      }
+
       // Step 1: Create booking in database
       console.log(`📝 STEP 1: Creating booking in database...`);
-      const booking = await firebaseStorage.createKitchenBooking({
+      const bookingData: any = {
         chefId: req.user!.id,
         kitchenId,
         bookingDate: new Date(bookingDate),
         startTime,
         endTime,
-        specialNotes
-      });
+        specialNotes,
+      };
+      if (paymentIntentId) {
+        bookingData.paymentIntentId = paymentIntentId;
+      }
+      if (paymentStatus) {
+        bookingData.paymentStatus = paymentStatus;
+      }
+      const booking = await firebaseStorage.createKitchenBooking(bookingData);
       console.log(`✅ STEP 1 COMPLETE: Booking ${booking.id} created successfully`);
 
       // Step 1.5: Create storage and equipment bookings if selected
