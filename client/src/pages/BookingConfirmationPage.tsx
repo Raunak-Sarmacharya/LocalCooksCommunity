@@ -406,14 +406,21 @@ export default function BookingConfirmationPage() {
         selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
       },
       {
-        onSuccess: () => {
-          const addonsCount = selectedEquipmentIds.length;
-          const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
-          toast({
-            title: "Booking Created!",
-            description: `Your ${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
-          });
-          setLocation('/book-kitchen');
+        onSuccess: (bookingData: any) => {
+          // Redirect to payment success page with booking ID
+          const bookingId = bookingData?.id || bookingData?.booking?.id;
+          if (bookingId) {
+            setLocation(`/payment-success?bookingId=${bookingId}`);
+          } else {
+            // Fallback to dashboard if booking ID not available
+            const addonsCount = selectedEquipmentIds.length;
+            const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
+            toast({
+              title: "Booking Created!",
+              description: `Your ${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
+            });
+            setLocation('/dashboard');
+          }
         },
         onError: (error: any) => {
           toast({

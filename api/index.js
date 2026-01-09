@@ -18188,6 +18188,190 @@ app.get("/api/chef/bookings", requireChef, async (req, res) => {
   }
 });
 
+// Get a single booking with add-on details
+app.get("/api/chef/bookings/:id", requireChef, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid booking ID" });
+    }
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    
+    // Get booking
+    const bookingResult = await pool.query(
+      'SELECT * FROM kitchen_bookings WHERE id = $1',
+      [id]
+    );
+    
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    
+    const booking = bookingResult.rows[0];
+    
+    // Verify the booking belongs to this chef
+    if (booking.chef_id !== req.user.id) {
+      return res.status(403).json({ error: "You don't have permission to view this booking" });
+    }
+    
+    // Get kitchen details
+    const kitchenResult = await pool.query(
+      'SELECT * FROM kitchens WHERE id = $1',
+      [booking.kitchen_id]
+    );
+    const kitchen = kitchenResult.rows[0] || null;
+    
+    // Get storage bookings
+    const storageResult = await pool.query(
+      'SELECT * FROM storage_bookings WHERE kitchen_booking_id = $1',
+      [id]
+    );
+    const storageBookings = storageResult.rows || [];
+    
+    // Get equipment bookings
+    const equipmentResult = await pool.query(
+      'SELECT * FROM equipment_bookings WHERE kitchen_booking_id = $1',
+      [id]
+    );
+    const equipmentBookings = equipmentResult.rows || [];
+    
+    res.json({
+      id: booking.id,
+      chefId: booking.chef_id,
+      kitchenId: booking.kitchen_id,
+      bookingDate: booking.booking_date,
+      startTime: booking.start_time,
+      endTime: booking.end_time,
+      status: booking.status,
+      specialNotes: booking.special_notes,
+      createdAt: booking.created_at,
+      updatedAt: booking.updated_at,
+      paymentIntentId: booking.payment_intent_id,
+      kitchen: kitchen ? {
+        id: kitchen.id,
+        name: kitchen.name,
+        locationId: kitchen.location_id,
+      } : null,
+      storageBookings,
+      equipmentBookings,
+    });
+  } catch (error) {
+    console.error("Error fetching booking details:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch booking details" });
+  }
+});
+
+// Generate invoice PDF for a booking
+app.get("/api/bookings/:id/invoice", requireChef, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid booking ID" });
+    }
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+    
+    // Get booking
+    const bookingResult = await pool.query(
+      'SELECT * FROM kitchen_bookings WHERE id = $1',
+      [id]
+    );
+    
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    
+    const booking = bookingResult.rows[0];
+    
+    // Verify the booking belongs to this chef
+    if (booking.chef_id !== req.user.id) {
+      return res.status(403).json({ error: "You don't have permission to view this invoice" });
+    }
+    
+    // Get chef details
+    const chefResult = await pool.query(
+      'SELECT * FROM users WHERE id = $1',
+      [booking.chef_id]
+    );
+    const chef = chefResult.rows[0] || null;
+    
+    // Get kitchen details
+    const kitchenResult = await pool.query(
+      'SELECT * FROM kitchens WHERE id = $1',
+      [booking.kitchen_id]
+    );
+    const kitchen = kitchenResult.rows[0] || null;
+    
+    // Get location details
+    let location = null;
+    if (kitchen && kitchen.location_id) {
+      const locationResult = await pool.query(
+        'SELECT id, name, address FROM locations WHERE id = $1',
+        [kitchen.location_id]
+      );
+      if (locationResult.rows.length > 0) {
+        location = locationResult.rows[0];
+      }
+    }
+    
+    // Get storage bookings
+    const storageResult = await pool.query(
+      'SELECT * FROM storage_bookings WHERE kitchen_booking_id = $1',
+      [id]
+    );
+    const storageBookings = storageResult.rows || [];
+    
+    // Get equipment bookings
+    const equipmentResult = await pool.query(
+      'SELECT * FROM equipment_bookings WHERE kitchen_booking_id = $1',
+      [id]
+    );
+    const equipmentBookings = equipmentResult.rows || [];
+    
+    // Normalize booking data for invoice service
+    const normalizedBooking = {
+      id: booking.id,
+      chefId: booking.chef_id,
+      kitchenId: booking.kitchen_id,
+      bookingDate: booking.booking_date,
+      startTime: booking.start_time,
+      endTime: booking.end_time,
+      status: booking.status,
+      specialNotes: booking.special_notes,
+      paymentIntentId: booking.payment_intent_id,
+    };
+    
+    // Generate invoice PDF
+    const { generateInvoicePDF } = await import('../server/services/invoice-service.js');
+    const pdfBuffer = await generateInvoicePDF(
+      normalizedBooking,
+      chef,
+      kitchen,
+      location,
+      storageBookings,
+      equipmentBookings,
+      booking.payment_intent_id,
+      pool
+    );
+    
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    const bookingDate = booking.booking_date ? new Date(booking.booking_date).toISOString().split('T')[0] : 'unknown';
+    res.setHeader('Content-Disposition', `attachment; filename="LocalCooks-Invoice-${id}-${bookingDate}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error("Error generating invoice:", error);
+    res.status(500).json({ error: error.message || "Failed to generate invoice" });
+  }
+});
+
 // Cancel a booking
 app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) => {
   try {
