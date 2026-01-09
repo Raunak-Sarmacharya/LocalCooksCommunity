@@ -846,6 +846,25 @@ export default function BookingControlPanel({
                     </div>
 
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Invoice Download Button - Always visible in header */}
+                      {booking.status !== "cancelled" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadInvoice(booking.id, booking.bookingDate);
+                          }}
+                          disabled={downloadingInvoiceId === booking.id}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label="Download invoice"
+                          title="Download invoice"
+                        >
+                          {downloadingInvoiceId === booking.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <FileText className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
                       {canCancel && (
                         <button
                           onClick={(e) => {
