@@ -5635,8 +5635,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { createPaymentIntent } = await import('./services/stripe-service');
       const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
 
-      // Calculate kitchen booking price
-      const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+      // Calculate kitchen booking price (pass pool for compatibility)
+      const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
       let totalPriceCents = kitchenPricing.totalPriceCents;
 
       // Calculate storage add-ons
@@ -5961,7 +5961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
 
         // Calculate expected total for verification
-        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
         let expectedTotal = kitchenPricing.totalPriceCents;
 
         // Add storage and equipment prices
@@ -6028,7 +6028,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         // If no payment intent, check if booking requires payment
         const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
-        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
         const serviceFee = calculatePlatformFee(kitchenPricing.totalPriceCents, 0.05);
         const total = calculateTotalWithFees(kitchenPricing.totalPriceCents, serviceFee, 0);
         

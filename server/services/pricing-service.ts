@@ -5,7 +5,21 @@
  * All prices are calculated in cents (integers) to avoid floating-point precision issues.
  */
 
-import { pool } from "../db";
+import type { Pool } from '@neondatabase/serverless';
+
+// Try to import pool, but make it optional for production compatibility
+// In production (Vercel), the pool will be passed as a parameter to functions
+let pool: Pool | null = null;
+try {
+  // Try importing pool - works in development
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const dbModule = require("../db");
+  pool = dbModule.pool || null;
+} catch (e) {
+  // In production (Vercel), pool will be passed as parameter
+  // This is expected and not an error
+  pool = null;
+}
 
 export interface KitchenPricingInfo {
   hourlyRate: number; // in cents
@@ -39,15 +53,17 @@ export function calculateDurationHours(startTime: string, endTime: string): numb
 /**
  * Get kitchen pricing information
  * @param kitchenId - Kitchen ID
+ * @param dbPool - Optional database pool (required in production)
  * @returns Kitchen pricing info or null if not found
  */
-export async function getKitchenPricing(kitchenId: number): Promise<KitchenPricingInfo | null> {
+export async function getKitchenPricing(kitchenId: number, dbPool?: Pool | null): Promise<KitchenPricingInfo | null> {
   try {
-    if (!pool) {
+    const activePool = dbPool || pool;
+    if (!activePool) {
       throw new Error("Database pool not initialized");
     }
 
-    const result = await pool.query(`
+    const result = await activePool.query(`
       SELECT 
         hourly_rate::text as hourly_rate,
         currency,
@@ -79,12 +95,14 @@ export async function getKitchenPricing(kitchenId: number): Promise<KitchenPrici
  * @param kitchenId - Kitchen ID
  * @param startTime - HH:MM format
  * @param endTime - HH:MM format
+ * @param dbPool - Optional database pool (required in production)
  * @returns Object with price in cents, duration in hours, and hourly rate
  */
 export async function calculateKitchenBookingPrice(
   kitchenId: number,
   startTime: string,
-  endTime: string
+  endTime: string,
+  dbPool?: Pool | null
 ): Promise<{
   totalPriceCents: number;
   durationHours: number;
@@ -93,7 +111,7 @@ export async function calculateKitchenBookingPrice(
 }> {
   try {
     // Get kitchen pricing
-    const pricing = await getKitchenPricing(kitchenId);
+    const pricing = await getKitchenPricing(kitchenId, dbPool);
     
     if (!pricing || !pricing.hourlyRate || pricing.hourlyRate <= 0) {
       // No pricing set - return zero price
