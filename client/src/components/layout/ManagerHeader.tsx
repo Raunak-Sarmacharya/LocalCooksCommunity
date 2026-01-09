@@ -1,12 +1,15 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut } from "lucide-react";
+import { LogOut, HelpCircle } from "lucide-react";
 import { Link } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { useState } from "react";
+import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
 
 export default function ManagerHeader() {
+  const [showHelpCenter, setShowHelpCenter] = useState(false);
   // Use Firebase auth for managers (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
   
@@ -162,6 +165,16 @@ export default function ManagerHeader() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setShowHelpCenter(true)}
+                className="gap-2"
+              >
+                <HelpCircle className="h-4 w-4" />
+                Help
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleLogout}
                 className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
               >
@@ -170,6 +183,10 @@ export default function ManagerHeader() {
               </Button>
             </>
           )}
+        </nav>
+      </div>
+      <ManagerHelpCenter isOpen={showHelpCenter} onClose={() => setShowHelpCenter(false)} />
+    </header>
         </nav>
       </div>
     </header>

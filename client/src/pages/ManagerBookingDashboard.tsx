@@ -300,17 +300,6 @@ export default function ManagerBookingDashboard() {
                       Finish your onboarding to start accepting bookings. Upload your kitchen license
                       and get it approved by an admin to activate bookings.
                     </p>
-                    <Button
-                      onClick={() => {
-                        // Trigger onboarding wizard
-                        const event = new CustomEvent('open-onboarding');
-                        window.dispatchEvent(event);
-                      }}
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      Complete Setup Now
-                    </Button>
                   </div>
                 </div>
               </div>
@@ -362,17 +351,6 @@ export default function ManagerBookingDashboard() {
                 <h1 className="text-3xl font-bold text-gray-900">Booking Management</h1>
                 <p className="text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
               </div>
-              <Button
-                onClick={() => {
-                  const event = new CustomEvent('open-onboarding');
-                  window.dispatchEvent(event);
-                }}
-                variant="outline"
-                className="flex items-center gap-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
-              >
-                <FileText className="h-4 w-4" />
-                Setup Wizard
-              </Button>
             </div>
           )}
 
@@ -625,23 +603,6 @@ export default function ManagerBookingDashboard() {
                 })}
               </nav>
 
-              {/* Quick Actions */}
-              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 hover:shadow-xl transition-all duration-300">
-                <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-                  Quick Actions
-                </h3>
-                <Button
-                  onClick={() => {
-                    const event = new CustomEvent('open-onboarding');
-                    window.dispatchEvent(event);
-                  }}
-                  variant="outline"
-                  className="w-full flex items-center justify-center gap-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span>Setup Wizard</span>
-                </Button>
-              </div>
 
               {/* Quick Stats (when location selected) */}
               {selectedLocation && activeView === 'overview' && (
@@ -686,17 +647,6 @@ export default function ManagerBookingDashboard() {
                   <p className="text-gray-600 mb-6 max-w-md mx-auto">
                     You need to complete the setup wizard to create your first location and start accepting bookings.
                   </p>
-                  <Button
-                    onClick={() => {
-                      const event = new CustomEvent('open-onboarding');
-                      window.dispatchEvent(event);
-                    }}
-                    size="lg"
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <FileText className="h-5 w-5 mr-2" />
-                    Start Setup Wizard
-                  </Button>
                 </div>
               ) : (
                 <>
@@ -1143,32 +1093,6 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
         </div>
       )}
 
-      {/* Quick Actions */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button
-            onClick={() => onNavigate('bookings')}
-            className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-300 text-left w-full shadow-sm hover:shadow-md"
-          >
-            <BookOpen className="h-5 w-5 text-blue-600" />
-            <div>
-              <p className="font-medium text-gray-900">Review Bookings</p>
-              <p className="text-sm text-gray-600">Manage pending requests</p>
-            </div>
-          </button>
-          <button
-            onClick={() => onNavigate('availability')}
-            className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all duration-300 text-left w-full shadow-sm hover:shadow-md"
-          >
-            <Calendar className="h-5 w-5 text-blue-600" />
-            <div>
-              <p className="font-medium text-gray-900">Set Availability</p>
-              <p className="text-sm text-gray-600">Configure kitchen schedules</p>
-            </div>
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -1529,16 +1453,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <p className="text-sm text-gray-700 mb-4">
                   Use the onboarding wizard to set up your location details, upload your kitchen license, and configure notification preferences.
                 </p>
-                <Button
-                  onClick={() => {
-                    const event = new CustomEvent('open-onboarding');
-                    window.dispatchEvent(event);
-                  }}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Open Setup Wizard
-                </Button>
               </div>
             </div>
           </div>

@@ -26,6 +26,9 @@ import {
   Wrench,
   Plus,
   Info,
+  Sparkles,
+  ArrowRight,
+  HelpCircle,
 } from "lucide-react";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
@@ -58,7 +61,7 @@ export default function ManagerOnboardingWizard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
@@ -111,9 +114,15 @@ export default function ManagerOnboardingWizard() {
 
   const steps: OnboardingStep[] = [
     {
+      id: 0,
+      title: "Welcome",
+      description: "Learn about the setup process",
+      icon: <Sparkles className="h-6 w-6" />,
+    },
+    {
       id: 1,
-      title: "Basic Information",
-      description: "Set up your location details and contact information",
+      title: "Location & Contact",
+      description: "Set up your location details and notification preferences",
       icon: <Building2 className="h-6 w-6" />,
     },
     {
@@ -124,20 +133,20 @@ export default function ManagerOnboardingWizard() {
     },
     {
       id: 3,
-      title: "Settings",
-      description: "Configure notification preferences",
+      title: "Create Kitchen",
+      description: "Set up your first kitchen space",
       icon: <Settings className="h-6 w-6" />,
     },
     {
       id: 4,
       title: "Storage Listings",
-      description: "Add storage options (dry, cold, freezer) for chefs",
+      description: "Add storage options (optional - can add later)",
       icon: <Package className="h-6 w-6" />,
     },
     {
       id: 5,
       title: "Equipment Listings",
-      description: "Add equipment options (cooking, prep, etc.) for chefs",
+      description: "Add equipment options (optional - can add later)",
       icon: <Wrench className="h-6 w-6" />,
     },
   ];
@@ -169,14 +178,35 @@ export default function ManagerOnboardingWizard() {
   const userData = firebaseUserData;
 
   const isManager = userData?.role === "manager";
+  const stepsCompleted = userData?.manager_onboarding_steps_completed || {};
   const shouldAutoOpen = 
     isManager &&
     !userData?.manager_onboarding_completed &&
     !userData?.manager_onboarding_skipped;
+  
+  // Allow manual opening from help center even if completed
+  const [manualOpen, setManualOpen] = useState(false);
+  
+  // Initialize stepsCompleted state
+  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>(stepsCompleted);
 
-  // Auto-open for new managers
+  // Listen for manual open from help center
   useEffect(() => {
-    if (shouldAutoOpen && !isLoadingLocations) {
+    const handleOpenFromHelp = () => {
+      if (isManager) {
+        setManualOpen(true);
+        setIsOpen(true);
+      }
+    };
+    window.addEventListener('open-onboarding-from-help', handleOpenFromHelp);
+    return () => {
+      window.removeEventListener('open-onboarding-from-help', handleOpenFromHelp);
+    };
+  }, [isManager]);
+
+  // Auto-open for new managers (only if not manually opened)
+  useEffect(() => {
+    if (shouldAutoOpen && !isLoadingLocations && !manualOpen) {
       setIsOpen(true);
       // Auto-select location if only one exists
       if (locations.length === 1) {
@@ -188,30 +218,8 @@ export default function ManagerOnboardingWizard() {
         setNotificationPhone(loc.notificationPhone || "");
       }
     }
-  }, [shouldAutoOpen, isLoadingLocations, locations]);
+  }, [shouldAutoOpen, isLoadingLocations, locations, manualOpen]);
 
-  // Listen for manual open events
-  useEffect(() => {
-    const handleOpenOnboarding = () => {
-      if (isManager && !isLoadingLocations) {
-        setIsOpen(true);
-        // Auto-select location if only one exists
-        if (locations.length === 1) {
-          setSelectedLocationId(locations[0].id);
-          const loc = locations[0] as any;
-          setLocationName(loc.name || "");
-          setLocationAddress(loc.address || "");
-          setNotificationEmail(loc.notificationEmail || "");
-          setNotificationPhone(loc.notificationPhone || "");
-        }
-      }
-    };
-
-    window.addEventListener('open-onboarding', handleOpenOnboarding);
-    return () => {
-      window.removeEventListener('open-onboarding', handleOpenOnboarding);
-    };
-  }, [isManager, isLoadingLocations, locations]);
 
   // Load kitchens when location is selected
   useEffect(() => {
@@ -430,8 +438,41 @@ export default function ManagerOnboardingWizard() {
     },
   });
 
+  // Track step completion
+  const trackStepCompletion = async (stepId: number) => {
+    try {
+      const { auth } = await import('@/lib/firebase');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) return;
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch("/api/manager/onboarding/step", {
+        method: "POST",
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json" 
+        },
+        credentials: "include",
+        body: JSON.stringify({ stepId }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCompletedSteps(data.stepsCompleted || {});
+        queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+      }
+    } catch (error) {
+      console.error("Error tracking step completion:", error);
+      // Don't block user flow if tracking fails
+    }
+  };
+
   const handleNext = async () => {
-    if (currentStep === 1) {
+    if (currentStep === 0) {
+      // Welcome step - just move to next
+      await trackStepCompletion(0);
+      setCurrentStep(1);
+    } else if (currentStep === 1) {
       // Validate basic info
       if (!locationName || !locationAddress) {
         toast({
@@ -442,7 +483,7 @@ export default function ManagerOnboardingWizard() {
         return;
       }
 
-      // Update location with basic info
+      // Update location with basic info and notification settings
       try {
         await updateLocationMutation.mutateAsync({
           name: locationName,
@@ -450,6 +491,7 @@ export default function ManagerOnboardingWizard() {
           notificationEmail,
           notificationPhone,
         });
+        await trackStepCompletion(1);
         setCurrentStep(2);
       } catch (error: any) {
         toast({
@@ -480,27 +522,32 @@ export default function ManagerOnboardingWizard() {
           return;
         }
       }
+      await trackStepCompletion(2);
       setCurrentStep(3);
     } else if (currentStep === 3) {
-      // Update notification settings
-      try {
-        await updateLocationMutation.mutateAsync({
-          notificationEmail,
-          notificationPhone,
-        });
+      // Kitchen creation step - can skip if kitchen already exists
+      if (kitchens.length > 0 || selectedKitchenId) {
         setCurrentStep(4);
-      } catch (error: any) {
+      } else if (!showCreateKitchen) {
+        // If no kitchen exists and not showing create form, prompt to create
         toast({
-          title: "Error",
-          description: error.message || "Failed to save settings",
+          title: "Kitchen Required",
+          description: "Please create a kitchen to continue, or click 'Skip for Now' to complete setup later.",
           variant: "destructive",
         });
+        return;
+      } else {
+        // Kitchen form is showing, move to next step
+        await trackStepCompletion(3);
+        setCurrentStep(4);
       }
     } else if (currentStep === 4) {
       // Storage listings step - optional, can skip
+      await trackStepCompletion(4);
       setCurrentStep(5);
     } else if (currentStep === 5) {
       // Equipment listings step - optional, can skip
+      await trackStepCompletion(5);
       setCurrentStep(6);
     } else if (currentStep === 6) {
       // Complete onboarding
@@ -519,7 +566,7 @@ export default function ManagerOnboardingWizard() {
   };
 
   const handleBack = () => {
-    if (currentStep > 1) {
+    if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
     }
   };
@@ -535,9 +582,14 @@ export default function ManagerOnboardingWizard() {
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl">Welcome! Let's Set Up Your Kitchen</DialogTitle>
+          <DialogTitle className="text-2xl">
+            {currentStep === 0 ? "Welcome to Local Cooks Community!" : "Let's Set Up Your Kitchen"}
+          </DialogTitle>
           <DialogDescription>
-            Complete these steps to activate bookings for your location
+            {currentStep === 0 
+              ? "We'll guide you through setting up your kitchen space in just a few steps"
+              : "Complete these steps to activate bookings for your location"
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -548,14 +600,14 @@ export default function ManagerOnboardingWizard() {
               <div className="flex flex-col items-center">
                 <div
                   className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${
-                    currentStep > step.id
+                    currentStep > step.id || completedSteps[`step_${step.id}`]
                       ? "bg-green-500 border-green-500 text-white"
                       : currentStep === step.id
                       ? "bg-blue-500 border-blue-500 text-white"
                       : "bg-gray-100 border-gray-300 text-gray-400"
                   }`}
                 >
-                  {currentStep > step.id ? (
+                  {currentStep > step.id || completedSteps[`step_${step.id}`] ? (
                     <CheckCircle className="h-6 w-6" />
                   ) : (
                     step.icon
@@ -574,7 +626,7 @@ export default function ManagerOnboardingWizard() {
               {index < steps.length - 1 && (
                 <div
                   className={`flex-1 h-0.5 mx-2 ${
-                    currentStep > step.id ? "bg-green-500" : "bg-gray-200"
+                    currentStep > step.id || completedSteps[`step_${step.id}`] ? "bg-green-500" : "bg-gray-200"
                   }`}
                 />
               )}
@@ -584,57 +636,163 @@ export default function ManagerOnboardingWizard() {
 
         {/* Step Content */}
         <div className="space-y-6">
+          {currentStep === 0 && (
+            <div className="space-y-6">
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <Sparkles className="h-8 w-8 text-blue-600" />
+                  <h3 className="text-xl font-semibold text-gray-900">Getting Started</h3>
+                </div>
+                <p className="text-gray-700 mb-4">
+                  We'll help you set up your kitchen space so chefs can start booking. This process takes about 5-10 minutes.
+                </p>
+                
+                <div className="space-y-4 mt-6">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
+                      1
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">Location & Contact Info</h4>
+                      <p className="text-sm text-gray-600">Tell us about your kitchen location and how to reach you</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
+                      2
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">Kitchen License</h4>
+                      <p className="text-sm text-gray-600">Upload your license (required for bookings to be activated)</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
+                      3
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">Create Your Kitchen</h4>
+                      <p className="text-sm text-gray-600">Set up your first kitchen space (you can add more later)</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 font-semibold">
+                      4-5
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">Add Listings (Optional)</h4>
+                      <p className="text-sm text-gray-600">Add storage and equipment options - you can skip and add these later</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 p-4 bg-white rounded-lg border border-blue-200">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm text-gray-700">
+                      <p className="font-semibold mb-1">Understanding the Structure:</p>
+                      <ul className="space-y-1 ml-4 list-disc">
+                        <li><strong>Location</strong> - Your business address (e.g., "The Lantern")</li>
+                        <li><strong>Kitchen</strong> - A specific kitchen space within your location</li>
+                        <li><strong>Listings</strong> - Storage and equipment that chefs can book</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {currentStep === 1 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Location Information</h3>
-              <div className="space-y-3">
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Location & Contact Information</h3>
+                <p className="text-sm text-gray-600">
+                  Tell us about your kitchen location and how you'd like to receive booking notifications.
+                </p>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <HelpCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-gray-700">
+                    <p className="font-semibold mb-1">What is a Location?</p>
+                    <p>Your location is your business address. This is what chefs will see when searching for kitchen spaces. You can have multiple kitchens within one location.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Location Name *
-                  </label>
-                  <input
+                  <Label htmlFor="location-name" className="flex items-center gap-2">
+                    Location Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="location-name"
                     type="text"
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., The Lantern"
+                    placeholder="e.g., The Lantern Kitchen"
+                    className="mt-1"
                   />
+                  <p className="text-xs text-gray-500 mt-1">The name of your kitchen business or location</p>
                 </div>
+                
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Address *
-                  </label>
-                  <input
+                  <Label htmlFor="location-address" className="flex items-center gap-2">
+                    Full Address <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="location-address"
                     type="text"
                     value={locationAddress}
                     onChange={(e) => setLocationAddress(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., 123 Main St, St. John's, NL"
+                    placeholder="e.g., 123 Main St, St. John's, NL A1B 2C3"
+                    className="mt-1"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Complete street address where your kitchen is located</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Notification Email
-                  </label>
-                  <input
-                    type="email"
-                    value={notificationEmail}
-                    onChange={(e) => setNotificationEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="notifications@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Notification Phone
-                  </label>
-                  <input
-                    type="tel"
-                    value={notificationPhone}
-                    onChange={(e) => setNotificationPhone(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="(709) 555-1234"
-                  />
+                
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Notification Preferences (Optional)</h4>
+                  <p className="text-xs text-gray-600 mb-4">
+                    Configure where you'll receive booking notifications. If left empty, notifications will be sent to your account email.
+                  </p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="notification-email">Notification Email</Label>
+                      <Input
+                        id="notification-email"
+                        type="email"
+                        value={notificationEmail}
+                        onChange={(e) => setNotificationEmail(e.target.value)}
+                        placeholder="notifications@example.com"
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Email address for booking confirmations, cancellations, and updates
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="notification-phone">Notification Phone (SMS)</Label>
+                      <Input
+                        id="notification-phone"
+                        type="tel"
+                        value={notificationPhone}
+                        onChange={(e) => setNotificationPhone(e.target.value)}
+                        placeholder="(709) 555-1234"
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Phone number for SMS notifications (optional)
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -642,18 +800,26 @@ export default function ManagerOnboardingWizard() {
 
           {currentStep === 2 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Kitchen License</h3>
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Kitchen License</h3>
+                <p className="text-sm text-gray-600">
+                  Upload your kitchen operating license for admin approval. This is required to activate bookings.
+                </p>
+              </div>
+              
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                   <div>
                     <p className="text-sm text-yellow-800 font-medium mb-1">
                       License Required for Booking Activation
                     </p>
+                    <p className="text-xs text-yellow-700 mb-2">
+                      Your kitchen license must be approved by an admin before bookings can be activated. 
+                      You can skip this step and upload later, but bookings will remain disabled until approved.
+                    </p>
                     <p className="text-xs text-yellow-700">
-                      Your kitchen license must be approved by an admin before bookings can be
-                      activated. You can skip this step and upload later, but bookings will remain
-                      disabled.
+                      <strong>Accepted formats:</strong> PDF, JPG, PNG (max 10MB)
                     </p>
                   </div>
                 </div>
@@ -791,52 +957,156 @@ export default function ManagerOnboardingWizard() {
 
           {currentStep === 3 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Notification Settings</h3>
-              <p className="text-sm text-gray-600">
-                Configure where you'll receive booking notifications and updates.
-              </p>
-              
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor="notificationEmail">Notification Email</Label>
-                  <Input
-                    id="notificationEmail"
-                    type="email"
-                    value={notificationEmail}
-                    onChange={(e) => setNotificationEmail(e.target.value)}
-                    placeholder="notifications@example.com"
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Booking notifications will be sent to this email. If left empty, notifications go to your account email.
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="notificationPhone">Notification Phone (SMS)</Label>
-                  <Input
-                    id="notificationPhone"
-                    type="tel"
-                    value={notificationPhone}
-                    onChange={(e) => setNotificationPhone(e.target.value)}
-                    placeholder="(709) 555-1234"
-                    className="mt-1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    SMS notifications for bookings and cancellations. Optional.
-                  </p>
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Create Your First Kitchen</h3>
+                <p className="text-sm text-gray-600">
+                  A kitchen is a specific space within your location where chefs can book time. You can add more kitchens later.
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <HelpCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-gray-700">
+                    <p className="font-semibold mb-1">Why do I need a Kitchen?</p>
+                    <p>Each kitchen space can have its own storage and equipment listings. If you have multiple kitchen spaces at your location, create separate kitchens for each one.</p>
+                  </div>
                 </div>
               </div>
+
+              {kitchens.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-green-800">
+                      <CheckCircle className="h-5 w-5" />
+                      <span className="font-medium">Kitchen Created!</span>
+                    </div>
+                    <p className="text-sm text-green-700 mt-1">
+                      You have {kitchens.length} kitchen{kitchens.length > 1 ? 's' : ''} set up. You can add more from your dashboard later.
+                    </p>
+                  </div>
+                  
+                  {kitchens.length === 1 && (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <p className="text-sm font-medium text-gray-900 mb-1">Current Kitchen:</p>
+                      <p className="text-sm text-gray-700">{kitchens[0].name}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {showCreateKitchen ? (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-3">Create Kitchen</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="kitchen-name">
+                            Kitchen Name <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="kitchen-name"
+                            value={kitchenFormData.name}
+                            onChange={(e) => setKitchenFormData({ ...kitchenFormData, name: e.target.value })}
+                            placeholder="e.g., Main Kitchen"
+                            className="mt-1"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Give your kitchen a descriptive name</p>
+                        </div>
+                        <div>
+                          <Label htmlFor="kitchen-description">Description (Optional)</Label>
+                          <Textarea
+                            id="kitchen-description"
+                            value={kitchenFormData.description}
+                            onChange={(e) => setKitchenFormData({ ...kitchenFormData, description: e.target.value })}
+                            placeholder="Describe your kitchen space, size, features..."
+                            rows={3}
+                            className="mt-1"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Help chefs understand what makes your kitchen special</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={async () => {
+                              if (!kitchenFormData.name.trim()) {
+                                toast({
+                                  title: "Missing Information",
+                                  description: "Please enter a kitchen name",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              setCreatingKitchen(true);
+                              try {
+                                await createKitchenMutation.mutateAsync(kitchenFormData);
+                              } finally {
+                                setCreatingKitchen(false);
+                              }
+                            }}
+                            disabled={creatingKitchen || createKitchenMutation.isPending}
+                          >
+                            {creatingKitchen || createKitchenMutation.isPending ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Creating...
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Create Kitchen
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowCreateKitchen(false);
+                              setKitchenFormData({ name: '', description: '' });
+                            }}
+                            disabled={creatingKitchen || createKitchenMutation.isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <Settings className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                      <p className="text-sm font-medium text-gray-900 mb-1">No kitchen created yet</p>
+                      <p className="text-xs text-gray-600 mb-4">
+                        Create your first kitchen to start adding storage and equipment listings
+                      </p>
+                      <Button
+                        onClick={() => setShowCreateKitchen(true)}
+                        className="w-full"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Your First Kitchen
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {currentStep === 4 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Storage Listings</h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  <Info className="inline h-4 w-4 mr-1" />
-                  Add storage options (dry, cold, freezer) that chefs can book. You can add more later from your dashboard.
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Storage Listings (Optional)</h3>
+                <p className="text-sm text-gray-600">
+                  Add storage options that chefs can book. This step is optional - you can skip and add listings later from your dashboard.
                 </p>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-semibold mb-1">What are Storage Listings?</p>
+                    <p>Storage listings allow chefs to book dry storage, cold storage, or freezer space at your kitchen. You can add multiple storage options with different sizes and prices.</p>
+                  </div>
+                </div>
               </div>
 
               {kitchens.length === 0 ? (
@@ -1167,12 +1437,21 @@ export default function ManagerOnboardingWizard() {
 
           {currentStep === 5 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Equipment Listings</h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  <Info className="inline h-4 w-4 mr-1" />
-                  Add equipment options (cooking, prep, refrigeration) that chefs can rent or use. You can add more later from your dashboard.
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Equipment Listings (Optional)</h3>
+                <p className="text-sm text-gray-600">
+                  Add equipment that chefs can use or rent. This step is optional - you can skip and add listings later from your dashboard.
                 </p>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-semibold mb-1">What are Equipment Listings?</p>
+                    <p>Equipment listings let chefs know what equipment is available. You can offer equipment as included with bookings or as paid add-ons (rentals).</p>
+                  </div>
+                </div>
               </div>
 
               {kitchens.length === 0 ? (
@@ -1545,50 +1824,100 @@ export default function ManagerOnboardingWizard() {
 
           {currentStep === 6 && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Almost Done!</h3>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  {selectedLocation?.kitchenLicenseStatus === "approved" ? (
-                    <>
-                      <CheckCircle className="inline h-4 w-4 mr-1" />
-                      Your license is approved! Bookings are now active.
-                    </>
-                  ) : selectedLocation?.kitchenLicenseUrl ? (
-                    <>
-                      <AlertCircle className="inline h-4 w-4 mr-1" />
-                      Your license is pending admin approval. Bookings will be activated once
-                      approved.
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="inline h-4 w-4 mr-1" />
-                      Upload your kitchen license to activate bookings. You can do this later from
-                      your dashboard.
-                    </>
-                  )}
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2">You're All Set!</h3>
+                <p className="text-sm text-gray-600">
+                  Your kitchen setup is complete. Here's what happens next:
                 </p>
               </div>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p>✓ Location information saved</p>
-                {selectedLocation?.kitchenLicenseUrl ? (
-                  <p>✓ License uploaded (pending approval)</p>
-                ) : (
-                  <p className="text-yellow-600">⚠ License not uploaded</p>
-                )}
-                <p>✓ Notification preferences configured</p>
-                <p className="text-gray-400">○ Storage listings (optional - can add later)</p>
-                <p className="text-gray-400">○ Equipment listings (optional - can add later)</p>
+
+              <div className="space-y-3">
+                <div className={`border rounded-lg p-4 ${
+                  selectedLocation?.kitchenLicenseStatus === "approved" 
+                    ? "bg-green-50 border-green-200" 
+                    : selectedLocation?.kitchenLicenseUrl
+                    ? "bg-yellow-50 border-yellow-200"
+                    : "bg-orange-50 border-orange-200"
+                }`}>
+                  <div className="flex items-start gap-3">
+                    {selectedLocation?.kitchenLicenseStatus === "approved" ? (
+                      <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900 mb-1">License Status</p>
+                      {selectedLocation?.kitchenLicenseStatus === "approved" ? (
+                        <p className="text-sm text-green-700">
+                          ✓ Your license is approved! Bookings are now active and chefs can start booking your kitchen.
+                        </p>
+                      ) : selectedLocation?.kitchenLicenseUrl ? (
+                        <p className="text-sm text-yellow-700">
+                          ⏳ Your license is pending admin approval. Bookings will be activated once approved. 
+                          You'll receive an email notification when your license is reviewed.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-orange-700">
+                          ⚠️ Upload your kitchen license to activate bookings. You can do this from your dashboard settings.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Setup Summary</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-gray-700">Location information saved</span>
+                    </div>
+                    {selectedLocation?.kitchenLicenseUrl ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-gray-700">License uploaded</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                        <span className="text-gray-600">License not uploaded (can add later)</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-gray-700">Notification preferences configured</span>
+                    </div>
+                    {kitchens.length > 0 ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-gray-700">{kitchens.length} kitchen{kitchens.length > 1 ? 's' : ''} created</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                        <span className="text-gray-600">No kitchen created yet (can add later)</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-500">Storage & equipment listings (optional - can add later)</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Next Steps</h4>
-                <p className="text-xs text-gray-600 mb-2">
-                  You can manage all your listings, bookings, and settings from your dashboard:
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">What's Next?</h4>
+                <p className="text-xs text-gray-700 mb-3">
+                  You can manage everything from your dashboard:
                 </p>
-                <ul className="text-xs text-gray-600 space-y-1 list-disc list-inside">
-                  <li>Add more storage and equipment listings with photos</li>
-                  <li>Manage bookings and availability</li>
-                  <li>Update pricing and settings</li>
+                <ul className="text-xs text-gray-700 space-y-1.5 list-disc list-inside">
+                  <li>Add more kitchens, storage, and equipment listings with photos</li>
+                  <li>Manage bookings, availability, and pricing</li>
+                  <li>Update your location settings and license</li>
                   <li>View chef profiles and manage access</li>
                 </ul>
               </div>
@@ -1606,7 +1935,7 @@ export default function ManagerOnboardingWizard() {
             Skip for Now
           </Button>
           <div className="flex gap-3">
-            {currentStep > 1 && (
+            {currentStep > 0 && (
               <Button variant="outline" onClick={handleBack}>
                 <ChevronLeft className="h-4 w-4 mr-1" />
                 Back
@@ -1636,7 +1965,7 @@ export default function ManagerOnboardingWizard() {
                 </>
               ) : (
                 <>
-                  Next
+                  {currentStep === 0 ? "Get Started" : "Next"}
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </>
               )}
