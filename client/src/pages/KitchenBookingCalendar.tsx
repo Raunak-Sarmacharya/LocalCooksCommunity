@@ -1,5 +1,5 @@
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat } from "lucide-react";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -8,6 +8,7 @@ import BookingControlPanel from "@/components/booking/BookingControlPanel";
 import { StorageSelection } from "@/components/booking/StorageSelection";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useLocation } from "wouter";
+import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 
 // Helper functions for calendar
 function getDaysInMonth(year: number, month: number) {
@@ -147,6 +148,12 @@ export default function KitchenBookingCalendar() {
   // Step 1: Kitchen Selection
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
   
+  // Get location ID from selected kitchen
+  const selectedLocationId = selectedKitchen?.location?.id || selectedKitchen?.locationId || null;
+  
+  // Check kitchen application status for the selected location
+  const { application, hasApplication, canBook, isLoading: isLoadingApplication } = useChefKitchenApplicationForLocation(selectedLocationId);
+  
   // Step 2: Date Selection (Calendar View)
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
@@ -263,12 +270,44 @@ export default function KitchenBookingCalendar() {
     return `${y}-${m}-${day}`;
   };
 
+  // Check application status and redirect if needed when kitchen is selected
+  // Use a ref to prevent multiple redirects
+  const hasRedirectedRef = useRef(false);
+  
+  useEffect(() => {
+    // Reset redirect flag when location changes
+    if (selectedLocationId) {
+      hasRedirectedRef.current = false;
+    } else {
+      hasRedirectedRef.current = false;
+    }
+  }, [selectedLocationId]);
+  
+  useEffect(() => {
+    if (selectedLocationId && !isLoadingApplication && !hasRedirectedRef.current) {
+      if (!hasApplication || !canBook) {
+        hasRedirectedRef.current = true;
+        // Redirect to application page
+        toast({
+          title: "Application Required",
+          description: hasApplication 
+            ? "Your application is pending approval. Please wait for manager approval before booking."
+            : "You must apply to this kitchen before booking. Redirecting to application page...",
+          variant: "destructive",
+        });
+        setLocation(`/apply-kitchen/${selectedLocationId}`);
+        // Clear selected kitchen to prevent further interaction
+        setSelectedKitchen(null);
+      }
+    }
+  }, [selectedLocationId, hasApplication, canBook, isLoadingApplication, setLocation, toast]);
+
   // Load available slots when date changes
   useEffect(() => {
-    if (selectedKitchen && selectedDate) {
+    if (selectedKitchen && selectedDate && canBook) {
       loadAvailableSlots(selectedKitchen.id, toLocalDateString(selectedDate));
     }
-  }, [selectedKitchen, selectedDate]);
+  }, [selectedKitchen, selectedDate, canBook]);
 
   const loadAvailableSlots = async (kitchenId: number, date: string) => {
     setIsLoadingSlots(true);
@@ -442,15 +481,34 @@ export default function KitchenBookingCalendar() {
   };
 
   const handleKitchenSelect = async (kitchen: any) => {
-    setSelectedKitchen(kitchen);
-    setSelectedDate(null);
-    setSelectedSlots([]);
-    setAllSlots([]);
-    setEstimatedPrice(null);
-    setSelectedStorageIds([]);
-    setSelectedEquipmentIds([]);
-    setStorageListings([]);
-    setEquipmentListings({ all: [], included: [], rental: [] });
+    const locationId = kitchen?.location?.id || kitchen?.locationId;
+    
+    // Check application status before allowing kitchen selection
+    if (locationId) {
+      // Use a quick check via the hook - it will fetch in the background
+      // We'll check the status after a brief moment to allow the query to run
+      // For now, set the kitchen and let the useEffect handle the redirect
+      setSelectedKitchen(kitchen);
+      setSelectedDate(null);
+      setSelectedSlots([]);
+      setAllSlots([]);
+      setEstimatedPrice(null);
+      setSelectedStorageIds([]);
+      setSelectedEquipmentIds([]);
+      setStorageListings([]);
+      setEquipmentListings({ all: [], included: [], rental: [] });
+    } else {
+      // If no location ID, still allow selection (shouldn't happen, but handle gracefully)
+      setSelectedKitchen(kitchen);
+      setSelectedDate(null);
+      setSelectedSlots([]);
+      setAllSlots([]);
+      setEstimatedPrice(null);
+      setSelectedStorageIds([]);
+      setSelectedEquipmentIds([]);
+      setStorageListings([]);
+      setEquipmentListings({ all: [], included: [], rental: [] });
+    }
     
     // Fetch kitchen pricing
     try {
@@ -560,6 +618,20 @@ export default function KitchenBookingCalendar() {
   const handleDateClick = (date: Date) => {
     if (date < new Date(new Date().setHours(0, 0, 0, 0))) return; // Prevent past dates
     if (date.getMonth() !== currentMonth) return; // Only current month
+    
+    // Check if chef has approved application before allowing date selection
+    if (selectedLocationId && !isLoadingApplication) {
+      if (!hasApplication || !canBook) {
+        toast({
+          title: "Application Required",
+          description: "You must apply to this kitchen and get manager approval before booking.",
+          variant: "destructive",
+        });
+        // Redirect to application page
+        setLocation(`/apply-kitchen/${selectedLocationId}`);
+        return;
+      }
+    }
     
     setSelectedDate(date);
     setSelectedSlots([]);
@@ -1090,6 +1162,44 @@ export default function KitchenBookingCalendar() {
                         <h2 className="text-xl font-bold text-gray-900">Choose a Date</h2>
                       </div>
 
+                      {/* Application Status Check */}
+                      {selectedLocationId && (
+                        <>
+                          {isLoadingApplication ? (
+                            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                                <span className="text-blue-700">Checking application status...</span>
+                              </div>
+                            </div>
+                          ) : !hasApplication || !canBook ? (
+                            <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                              <div className="flex items-start gap-3">
+                                <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5" />
+                                <div className="flex-1">
+                                  <h4 className="font-semibold text-orange-900 mb-1">Application Required</h4>
+                                  <p className="text-sm text-orange-700 mb-3">
+                                    {!hasApplication 
+                                      ? "You must apply to this kitchen before booking. Please submit an application first."
+                                      : application?.status === 'inReview'
+                                      ? "Your application is pending manager review. Please wait for approval before booking."
+                                      : application?.status === 'rejected'
+                                      ? "Your application was rejected. You can re-apply with updated documents."
+                                      : "Your application is not approved. Please contact the location manager."}
+                                  </p>
+                                  <button
+                                    onClick={() => setLocation(`/apply-kitchen/${selectedLocationId}`)}
+                                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium transition-colors text-sm"
+                                  >
+                                    {!hasApplication ? "Apply to Kitchen" : "View Application"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+
                       {/* Calendar Header */}
                       <div className="flex items-center justify-between mb-6">
                         <button
@@ -1153,17 +1263,22 @@ export default function KitchenBookingCalendar() {
                               borderColor = 'border-blue-500 border-2';
                             }
 
+                            // Disable date selection if application is not approved
+                            const canSelectDate = !selectedLocationId || (hasApplication && canBook && !isLoadingApplication);
+                            const isDisabled = isPastDate || !isCurrent || !canSelectDate;
+
                             return (
                               <button
                                 key={index}
-                                onClick={() => !isPastDate && isCurrent && handleDateClick(date)}
-                                disabled={isPastDate || !isCurrent}
+                                onClick={() => !isPastDate && isCurrent && canSelectDate && handleDateClick(date)}
+                                disabled={isDisabled}
                                 className={`
                                   aspect-square p-2 rounded-lg border transition-all
-                                  ${bgColor} ${borderColor} ${textColor} ${cursor}
-                                  ${isPastDate || !isCurrent ? 'opacity-40' : ''}
+                                  ${bgColor} ${borderColor} ${textColor} ${isDisabled ? 'cursor-not-allowed' : cursor}
+                                  ${isDisabled ? 'opacity-40' : ''}
                                   relative
                                 `}
+                                title={!canSelectDate ? "Application approval required" : undefined}
                               >
                                 <span className="text-sm font-medium">{date.getDate()}</span>
                                 {isSelected && (
@@ -1197,7 +1312,7 @@ export default function KitchenBookingCalendar() {
                     </div>
 
                     {/* Step 3: Time Slot Selection */}
-                    {selectedDate && (
+                    {selectedDate && canBook && (
                       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                         <div className="flex items-center justify-between mb-6">
                           <div className="flex items-center gap-2">
