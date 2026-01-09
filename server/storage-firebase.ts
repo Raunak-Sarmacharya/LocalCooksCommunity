@@ -3450,25 +3450,36 @@ export class FirebaseStorage {
 
   async checkBookingConflict(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<boolean> {
     try {
+      // Check for any overlapping bookings (both pending and confirmed, but not cancelled)
       const bookings = await db
         .select()
         .from(kitchenBookings)
         .where(and(
           eq(kitchenBookings.kitchenId, kitchenId),
-          eq(kitchenBookings.status, 'confirmed')
+          or(
+            eq(kitchenBookings.status, 'confirmed'),
+            eq(kitchenBookings.status, 'pending')
+          )
         ));
+
+      // Extract date string for comparison (YYYY-MM-DD format)
+      const targetDateStr = bookingDate.toISOString().split('T')[0];
 
       for (const booking of bookings) {
         const bookingDateTime = new Date(booking.bookingDate);
-        if (bookingDateTime.toDateString() === bookingDate.toDateString()) {
-          // Check for time overlap
+        const bookingDateStr = bookingDateTime.toISOString().split('T')[0];
+        
+        // Check if same date
+        if (bookingDateStr === targetDateStr) {
+          // Check for time overlap: two time ranges overlap if:
+          // startTime < booking.endTime AND endTime > booking.startTime
           if (startTime < booking.endTime && endTime > booking.startTime) {
-            return true;
+            return true; // Conflict found
           }
         }
       }
       
-      return false;
+      return false; // No conflict
     } catch (error) {
       console.error('Error checking booking conflict:', error);
       return true; // Return true on error to prevent double booking

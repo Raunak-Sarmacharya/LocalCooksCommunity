@@ -1,8 +1,9 @@
-import { Calendar as CalendarIcon, Clock, Save, Settings, Trash2, Plus, X, ChevronLeft, ChevronRight, Copy, CheckCircle2, AlertCircle } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Save, Settings, Trash2, Plus, X, ChevronLeft, ChevronRight, Copy, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
 
@@ -136,6 +137,22 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     reason: "",
   });
 
+  // Weekly schedule form state
+  const [weeklySchedule, setWeeklySchedule] = useState<Record<number, {
+    isAvailable: boolean;
+    startTime: string;
+    endTime: string;
+  }>>({
+    0: { isAvailable: false, startTime: "09:00", endTime: "17:00" }, // Sunday
+    1: { isAvailable: true, startTime: "09:00", endTime: "17:00" }, // Monday
+    2: { isAvailable: true, startTime: "09:00", endTime: "17:00" }, // Tuesday
+    3: { isAvailable: true, startTime: "09:00", endTime: "17:00" }, // Wednesday
+    4: { isAvailable: true, startTime: "09:00", endTime: "17:00" }, // Thursday
+    5: { isAvailable: true, startTime: "09:00", endTime: "17:00" }, // Friday
+    6: { isAvailable: false, startTime: "09:00", endTime: "17:00" }, // Saturday
+  });
+  const [isSavingWeeklySchedule, setIsSavingWeeklySchedule] = useState(false);
+
 
   // Auto-select location if only one exists
   useEffect(() => {
@@ -197,6 +214,34 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     enabled: !!selectedKitchenId,
     staleTime: 60000,
   });
+
+  // Populate weekly schedule state from fetched data
+  useEffect(() => {
+    if (weeklyAvailability && Array.isArray(weeklyAvailability)) {
+      const newSchedule: Record<number, { isAvailable: boolean; startTime: string; endTime: string }> = {
+        0: { isAvailable: false, startTime: "09:00", endTime: "17:00" },
+        1: { isAvailable: false, startTime: "09:00", endTime: "17:00" },
+        2: { isAvailable: false, startTime: "09:00", endTime: "17:00" },
+        3: { isAvailable: false, startTime: "09:00", endTime: "17:00" },
+        4: { isAvailable: false, startTime: "09:00", endTime: "17:00" },
+        5: { isAvailable: false, startTime: "09:00", endTime: "17:00" },
+        6: { isAvailable: false, startTime: "09:00", endTime: "17:00" },
+      };
+      
+      weeklyAvailability.forEach((item: any) => {
+        const dayOfWeek = item.dayOfWeek ?? item.day_of_week;
+        if (dayOfWeek >= 0 && dayOfWeek <= 6) {
+          newSchedule[dayOfWeek] = {
+            isAvailable: item.isAvailable ?? item.is_available ?? false,
+            startTime: (item.startTime ?? item.start_time) || "09:00",
+            endTime: (item.endTime ?? item.end_time) || "17:00",
+          };
+        }
+      });
+      
+      setWeeklySchedule(newSchedule);
+    }
+  }, [weeklyAvailability]);
 
   // Fetch date availability for selected kitchen
   const { data: dateAvailability = [], isLoading: isLoadingAvailability, error: availabilityError } = useQuery({
@@ -365,6 +410,58 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     },
   });
 
+  // Save weekly schedule mutation
+  const saveWeeklySchedule = useMutation({
+    mutationFn: async () => {
+      if (!selectedKitchenId) throw new Error('No kitchen selected');
+      setIsSavingWeeklySchedule(true);
+      const headers = await getAuthHeaders();
+      
+      try {
+        // Save each day of the week
+        // Even if a day is closed (isAvailable: false), we still send times (required by DB)
+        const promises = Object.entries(weeklySchedule).map(async ([dayOfWeek, schedule]) => {
+          const response = await fetch(`/api/manager/availability`, {
+            method: 'POST',
+            headers,
+            credentials: "include",
+            body: JSON.stringify({
+              kitchenId: selectedKitchenId,
+              dayOfWeek: parseInt(dayOfWeek),
+              startTime: schedule.startTime || "00:00",
+              endTime: schedule.endTime || "00:00",
+              isAvailable: schedule.isAvailable,
+            }),
+          });
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || errorData.error || `Failed to save schedule for day ${dayOfWeek}`);
+          }
+          return response.json();
+        });
+        
+        await Promise.all(promises);
+      } finally {
+        setIsSavingWeeklySchedule(false);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['weeklyAvailability', selectedKitchenId] });
+      queryClient.invalidateQueries({ queryKey: ['dateAvailability', selectedKitchenId] });
+      toast({
+        title: "Success",
+        description: "Weekly schedule saved successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Delete date availability mutation
   const deleteAvailability = useMutation({
     mutationFn: async (id: number) => {
@@ -497,18 +594,19 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
   };
 
   // Helper to get availability status for a date (open/closed + hours)
-  const getDateAvailabilityStatus = (date: Date | null): { isOpen: boolean; hours: string | null; isExplicitlyClosed: boolean } => {
-    if (!date) return { isOpen: false, hours: null, isExplicitlyClosed: false };
+  // Priority: Date Override > Weekly Schedule > Closed
+  const getDateAvailabilityStatus = (date: Date | null): { isOpen: boolean; hours: string | null; isExplicitlyClosed: boolean; isException: boolean } => {
+    if (!date) return { isOpen: false, hours: null, isExplicitlyClosed: false, isException: false };
     
     const dateOverrides = getAvailabilityForDate(date);
     const dayOfWeek = date.getDay();
     
-    // Check for date-specific overrides first (highest priority)
+    // Check for date-specific overrides first (highest priority - these are exceptions)
     if (dateOverrides.length > 0) {
       // Check if explicitly closed
       const closedOverride = dateOverrides.find((a: any) => !(a.isAvailable ?? a.is_available));
       if (closedOverride) {
-        return { isOpen: false, hours: null, isExplicitlyClosed: true };
+        return { isOpen: false, hours: null, isExplicitlyClosed: true, isException: true };
       }
       
       // Check for open override with hours
@@ -523,28 +621,28 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
         return { 
           isOpen: true, 
           hours: `${formatTimeDisplay(start)} - ${formatTimeDisplay(end)}`, 
-          isExplicitlyClosed: false 
+          isExplicitlyClosed: false,
+          isException: true
         };
       }
     }
     
-    // Fall back to weekly schedule
-    const daySchedule = (weeklyAvailability as any[]).find((a: any) => 
-      (a.dayOfWeek ?? a.day_of_week) === dayOfWeek
-    );
+    // Fall back to weekly schedule (no exception)
+    const daySchedule = weeklySchedule[dayOfWeek];
     
-    if (daySchedule && (daySchedule.isAvailable ?? daySchedule.is_available)) {
-      const start = (daySchedule.startTime ?? daySchedule.start_time)?.slice(0, 5) || '';
-      const end = (daySchedule.endTime ?? daySchedule.end_time)?.slice(0, 5) || '';
+    if (daySchedule && daySchedule.isAvailable) {
+      const start = daySchedule.startTime?.slice(0, 5) || '';
+      const end = daySchedule.endTime?.slice(0, 5) || '';
       return { 
         isOpen: true, 
         hours: `${formatTimeDisplay(start)} - ${formatTimeDisplay(end)}`, 
-        isExplicitlyClosed: false 
+        isExplicitlyClosed: false,
+        isException: false
       };
     }
     
     // No schedule or explicitly closed in weekly schedule
-    return { isOpen: false, hours: null, isExplicitlyClosed: false };
+    return { isOpen: false, hours: null, isExplicitlyClosed: false, isException: false };
   };
 
   // Helper to format time for display (e.g., "09:00" -> "9 AM")
@@ -561,6 +659,8 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     if (!date) return;
     setSelectedDate(date);
     const existingOverrides = getAvailabilityForDate(date);
+    const dayOfWeek = date.getDay();
+    const weeklyScheduleForDay = weeklySchedule[dayOfWeek];
     
     // Helper to get field value (camelCase or snake_case)
     const getField = (obj: any, camelCase: string, snakeCase: string) => {
@@ -574,8 +674,8 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     
     if (fullDayOverride) {
       setFormData({
-        startTime: "09:00",
-        endTime: "17:00",
+        startTime: weeklyScheduleForDay?.startTime || "09:00",
+        endTime: weeklyScheduleForDay?.endTime || "17:00",
         isAvailable: getField(fullDayOverride, 'isAvailable', 'is_available'),
         reason: getField(fullDayOverride, 'reason', 'reason') || "",
         maxSlotsPerChef: getField(fullDayOverride, 'maxSlotsPerChef', 'max_slots_per_chef') || 2,
@@ -584,14 +684,24 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
       // Use first override if exists
       const override: any = existingOverrides[0];
       setFormData({
-        startTime: getField(override, 'startTime', 'start_time') || "09:00",
-        endTime: getField(override, 'endTime', 'end_time') || "17:00",
+        startTime: getField(override, 'startTime', 'start_time') || weeklyScheduleForDay?.startTime || "09:00",
+        endTime: getField(override, 'endTime', 'end_time') || weeklyScheduleForDay?.endTime || "17:00",
         isAvailable: getField(override, 'isAvailable', 'is_available'),
         reason: getField(override, 'reason', 'reason') || "",
         maxSlotsPerChef: getField(override, 'maxSlotsPerChef', 'max_slots_per_chef') || 2,
       });
     } else {
+      // No override exists - initialize with weekly schedule values
       resetForm();
+      if (weeklyScheduleForDay) {
+        setFormData({
+          startTime: weeklyScheduleForDay.startTime || "09:00",
+          endTime: weeklyScheduleForDay.endTime || "17:00",
+          isAvailable: weeklyScheduleForDay.isAvailable,
+          reason: "",
+          maxSlotsPerChef: 2,
+        });
+      }
     }
     
     setShowEditModal(true);
@@ -735,8 +845,8 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
       <div className={embedded ? "px-4 py-6" : "container mx-auto px-4 py-6 max-w-7xl"}>
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">Kitchen Availability Calendar</h1>
-            <p className="text-gray-600 mt-1">Click on any date to set operating hours for your kitchen</p>
+            <h1 className="text-3xl font-bold text-gray-900">Kitchen Availability Management</h1>
+            <p className="text-gray-600 mt-1">Set your weekly recurring schedule, then add date exceptions for holidays and special dates</p>
           </div>
 
           {isLoadingLocations ? (
@@ -802,11 +912,19 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 bg-green-50 border-2 border-green-300 rounded"></div>
-                        <span>Open (shows hours)</span>
+                        <span>Open (Weekly Schedule)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-yellow-50 border-2 border-yellow-400 rounded"></div>
+                        <span>Exception: Custom Hours</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 bg-orange-50 border-2 border-orange-400 rounded"></div>
+                        <span>Exception: Closed</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 bg-red-50 border-2 border-red-300 rounded"></div>
-                        <span>Closed</span>
+                        <span>Closed (Weekly Schedule)</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-4 h-4 bg-gray-50 border border-gray-300 rounded"></div>
@@ -821,7 +939,7 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                 )}
               </div>
 
-              {/* Calendar View */}
+              {/* Main Content Area */}
               <div className="lg:col-span-3 space-y-4">
                 {!selectedKitchenId ? (
                   <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12">
@@ -833,6 +951,108 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                   </div>
                 ) : (
                   <>
+                    {/* Weekly Schedule Section */}
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h2 className="text-xl font-bold text-gray-900">Weekly Recurring Schedule</h2>
+                          <p className="text-sm text-gray-600 mt-1">Set your regular operating hours for each day of the week</p>
+                        </div>
+                        <Button
+                          onClick={() => saveWeeklySchedule.mutate()}
+                          disabled={isSavingWeeklySchedule || saveWeeklySchedule.isPending}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {isSavingWeeklySchedule || saveWeeklySchedule.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Save className="h-4 w-4 mr-2" />
+                              Save Schedule
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-gray-200">
+                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Day</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Available</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Start Time</th>
+                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">End Time</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { day: 0, name: 'Sunday' },
+                              { day: 1, name: 'Monday' },
+                              { day: 2, name: 'Tuesday' },
+                              { day: 3, name: 'Wednesday' },
+                              { day: 4, name: 'Thursday' },
+                              { day: 5, name: 'Friday' },
+                              { day: 6, name: 'Saturday' },
+                            ].map(({ day, name }) => {
+                              const schedule = weeklySchedule[day];
+                              return (
+                                <tr key={day} className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-3 px-4 text-sm font-medium text-gray-900">{name}</td>
+                                  <td className="py-3 px-4 text-center">
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={schedule.isAvailable}
+                                        onChange={(e) => {
+                                          setWeeklySchedule({
+                                            ...weeklySchedule,
+                                            [day]: { ...schedule, isAvailable: e.target.checked },
+                                          });
+                                        }}
+                                        className="sr-only peer"
+                                      />
+                                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                    </label>
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <input
+                                      type="time"
+                                      value={schedule.startTime}
+                                      onChange={(e) => {
+                                        setWeeklySchedule({
+                                          ...weeklySchedule,
+                                          [day]: { ...schedule, startTime: e.target.value },
+                                        });
+                                      }}
+                                      disabled={!schedule.isAvailable}
+                                      className="px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                                    />
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <input
+                                      type="time"
+                                      value={schedule.endTime}
+                                      onChange={(e) => {
+                                        setWeeklySchedule({
+                                          ...weeklySchedule,
+                                          [day]: { ...schedule, endTime: e.target.value },
+                                        });
+                                      }}
+                                      disabled={!schedule.isAvailable}
+                                      className="px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
                     {/* Calendar Header */}
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                       <div className="flex items-center justify-between">
@@ -900,18 +1120,32 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                               let textColor = isCurrent ? 'text-gray-900' : 'text-gray-400';
 
                               // Visual indicators based on availability
-                              if (availabilityStatus.isExplicitlyClosed || (!availabilityStatus.isOpen && isCurrent)) {
-                                // Explicitly closed or no schedule set (default closed)
-                                bgColor = 'bg-red-50 hover:bg-red-100';
-                                borderColor = 'border-red-300 border-2';
-                              } else if (availabilityStatus.isOpen) {
-                                // Open with hours
-                                bgColor = 'bg-green-50 hover:bg-green-100';
-                                borderColor = 'border-green-300';
+                              // Date exceptions (overrides) get different styling
+                              if (availabilityStatus.isException) {
+                                if (availabilityStatus.isExplicitlyClosed) {
+                                  // Exception: Closed
+                                  bgColor = 'bg-orange-50 hover:bg-orange-100';
+                                  borderColor = 'border-orange-400 border-2';
+                                } else if (availabilityStatus.isOpen) {
+                                  // Exception: Custom hours
+                                  bgColor = 'bg-yellow-50 hover:bg-yellow-100';
+                                  borderColor = 'border-yellow-400 border-2';
+                                }
                               } else {
-                                // Past date or no data
-                                bgColor = 'bg-gray-50 hover:bg-gray-100';
-                                borderColor = 'border-gray-300';
+                                // Regular weekly schedule
+                                if (availabilityStatus.isExplicitlyClosed || (!availabilityStatus.isOpen && isCurrent)) {
+                                  // Closed from weekly schedule or no schedule set
+                                  bgColor = 'bg-red-50 hover:bg-red-100';
+                                  borderColor = 'border-red-300 border-2';
+                                } else if (availabilityStatus.isOpen) {
+                                  // Open from weekly schedule
+                                  bgColor = 'bg-green-50 hover:bg-green-100';
+                                  borderColor = 'border-green-300';
+                                } else {
+                                  // Past date or no data
+                                  bgColor = 'bg-gray-50 hover:bg-gray-100';
+                                  borderColor = 'border-gray-300';
+                                }
                               }
 
                               if (isToday) {
@@ -937,20 +1171,34 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                                     <>
                                       {/* Status indicator */}
                                       <div className="text-xs mt-1 space-y-0.5 min-h-[20px] flex items-center justify-center">
-                                        {availabilityStatus.isExplicitlyClosed || (!availabilityStatus.isOpen && availabilityOverrides.length === 0) ? (
+                                        {availabilityStatus.isExplicitlyClosed || (!availabilityStatus.isOpen && !availabilityStatus.isException) ? (
                                           <div className="flex items-center justify-center gap-1">
-                                            <span className="text-red-700 font-bold text-[10px] uppercase leading-tight tracking-wide">Closed</span>
+                                            <span className={`font-bold text-[10px] uppercase leading-tight tracking-wide ${
+                                              availabilityStatus.isException ? 'text-orange-700' : 'text-red-700'
+                                            }`}>
+                                              Closed
+                                            </span>
+                                            {availabilityStatus.isException && (
+                                              <span className="text-[8px] text-orange-600" title="Exception">⚠</span>
+                                            )}
                                           </div>
                                         ) : availabilityStatus.isOpen ? (
                                           <div className="flex items-center justify-center gap-1 px-1 w-full">
-                                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full flex-shrink-0"></span>
+                                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                              availabilityStatus.isException ? 'bg-yellow-500' : 'bg-green-500'
+                                            }`}></span>
                                             <span 
-                                              className="text-green-700 font-semibold text-[10px] leading-tight truncate block max-w-full overflow-hidden text-ellipsis whitespace-nowrap" 
+                                              className={`font-semibold text-[10px] leading-tight truncate block max-w-full overflow-hidden text-ellipsis whitespace-nowrap ${
+                                                availabilityStatus.isException ? 'text-yellow-700' : 'text-green-700'
+                                              }`}
                                               title={availabilityStatus.hours || ''}
                                               style={{ maxWidth: 'calc(100% - 8px)' }}
                                             >
                                               {availabilityStatus.hours ? availabilityStatus.hours.replace(/\s/g, ' ') : 'Open'}
                                             </span>
+                                            {availabilityStatus.isException && (
+                                              <span className="text-[8px] text-yellow-600" title="Exception">⚠</span>
+                                            )}
                                           </div>
                                         ) : null}
                                       </div>
@@ -990,14 +1238,26 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                           <div className="flex items-center justify-between p-6 border-b border-gray-200">
                             <div>
                               <h2 id="modal-title" className="text-xl font-bold text-gray-900">
-                                {selectedDate.toLocaleDateString('en-US', { 
+                                Date Exception: {selectedDate.toLocaleDateString('en-US', { 
                                   weekday: 'long', 
                                   month: 'long', 
                                   day: 'numeric', 
                                   year: 'numeric' 
                                 })}
                               </h2>
-                              <p className="text-sm text-gray-500 mt-1">Set availability for this date</p>
+                              <p className="text-sm text-gray-500 mt-1">Override the weekly schedule for this specific date</p>
+                              {(() => {
+                                const dayOfWeek = selectedDate.getDay();
+                                const weeklyScheduleForDay = weeklySchedule[dayOfWeek];
+                                const weeklyHours = weeklyScheduleForDay && weeklyScheduleForDay.isAvailable
+                                  ? `${formatTimeDisplay(weeklyScheduleForDay.startTime)} - ${formatTimeDisplay(weeklyScheduleForDay.endTime)}`
+                                  : 'Closed';
+                                return (
+                                  <p className="text-xs text-blue-600 mt-1 bg-blue-50 px-2 py-1 rounded inline-block">
+                                    Weekly schedule for {selectedDate.toLocaleDateString('en-US', { weekday: 'long' })}: {weeklyHours}
+                                  </p>
+                                );
+                              })()}
                             </div>
                             <button
                               onClick={() => setShowEditModal(false)}
@@ -1290,15 +1550,42 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
 
                           {/* Modal Footer */}
                           <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
-                            <button
-                              onClick={handleCloseKitchen}
-                              disabled={createAvailability.isPending || updateAvailability.isPending}
-                              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Close kitchen for this date - prevents all bookings"
-                            >
-                              <X className="h-4 w-4" />
-                              Close Kitchen
-                            </button>
+                            <div className="flex gap-2">
+                              {getAvailabilityForDate(selectedDate).length > 0 && (
+                                <button
+                                  onClick={async () => {
+                                    const existingOverrides = getAvailabilityForDate(selectedDate);
+                                    if (existingOverrides.length > 0) {
+                                      // Delete all overrides for this date
+                                      const deletePromises = existingOverrides
+                                        .filter((o: any) => o.id)
+                                        .map((o: any) => deleteAvailability.mutateAsync(o.id));
+                                      await Promise.all(deletePromises);
+                                      toast({
+                                        title: "Exception Removed",
+                                        description: "This date will now use the weekly schedule",
+                                      });
+                                      setShowEditModal(false);
+                                    }
+                                  }}
+                                  disabled={deleteAvailability.isPending}
+                                  className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="Remove exception and use weekly schedule"
+                                >
+                                  <X className="h-4 w-4" />
+                                  Use Weekly Schedule
+                                </button>
+                              )}
+                              <button
+                                onClick={handleCloseKitchen}
+                                disabled={createAvailability.isPending || updateAvailability.isPending}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Close kitchen for this date - prevents all bookings"
+                              >
+                                <X className="h-4 w-4" />
+                                Close Kitchen
+                              </button>
+                            </div>
                             
                             <div className="flex gap-3">
                               <button
