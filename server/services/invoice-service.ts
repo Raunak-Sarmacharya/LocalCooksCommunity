@@ -1,5 +1,6 @@
+// @ts-ignore - pdfkit doesn't have type definitions
 import PDFDocument from 'pdfkit';
-import { Pool } from 'pg';
+import type { Pool } from '@neondatabase/serverless';
 
 /**
  * Generate invoice PDF for a booking
@@ -14,6 +15,98 @@ export async function generateInvoicePDF(
   paymentIntentId: string | null,
   dbPool: Pool | null
 ): Promise<Buffer> {
+  // Calculate pricing first (async operations)
+  let totalAmount = 0;
+  const items: Array<{ description: string; quantity: number; rate: number; amount: number }> = [];
+
+  // Kitchen booking price
+  if (dbPool && booking.kitchenId) {
+    try {
+      const { calculateKitchenBookingPrice } = await import('./pricing-service');
+      const kitchenPricing = await calculateKitchenBookingPrice(
+        booking.kitchenId,
+        booking.startTime || booking.start_time,
+        booking.endTime || booking.end_time,
+        dbPool
+      );
+      
+      if (kitchenPricing.totalPriceCents > 0) {
+        const durationHours = kitchenPricing.durationHours;
+        const hourlyRate = kitchenPricing.hourlyRateCents / 100;
+        const kitchenAmount = kitchenPricing.totalPriceCents / 100;
+        totalAmount += kitchenAmount;
+        
+        items.push({
+          description: `Kitchen Booking (${durationHours} hour${durationHours !== 1 ? 's' : ''})`,
+          quantity: durationHours,
+          rate: hourlyRate,
+          amount: kitchenAmount,
+        });
+      }
+    } catch (error) {
+      console.error('Error calculating kitchen price:', error);
+    }
+  }
+
+  // Storage bookings
+  if (storageBookings && storageBookings.length > 0 && dbPool) {
+    for (const storageBooking of storageBookings) {
+      try {
+        const result = await dbPool.query(
+          'SELECT base_price FROM storage_listings WHERE id = $1',
+          [storageBooking.storageListingId || storageBooking.storage_listing_id]
+        );
+        if (result.rows.length > 0) {
+          const basePrice = parseFloat(String(result.rows[0].base_price)) / 100; // Convert cents to dollars
+          const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
+          const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
+          const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+          const storageAmount = basePrice * days;
+          totalAmount += storageAmount;
+          
+          items.push({
+            description: `Storage Booking (${days} day${days !== 1 ? 's' : ''})`,
+            quantity: days,
+            rate: basePrice,
+            amount: storageAmount,
+          });
+        }
+      } catch (error) {
+        console.error('Error calculating storage price:', error);
+      }
+    }
+  }
+
+  // Equipment bookings
+  if (equipmentBookings && equipmentBookings.length > 0 && dbPool) {
+    for (const equipmentBooking of equipmentBookings) {
+      try {
+        const result = await dbPool.query(
+          'SELECT session_rate FROM equipment_listings WHERE id = $1',
+          [equipmentBooking.equipmentListingId || equipmentBooking.equipment_listing_id]
+        );
+        if (result.rows.length > 0) {
+          const sessionRate = parseFloat(String(result.rows[0].session_rate)) / 100; // Convert cents to dollars
+          totalAmount += sessionRate;
+          
+          items.push({
+            description: 'Equipment Rental',
+            quantity: 1,
+            rate: sessionRate,
+            amount: sessionRate,
+          });
+        }
+      } catch (error) {
+        console.error('Error calculating equipment price:', error);
+      }
+    }
+  }
+
+  // Service fee (5%)
+  const serviceFee = totalAmount * 0.05;
+  const grandTotal = totalAmount + serviceFee;
+
+  // Now generate PDF
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ margin: 50 });
@@ -65,7 +158,7 @@ export async function generateInvoicePDF(
       doc.fontSize(12).text('Booking Details:', { align: 'left' });
       doc.fontSize(10);
       
-      const bookingDate = booking.bookingDate ? new Date(booking.bookingDate).toLocaleDateString('en-US', {
+      const bookingDateStr = booking.bookingDate ? new Date(booking.bookingDate).toLocaleDateString('en-US', {
         weekday: 'long',
         year: 'numeric',
         month: 'long',
@@ -76,100 +169,9 @@ export async function generateInvoicePDF(
       if (location?.name) {
         doc.text(`Location: ${location.name}`, { align: 'left' });
       }
-      doc.text(`Date: ${bookingDate}`, { align: 'left' });
+      doc.text(`Date: ${bookingDateStr}`, { align: 'left' });
       doc.text(`Time: ${booking.startTime || booking.start_time || 'N/A'} - ${booking.endTime || booking.end_time || 'N/A'}`, { align: 'left' });
       doc.moveDown(1);
-
-      // Calculate pricing
-      let totalAmount = 0;
-      const items: Array<{ description: string; quantity: number; rate: number; amount: number }> = [];
-
-      // Kitchen booking price
-      if (dbPool && booking.kitchenId) {
-        try {
-          const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./pricing-service');
-          const kitchenPricing = await calculateKitchenBookingPrice(
-            booking.kitchenId,
-            booking.startTime || booking.start_time,
-            booking.endTime || booking.end_time,
-            dbPool
-          );
-          
-          if (kitchenPricing.totalPriceCents > 0) {
-            const durationHours = kitchenPricing.durationHours;
-            const hourlyRate = kitchenPricing.hourlyRateCents / 100;
-            const kitchenAmount = kitchenPricing.totalPriceCents / 100;
-            totalAmount += kitchenAmount;
-            
-            items.push({
-              description: `Kitchen Booking (${durationHours} hour${durationHours !== 1 ? 's' : ''})`,
-              quantity: durationHours,
-              rate: hourlyRate,
-              amount: kitchenAmount,
-            });
-          }
-        } catch (error) {
-          console.error('Error calculating kitchen price:', error);
-        }
-      }
-
-      // Storage bookings
-      if (storageBookings && storageBookings.length > 0 && dbPool) {
-        for (const storageBooking of storageBookings) {
-          try {
-            const result = await dbPool.query(
-              'SELECT base_price FROM storage_listings WHERE id = $1',
-              [storageBooking.storageListingId || storageBooking.storage_listing_id]
-            );
-            if (result.rows.length > 0) {
-              const basePrice = parseFloat(String(result.rows[0].base_price)) / 100; // Convert cents to dollars
-              const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
-              const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
-              const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-              const storageAmount = basePrice * days;
-              totalAmount += storageAmount;
-              
-              items.push({
-                description: `Storage Booking (${days} day${days !== 1 ? 's' : ''})`,
-                quantity: days,
-                rate: basePrice,
-                amount: storageAmount,
-              });
-            }
-          } catch (error) {
-            console.error('Error calculating storage price:', error);
-          }
-        }
-      }
-
-      // Equipment bookings
-      if (equipmentBookings && equipmentBookings.length > 0 && dbPool) {
-        for (const equipmentBooking of equipmentBookings) {
-          try {
-            const result = await dbPool.query(
-              'SELECT session_rate FROM equipment_listings WHERE id = $1',
-              [equipmentBooking.equipmentListingId || equipmentBooking.equipment_listing_id]
-            );
-            if (result.rows.length > 0) {
-              const sessionRate = parseFloat(String(result.rows[0].session_rate)) / 100; // Convert cents to dollars
-              totalAmount += sessionRate;
-              
-              items.push({
-                description: 'Equipment Rental',
-                quantity: 1,
-                rate: sessionRate,
-                amount: sessionRate,
-              });
-            }
-          } catch (error) {
-            console.error('Error calculating equipment price:', error);
-          }
-        }
-      }
-
-      // Service fee (5%)
-      const serviceFee = totalAmount * 0.05;
-      const grandTotal = totalAmount + serviceFee;
 
       // Items table
       doc.moveDown(1);
