@@ -68,6 +68,14 @@ export default function ManagerOnboardingWizard() {
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationPhone, setNotificationPhone] = useState("");
   
+  // Kitchen creation form state
+  const [showCreateKitchen, setShowCreateKitchen] = useState(false);
+  const [kitchenFormData, setKitchenFormData] = useState({
+    name: '',
+    description: '',
+  });
+  const [creatingKitchen, setCreatingKitchen] = useState(false);
+  
   // Storage listing form state
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<any[]>([]);
@@ -231,6 +239,9 @@ export default function ManagerOnboardingWizard() {
             if (data.length === 1 && !selectedKitchenId) {
               setSelectedKitchenId(data[0].id);
             }
+            if (data.length === 0) {
+              setShowCreateKitchen(true);
+            }
           }
         } catch (error) {
           console.error("Error loading kitchens:", error);
@@ -239,6 +250,52 @@ export default function ManagerOnboardingWizard() {
       loadKitchens();
     }
   }, [selectedLocationId]);
+
+  const createKitchenMutation = useMutation({
+    mutationFn: async (data: { name: string; description?: string }) => {
+      if (!selectedLocationId) {
+        throw new Error("No location selected");
+      }
+      
+      // Get Firebase token for authentication
+      const { auth } = await import('@/lib/firebase');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch(`/api/manager/kitchens`, {
+        method: "POST",
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json" 
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          locationId: selectedLocationId,
+          name: data.name,
+          description: data.description || undefined,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create kitchen");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Reload kitchens and select the new one
+      setKitchens([...kitchens, data]);
+      setSelectedKitchenId(data.id);
+      setShowCreateKitchen(false);
+      setKitchenFormData({ name: '', description: '' });
+      toast({
+        title: "Kitchen Created",
+        description: "Kitchen created successfully. You can now add storage and equipment listings.",
+      });
+    },
+  });
 
   const updateLocationMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -783,10 +840,92 @@ export default function ManagerOnboardingWizard() {
               </div>
 
               {kitchens.length === 0 ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-sm text-yellow-800">
-                    No kitchens found for this location. Please create a kitchen first from your dashboard.
-                  </p>
+                <div className="space-y-4">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800 mb-3">
+                      No kitchens found for this location. Create your first kitchen to get started.
+                    </p>
+                  </div>
+                  
+                  {showCreateKitchen ? (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-3">Create Kitchen</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="kitchen-name">Kitchen Name *</Label>
+                          <Input
+                            id="kitchen-name"
+                            value={kitchenFormData.name}
+                            onChange={(e) => setKitchenFormData({ ...kitchenFormData, name: e.target.value })}
+                            placeholder="e.g., Main Kitchen"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="kitchen-description">Description (Optional)</Label>
+                          <Textarea
+                            id="kitchen-description"
+                            value={kitchenFormData.description}
+                            onChange={(e) => setKitchenFormData({ ...kitchenFormData, description: e.target.value })}
+                            placeholder="Describe your kitchen..."
+                            rows={3}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={async () => {
+                              if (!kitchenFormData.name.trim()) {
+                                toast({
+                                  title: "Missing Information",
+                                  description: "Please enter a kitchen name",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              setCreatingKitchen(true);
+                              try {
+                                await createKitchenMutation.mutateAsync(kitchenFormData);
+                              } finally {
+                                setCreatingKitchen(false);
+                              }
+                            }}
+                            disabled={creatingKitchen || createKitchenMutation.isPending}
+                          >
+                            {creatingKitchen || createKitchenMutation.isPending ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Creating...
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Create Kitchen
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowCreateKitchen(false);
+                              setKitchenFormData({ name: '', description: '' });
+                            }}
+                            disabled={creatingKitchen || createKitchenMutation.isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={() => setShowCreateKitchen(true)}
+                      className="w-full"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Your First Kitchen
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1037,10 +1176,92 @@ export default function ManagerOnboardingWizard() {
               </div>
 
               {kitchens.length === 0 ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-sm text-yellow-800">
-                    No kitchens found for this location. Please create a kitchen first from your dashboard.
-                  </p>
+                <div className="space-y-4">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800 mb-3">
+                      No kitchens found for this location. Create your first kitchen to get started.
+                    </p>
+                  </div>
+                  
+                  {showCreateKitchen ? (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-3">Create Kitchen</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="equipment-kitchen-name">Kitchen Name *</Label>
+                          <Input
+                            id="equipment-kitchen-name"
+                            value={kitchenFormData.name}
+                            onChange={(e) => setKitchenFormData({ ...kitchenFormData, name: e.target.value })}
+                            placeholder="e.g., Main Kitchen"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="equipment-kitchen-description">Description (Optional)</Label>
+                          <Textarea
+                            id="equipment-kitchen-description"
+                            value={kitchenFormData.description}
+                            onChange={(e) => setKitchenFormData({ ...kitchenFormData, description: e.target.value })}
+                            placeholder="Describe your kitchen..."
+                            rows={3}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={async () => {
+                              if (!kitchenFormData.name.trim()) {
+                                toast({
+                                  title: "Missing Information",
+                                  description: "Please enter a kitchen name",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              setCreatingKitchen(true);
+                              try {
+                                await createKitchenMutation.mutateAsync(kitchenFormData);
+                              } finally {
+                                setCreatingKitchen(false);
+                              }
+                            }}
+                            disabled={creatingKitchen || createKitchenMutation.isPending}
+                          >
+                            {creatingKitchen || createKitchenMutation.isPending ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Creating...
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Create Kitchen
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowCreateKitchen(false);
+                              setKitchenFormData({ name: '', description: '' });
+                            }}
+                            disabled={creatingKitchen || createKitchenMutation.isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={() => setShowCreateKitchen(true)}
+                      className="w-full"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Your First Kitchen
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
