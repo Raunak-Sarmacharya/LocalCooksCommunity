@@ -12741,6 +12741,176 @@ app.get("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, a
   }
 });
 
+// Create location (manager) - for onboarding when manager doesn't have a location yet
+app.post("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
+
+    const { name, address, notificationEmail, notificationPhone } = req.body;
+
+    if (!name || !address) {
+      return res.status(400).json({ error: "Name and address are required" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Check if manager already has a location
+    const existingLocations = await pool.query(
+      'SELECT id FROM locations WHERE manager_id = $1',
+      [user.id]
+    );
+    if (existingLocations.rows.length > 0) {
+      return res.status(400).json({ error: "Manager already has a location. Use PUT to update it." });
+    }
+
+    // Normalize phone number if provided
+    let normalizedNotificationPhone = null;
+    if (notificationPhone && notificationPhone.trim() !== '') {
+      const { normalizePhoneForStorage } = await import('./phone-utils');
+      const normalized = normalizePhoneForStorage(notificationPhone);
+      if (!normalized) {
+        return res.status(400).json({ 
+          error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+        });
+      }
+      normalizedNotificationPhone = normalized;
+    }
+
+    console.log('Creating location for manager:', { managerId: user.id, name, address, notificationPhone: normalizedNotificationPhone });
+    
+    const location = await createLocation({ 
+      name, 
+      address, 
+      managerId: user.id,
+      notificationEmail: notificationEmail || undefined,
+      notificationPhone: normalizedNotificationPhone || undefined
+    });
+    
+    res.status(201).json(location);
+  } catch (error) {
+    console.error("Error creating location:", error);
+    console.error("Error details:", error.message, error.stack);
+    // Provide better error messages
+    if (error.code === '23503') { // Foreign key constraint violation
+      return res.status(400).json({ error: 'The selected manager does not exist or is invalid.' });
+    }
+    res.status(500).json({ error: error.message || "Failed to create location" });
+  }
+});
+
+// Update location (manager) - supports both :id and :locationId for backward compatibility
+app.put("/api/manager/locations/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
+
+    const locationId = parseInt(req.params.locationId);
+    if (isNaN(locationId) || locationId <= 0) {
+      return res.status(400).json({ error: "Invalid location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Verify the manager has access to this location
+    const locationCheck = await pool.query(
+      'SELECT id FROM locations WHERE id = $1 AND manager_id = $2',
+      [locationId, user.id]
+    );
+
+    if (locationCheck.rows.length === 0) {
+      return res.status(403).json({ error: "Access denied to this location" });
+    }
+
+    const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus } = req.body;
+
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(name);
+    }
+    if (address !== undefined) {
+      updates.push(`address = $${paramIndex++}`);
+      values.push(address);
+    }
+    if (notificationEmail !== undefined) {
+      updates.push(`notification_email = $${paramIndex++}`);
+      values.push(notificationEmail || null);
+    }
+    if (notificationPhone !== undefined) {
+      if (notificationPhone && notificationPhone.trim() !== '') {
+        const { normalizePhoneForStorage } = await import('./phone-utils');
+        const normalized = normalizePhoneForStorage(notificationPhone);
+        if (!normalized) {
+          return res.status(400).json({ 
+            error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+          });
+        }
+        updates.push(`notification_phone = $${paramIndex++}`);
+        values.push(normalized);
+      } else {
+        updates.push(`notification_phone = $${paramIndex++}`);
+        values.push(null);
+      }
+    }
+    if (kitchenLicenseUrl !== undefined) {
+      updates.push(`kitchen_license_url = $${paramIndex++}`);
+      values.push(kitchenLicenseUrl);
+    }
+    if (kitchenLicenseStatus !== undefined) {
+      updates.push(`kitchen_license_status = $${paramIndex++}`);
+      values.push(kitchenLicenseStatus);
+      
+      // If uploading a new license, clear previous approval/feedback fields
+      if (kitchenLicenseStatus === 'pending') {
+        updates.push(`kitchen_license_approved_by = NULL`);
+        updates.push(`kitchen_license_approved_at = NULL`);
+        updates.push(`kitchen_license_feedback = NULL`);
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(locationId);
+
+    const query = `UPDATE locations SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING 
+      id, name, address, manager_id as "managerId", 
+      cancellation_policy_hours as "cancellationPolicyHours",
+      cancellation_policy_message as "cancellationPolicyMessage",
+      default_daily_booking_limit as "defaultDailyBookingLimit",
+      minimum_booking_window_hours as "minimumBookingWindowHours",
+      notification_email as "notificationEmail",
+      notification_phone as "notificationPhone",
+      logo_url as "logoUrl",
+      kitchen_license_url as "kitchenLicenseUrl",
+      kitchen_license_status as "kitchenLicenseStatus",
+      kitchen_license_approved_by as "kitchenLicenseApprovedBy",
+      kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+      kitchen_license_feedback as "kitchenLicenseFeedback",
+      created_at, updated_at`;
+    
+    const result = await pool.query(query, values);
+
+    console.log(`✅ Location ${locationId} updated successfully`);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("❌ Error updating location:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ error: error.message || "Failed to update location" });
+  }
+});
+
 // Update location cancellation policy (manager only)
 app.put("/api/manager/locations/:locationId/cancellation-policy", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
@@ -14844,14 +15014,14 @@ app.post("/api/manager/complete-onboarding", requireFirebaseAuthWithUser, requir
   }
 });
 
-// Manager: Update location (for onboarding)
+// Manager: Update location (for onboarding) - backward compatibility with :id parameter
 app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
     // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
     const user = req.neonUser;
 
     const locationId = parseInt(req.params.id);
-    if (isNaN(locationId)) {
+    if (isNaN(locationId) || locationId <= 0) {
       return res.status(400).json({ error: "Invalid location ID" });
     }
 
@@ -14866,36 +15036,58 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
     );
 
     if (locationCheck.rows.length === 0) {
-      return res.status(403).json({ error: "You don't have permission to manage this location" });
+      return res.status(403).json({ error: "Access denied to this location" });
     }
+
+    const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus } = req.body;
 
     // Build update query dynamically
     const updates = [];
     const values = [];
     let paramIndex = 1;
 
-    const allowedFields = [
-      'name', 'address', 'notificationEmail', 'notificationPhone',
-      'kitchenLicenseUrl', 'kitchenLicenseStatus'
-    ];
-
-    // Check if a new license is being uploaded (status set to pending)
-    const isNewLicenseUpload = req.body.kitchenLicenseUrl && req.body.kitchenLicenseStatus === 'pending';
-
-    Object.keys(req.body).forEach((key) => {
-      if (allowedFields.includes(key)) {
-        const dbKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        updates.push(`${dbKey} = $${paramIndex}`);
-        values.push(req.body[key]);
-        paramIndex++;
+    if (name !== undefined) {
+      updates.push(`name = $${paramIndex++}`);
+      values.push(name);
+    }
+    if (address !== undefined) {
+      updates.push(`address = $${paramIndex++}`);
+      values.push(address);
+    }
+    if (notificationEmail !== undefined) {
+      updates.push(`notification_email = $${paramIndex++}`);
+      values.push(notificationEmail || null);
+    }
+    if (notificationPhone !== undefined) {
+      if (notificationPhone && notificationPhone.trim() !== '') {
+        const { normalizePhoneForStorage } = await import('./phone-utils');
+        const normalized = normalizePhoneForStorage(notificationPhone);
+        if (!normalized) {
+          return res.status(400).json({ 
+            error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+          });
+        }
+        updates.push(`notification_phone = $${paramIndex++}`);
+        values.push(normalized);
+      } else {
+        updates.push(`notification_phone = $${paramIndex++}`);
+        values.push(null);
       }
-    });
-
-    // If uploading a new license, clear previous approval/feedback fields
-    if (isNewLicenseUpload) {
-      updates.push(`kitchen_license_approved_by = NULL`);
-      updates.push(`kitchen_license_approved_at = NULL`);
-      updates.push(`kitchen_license_feedback = NULL`);
+    }
+    if (kitchenLicenseUrl !== undefined) {
+      updates.push(`kitchen_license_url = $${paramIndex++}`);
+      values.push(kitchenLicenseUrl);
+    }
+    if (kitchenLicenseStatus !== undefined) {
+      updates.push(`kitchen_license_status = $${paramIndex++}`);
+      values.push(kitchenLicenseStatus);
+      
+      // If uploading a new license, clear previous approval/feedback fields
+      if (kitchenLicenseStatus === 'pending') {
+        updates.push(`kitchen_license_approved_by = NULL`);
+        updates.push(`kitchen_license_approved_at = NULL`);
+        updates.push(`kitchen_license_feedback = NULL`);
+      }
     }
 
     if (updates.length === 0) {
@@ -14905,9 +15097,25 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
     updates.push(`updated_at = NOW()`);
     values.push(locationId);
 
-    const query = `UPDATE locations SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+    const query = `UPDATE locations SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING 
+      id, name, address, manager_id as "managerId", 
+      cancellation_policy_hours as "cancellationPolicyHours",
+      cancellation_policy_message as "cancellationPolicyMessage",
+      default_daily_booking_limit as "defaultDailyBookingLimit",
+      minimum_booking_window_hours as "minimumBookingWindowHours",
+      notification_email as "notificationEmail",
+      notification_phone as "notificationPhone",
+      logo_url as "logoUrl",
+      kitchen_license_url as "kitchenLicenseUrl",
+      kitchen_license_status as "kitchenLicenseStatus",
+      kitchen_license_approved_by as "kitchenLicenseApprovedBy",
+      kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+      kitchen_license_feedback as "kitchenLicenseFeedback",
+      created_at, updated_at`;
+    
     const result = await pool.query(query, values);
 
+    console.log(`✅ Location ${locationId} updated successfully`);
     res.json(result.rows[0]);
   } catch (error) {
     console.error("Error updating location:", error);

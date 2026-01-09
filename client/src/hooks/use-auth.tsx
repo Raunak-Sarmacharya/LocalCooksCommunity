@@ -34,6 +34,8 @@ interface AuthUser {
   isDeliveryPartner?: boolean;
   is_verified?: boolean;
   has_seen_welcome?: boolean;
+  fullName?: string | null; // Optional full name for backward compatibility
+  username?: string | null; // Optional username for backward compatibility
 }
 
 interface AuthContextType {

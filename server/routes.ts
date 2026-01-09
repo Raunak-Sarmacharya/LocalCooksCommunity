@@ -3435,6 +3435,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create location (manager) - for onboarding when manager doesn't have a location yet
+  app.post("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
+
+      const { name, address, notificationEmail, notificationPhone } = req.body;
+
+      if (!name || !address) {
+        return res.status(400).json({ error: "Name and address are required" });
+      }
+
+      // Check if manager already has a location
+      const existingLocations = await firebaseStorage.getLocationsByManager(user.id);
+      if (existingLocations.length > 0) {
+        return res.status(400).json({ error: "Manager already has a location. Use PUT to update it." });
+      }
+
+      // Normalize phone number if provided
+      let normalizedNotificationPhone: string | undefined = undefined;
+      if (notificationPhone && notificationPhone.trim() !== '') {
+        const normalized = normalizePhoneForStorage(notificationPhone);
+        if (!normalized) {
+          return res.status(400).json({ 
+            error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+          });
+        }
+        normalizedNotificationPhone = normalized;
+      }
+
+      console.log('Creating location for manager:', { managerId: user.id, name, address, notificationPhone: normalizedNotificationPhone });
+      
+      const location = await firebaseStorage.createLocation({ 
+        name, 
+        address, 
+        managerId: user.id,
+        notificationEmail: notificationEmail || undefined,
+        notificationPhone: normalizedNotificationPhone
+      });
+      
+      // Map snake_case to camelCase for consistent API response
+      const mappedLocation = {
+        ...location,
+        managerId: (location as any).managerId || (location as any).manager_id || null,
+        notificationEmail: (location as any).notificationEmail || (location as any).notification_email || null,
+        notificationPhone: (location as any).notificationPhone || (location as any).notification_phone || null,
+        cancellationPolicyHours: (location as any).cancellationPolicyHours || (location as any).cancellation_policy_hours || 24,
+        cancellationPolicyMessage: (location as any).cancellationPolicyMessage || (location as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (location as any).defaultDailyBookingLimit || (location as any).default_daily_booking_limit || 2,
+        createdAt: (location as any).createdAt || (location as any).created_at,
+        updatedAt: (location as any).updatedAt || (location as any).updated_at,
+      };
+      
+      res.status(201).json(mappedLocation);
+    } catch (error: any) {
+      console.error("Error creating location:", error);
+      console.error("Error details:", error.message, error.stack);
+      res.status(500).json({ error: error.message || "Failed to create location" });
+    }
+  });
+
+  // Update location (manager)
+  app.put("/api/manager/locations/:locationId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
+
+      const locationId = parseInt(req.params.locationId);
+      if (isNaN(locationId) || locationId <= 0) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      // Verify the manager has access to this location
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this location" });
+      }
+
+      const { name, address, notificationEmail, notificationPhone } = req.body;
+
+      const updates: any = {};
+      if (name !== undefined) updates.name = name;
+      if (address !== undefined) updates.address = address;
+      if (notificationEmail !== undefined) updates.notificationEmail = notificationEmail || null;
+      
+      // Normalize phone number if provided
+      if (notificationPhone !== undefined) {
+        if (notificationPhone && notificationPhone.trim() !== '') {
+          const normalized = normalizePhoneForStorage(notificationPhone);
+          if (!normalized) {
+            return res.status(400).json({ 
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            });
+          }
+          updates.notificationPhone = normalized;
+        } else {
+          updates.notificationPhone = null;
+        }
+      }
+
+      console.log(`💾 Updating location ${locationId} with:`, updates);
+      
+      const updated = await firebaseStorage.updateLocation(locationId, updates);
+      if (!updated) {
+        console.error(`❌ Location ${locationId} not found in database`);
+        return res.status(404).json({ error: "Location not found" });
+      }
+      
+      console.log(`✅ Location ${locationId} updated successfully`);
+      
+      // Map snake_case to camelCase for consistent API response
+      const mappedLocation = {
+        ...updated,
+        managerId: (updated as any).managerId || (updated as any).manager_id || null,
+        notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || null,
+        notificationPhone: (updated as any).notificationPhone || (updated as any).notification_phone || null,
+        cancellationPolicyHours: (updated as any).cancellationPolicyHours || (updated as any).cancellation_policy_hours || 24,
+        cancellationPolicyMessage: (updated as any).cancellationPolicyMessage || (updated as any).cancellation_policy_message || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit || 2,
+        createdAt: (updated as any).createdAt || (updated as any).created_at,
+        updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
+      };
+      
+      return res.json(mappedLocation);
+    } catch (error: any) {
+      console.error("❌ Error updating location:", error);
+      console.error("Error stack:", error.stack);
+      res.status(500).json({ error: error.message || "Failed to update location" });
+    }
+  });
+
   // Get kitchens for a location (manager)
   app.get("/api/manager/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
