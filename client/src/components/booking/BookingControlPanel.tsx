@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download } from "lucide-react";
+import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +63,7 @@ export default function BookingControlPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "kitchen" | "status">("date");
   const [groupBy, setGroupBy] = useState<"date" | "kitchen" | "none">("date");
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
 
   // Fetch storage bookings
   const { data: storageBookings = [], isLoading: isLoadingStorage } = useQuery({
@@ -433,6 +434,63 @@ export default function BookingControlPanel({
       name: kitchen?.name || booking.kitchenName || `Kitchen #${booking.kitchenId}`,
       location: kitchen?.locationName || booking.locationName || "Unknown Location",
     };
+  };
+
+  const handleDownloadInvoice = async (bookingId: number, bookingDate: string) => {
+    setDownloadingInvoiceId(bookingId);
+    try {
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to download invoice",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/bookings/${bookingId}/invoice`, {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate invoice');
+      }
+
+      // Handle PDF download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      
+      // Generate filename with booking ID and date
+      const dateStr = bookingDate ? new Date(bookingDate).toISOString().split('T')[0] : 'unknown';
+      a.download = `LocalCooks-Invoice-${bookingId}-${dateStr}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "Invoice Downloaded",
+        description: "Your invoice has been downloaded successfully!",
+      });
+    } catch (err: any) {
+      console.error('Error downloading invoice:', err);
+      toast({
+        title: "Download Failed",
+        description: err.message || "Failed to download invoice. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
   };
 
   const handleCancel = (bookingId: number, bookingDate: string, startTime: string, booking: Booking) => {
@@ -814,6 +872,34 @@ export default function BookingControlPanel({
                             ?.replace('{hours}', (booking.location.cancellationPolicyHours ?? 24).toString())
                             ?? `Bookings cannot be cancelled within ${booking.location?.cancellationPolicyHours ?? 24} hours of the scheduled time.`}
                         </p>
+                      </div>
+                    )}
+
+                    {/* Invoice Download Button - Show for confirmed bookings */}
+                    {booking.status === "confirmed" && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownloadInvoice(booking.id, booking.bookingDate);
+                          }}
+                          disabled={downloadingInvoiceId === booking.id}
+                          variant="outline"
+                          className="w-full"
+                          size="sm"
+                        >
+                          {downloadingInvoiceId === booking.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Generating Invoice...
+                            </>
+                          ) : (
+                            <>
+                              <FileText className="mr-2 h-4 w-4" />
+                              Download Invoice
+                            </>
+                          )}
+                        </Button>
                       </div>
                     )}
                   </div>
