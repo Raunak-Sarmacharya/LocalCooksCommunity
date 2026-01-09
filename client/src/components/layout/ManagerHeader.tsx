@@ -187,9 +187,6 @@ export default function ManagerHeader() {
       </div>
       <ManagerHelpCenter isOpen={showHelpCenter} onClose={() => setShowHelpCenter(false)} />
     </header>
-        </nav>
-      </div>
-    </header>
   );
 }
 
