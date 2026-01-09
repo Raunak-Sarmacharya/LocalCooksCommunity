@@ -82,8 +82,9 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     queryFn: async () => {
       try {
         const headers = await getAuthHeaders();
+        const headersObj = headers as Record<string, string>;
         console.log('📋 ManagerBookingsPanel: Fetching bookings', { 
-          hasAuth: !!headers.Authorization 
+          hasAuth: !!headersObj.Authorization 
         });
         
         const response = await fetch('/api/manager/bookings', {

@@ -1217,7 +1217,16 @@ export default function ApplicantDashboard() {
           >
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow-lg flex-shrink-0">
-                {(user?.displayName || user?.fullName) ? (user.displayName || user.fullName)[0]?.toUpperCase() : (user?.username && !user.username.includes('@')) ? user.username[0]?.toUpperCase() : "U"}
+                {(() => {
+                  const name = user?.displayName || user?.fullName;
+                  if (name) {
+                    return name[0]?.toUpperCase() || "U";
+                  }
+                  if (user?.username && !user.username.includes('@')) {
+                    return user.username[0]?.toUpperCase() || "U";
+                  }
+                  return "U";
+                })()}
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">

@@ -129,17 +129,53 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
     setShowLoadingOverlay(true);
 
     try {
-      await Promise.all([
-        signInWithGoogle(true), // Pass true for registration
-        new Promise(resolve => setTimeout(resolve, 800))
-      ]);
+      // Start Google registration
+      await signInWithGoogle(true); // Pass true for registration
+      
+      // Wait for sync to complete - poll for user profile to be available
+      let attempts = 0;
+      const maxAttempts = 20; // 10 seconds max (20 * 500ms)
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Check if user profile is available
+        try {
+          const { auth } = await import('@/lib/firebase');
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const token = await currentUser.getIdToken();
+            const response = await fetch('/api/user/profile', {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (response.ok) {
+              // User profile is available, sync is complete
+              console.log('✅ User profile available, registration complete');
+              break;
+            }
+          }
+        } catch (err) {
+          // Continue polling
+        }
+        
+        attempts++;
+      }
+      
+      if (attempts >= maxAttempts) {
+        console.warn('⚠️ Registration sync timeout, but proceeding anyway');
+      }
 
       setAuthState('success');
       setShowLoadingOverlay(false);
       
+      // Give a brief moment for UI to update before redirecting
       setTimeout(() => {
         if (onSuccess) onSuccess();
-      }, 1000);
+      }, 500);
 
     } catch (e: any) {
       setShowLoadingOverlay(false);

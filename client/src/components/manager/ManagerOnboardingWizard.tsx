@@ -250,22 +250,48 @@ export default function ManagerOnboardingWizard() {
       }
       
       const token = await currentFirebaseUser.getIdToken();
-      const response = await fetch(`/api/manager/locations/${selectedLocationId}`, {
-        method: "PUT",
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          "Content-Type": "application/json" 
-        },
-        credentials: "include",
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to update location");
+      
+      // If no location exists, create one first
+      if (!selectedLocationId || locations.length === 0) {
+        const response = await fetch(`/api/manager/locations`, {
+          method: "POST",
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            "Content-Type": "application/json" 
+          },
+          credentials: "include",
+          body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || "Failed to create location");
+        }
+        const newLocation = await response.json();
+        setSelectedLocationId(newLocation.id);
+        return newLocation;
+      } else {
+        // Update existing location
+        const response = await fetch(`/api/manager/locations/${selectedLocationId}`, {
+          method: "PUT",
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            "Content-Type": "application/json" 
+          },
+          credentials: "include",
+          body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || "Failed to update location");
+        }
+        return response.json();
       }
-      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // If we just created a location, set it as selected
+      if (data.id && !selectedLocationId) {
+        setSelectedLocationId(data.id);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
     },
