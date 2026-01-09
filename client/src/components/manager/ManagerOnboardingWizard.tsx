@@ -580,125 +580,179 @@ export default function ManagerOnboardingWizard() {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">
-            {currentStep === 0 ? "Welcome to Local Cooks Community!" : "Let's Set Up Your Kitchen"}
-          </DialogTitle>
-          <DialogDescription>
-            {currentStep === 0 
-              ? "We'll guide you through setting up your kitchen space in just a few steps"
-              : "Complete these steps to activate bookings for your location"
-            }
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Progress Indicator */}
-        <div className="flex items-center justify-between mb-8 mt-4">
-          {steps.map((step, index) => (
-            <div key={step.id} className="flex items-center flex-1">
-              <div className="flex flex-col items-center">
-                <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${
-                    currentStep > step.id || completedSteps[`step_${step.id}`]
-                      ? "bg-green-500 border-green-500 text-white"
-                      : currentStep === step.id
-                      ? "bg-blue-500 border-blue-500 text-white"
-                      : "bg-gray-100 border-gray-300 text-gray-400"
-                  }`}
-                >
-                  {currentStep > step.id || completedSteps[`step_${step.id}`] ? (
-                    <CheckCircle className="h-6 w-6" />
-                  ) : (
-                    step.icon
-                  )}
-                </div>
-                <div className="mt-2 text-center">
-                  <p
-                    className={`text-xs font-medium ${
-                      currentStep >= step.id ? "text-gray-900" : "text-gray-400"
-                    }`}
-                  >
-                    {step.title}
-                  </p>
-                </div>
-              </div>
-              {index < steps.length - 1 && (
-                <div
-                  className={`flex-1 h-0.5 mx-2 ${
-                    currentStep > step.id || completedSteps[`step_${step.id}`] ? "bg-green-500" : "bg-gray-200"
-                  }`}
-                />
-              )}
-            </div>
-          ))}
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 bg-gradient-to-br from-[#FFF8F5] via-white to-[#FFFAF8]">
+        <div className="bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042] px-6 py-5 rounded-t-lg shadow-lg">
+          <DialogHeader className="text-white">
+            <DialogTitle className="text-2xl font-bold text-white">
+              {currentStep === 0 ? "Welcome to Local Cooks Community!" : "Let's Set Up Your Kitchen"}
+            </DialogTitle>
+            <DialogDescription className="text-rose-100">
+              {currentStep === 0 
+                ? "We'll guide you through setting up your kitchen space in just a few steps"
+                : "Complete these steps to activate bookings for your location"
+              }
+            </DialogDescription>
+          </DialogHeader>
         </div>
+
+        <div className="px-6 py-6">
+          {/* Progress Indicator */}
+          <div className="flex items-center justify-between mb-8 relative">
+            {steps.map((step, index) => (
+              <div key={step.id} className="flex items-center flex-1 relative z-10">
+                <div className="flex flex-col items-center flex-1">
+                  <div
+                    className={`relative w-14 h-14 rounded-full flex items-center justify-center border-3 transition-all duration-300 ${
+                      currentStep > step.id || completedSteps[`step_${step.id}`]
+                        ? "bg-gradient-to-br from-green-500 to-emerald-600 border-green-500 text-white shadow-lg shadow-green-500/30 scale-110"
+                        : currentStep === step.id
+                        ? "bg-gradient-to-br from-[#F51042] to-rose-500 border-[#F51042] text-white shadow-lg shadow-[#F51042]/40 scale-110 ring-4 ring-rose-200"
+                        : "bg-white border-gray-300 text-gray-400 shadow-sm"
+                    }`}
+                    style={{ borderWidth: '3px' }}
+                  >
+                    {currentStep > step.id || completedSteps[`step_${step.id}`] ? (
+                      <CheckCircle className="h-7 w-7" />
+                    ) : (
+                      <div className={`${currentStep === step.id ? 'scale-110' : ''} transition-transform duration-300`}>
+                        {step.icon}
+                      </div>
+                    )}
+                    {currentStep === step.id && (
+                      <div className="absolute -inset-1 bg-rose-400 rounded-full animate-ping opacity-20"></div>
+                    )}
+                  </div>
+                  <div className="mt-3 text-center max-w-[100px]">
+                    <p
+                      className={`text-xs font-semibold leading-tight ${
+                        currentStep >= step.id ? "text-gray-900" : "text-gray-400"
+                      }`}
+                    >
+                      {step.title}
+                    </p>
+                  </div>
+                </div>
+                {index < steps.length - 1 && (
+                  <div className="flex-1 h-1 mx-3 relative -mt-7">
+                    <div className={`absolute inset-0 rounded-full transition-all duration-500 ${
+                      currentStep > step.id || completedSteps[`step_${step.id}`] 
+                        ? "bg-gradient-to-r from-green-500 to-green-400" 
+                        : "bg-gray-200"
+                    }`}></div>
+                    {currentStep > step.id || completedSteps[`step_${step.id}`] ? (
+                      <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-300 rounded-full animate-pulse"></div>
+                    ) : null}
+                    {currentStep === step.id && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-[#F51042] to-rose-500 rounded-full animate-pulse opacity-50"></div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
 
         {/* Step Content */}
         <div className="space-y-6">
           {currentStep === 0 && (
             <div className="space-y-6">
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Sparkles className="h-8 w-8 text-blue-600" />
-                  <h3 className="text-xl font-semibold text-gray-900">Getting Started</h3>
-                </div>
-                <p className="text-gray-700 mb-4">
-                  We'll help you set up your kitchen space so chefs can start booking. This process takes about 5-10 minutes.
-                </p>
+              <div className="relative bg-gradient-to-br from-[#FFE8DD] via-[#FFF8F5] to-white border-2 border-rose-200/50 rounded-2xl p-8 shadow-xl overflow-hidden">
+                {/* Decorative elements */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#F51042]/10 rounded-full blur-3xl"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-rose-200/20 rounded-full blur-3xl"></div>
                 
-                <div className="space-y-4 mt-6">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
-                      1
+                <div className="relative z-10">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="p-3 bg-gradient-to-br from-[#F51042] to-rose-500 rounded-2xl shadow-lg shadow-[#F51042]/30">
+                      <Sparkles className="h-8 w-8 text-white" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-gray-900">Location & Contact Info</h4>
-                      <p className="text-sm text-gray-600">Tell us about your kitchen location and how to reach you</p>
+                      <h3 className="text-2xl font-bold text-gray-900">Getting Started</h3>
+                      <p className="text-gray-600 mt-1">
+                        We'll help you set up your kitchen space so chefs can start booking
+                      </p>
                     </div>
                   </div>
                   
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
-                      2
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">Kitchen License</h4>
-                      <p className="text-sm text-gray-600">Upload your license (required for bookings to be activated)</p>
-                    </div>
+                  <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 mb-6 border border-rose-200">
+                    <p className="text-gray-700 font-medium">
+                      ⏱️ This process takes about <span className="text-[#F51042] font-semibold">5-10 minutes</span>
+                    </p>
                   </div>
                   
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">
-                      3
+                  <div className="space-y-3 mt-6">
+                    <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-rose-100 hover:shadow-md hover:border-rose-200 transition-all duration-200 group">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-rose-500 flex items-center justify-center text-white font-bold shadow-lg shadow-[#F51042]/30 group-hover:scale-110 transition-transform">
+                        1
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-900 mb-1">Location & Contact Info</h4>
+                        <p className="text-sm text-gray-600">Tell us about your kitchen location and how to reach you</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">Create Your Kitchen</h4>
-                      <p className="text-sm text-gray-600">Set up your first kitchen space (you can add more later)</p>
+                    
+                    <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-rose-100 hover:shadow-md hover:border-rose-200 transition-all duration-200 group">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-rose-500 flex items-center justify-center text-white font-bold shadow-lg shadow-[#F51042]/30 group-hover:scale-110 transition-transform">
+                        2
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-900 mb-1">Kitchen License</h4>
+                        <p className="text-sm text-gray-600">Upload your license (required for bookings to be activated)</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-rose-100 hover:shadow-md hover:border-rose-200 transition-all duration-200 group">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-rose-500 flex items-center justify-center text-white font-bold shadow-lg shadow-[#F51042]/30 group-hover:scale-110 transition-transform">
+                        3
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-900 mb-1">Create Your Kitchen</h4>
+                        <p className="text-sm text-gray-600">Set up your first kitchen space (you can add more later)</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 hover:shadow-md transition-all duration-200 group">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-gray-400 to-gray-500 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
+                        4
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-900 mb-1">Storage Listings <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
+                        <p className="text-sm text-gray-600">Add storage options that chefs can book</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 hover:shadow-md transition-all duration-200 group">
+                      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-gray-400 to-gray-500 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
+                        5
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-gray-900 mb-1">Equipment Listings <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
+                        <p className="text-sm text-gray-600">Add equipment options - you can skip and add these later</p>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 font-semibold">
-                      4-5
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">Add Listings (Optional)</h4>
-                      <p className="text-sm text-gray-600">Add storage and equipment options - you can skip and add these later</p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="mt-6 p-4 bg-white rounded-lg border border-blue-200">
-                  <div className="flex items-start gap-2">
-                    <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-gray-700">
-                      <p className="font-semibold mb-1">Understanding the Structure:</p>
-                      <ul className="space-y-1 ml-4 list-disc">
-                        <li><strong>Location</strong> - Your business address (e.g., "The Lantern")</li>
-                        <li><strong>Kitchen</strong> - A specific kitchen space within your location</li>
-                        <li><strong>Listings</strong> - Storage and equipment that chefs can book</li>
-                      </ul>
+                  <div className="mt-6 p-5 bg-white/95 backdrop-blur-sm rounded-xl border-2 border-rose-200 shadow-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-rose-100 rounded-lg">
+                        <Info className="h-5 w-5 text-[#F51042] flex-shrink-0" />
+                      </div>
+                      <div className="text-sm text-gray-700">
+                        <p className="font-bold mb-2 text-gray-900">Understanding the Structure:</p>
+                        <ul className="space-y-2">
+                          <li className="flex items-start gap-2">
+                            <span className="text-[#F51042] font-bold mt-0.5">•</span>
+                            <span><strong className="text-gray-900">Location</strong> - Your business address (e.g., "The Lantern")</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-[#F51042] font-bold mt-0.5">•</span>
+                            <span><strong className="text-gray-900">Kitchen</strong> - A specific kitchen space within your location</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-[#F51042] font-bold mt-0.5">•</span>
+                            <span><strong className="text-gray-900">Listings</strong> - Storage and equipment that chefs can book</span>
+                          </li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -715,11 +769,13 @@ export default function ManagerOnboardingWizard() {
                 </p>
               </div>
               
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start gap-2">
-                  <HelpCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-rose-100 rounded-lg">
+                    <HelpCircle className="h-5 w-5 text-[#F51042] flex-shrink-0" />
+                  </div>
                   <div className="text-sm text-gray-700">
-                    <p className="font-semibold mb-1">What is a Location?</p>
+                    <p className="font-bold mb-2 text-gray-900">What is a Location?</p>
                     <p>Your location is your business address. This is what chefs will see when searching for kitchen spaces. You can have multiple kitchens within one location.</p>
                   </div>
                 </div>
@@ -807,20 +863,24 @@ export default function ManagerOnboardingWizard() {
                 </p>
               </div>
               
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-200/50 rounded-xl p-5 shadow-sm">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="p-2 bg-amber-100 rounded-lg">
+                    <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                  </div>
                   <div>
-                    <p className="text-sm text-yellow-800 font-medium mb-1">
+                    <p className="text-sm text-amber-900 font-bold mb-2">
                       License Required for Booking Activation
                     </p>
-                    <p className="text-xs text-yellow-700 mb-2">
+                    <p className="text-xs text-amber-800 mb-3 leading-relaxed">
                       Your kitchen license must be approved by an admin before bookings can be activated. 
                       You can skip this step and upload later, but bookings will remain disabled until approved.
                     </p>
-                    <p className="text-xs text-yellow-700">
-                      <strong>Accepted formats:</strong> PDF, JPG, PNG (max 10MB)
-                    </p>
+                    <div className="bg-white/60 backdrop-blur-sm rounded-lg px-3 py-2 border border-amber-200">
+                      <p className="text-xs text-amber-900">
+                        <strong className="font-semibold">Accepted formats:</strong> PDF, JPG, PNG (max 10MB)
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -895,7 +955,7 @@ export default function ManagerOnboardingWizard() {
                             }}
                             className="hidden"
                           />
-                          <span className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                          <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium">
                             Click to upload new license
                           </span>
                           <p className="text-xs text-gray-500 mt-1">
@@ -912,10 +972,14 @@ export default function ManagerOnboardingWizard() {
                     </div>
                   </div>
                 ) : (
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 bg-gradient-to-br from-gray-50 to-white hover:border-rose-400 hover:bg-rose-50/30 transition-all duration-200 cursor-pointer group">
                     <div className="text-center">
-                      <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                      <label className="cursor-pointer">
+                      <div className="mb-4 flex justify-center">
+                        <div className="p-4 bg-rose-100 rounded-2xl group-hover:bg-rose-200 group-hover:scale-110 transition-all duration-200">
+                          <Upload className="h-10 w-10 text-[#F51042]" />
+                        </div>
+                      </div>
+                      <label className="cursor-pointer block">
                         <input
                           type="file"
                           accept=".pdf,.jpg,.jpeg,.png"
@@ -935,16 +999,16 @@ export default function ManagerOnboardingWizard() {
                           }}
                           className="hidden"
                         />
-                        <span className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                        <span className="text-base text-[#F51042] hover:text-rose-600 font-semibold block mb-2">
                           Click to upload license
                         </span>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-sm text-gray-500">
                           PDF, JPG, or PNG (max 10MB)
                         </p>
                       </label>
                       {licenseFile && (
-                        <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-700">
-                          <FileText className="h-4 w-4" />
+                        <div className="mt-4 flex items-center justify-center gap-2 text-sm font-medium text-gray-700 bg-white rounded-lg px-4 py-2 border border-gray-200 shadow-sm">
+                          <FileText className="h-4 w-4 text-[#F51042]" />
                           <span>{licenseFile.name}</span>
                         </div>
                       )}
@@ -964,11 +1028,13 @@ export default function ManagerOnboardingWizard() {
                 </p>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start gap-2">
-                  <HelpCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-rose-100 rounded-lg">
+                    <HelpCircle className="h-5 w-5 text-[#F51042] flex-shrink-0" />
+                  </div>
                   <div className="text-sm text-gray-700">
-                    <p className="font-semibold mb-1">Why do I need a Kitchen?</p>
+                    <p className="font-bold mb-2 text-gray-900">Why do I need a Kitchen?</p>
                     <p>Each kitchen space can have its own storage and equipment listings. If you have multiple kitchen spaces at your location, create separate kitchens for each one.</p>
                   </div>
                 </div>
@@ -1099,11 +1165,13 @@ export default function ManagerOnboardingWizard() {
                 </p>
               </div>
               
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start gap-2">
-                  <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-blue-800">
-                    <p className="font-semibold mb-1">What are Storage Listings?</p>
+              <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-rose-100 rounded-lg">
+                    <Info className="h-5 w-5 text-[#F51042] flex-shrink-0" />
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    <p className="font-bold mb-2 text-gray-900">What are Storage Listings?</p>
                     <p>Storage listings allow chefs to book dry storage, cold storage, or freezer space at your kitchen. You can add multiple storage options with different sizes and prices.</p>
                   </div>
                 </div>
@@ -1336,7 +1404,7 @@ export default function ManagerOnboardingWizard() {
                             ) : (
                               <>
                                 <Upload className="h-8 w-8 text-gray-400" />
-                                <span className="text-sm font-medium text-blue-600">Click to upload photos</span>
+                                <span className="text-sm font-medium text-[#F51042]">Click to upload photos</span>
                                 <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB each)</span>
                               </>
                             )}
@@ -1444,11 +1512,13 @@ export default function ManagerOnboardingWizard() {
                 </p>
               </div>
               
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start gap-2">
-                  <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-blue-800">
-                    <p className="font-semibold mb-1">What are Equipment Listings?</p>
+              <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-rose-100 rounded-lg">
+                    <Info className="h-5 w-5 text-[#F51042] flex-shrink-0" />
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    <p className="font-bold mb-2 text-gray-900">What are Equipment Listings?</p>
                     <p>Equipment listings let chefs know what equipment is available. You can offer equipment as included with bookings or as paid add-ons (rentals).</p>
                   </div>
                 </div>
@@ -1712,7 +1782,7 @@ export default function ManagerOnboardingWizard() {
                             ) : (
                               <>
                                 <Upload className="h-8 w-8 text-gray-400" />
-                                <span className="text-sm font-medium text-blue-600">Click to upload photos</span>
+                                <span className="text-sm font-medium text-[#F51042]">Click to upload photos</span>
                                 <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB each)</span>
                               </>
                             )}
@@ -1909,8 +1979,8 @@ export default function ManagerOnboardingWizard() {
                 </div>
               </div>
               
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">What's Next?</h4>
+              <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
+                <h4 className="text-sm font-bold text-gray-900 mb-2">What's Next?</h4>
                 <p className="text-xs text-gray-700 mb-3">
                   You can manage everything from your dashboard:
                 </p>
@@ -1925,51 +1995,57 @@ export default function ManagerOnboardingWizard() {
           )}
         </div>
 
+        </div>
+
         {/* Actions */}
-        <div className="flex items-center justify-between pt-6 border-t">
-          <Button
-            variant="outline"
-            onClick={handleSkip}
-            disabled={completeOnboardingMutation.isPending}
-          >
-            Skip for Now
-          </Button>
-          <div className="flex gap-3">
-            {currentStep > 0 && (
-              <Button variant="outline" onClick={handleBack}>
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Back
-              </Button>
-            )}
+        <div className="bg-gradient-to-br from-[#FFE8DD]/30 to-white border-t border-rose-200/50 px-6 py-4 rounded-b-lg">
+          <div className="flex items-center justify-between">
             <Button
-              onClick={handleNext}
-              disabled={
-                updateLocationMutation.isPending ||
-                uploadLicenseMutation.isPending ||
-                completeOnboardingMutation.isPending
-              }
+              variant="outline"
+              onClick={handleSkip}
+              disabled={completeOnboardingMutation.isPending}
+              className="border-gray-300 hover:bg-gray-100"
             >
-              {currentStep === steps.length ? (
-                <>
-                  {completeOnboardingMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Completing...
-                    </>
-                  ) : (
-                    <>
-                      Complete Setup
-                      <CheckCircle className="h-4 w-4 ml-2" />
-                    </>
-                  )}
-                </>
-              ) : (
-                <>
-                  {currentStep === 0 ? "Get Started" : "Next"}
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </>
-              )}
+              Skip for Now
             </Button>
+            <div className="flex gap-3">
+              {currentStep > 0 && (
+                <Button variant="outline" onClick={handleBack} className="border-gray-300 hover:bg-gray-100">
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Back
+                </Button>
+              )}
+              <Button
+                onClick={handleNext}
+                disabled={
+                  updateLocationMutation.isPending ||
+                  uploadLicenseMutation.isPending ||
+                  completeOnboardingMutation.isPending
+                }
+                className="bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white shadow-lg shadow-[#F51042]/30 hover:shadow-xl hover:shadow-[#F51042]/40 transition-all duration-200 px-6"
+              >
+                {currentStep === steps.length ? (
+                  <>
+                    {completeOnboardingMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Completing...
+                      </>
+                    ) : (
+                      <>
+                        Complete Setup
+                        <CheckCircle className="h-4 w-4 ml-2" />
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {currentStep === 0 ? "Get Started" : "Next"}
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>
