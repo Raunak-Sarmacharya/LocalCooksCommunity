@@ -6751,6 +6751,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate invoice PDF for a booking
+  app.get("/api/bookings/:id/invoice", requireChef, async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id) || id <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+      
+      const booking = await firebaseStorage.getBookingById(id);
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+      
+      // Verify the booking belongs to this chef
+      if (booking.chefId !== req.user!.id) {
+        return res.status(403).json({ error: "You don't have permission to view this invoice" });
+      }
+      
+      // Get related data
+      const chef = await storage.getUser(booking.chefId);
+      const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+      const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
+      const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+      
+      // Get location details
+      let location = null;
+      if (kitchen && (kitchen as any).locationId) {
+        const locationId = (kitchen as any).locationId || (kitchen as any).location_id;
+        if (pool) {
+          const locationResult = await pool.query(
+            'SELECT id, name, address FROM locations WHERE id = $1',
+            [locationId]
+          );
+          if (locationResult.rows.length > 0) {
+            location = locationResult.rows[0];
+          }
+        }
+      }
+      
+      // Get payment intent ID from booking
+      const paymentIntentId = (booking as any).paymentIntentId || (booking as any).payment_intent_id || null;
+      
+      // Generate invoice PDF
+      const { generateInvoicePDF } = await import('./services/invoice-service');
+      const pdfBuffer = await generateInvoicePDF(
+        booking,
+        chef,
+        kitchen,
+        location,
+        storageBookings,
+        equipmentBookings,
+        paymentIntentId,
+        pool
+      );
+      
+      // Set headers for PDF download
+      res.setHeader('Content-Type', 'application/pdf');
+      const bookingDate = booking.bookingDate ? new Date(booking.bookingDate).toISOString().split('T')[0] : 'unknown';
+      res.setHeader('Content-Disposition', `attachment; filename="LocalCooks-Invoice-${id}-${bookingDate}.pdf"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("Error generating invoice:", error);
+      res.status(500).json({ error: error.message || "Failed to generate invoice" });
+    }
+  });
+
   // Cancel a booking
   app.put("/api/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
