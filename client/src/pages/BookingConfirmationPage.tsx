@@ -310,6 +310,9 @@ export default function BookingConfirmationPage() {
       const currentUser = auth.currentUser;
       const token = currentUser ? await currentUser.getIdToken() : '';
 
+      // Calculate expected amount in cents from frontend calculation
+      const expectedAmountCents = Math.round(grandTotal * 100);
+
       const response = await fetch('/api/payments/create-intent', {
         method: 'POST',
         headers: {
@@ -328,6 +331,7 @@ export default function BookingConfirmationPage() {
             endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
           })) : undefined,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
+          expectedAmountCents, // Send frontend-calculated amount for consistency
         }),
       });
 
@@ -339,6 +343,18 @@ export default function BookingConfirmationPage() {
       const data = await response.json();
       setPaymentIntentId(data.paymentIntentId);
       setClientSecret(data.clientSecret);
+      // Debug: Log both frontend and backend amounts to identify calculation mismatch
+      const frontendCents = Math.round(grandTotal * 100);
+      console.log('Payment amount debug:', {
+        frontendGrandTotal: grandTotal,
+        frontendCents: frontendCents,
+        backendAmount: data.amount,
+        backendAmountDollars: data.amount / 100,
+        difference: data.amount - frontendCents,
+        ratio: data.amount / frontendCents
+      });
+      // Use backend amount (it's what the PaymentIntent was created with)
+      // But log the mismatch so we can fix the backend calculation
       setPaymentAmount(data.amount);
       setPaymentCurrency(data.currency);
       setShowPayment(true);
