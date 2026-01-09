@@ -23,6 +23,7 @@ interface PublicLocation {
   address: string;
   logoUrl?: string | null;
   brandImageUrl?: string | null;
+  kitchenLicenseStatus?: string | null;
 }
 
 interface EquipmentListing {
@@ -833,7 +834,21 @@ export default function KitchenPreviewPage() {
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{location.name}</h1>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{location.name}</h1>
+                    {location.kitchenLicenseStatus === 'pending' && (
+                      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
+                        <Clock className="h-3 w-3 mr-1" />
+                        Pending Approval
+                      </Badge>
+                    )}
+                    {location.kitchenLicenseStatus === 'approved' && (
+                      <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
+                        <Check className="h-3 w-3 mr-1" />
+                        Approved
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5 text-gray-500 text-xs sm:text-sm">
                     <MapPin className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
                     <span className="truncate">{location.address}</span>
@@ -892,6 +907,25 @@ export default function KitchenPreviewPage() {
                   </div>
                 )}
               </div>
+
+              {/* Pending Approval Notice */}
+              {location.kitchenLicenseStatus === 'pending' && (
+                <Card className="overflow-hidden border-yellow-200 bg-yellow-50 mb-4">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <Clock className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-yellow-900 mb-1">
+                          License Pending Approval
+                        </h3>
+                        <p className="text-xs text-yellow-700">
+                          This location's kitchen license is pending admin approval. Bookings will be available once approved.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Mini Calendar */}
               <Card className="overflow-hidden border-gray-200">

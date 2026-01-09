@@ -91,6 +91,10 @@ interface LocationWithKitchens {
   brandImageUrl?: string;
   kitchens: Kitchen[];
   isApproved?: boolean;
+  isPending?: boolean;
+  applicationStatus?: string;
+  applicationId?: number;
+  kitchenLicenseStatus?: string;
 }
 
 // Helper function to get Firebase auth headers
@@ -132,9 +136,13 @@ export default function KitchenComparisonPage() {
   const { approvedKitchens: approvedLocations, isLoading: locationsLoading } = useChefApprovedKitchens();
   const { applications, isLoading: applicationsLoading } = useChefKitchenApplicationsStatus();
   
-  // Get applied location IDs
+  // Get applied location IDs (all applications)
   const appliedLocationIds = new Set(applications.map((a) => a.locationId));
   const approvedLocationIds = new Set(approvedLocations.map((loc) => loc.id));
+  
+  // Get pending applications (inReview status)
+  const pendingApplications = applications.filter((a) => a.status === "inReview");
+  const pendingLocationIds = new Set(pendingApplications.map((a) => a.locationId));
 
   // Fetch all public locations (for "available to apply" section)
   const { data: publicLocations, isLoading: publicLocationsLoading } = useQuery<PublicLocation[]>({
@@ -323,6 +331,142 @@ export default function KitchenComparisonPage() {
     staleTime: 60000,
   });
 
+  // Fetch kitchens for pending application locations
+  const { data: pendingKitchens, isLoading: pendingKitchensLoading } = useQuery<Kitchen[]>({
+    queryKey: ["/api/chef/kitchens", pendingLocationIds],
+    queryFn: async () => {
+      if (pendingLocationIds.size === 0) return [];
+
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/chef/kitchens", {
+        credentials: "include",
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch kitchens");
+      }
+
+      const kitchens = await response.json();
+      
+      // Filter to locations with pending applications
+      return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
+        const locationId = k.locationId ?? k.location_id;
+        return pendingLocationIds.has(locationId);
+      }).map((k: any) => {
+        const locationId = k.locationId ?? k.location_id;
+        const location = publicLocations?.find((loc) => loc.id === locationId);
+        
+        return {
+          id: k.id,
+          name: k.name,
+          description: k.description,
+          locationId,
+          locationName: location?.name || k.locationName || k.location_name,
+          locationAddress: location?.address || k.locationAddress || k.location_address,
+          location: location ? {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+          } : k.location,
+          imageUrl: k.imageUrl || k.image_url,
+          amenities: k.amenities || [],
+        };
+      });
+    },
+    enabled: pendingLocationIds.size > 0,
+    staleTime: 60000,
+  });
+
+  // Fetch equipment and storage for pending kitchens
+  const { data: pendingKitchensWithAddons } = useQuery<Kitchen[]>({
+    queryKey: ["/api/chef/kitchens/pending-addons", pendingKitchens],
+    queryFn: async () => {
+      if (!pendingKitchens || pendingKitchens.length === 0) return [];
+
+      const headers = await getAuthHeaders();
+      
+      const kitchenPromises = pendingKitchens.map(async (kitchen) => {
+        // Fetch equipment
+        let equipment = { included: [], rental: [] };
+        try {
+          const equipmentResponse = await fetch(`/api/chef/kitchens/${kitchen.id}/equipment-listings`, {
+            credentials: "include",
+            headers,
+          });
+          if (equipmentResponse.ok) {
+            const equipmentData = await equipmentResponse.json();
+            equipment = {
+              included: (equipmentData.included || []).map((e: any) => ({
+                id: e.id,
+                category: e.category,
+                equipmentType: e.equipmentType,
+                brand: e.brand,
+                model: e.model,
+                availabilityType: e.availabilityType,
+                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                currency: e.currency || "CAD",
+              })),
+              rental: (equipmentData.rental || []).map((e: any) => ({
+                id: e.id,
+                category: e.category,
+                equipmentType: e.equipmentType,
+                brand: e.brand,
+                model: e.model,
+                availabilityType: e.availabilityType,
+                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
+                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                currency: e.currency || "CAD",
+              })),
+            };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch equipment for kitchen ${kitchen.id}:`, error);
+        }
+
+        // Fetch storage
+        let storage: StorageListing[] = [];
+        try {
+          const storageResponse = await fetch(`/api/chef/kitchens/${kitchen.id}/storage-listings`, {
+            credentials: "include",
+            headers,
+          });
+          if (storageResponse.ok) {
+            const storageData = await storageResponse.json();
+            storage = (storageData || []).map((s: any) => ({
+              id: s.id,
+              storageType: s.storageType,
+              name: s.name,
+              description: s.description,
+              basePrice: s.basePrice,
+              pricePerCubicFoot: s.pricePerCubicFoot,
+              pricingModel: s.pricingModel,
+              dimensionsLength: s.dimensionsLength,
+              dimensionsWidth: s.dimensionsWidth,
+              dimensionsHeight: s.dimensionsHeight,
+              totalVolume: s.totalVolume,
+              climateControl: s.climateControl,
+              currency: s.currency || "CAD",
+            }));
+          }
+        } catch (error) {
+          console.error(`Failed to fetch storage for kitchen ${kitchen.id}:`, error);
+        }
+
+        return {
+          ...kitchen,
+          equipment,
+          storage,
+        };
+      });
+
+      return Promise.all(kitchenPromises);
+    },
+    enabled: !!pendingKitchens && pendingKitchens.length > 0,
+    staleTime: 60000,
+  });
+
   // Fetch pricing, equipment, and storage for approved kitchens
   const { data: approvedKitchensWithPricing, isLoading: pricingLoading } = useQuery<Kitchen[]>({
     queryKey: ["/api/chef/kitchens/pricing-and-addons", approvedKitchens],
@@ -436,7 +580,8 @@ export default function KitchenComparisonPage() {
   });
 
   const isLoading = locationsLoading || kitchensLoading || pricingLoading || authLoading || 
-                    applicationsLoading || publicLocationsLoading || availableKitchensLoading;
+                    applicationsLoading || publicLocationsLoading || availableKitchensLoading || 
+                    pendingKitchensLoading;
 
   // Group approved kitchens by location
   const approvedLocationsWithKitchens: LocationWithKitchens[] = approvedLocations.map((location) => {
@@ -455,7 +600,32 @@ export default function KitchenComparisonPage() {
     };
   }).filter((loc) => loc.kitchens.length > 0);
 
-  // Group available to apply kitchens by location
+  // Group pending application kitchens by location
+  const pendingApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string })[] = 
+    (publicLocations || [])
+      .filter((loc) => pendingLocationIds.has(loc.id))
+      .map((location) => {
+        const locationKitchens = (pendingKitchensWithAddons || pendingKitchens || []).filter(
+          (k) => k.locationId === location.id
+        );
+        const application = pendingApplications.find((a) => a.locationId === location.id);
+
+        return {
+          id: location.id,
+          name: location.name,
+          address: location.address,
+          logoUrl: location.logoUrl || undefined,
+          brandImageUrl: location.brandImageUrl || undefined,
+          kitchens: locationKitchens,
+          isApproved: false,
+          isPending: true,
+          applicationStatus: application?.status,
+          applicationId: application?.id,
+        };
+      })
+      .filter((loc) => loc.kitchens.length > 0);
+
+  // Group available to apply kitchens by location (not yet applied)
   const availableToApplyLocations: (LocationWithKitchens & { isApproved: boolean })[] = (publicLocations || [])
     .filter((loc) => !appliedLocationIds.has(loc.id))
     .map((location) => {
@@ -471,13 +641,16 @@ export default function KitchenComparisonPage() {
         brandImageUrl: location.brandImageUrl || undefined,
         kitchens: locationKitchens,
         isApproved: false,
+        isPending: false,
+        kitchenLicenseStatus: location.kitchenLicenseStatus || undefined,
       };
     })
     .filter((loc) => loc.kitchens.length > 0);
 
-  // Combine all locations into a single list
+  // Combine all locations into a single list: Approved, Pending, Available to Apply
   const allLocationsWithKitchens = [
     ...approvedLocationsWithKitchens,
+    ...pendingApplicationLocations,
     ...availableToApplyLocations,
   ];
 
@@ -659,7 +832,9 @@ export default function KitchenComparisonPage() {
                       <CardHeader className={`border-b ${
                         location.isApproved 
                           ? "bg-gradient-to-r from-blue-50 to-indigo-50" 
-                          : "bg-gradient-to-r from-yellow-50 to-orange-50"
+                          : location.isPending
+                          ? "bg-gradient-to-r from-yellow-50 to-amber-50"
+                          : "bg-gradient-to-r from-gray-50 to-slate-50"
                       }`}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-4 flex-1">
@@ -679,7 +854,9 @@ export default function KitchenComparisonPage() {
                               <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${
                                 location.isApproved
                                   ? "bg-gradient-to-br from-blue-500 to-blue-600"
-                                  : "bg-gradient-to-br from-yellow-500 to-orange-600"
+                                  : location.isPending
+                                  ? "bg-gradient-to-br from-yellow-500 to-amber-600"
+                                  : "bg-gradient-to-br from-gray-500 to-slate-600"
                               }`}>
                                 <Building2 className="h-8 w-8 text-white" />
                               </div>
@@ -697,10 +874,21 @@ export default function KitchenComparisonPage() {
                               <Check className="h-3 w-3 mr-1" />
                               Approved
                             </Badge>
-                          ) : (
+                          ) : location.isPending ? (
                             <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
                               <Clock className="h-3 w-3 mr-1" />
-                              Apply to Book
+                              Pending Review
+                            </Badge>
+                          ) : (
+                            <Badge className={`${
+                              location.kitchenLicenseStatus === 'pending'
+                                ? "bg-orange-100 text-orange-800 border-orange-200"
+                                : "bg-blue-100 text-blue-800 border-blue-200"
+                            }`}>
+                              <Plus className="h-3 w-3 mr-1" />
+                              {location.kitchenLicenseStatus === 'pending' 
+                                ? "Pending Approval" 
+                                : "Apply to Book"}
                             </Badge>
                           )}
                         </div>
@@ -715,7 +903,9 @@ export default function KitchenComparisonPage() {
                             className={`border-2 rounded-lg p-4 transition-all ${
                               location.isApproved
                                 ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
-                                : "border-gray-200 hover:border-yellow-500 hover:shadow-md"
+                                : location.isPending
+                                ? "border-gray-200 hover:border-yellow-500 hover:shadow-md"
+                                : "border-gray-200 hover:border-gray-400 hover:shadow-md"
                             }`}
                           >
                             {kitchen.imageUrl && (
@@ -887,11 +1077,21 @@ export default function KitchenComparisonPage() {
                                   <Calendar className="mr-2 h-4 w-4" />
                                   Book Now
                                 </Button>
+                              ) : location.isPending ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled
+                                  className="flex-1 bg-yellow-50 border-yellow-300 text-yellow-700 cursor-not-allowed"
+                                >
+                                  <Clock className="mr-2 h-4 w-4" />
+                                  Pending Review
+                                </Button>
                               ) : (
                                 <Button
                                   size="sm"
                                   onClick={() => handleApplyKitchen(location.id)}
-                                  className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                                  className="flex-1 bg-blue-600 hover:bg-blue-700"
                                 >
                                   <Plus className="mr-2 h-4 w-4" />
                                   Apply Now
@@ -922,4 +1122,5 @@ interface PublicLocation {
   city?: string;
   logoUrl?: string | null;
   brandImageUrl?: string | null;
+  kitchenLicenseStatus?: string | null;
 }
