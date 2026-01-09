@@ -7284,7 +7284,8 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
       fullName: userFullName || null, // Alias for compatibility
       // Manager onboarding fields
       manager_onboarding_completed: fullUserData?.manager_onboarding_completed || false,
-      manager_onboarding_skipped: fullUserData?.manager_onboarding_skipped || false
+      manager_onboarding_skipped: fullUserData?.manager_onboarding_skipped || false,
+      manager_onboarding_steps_completed: fullUserData?.manager_onboarding_steps_completed || {}
     };
 
     console.log('✅ /api/user/profile - Returning profile for user:', req.neonUser.id);
@@ -15069,6 +15070,47 @@ app.get("/api/manager/chef-profiles", requireFirebaseAuthWithUser, requireManage
   } catch (error) {
     console.error("Error getting chef profiles for manager:", error);
     res.status(500).json({ error: error.message || "Failed to get profiles" });
+  }
+});
+
+// Manager: Track onboarding step completion
+app.post("/api/manager/onboarding/step", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const user = req.neonUser;
+    const { stepId } = req.body;
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    if (stepId === undefined || stepId === null) {
+      return res.status(400).json({ error: "stepId is required" });
+    }
+
+    // Get current steps completed
+    const result = await pool.query(
+      'SELECT manager_onboarding_steps_completed FROM users WHERE id = $1',
+      [user.id]
+    );
+    
+    const currentSteps = result.rows[0]?.manager_onboarding_steps_completed || {};
+    const updatedSteps = {
+      ...currentSteps,
+      [`step_${stepId}`]: true
+    };
+
+    // Update steps completed
+    await pool.query(
+      `UPDATE users 
+       SET manager_onboarding_steps_completed = $1 
+       WHERE id = $2`,
+      [JSON.stringify(updatedSteps), user.id]
+    );
+
+    res.json({ success: true, stepsCompleted: updatedSteps });
+  } catch (error) {
+    console.error("Error tracking onboarding step:", error);
+    res.status(500).json({ error: error.message || "Failed to track step" });
   }
 });
 
