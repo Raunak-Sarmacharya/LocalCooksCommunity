@@ -4615,14 +4615,16 @@ app.post("/api/upload",
   }
 );
 // Generic file upload endpoint (for use with new upload components) - Alternative endpoint
+// Supports both Firebase Auth and Session Auth
 app.post("/api/upload-file", 
   upload.single('file'), 
   async (req, res) => {
     try {
       console.log('🔄 === FILE UPLOAD DEBUG START ===');
-      console.log('📤 Upload: Session data:', {
-        sessionId: req.session.id,
-        sessionUserId: req.session.userId,
+      console.log('📤 Upload: Auth data:', {
+        hasAuthHeader: !!req.headers.authorization,
+        sessionId: req.session?.id,
+        sessionUserId: req.session?.userId,
         headerUserId: req.headers['x-user-id'],
         hasFile: !!req.file,
         fileDetails: req.file ? {
@@ -4632,44 +4634,73 @@ app.post("/api/upload-file",
         } : null
       });
       
-      // Check if user is authenticated
-      const rawUserId = req.session.userId || req.headers['x-user-id'];
-      if (!rawUserId) {
-        console.log('❌ Upload: No userId in session or header, returning 401');
-        // Clean up uploaded file
-        if (req.file && req.file.path) {
+      let userId = null;
+      
+      // First, try Firebase authentication
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7)?.trim();
+        if (token && firebaseAdmin) {
           try {
-            fs.unlinkSync(req.file.path);
-          } catch (e) {
-            console.error('Error cleaning up file:', e);
+            const decodedToken = await verifyFirebaseToken(token);
+            if (decodedToken && decodedToken.uid) {
+              // Get user from database by Firebase UID
+              if (pool) {
+                const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [decodedToken.uid]);
+                const user = result.rows[0];
+                if (user) {
+                  userId = user.id;
+                  console.log('✅ Upload: User authenticated via Firebase:', decodedToken.uid, '-> Neon ID:', userId);
+                }
+              }
+            }
+          } catch (tokenError) {
+            console.error('❌ Upload: Firebase token verification error:', tokenError);
+            // Fall through to session auth
           }
         }
-        return res.status(401).json({ error: "Not authenticated" });
       }
-
-      // Convert Firebase UID to integer user ID
-      const user = await getUser(rawUserId);
-      if (!user) {
-        console.log('❌ Upload: User not found for ID:', rawUserId);
-        // Clean up uploaded file
-        if (req.file && req.file.path) {
-          try {
-            fs.unlinkSync(req.file.path);
-          } catch (e) {
-            console.error('Error cleaning up file:', e);
+      
+      // Fallback to session authentication if Firebase auth didn't work
+      if (!userId) {
+        const rawUserId = req.session?.userId || req.headers['x-user-id'];
+        if (!rawUserId) {
+          console.log('❌ Upload: No userId in session, header, or Firebase token, returning 401');
+          // Clean up uploaded file
+          if (req.file && req.file.path) {
+            try {
+              fs.unlinkSync(req.file.path);
+            } catch (e) {
+              console.error('Error cleaning up file:', e);
+            }
           }
+          return res.status(401).json({ error: "Not authenticated" });
         }
-        return res.status(401).json({ error: "User not found" });
-      }
-      const userId = user.id;
 
-      console.log('✅ Upload: User authenticated:', rawUserId, '-> integer ID:', userId);
+        // Convert Firebase UID to integer user ID
+        const user = await getUser(rawUserId);
+        if (!user) {
+          console.log('❌ Upload: User not found for ID:', rawUserId);
+          // Clean up uploaded file
+          if (req.file && req.file.path) {
+            try {
+              fs.unlinkSync(req.file.path);
+            } catch (e) {
+              console.error('Error cleaning up file:', e);
+            }
+          }
+          return res.status(401).json({ error: "User not found" });
+        }
+        userId = user.id;
 
-      // Store user ID in session as a backup (for Vercel session persistence)
-      if (!req.session.userId && rawUserId) {
-        console.log('🔄 Upload: Storing userId in session from header:', rawUserId);
-        req.session.userId = rawUserId;
-        await new Promise((resolve) => req.session.save(resolve));
+        console.log('✅ Upload: User authenticated via session:', rawUserId, '-> integer ID:', userId);
+
+        // Store user ID in session as a backup (for Vercel session persistence)
+        if (!req.session.userId && rawUserId) {
+          console.log('🔄 Upload: Storing userId in session from header:', rawUserId);
+          req.session.userId = rawUserId;
+          await new Promise((resolve) => req.session.save(resolve));
+        }
       }
 
       if (!req.file) {
