@@ -5624,7 +5624,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create PaymentIntent for booking
   app.post("/api/payments/create-intent", requireChef, async (req: Request, res: Response) => {
     try {
-      const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds } = req.body;
+      const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
       const chefId = req.user!.id;
 
       if (!kitchenId || !bookingDate || !startTime || !endTime) {
@@ -5702,14 +5702,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const serviceFeeCents = calculatePlatformFee(totalPriceCents, 0.05);
       const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, serviceFeeCents, 0);
 
+      // Debug logging to identify calculation issues
+      console.log('Payment intent calculation:', {
+        kitchenPriceCents: kitchenPricing.totalPriceCents,
+        totalPriceCents,
+        serviceFeeCents,
+        totalWithFeesCents,
+        totalWithFeesDollars: totalWithFeesCents / 100,
+        expectedAmountCents,
+        expectedAmountDollars: expectedAmountCents ? expectedAmountCents / 100 : null,
+        currency: kitchenPricing.currency
+      });
+
       // Skip payment if total is zero
       if (totalWithFeesCents <= 0) {
         return res.status(400).json({ error: "Booking total is zero. Payment not required." });
       }
 
+      // Use frontend-calculated amount if provided and within 1% tolerance (to handle rounding differences)
+      // This ensures the displayed amount matches the actual charge
+      let finalAmountCents = totalWithFeesCents;
+      if (expectedAmountCents && typeof expectedAmountCents === 'number') {
+        const tolerance = Math.max(1, Math.round(totalWithFeesCents * 0.01)); // 1% tolerance
+        const difference = Math.abs(expectedAmountCents - totalWithFeesCents);
+        if (difference <= tolerance) {
+          finalAmountCents = expectedAmountCents;
+          console.log('Using frontend-calculated amount (within tolerance):', {
+            backend: totalWithFeesCents,
+            frontend: expectedAmountCents,
+            difference
+          });
+        } else {
+          console.warn('Frontend amount differs significantly from backend:', {
+            backend: totalWithFeesCents,
+            frontend: expectedAmountCents,
+            difference,
+            tolerance
+          });
+        }
+      }
+
       // Create PaymentIntent
       const paymentIntent = await createPaymentIntent({
-        amount: totalWithFeesCents,
+        amount: finalAmountCents,
         currency: kitchenPricing.currency.toLowerCase(),
         chefId,
         kitchenId,
@@ -5723,7 +5758,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         paymentIntentId: paymentIntent.id,
         clientSecret: paymentIntent.clientSecret,
-        amount: totalWithFeesCents,
+        amount: finalAmountCents,
         currency: kitchenPricing.currency,
       });
     } catch (error: any) {
