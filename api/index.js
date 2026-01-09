@@ -17301,14 +17301,35 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     
     const kitchenLocationId = kitchenResult.rows[0].location_id;
 
-    // Check if chef has admin-granted access to this location
-    const accessCheck = await pool.query(
-      'SELECT id FROM chef_location_access WHERE chef_id = $1 AND location_id = $2',
-      [req.user.id, kitchenLocationId]
-    );
+    // Check if chef has an approved kitchen application for this location
+    const applicationCheck = await pool.query(`
+      SELECT id, status 
+      FROM chef_kitchen_applications 
+      WHERE chef_id = $1 AND location_id = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [req.user.id, kitchenLocationId]);
     
-    if (accessCheck.rows.length === 0) {
-      return res.status(403).json({ error: "You don't have access to book kitchens in this location. Please contact an administrator." });
+    if (applicationCheck.rows.length === 0) {
+      return res.status(403).json({ 
+        error: "You must apply to this kitchen before booking. Please submit an application first.",
+        hasApplication: false,
+        applicationStatus: null
+      });
+    }
+    
+    const application = applicationCheck.rows[0];
+    if (application.status !== 'approved') {
+      const errorMessages = {
+        'inReview': 'Your application is pending manager review. Please wait for approval before booking.',
+        'rejected': 'Your application was rejected. You can re-apply with updated documents.',
+        'cancelled': 'Your application was cancelled. You can submit a new application.'
+      };
+      return res.status(403).json({ 
+        error: errorMessages[application.status] || 'Your application is not approved.',
+        hasApplication: true,
+        applicationStatus: application.status
+      });
     }
 
     // Check if location's kitchen license is approved (required for bookings)
@@ -17328,35 +17349,6 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
             : "This location's kitchen license has not been uploaded or approved. Bookings are disabled."
         });
       }
-    }
-
-    // Check if chef has shared their profile with the location and it's been approved
-    let profileResult;
-    try {
-      profileResult = await pool.query(
-        'SELECT * FROM chef_location_profiles WHERE chef_id = $1 AND location_id = $2',
-        [req.user.id, kitchenLocationId]
-      );
-    } catch (error) {
-      // If table doesn't exist, treat as if no profile
-      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
-        profileResult = { rows: [] };
-      } else {
-        throw error;
-      }
-    }
-    
-    if (profileResult.rows.length === 0) {
-      return res.status(403).json({ error: "You must share your profile with this location before booking. Please share your profile first." });
-    }
-    
-    const profile = profileResult.rows[0];
-    if (profile.status !== 'approved') {
-      return res.status(403).json({ 
-        error: profile.status === 'pending' 
-          ? "Your profile is pending manager approval. Please wait for approval before booking."
-          : "Your profile was rejected. Please contact the location manager for more information."
-      });
     }
 
     // Determine slots requested (1-hour slots)
