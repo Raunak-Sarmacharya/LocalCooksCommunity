@@ -13215,12 +13215,7 @@ app.post("/api/manager/kitchens", requireFirebaseAuthWithUser, requireManager, a
       return res.status(403).json({ error: "Access denied to this location" });
     }
 
-    // Validate that the location exists
-    const location = await getLocationById(locationIdNum);
-    if (!location) {
-      return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
-    }
-
+    // Location exists and manager has access (verified above), proceed to create kitchen
     const kitchen = await createKitchen({ 
       locationId: locationIdNum, 
       name, 
