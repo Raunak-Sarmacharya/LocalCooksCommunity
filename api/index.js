@@ -17457,6 +17457,7 @@ app.post("/api/payments/create-intent", requireChef, async (req, res) => {
         booking_date: bookingDate,
         start_time: startTime,
         end_time: endTime,
+        expected_amount: finalAmountCents.toString(), // Store expected amount for verification
       },
     });
 

@@ -5755,6 +5755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           booking_date: bookingDate,
           start_time: startTime,
           end_time: endTime,
+          expected_amount: finalAmountCents.toString(), // Store expected amount for verification
         },
       });
 
