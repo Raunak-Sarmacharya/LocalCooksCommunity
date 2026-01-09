@@ -16210,7 +16210,12 @@ app.post("/api/manager/availability", requireFirebaseAuthWithUser, requireManage
       WHERE kitchen_id = $1 AND day_of_week = $2
     `, [kitchenId, dayOfWeek]);
 
+    // Use provided isAvailable value, default to true if not provided
     const isAvailableValue = isAvailable !== undefined ? isAvailable : true;
+    
+    // If kitchen is not available, we still need times (use defaults if not provided)
+    const finalStartTime = startTime || "00:00";
+    const finalEndTime = endTime || "00:00";
 
     if (existingResult.rows.length > 0) {
       // Update existing
@@ -16218,13 +16223,13 @@ app.post("/api/manager/availability", requireFirebaseAuthWithUser, requireManage
         UPDATE kitchen_availability 
         SET start_time = $1, end_time = $2, is_available = $3
         WHERE kitchen_id = $4 AND day_of_week = $5
-      `, [startTime, endTime, isAvailableValue, kitchenId, dayOfWeek]);
+      `, [finalStartTime, finalEndTime, isAvailableValue, kitchenId, dayOfWeek]);
     } else {
       // Create new
       await pool.query(`
         INSERT INTO kitchen_availability (kitchen_id, day_of_week, start_time, end_time, is_available)
         VALUES ($1, $2, $3, $4, $5)
-      `, [kitchenId, dayOfWeek, startTime, endTime, isAvailableValue]);
+      `, [kitchenId, dayOfWeek, finalStartTime, finalEndTime, isAvailableValue]);
     }
 
     res.json({ success: true });
@@ -16276,67 +16281,6 @@ app.get("/api/manager/availability/:kitchenId", requireFirebaseAuthWithUser, req
   }
 });
 
-// Set kitchen availability (manager)
-app.post("/api/manager/availability", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-  try {
-    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
-    const user = req.neonUser;
-
-    const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
-
-    if (!kitchenId || dayOfWeek === undefined || !startTime || !endTime) {
-      return res.status(400).json({ error: "kitchenId, dayOfWeek, startTime, and endTime are required" });
-    }
-
-    const kitchenIdNum = parseInt(kitchenId.toString());
-    if (isNaN(kitchenIdNum) || kitchenIdNum <= 0) {
-      return res.status(400).json({ error: "Invalid kitchen ID format" });
-    }
-
-    // Verify the manager has access to this kitchen
-    if (!pool) {
-      return res.status(500).json({ error: "Database connection not available" });
-    }
-    const kitchenResult = await pool.query(`
-      SELECT k.id, k.location_id 
-      FROM kitchens k
-      INNER JOIN locations l ON k.location_id = l.id
-      WHERE k.id = $1 AND l.manager_id = $2
-    `, [kitchenIdNum, user.id]);
-    
-    if (kitchenResult.rows.length === 0) {
-      return res.status(403).json({ error: "Access denied to this kitchen" });
-    }
-
-    // Check if availability already exists for this kitchen and day
-    const existingResult = await pool.query(`
-      SELECT id FROM kitchen_availability 
-      WHERE kitchen_id = $1 AND day_of_week = $2
-    `, [kitchenIdNum, dayOfWeek]);
-
-    const isAvailableValue = isAvailable !== undefined ? isAvailable : true;
-
-    if (existingResult.rows.length > 0) {
-      // Update existing
-      await pool.query(`
-        UPDATE kitchen_availability 
-        SET start_time = $1, end_time = $2, is_available = $3
-        WHERE kitchen_id = $4 AND day_of_week = $5
-      `, [startTime, endTime, isAvailableValue, kitchenIdNum, dayOfWeek]);
-    } else {
-      // Create new
-      await pool.query(`
-        INSERT INTO kitchen_availability (kitchen_id, day_of_week, start_time, end_time, is_available)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [kitchenIdNum, dayOfWeek, startTime, endTime, isAvailableValue]);
-    }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error setting availability:", error);
-    res.status(500).json({ error: error.message || "Failed to set availability" });
-  }
-});
 
 // Manager change password endpoint
 app.post("/api/manager/change-password", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
@@ -19732,18 +19676,17 @@ app.post("/api/public/bookings", async (req, res) => {
       return res.status(400).json({ error: "Booking time must be within manager-set available hours" });
     }
 
-    // Check for conflicts
+    // Check for conflicts (exclusive per slot)
+    // Two time ranges overlap if: start_time < new_endTime AND end_time > new_startTime
     const conflictCheck = await pool.query(`
       SELECT id
       FROM kitchen_bookings
       WHERE kitchen_id = $1
         AND DATE(booking_date) = $2
         AND status != 'cancelled'
-        AND (
-          (start_time < $3 AND end_time > $4) OR
-          (start_time >= $4 AND start_time < $3)
-        )
-    `, [kitchenId, bookingDate, endTime, startTime]);
+        AND start_time < $4
+        AND end_time > $3
+    `, [kitchenId, bookingDate, startTime, endTime]);
 
     if (conflictCheck.rows.length > 0) {
       return res.status(400).json({ error: "Time slot is already booked" });
