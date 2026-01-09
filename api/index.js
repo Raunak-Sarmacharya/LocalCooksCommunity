@@ -15708,27 +15708,36 @@ app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, as
   try {
     // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
     const user = req.neonUser;
+    console.log(`📋 Manager bookings request - User ID: ${user.id}, Username: ${user.username}`);
 
     // Get all locations for this manager
     if (!pool) {
+      console.error("❌ Database pool not available");
       return res.json([]);
     }
+    
     const locationsResult = await pool.query(`
       SELECT id FROM locations WHERE manager_id = $1
     `, [user.id]);
     
     const locationIds = locationsResult.rows.map(row => row.id);
+    console.log(`📍 Found ${locationIds.length} locations for manager ${user.id}:`, locationIds);
+    
     if (locationIds.length === 0) {
+      console.log(`⚠️ No locations found for manager ${user.id}`);
       return res.json([]);
     }
 
     // Get all kitchens for these locations
     const kitchensResult = await pool.query(`
-      SELECT id FROM kitchens WHERE location_id = ANY($1)
+      SELECT id FROM kitchens WHERE location_id = ANY($1::int[])
     `, [locationIds]);
     
     const kitchenIds = kitchensResult.rows.map(row => row.id);
+    console.log(`🍳 Found ${kitchenIds.length} kitchens for locations:`, kitchenIds);
+    
     if (kitchenIds.length === 0) {
+      console.log(`⚠️ No kitchens found for locations:`, locationIds);
       return res.json([]);
     }
 
@@ -15740,6 +15749,11 @@ app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, as
       WHERE kitchen_id = ANY($1::int[])
       ORDER BY booking_date DESC, start_time ASC
     `, [kitchenIds]);
+    
+    console.log(`📅 Found ${bookingsResult.rows.length} bookings for kitchens:`, kitchenIds);
+    if (bookingsResult.rows.length > 0) {
+      console.log(`📋 Booking statuses:`, bookingsResult.rows.map(b => ({ id: b.id, status: b.status, kitchen_id: b.kitchen_id })));
+    }
     
     // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
     const enrichedBookings = await Promise.all(
@@ -15828,9 +15842,11 @@ app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, as
       })
     );
     
+    console.log(`✅ Returning ${enrichedBookings.length} enriched bookings`);
     res.json(enrichedBookings);
   } catch (error) {
-    console.error("Error fetching bookings:", error);
+    console.error("❌ Error fetching manager bookings:", error);
+    console.error("Error stack:", error.stack);
     res.status(500).json({ error: error.message || "Failed to fetch bookings" });
   }
 });
@@ -18181,139 +18197,6 @@ app.get("/api/manager/kitchens/:kitchenId/bookings", requireFirebaseAuthWithUser
   }
 });
 
-// Get all bookings for manager
-app.get("/api/manager/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
-  try {
-    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
-    const user = req.neonUser;
-    const userId = user.id;
-
-    // Get all locations for this manager
-    const locationsResult = await pool.query(
-      'SELECT id FROM locations WHERE manager_id = $1',
-      [userId]
-    );
-    
-    const locationIds = locationsResult.rows.map(row => row.id);
-    
-    if (locationIds.length === 0) {
-      return res.json([]);
-    }
-
-    // Get all kitchens for these locations
-    const kitchensResult = await pool.query(
-      'SELECT id FROM kitchens WHERE location_id = ANY($1::int[])',
-      [locationIds]
-    );
-    
-    const kitchenIds = kitchensResult.rows.map(row => row.id);
-    
-    if (kitchenIds.length === 0) {
-      return res.json([]);
-    }
-
-    // Get all bookings for these kitchens (fetch bookings first, then enrich like chef profiles)
-    const bookingsResult = await pool.query(`
-      SELECT id, chef_id, kitchen_id, booking_date, start_time, end_time, 
-             status, special_notes, created_at, updated_at
-      FROM kitchen_bookings 
-      WHERE kitchen_id = ANY($1::int[])
-      ORDER BY booking_date DESC, start_time ASC
-    `, [kitchenIds]);
-    
-    // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
-    const enrichedBookings = await Promise.all(
-      bookingsResult.rows.map(async (booking) => {
-        // Get chef details
-        let chefName = null;
-        if (booking.chef_id) {
-          try {
-            const chefResult = await pool.query(
-              'SELECT id, username FROM users WHERE id = $1',
-              [booking.chef_id]
-            );
-            const chef = chefResult.rows[0];
-            
-            if (chef) {
-              chefName = chef.username;
-              
-              // Try to get chef's full name from their application
-              const appResult = await pool.query(
-                'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-                [booking.chef_id]
-              );
-              if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
-                chefName = appResult.rows[0].full_name;
-              }
-            }
-          } catch (error) {
-            // Silently handle errors
-          }
-        }
-        
-        // Get kitchen details
-        let kitchenName = 'Kitchen';
-        let locationId = null;
-        if (booking.kitchen_id) {
-          try {
-            const kitchenResult = await pool.query(
-              'SELECT id, name, location_id FROM kitchens WHERE id = $1',
-              [booking.kitchen_id]
-            );
-            const kitchen = kitchenResult.rows[0];
-            if (kitchen) {
-              kitchenName = kitchen.name || 'Kitchen';
-              locationId = kitchen.location_id;
-            }
-          } catch (error) {
-            // Silently handle errors
-          }
-        }
-        
-        // Get location details including timezone
-        let locationName = null;
-        let locationTimezone = DEFAULT_TIMEZONE;
-        if (locationId) {
-          try {
-            const locationResult = await pool.query(
-              'SELECT id, name, timezone FROM locations WHERE id = $1',
-              [locationId]
-            );
-            const location = locationResult.rows[0];
-            if (location) {
-              locationName = location.name;
-              locationTimezone = location.timezone || DEFAULT_TIMEZONE;
-            }
-          } catch (error) {
-            // Silently handle errors
-          }
-        }
-        
-        return {
-          id: booking.id,
-          chefId: booking.chef_id,
-          kitchenId: booking.kitchen_id,
-          bookingDate: booking.booking_date,
-          startTime: booking.start_time,
-          endTime: booking.end_time,
-          status: booking.status,
-          specialNotes: booking.special_notes,
-          createdAt: booking.created_at,
-          updatedAt: booking.updated_at,
-          chefName: chefName,
-          kitchenName: kitchenName,
-          locationName: locationName,
-          locationTimezone: locationTimezone,
-        };
-      })
-    );
-    
-    res.json(enrichedBookings);
-  } catch (error) {
-    console.error("Error fetching manager bookings:", error);
-    res.status(500).json({ error: "Failed to fetch bookings" });
-  }
-});
 
 // Update booking status
 app.put("/api/manager/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
