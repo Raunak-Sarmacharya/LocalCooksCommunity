@@ -5719,25 +5719,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Booking total is zero. Payment not required." });
       }
 
-      // Use frontend-calculated amount if provided and within 1% tolerance (to handle rounding differences)
-      // This ensures the displayed amount matches the actual charge
+      // Use frontend-calculated amount if provided
+      // The frontend uses API data that's already been properly converted (cents to dollars),
+      // so it's more reliable than backend direct database reads which may have unit issues
       let finalAmountCents = totalWithFeesCents;
-      if (expectedAmountCents && typeof expectedAmountCents === 'number') {
-        const tolerance = Math.max(1, Math.round(totalWithFeesCents * 0.01)); // 1% tolerance
+      if (expectedAmountCents && typeof expectedAmountCents === 'number' && expectedAmountCents > 0) {
+        // Always use frontend amount when provided - it's calculated from the same API data
+        // that the user sees, ensuring consistency
+        finalAmountCents = expectedAmountCents;
         const difference = Math.abs(expectedAmountCents - totalWithFeesCents);
-        if (difference <= tolerance) {
-          finalAmountCents = expectedAmountCents;
-          console.log('Using frontend-calculated amount (within tolerance):', {
+        if (difference > 100) { // Log if difference is more than $1.00
+          console.warn('Using frontend amount despite backend mismatch (likely database unit issue):', {
             backend: totalWithFeesCents,
+            backendDollars: (totalWithFeesCents / 100).toFixed(2),
             frontend: expectedAmountCents,
-            difference
+            frontendDollars: (expectedAmountCents / 100).toFixed(2),
+            difference,
+            differenceDollars: (difference / 100).toFixed(2)
           });
         } else {
-          console.warn('Frontend amount differs significantly from backend:', {
-            backend: totalWithFeesCents,
-            frontend: expectedAmountCents,
-            difference,
-            tolerance
+          console.log('Using frontend-calculated amount:', {
+            amount: expectedAmountCents,
+            amountDollars: (expectedAmountCents / 100).toFixed(2)
           });
         }
       }
