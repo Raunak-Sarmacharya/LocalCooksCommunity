@@ -46,8 +46,10 @@ export default function AnimatedManagerSidebar({
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Handle toggle - directly change persistent state
-  const handleToggle = () => {
+  const handleToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
     setIsCollapsed(prev => !prev);
+    // Remove focus after click to prevent persistent highlight
+    e.currentTarget.blur();
   };
 
   // Notify parent of collapse state changes
@@ -101,7 +103,7 @@ export default function AnimatedManagerSidebar({
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleToggle}
-            className="flex items-center justify-center w-6 h-6 rounded-full shadow-md hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-[#F51042] focus:ring-offset-2"
+            className="flex items-center justify-center w-6 h-6 rounded-full shadow-md hover:shadow-lg transition-shadow focus:outline-none"
             style={{ 
               backgroundColor: '#FFE8DD',
               border: '1px solid rgba(255, 212, 196, 0.8)'
