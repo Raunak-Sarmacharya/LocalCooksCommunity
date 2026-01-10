@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import Logo from "@/components/ui/logo";
 
 interface NavItem {
   id: string;
@@ -46,6 +45,12 @@ export default function AnimatedManagerSidebar({
   onCollapseChange,
 }: AnimatedManagerSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [logoLoadError, setLogoLoadError] = useState(false);
+  
+  // Reset logo error when location changes
+  useEffect(() => {
+    setLogoLoadError(false);
+  }, [selectedLocation?.logoUrl]);
 
   // Handle toggle - directly change persistent state
   const handleToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -107,18 +112,19 @@ export default function AnimatedManagerSidebar({
       {/* Collapse Toggle Button - Always visible on desktop, positioned for easy access */}
       {!isMobile && (
         <div 
-          className="absolute -right-3 top-6 z-20"
+          className="absolute -right-3 top-6 z-50"
+          style={{ pointerEvents: 'auto' }}
         >
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleToggle}
-            className="flex items-center justify-center w-6 h-6 rounded-full shadow-md hover:shadow-lg transition-shadow"
+            className="flex items-center justify-center w-7 h-7 rounded-full shadow-lg hover:shadow-xl transition-all"
             style={{ 
               backgroundColor: '#FFE8DD',
-              border: '1px solid rgba(255, 212, 196, 0.8)',
+              border: '2px solid rgba(255, 212, 196, 0.9)',
               outline: 'none',
-              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+              boxShadow: '0 2px 4px 0 rgba(0, 0, 0, 0.15), 0 1px 2px 0 rgba(0, 0, 0, 0.1)',
             }}
             onFocus={(e) => {
               // Immediately remove focus visual indicators
@@ -147,7 +153,7 @@ export default function AnimatedManagerSidebar({
                   exit={{ rotate: 90, opacity: 0 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <ChevronRight className="w-3 h-3 text-gray-600" />
+                  <ChevronRight className="w-4 h-4 text-gray-700" />
                 </motion.div>
               ) : (
                 <motion.div
@@ -157,7 +163,7 @@ export default function AnimatedManagerSidebar({
                   exit={{ rotate: -90, opacity: 0 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <ChevronLeft className="w-3 h-3 text-gray-600" />
+                  <ChevronLeft className="w-4 h-4 text-gray-700" />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -350,13 +356,13 @@ export default function AnimatedManagerSidebar({
           })}
         </nav>
 
-        {/* Footer - LocalCooks FOR KITCHENS Logo */}
-        {isContentVisible && (
+        {/* Footer/Selected Location Info */}
+        {selectedLocation && isContentVisible && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="px-3 py-4 flex-shrink-0"
+            className="px-3 py-3 flex-shrink-0"
             style={{ 
               borderTop: '1px solid rgba(255, 212, 196, 0.5)',
               backgroundColor: '#FFD4C4',
@@ -369,16 +375,34 @@ export default function AnimatedManagerSidebar({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-3"
                 >
-                  <Logo variant="brand" className="h-8 w-auto flex-shrink-0" />
-                  <div className="flex flex-col justify-center min-w-0">
-                    <span className="font-logo text-sm leading-none text-[#F51042] tracking-tight font-normal truncate">
-                      LocalCooks
-                    </span>
-                    <span className="text-[9px] font-sans font-medium text-gray-600 uppercase tracking-wider mt-0.5 leading-none">
-                      for kitchens
-                    </span>
+                  {/* Location Logo Avatar - Professional avatar display */}
+                  <div className="flex-shrink-0">
+                    {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
+                      <img
+                        src={selectedLocation.logoUrl}
+                        alt={selectedLocation.name}
+                        className="w-10 h-10 rounded-lg object-cover border-2 border-white shadow-sm"
+                        onError={() => {
+                          setLogoLoadError(true);
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center w-10 h-10 rounded-lg" style={{ backgroundColor: 'rgba(245, 16, 66, 0.1)' }}>
+                        <MapPin className="w-5 h-5" style={{ color: '#F51042' }} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-900 truncate">
+                      {selectedLocation.name}
+                    </p>
+                    {selectedLocation.address && (
+                      <p className="text-xs text-gray-500 truncate">
+                        {selectedLocation.address}
+                      </p>
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -386,13 +410,13 @@ export default function AnimatedManagerSidebar({
           </motion.div>
         )}
         
-        {/* Footer - Collapsed State with Tooltip */}
-        {!isContentVisible && !isMobile && (
+        {/* Footer/Selected Location Info - Collapsed State with Tooltip */}
+        {selectedLocation && !isContentVisible && !isMobile && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="px-3 py-4 flex-shrink-0"
+            className="px-3 py-3 flex-shrink-0"
             style={{ 
               borderTop: '1px solid rgba(255, 212, 196, 0.5)',
               backgroundColor: '#FFD4C4',
@@ -402,17 +426,32 @@ export default function AnimatedManagerSidebar({
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="flex items-center justify-center cursor-default">
-                  <Logo variant="brand" className="h-8 w-auto" />
+                  {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
+                    <img
+                      src={selectedLocation.logoUrl}
+                      alt={selectedLocation.name}
+                      className="w-10 h-10 rounded-lg object-cover border-2 border-white shadow-sm cursor-default"
+                      onError={() => {
+                        setLogoLoadError(true);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center w-10 h-10 rounded-lg cursor-default hover:bg-[#FFD4C4] transition-colors" style={{ backgroundColor: 'rgba(245, 16, 66, 0.1)' }}>
+                      <MapPin className="w-5 h-5" style={{ color: '#F51042' }} />
+                    </div>
+                  )}
                 </div>
               </TooltipTrigger>
               <TooltipContent
                 side="right"
                 align="center"
                 sideOffset={8}
-                className="bg-gray-900 text-white text-sm font-medium px-3 py-2 shadow-lg border-0"
+                className="bg-gray-900 text-white text-sm font-medium px-3 py-2 shadow-lg border-0 max-w-[200px]"
               >
-                <p className="font-semibold">LocalCooks</p>
-                <p className="text-xs text-gray-300 mt-1">FOR KITCHENS</p>
+                <p className="font-semibold">{selectedLocation.name}</p>
+                {selectedLocation.address && (
+                  <p className="text-xs text-gray-300 mt-1">{selectedLocation.address}</p>
+                )}
               </TooltipContent>
             </Tooltip>
           </motion.div>
