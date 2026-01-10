@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu
 } from "lucide-react";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
@@ -27,6 +27,8 @@ import ChangePassword from "@/components/auth/ChangePassword";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
 import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizard";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
+import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface Location {
   id: number;
@@ -83,6 +85,7 @@ export default function ManagerBookingDashboard() {
   const [newLocationNotificationEmail, setNewLocationNotificationEmail] = useState('');
   const [newLocationNotificationPhone, setNewLocationNotificationPhone] = useState('');
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
@@ -286,8 +289,80 @@ export default function ManagerBookingDashboard() {
       <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       <ManagerHeader />
       <ManagerOnboardingWizard />
-      <main className="flex-1 pt-24 pb-8 relative z-10">
-        <div className="container mx-auto px-4 py-6 max-w-7xl">
+      <main className="flex-1 pt-24 pb-8 relative z-10 flex">
+        {/* Animated Sidebar */}
+        <div className="hidden lg:block fixed left-0 top-24 bottom-8 z-20">
+          <AnimatedManagerSidebar
+            navItems={navItems}
+            activeView={activeView}
+            onViewChange={(view) => setActiveView(view as ViewType)}
+            selectedLocation={selectedLocation ? {
+              id: selectedLocation.id,
+              name: selectedLocation.name,
+              address: selectedLocation.address,
+            } : null}
+            locations={locations.map((loc: any) => ({ id: loc.id, name: loc.name }))}
+            onLocationChange={(loc) => {
+              if (loc) {
+                const fullLocation = locations.find((l: any) => l.id === loc.id);
+                setSelectedLocation(fullLocation || null);
+              } else {
+                setSelectedLocation(null);
+              }
+            }}
+            onCreateLocation={() => setShowCreateLocation(true)}
+            isLoadingLocations={isLoadingLocations}
+          />
+        </div>
+        
+        {/* Mobile Sidebar - Sheet/Drawer */}
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetContent side="left" className="w-[280px] p-0">
+            <AnimatedManagerSidebar
+              navItems={navItems}
+              activeView={activeView}
+              onViewChange={(view) => {
+                setActiveView(view as ViewType);
+                setMobileMenuOpen(false);
+              }}
+              selectedLocation={selectedLocation ? {
+                id: selectedLocation.id,
+                name: selectedLocation.name,
+                address: selectedLocation.address,
+              } : null}
+              locations={locations.map((loc: any) => ({ id: loc.id, name: loc.name }))}
+              onLocationChange={(loc) => {
+                if (loc) {
+                  const fullLocation = locations.find((l: any) => l.id === loc.id);
+                  setSelectedLocation(fullLocation || null);
+                } else {
+                  setSelectedLocation(null);
+                }
+              }}
+              onCreateLocation={() => {
+                setShowCreateLocation(true);
+                setMobileMenuOpen(false);
+              }}
+              isLoadingLocations={isLoadingLocations}
+              isMobile={true}
+            />
+          </SheetContent>
+        </Sheet>
+        
+        {/* Mobile Menu Button */}
+        <div className="lg:hidden fixed top-20 left-4 z-30">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setMobileMenuOpen(true)}
+            className="bg-white shadow-lg"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
+
+        <div className="flex-1 lg:pl-[280px] transition-all duration-300 pt-12 lg:pt-0">
+          <div className="container mx-auto px-4 py-6 max-w-7xl">
           {/* Onboarding Reminder Banner */}
           {needsOnboarding && (
             <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm">
@@ -356,291 +431,178 @@ export default function ManagerBookingDashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Sidebar - Navigation & Location Selection */}
-            <aside className="lg:col-span-3 space-y-4">
-              {/* Location Selection */}
-              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 md:p-6 hover:shadow-xl transition-all duration-300">
-                <label className="block text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
-                  Select Location
-                </label>
-                {isLoadingLocations ? (
-                  <div className="text-sm text-gray-500">Loading...</div>
-                ) : locations.length === 0 ? (
-                  <div className="text-sm text-gray-500">No locations available</div>
-                ) : locations.length === 1 ? (
-                  <div className="space-y-2">
-                    <div className="px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
-                      {locations[0].name}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowCreateLocation(true)}
-                      className="w-full text-xs"
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Add Location
-                    </Button>
+          {/* Create Location Dialog */}
+          {showCreateLocation && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Create New Location</h3>
+                  <button
+                    onClick={() => {
+                      setShowCreateLocation(false);
+                      setNewLocationName('');
+                      setNewLocationAddress('');
+                      setNewLocationNotificationEmail('');
+                      setNewLocationNotificationPhone('');
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Location Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newLocationName}
+                      onChange={(e) => setNewLocationName(e.target.value)}
+                      placeholder="e.g., The Lantern"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <select
-                      value={selectedLocation?.id || ""}
-                      onChange={(e) => {
-                        const loc = locations.find((l: any) => l.id === parseInt(e.target.value));
-                        setSelectedLocation(loc || null);
-                      }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Choose location...</option>
-                      {locations.map((loc: any) => (
-                        <option key={loc.id} value={loc.id}>
-                          {loc.name}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowCreateLocation(true)}
-                      className="w-full text-xs"
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Add Location
-                    </Button>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Address *
+                    </label>
+                    <input
+                      type="text"
+                      value={newLocationAddress}
+                      onChange={(e) => setNewLocationAddress(e.target.value)}
+                      placeholder="e.g., 123 Main St, St. John's, NL"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
                   </div>
-                )}
-              </div>
-              
-              {/* Create Location Dialog */}
-              {showCreateLocation && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900">Create New Location</h3>
-                      <button
-                        onClick={() => {
-                          setShowCreateLocation(false);
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notification Email (Optional)
+                    </label>
+                    <input
+                      type="email"
+                      value={newLocationNotificationEmail}
+                      onChange={(e) => setNewLocationNotificationEmail(e.target.value)}
+                      placeholder="notifications@example.com"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notification Phone (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      value={newLocationNotificationPhone}
+                      onChange={(e) => setNewLocationNotificationPhone(e.target.value)}
+                      placeholder="(709) 555-1234"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      onClick={async () => {
+                        if (!newLocationName.trim() || !newLocationAddress.trim()) {
+                          toast({
+                            title: "Missing Information",
+                            description: "Please fill in location name and address",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        
+                        setIsCreatingLocation(true);
+                        try {
+                          const currentFirebaseUser = auth.currentUser;
+                          if (!currentFirebaseUser) {
+                            throw new Error("Firebase user not available");
+                          }
+                          
+                          const token = await currentFirebaseUser.getIdToken();
+                          const response = await fetch(`/api/manager/locations`, {
+                            method: "POST",
+                            headers: {
+                              'Authorization': `Bearer ${token}`,
+                              'Content-Type': 'application/json',
+                            },
+                            credentials: "include",
+                            body: JSON.stringify({
+                              name: newLocationName.trim(),
+                              address: newLocationAddress.trim(),
+                              notificationEmail: newLocationNotificationEmail.trim() || undefined,
+                              notificationPhone: newLocationNotificationPhone.trim() || undefined,
+                            }),
+                          });
+                          
+                          if (!response.ok) {
+                            const error = await response.json();
+                            throw new Error(error.error || "Failed to create location");
+                          }
+                          
+                          const newLocation = await response.json();
+                          queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
+                          toast({
+                            title: "Location Created",
+                            description: `${newLocation.name} has been created successfully.`,
+                          });
+                          
                           setNewLocationName('');
                           setNewLocationAddress('');
                           setNewLocationNotificationEmail('');
                           setNewLocationNotificationPhone('');
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                      >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Location Name *
-                        </label>
-                        <input
-                          type="text"
-                          value={newLocationName}
-                          onChange={(e) => setNewLocationName(e.target.value)}
-                          placeholder="e.g., The Lantern"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Address *
-                        </label>
-                        <input
-                          type="text"
-                          value={newLocationAddress}
-                          onChange={(e) => setNewLocationAddress(e.target.value)}
-                          placeholder="e.g., 123 Main St, St. John's, NL"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Notification Email (Optional)
-                        </label>
-                        <input
-                          type="email"
-                          value={newLocationNotificationEmail}
-                          onChange={(e) => setNewLocationNotificationEmail(e.target.value)}
-                          placeholder="notifications@example.com"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Notification Phone (Optional)
-                        </label>
-                        <input
-                          type="tel"
-                          value={newLocationNotificationPhone}
-                          onChange={(e) => setNewLocationNotificationPhone(e.target.value)}
-                          placeholder="(709) 555-1234"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-                      
-                      <div className="flex gap-2 pt-2">
-                        <Button
-                          onClick={async () => {
-                            if (!newLocationName.trim() || !newLocationAddress.trim()) {
-                              toast({
-                                title: "Missing Information",
-                                description: "Please fill in location name and address",
-                                variant: "destructive",
-                              });
-                              return;
-                            }
-                            
-                            setIsCreatingLocation(true);
-                            try {
-                              const currentFirebaseUser = auth.currentUser;
-                              if (!currentFirebaseUser) {
-                                throw new Error("Firebase user not available");
-                              }
-                              
-                              const token = await currentFirebaseUser.getIdToken();
-                              const response = await fetch(`/api/manager/locations`, {
-                                method: "POST",
-                                headers: {
-                                  'Authorization': `Bearer ${token}`,
-                                  'Content-Type': 'application/json',
-                                },
-                                credentials: "include",
-                                body: JSON.stringify({
-                                  name: newLocationName.trim(),
-                                  address: newLocationAddress.trim(),
-                                  notificationEmail: newLocationNotificationEmail.trim() || undefined,
-                                  notificationPhone: newLocationNotificationPhone.trim() || undefined,
-                                }),
-                              });
-                              
-                              if (!response.ok) {
-                                const error = await response.json();
-                                throw new Error(error.error || "Failed to create location");
-                              }
-                              
-                              const newLocation = await response.json();
-                              queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
-                              toast({
-                                title: "Location Created",
-                                description: `${newLocation.name} has been created successfully.`,
-                              });
-                              
-                              setNewLocationName('');
-                              setNewLocationAddress('');
-                              setNewLocationNotificationEmail('');
-                              setNewLocationNotificationPhone('');
-                              setShowCreateLocation(false);
-                              setSelectedLocation(newLocation);
-                            } catch (error: any) {
-                              toast({
-                                title: "Error",
-                                description: error.message || "Failed to create location",
-                                variant: "destructive",
-                              });
-                            } finally {
-                              setIsCreatingLocation(false);
-                            }
-                          }}
-                          disabled={isCreatingLocation}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          {isCreatingLocation ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                              Creating...
-                            </>
-                          ) : (
-                            <>
-                              <Plus className="h-4 w-4 mr-1" />
-                              Create Location
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setShowCreateLocation(false);
-                            setNewLocationName('');
-                            setNewLocationAddress('');
-                            setNewLocationNotificationEmail('');
-                            setNewLocationNotificationPhone('');
-                          }}
-                          disabled={isCreatingLocation}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Navigation */}
-              <nav className="bg-white rounded-2xl shadow-lg border border-gray-100 p-2 hover:shadow-xl transition-all duration-300">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeView === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveView(item.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                        isActive
-                          ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg shadow-rose-500/25'
-                          : 'text-gray-700 hover:bg-gray-50 hover:text-rose-600'
-                      }`}
+                          setShowCreateLocation(false);
+                          setSelectedLocation(newLocation);
+                        } catch (error: any) {
+                          toast({
+                            title: "Error",
+                            description: error.message || "Failed to create location",
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setIsCreatingLocation(false);
+                        }
+                      }}
+                      disabled={isCreatingLocation}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                     >
-                      <Icon className={`h-5 w-5 ${isActive ? 'text-white' : ''}`} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-
-
-              {/* Quick Stats (when location selected) */}
-              {selectedLocation && activeView === 'overview' && (
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-4 md:p-5 hover:shadow-xl transition-all duration-300">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="p-1.5 bg-rose-100 rounded-lg">
-                      <MapPin className="h-4 w-4 text-rose-600" />
-                    </div>
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      {selectedLocation.name}
-                    </h3>
-                  </div>
-                  <div className="space-y-3 text-sm">
-                    {locationDetails?.cancellationPolicyHours && (
-                      <div className="flex items-center justify-between py-2 border-t border-gray-100">
-                        <span className="text-gray-500">Cancellation</span>
-                        <span className="font-medium text-rose-700 bg-rose-100 px-2 py-0.5 rounded text-xs">
-                          {locationDetails.cancellationPolicyHours}h notice
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between py-2 border-t border-gray-100">
-                      <span className="text-gray-500">Status</span>
-                      <span className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium bg-emerald-50 px-2 py-0.5 rounded">
-                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                        Active
-                      </span>
-                    </div>
+                      {isCreatingLocation ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-1" />
+                          Create Location
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowCreateLocation(false);
+                        setNewLocationName('');
+                        setNewLocationAddress('');
+                        setNewLocationNotificationEmail('');
+                        setNewLocationNotificationPhone('');
+                      }}
+                      disabled={isCreatingLocation}
+                    >
+                      Cancel
+                    </Button>
                   </div>
                 </div>
-              )}
+              </div>
+            </div>
+          )}
 
-            </aside>
-
-            {/* Main Content Area */}
-            <div className="lg:col-span-9">
+          {/* Main Content Area */}
+          <div className="w-full">
               {/* Show onboarding prompt if manager has no locations */}
               {locations.length === 0 && !isLoadingLocations ? (
                 <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-12 text-center">
@@ -720,7 +682,7 @@ export default function ManagerBookingDashboard() {
                   )}
                 </>
               )}
-            </div>
+          </div>
           </div>
         </div>
       </main>
