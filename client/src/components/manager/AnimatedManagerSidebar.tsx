@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Calendar, Clock, BookOpen, DollarSign, Package, 
   Wrench, Users, CreditCard, Settings, ChevronLeft, 
-  ChevronRight, MapPin, Building2
+  ChevronRight, MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -45,12 +45,17 @@ export default function AnimatedManagerSidebar({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  // Notify parent of collapse state changes
+  // Handle toggle - directly change persistent state
+  const handleToggle = () => {
+    setIsCollapsed(prev => !prev);
+  };
+
+  // Notify parent of collapse state changes (only persistent state, not hover)
   useEffect(() => {
     if (onCollapseChange && !isMobile) {
-      onCollapseChange(isCollapsed && !isHovered);
+      onCollapseChange(isCollapsed);
     }
-  }, [isCollapsed, isHovered, onCollapseChange, isMobile]);
+  }, [isCollapsed, onCollapseChange, isMobile]);
 
   // Auto-collapse on mobile (but not in Sheet)
   useEffect(() => {
@@ -65,7 +70,15 @@ export default function AnimatedManagerSidebar({
     return () => window.removeEventListener("resize", handleResize);
   }, [isMobile]);
 
+  // Calculate sidebar width: 
+  // - Mobile: always full width (280px)
+  // - Desktop collapsed + not hovered: narrow (80px)
+  // - Desktop expanded OR collapsed + hovered: full width (280px)
   const sidebarWidth = isMobile ? 280 : (isCollapsed && !isHovered ? 80 : 280);
+  
+  // Determine if content should be visible (for labels, location selector, etc.)
+  // Visible when: mobile, expanded, or collapsed but hovered (peek mode)
+  const isContentVisible = isMobile || !isCollapsed || isHovered;
 
   return (
     <motion.aside
@@ -80,18 +93,22 @@ export default function AnimatedManagerSidebar({
       onMouseEnter={() => !isMobile && setIsHovered(true)}
       onMouseLeave={() => !isMobile && setIsHovered(false)}
     >
-      {/* Collapse Toggle Button - Hidden on mobile */}
+      {/* Collapse Toggle Button - Always visible on desktop, positioned for easy access */}
       {!isMobile && (
-        <div className="absolute -right-3 top-6 z-10">
+        <div 
+          className="absolute -right-3 top-6 z-20"
+        >
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex items-center justify-center w-6 h-6 rounded-full shadow-md hover:shadow-lg transition-shadow"
+            onClick={handleToggle}
+            className="flex items-center justify-center w-6 h-6 rounded-full shadow-md hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-[#F51042] focus:ring-offset-2"
             style={{ 
               backgroundColor: '#FFE8DD',
               border: '1px solid rgba(255, 212, 196, 0.8)'
             }}
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!isCollapsed}
           >
             <AnimatePresence mode="wait">
               {isCollapsed ? (
@@ -121,38 +138,10 @@ export default function AnimatedManagerSidebar({
       )}
 
       <div className="flex flex-col h-full min-h-0 overflow-hidden">
-        {/* Logo/Header Section */}
-        <motion.div
-          className="px-4 py-6 flex-shrink-0"
-          style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}
-          animate={{ opacity: (isMobile || !isCollapsed || isHovered) ? 1 : 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <AnimatePresence>
-            {(isMobile || !isCollapsed || isHovered) && (
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
-                className="flex items-center gap-3"
-              >
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl shadow-lg" style={{ background: 'linear-gradient(135deg, #F51042 0%, #FF5470 100%)' }}>
-                  <Building2 className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-gray-900">Manager</span>
-                  <span className="text-xs text-gray-500">Dashboard</span>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-
         {/* Location Selection */}
         <div className="px-3 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}>
           <AnimatePresence>
-            {(isMobile || !isCollapsed || isHovered) && (
+            {isContentVisible && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
@@ -268,7 +257,7 @@ export default function AnimatedManagerSidebar({
 
                 {/* Label */}
                 <AnimatePresence>
-                  {(isMobile || !isCollapsed || isHovered) && (
+                  {isContentVisible && (
                     <motion.span
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -288,7 +277,7 @@ export default function AnimatedManagerSidebar({
         </nav>
 
         {/* Footer/Selected Location Info */}
-        {selectedLocation && (isMobile || !isCollapsed || isHovered) && (
+        {selectedLocation && isContentVisible && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -301,7 +290,7 @@ export default function AnimatedManagerSidebar({
             }}
           >
             <AnimatePresence>
-              {(isMobile || !isCollapsed || isHovered) && (
+              {isContentVisible && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
