@@ -85,6 +85,8 @@ export default function ManagerBookingDashboard() {
   const [newLocationAddress, setNewLocationAddress] = useState('');
   const [newLocationNotificationEmail, setNewLocationNotificationEmail] = useState('');
   const [newLocationNotificationPhone, setNewLocationNotificationPhone] = useState('');
+  const [newLocationLicenseFile, setNewLocationLicenseFile] = useState<File | null>(null);
+  const [isUploadingLicense, setIsUploadingLicense] = useState(false);
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -451,9 +453,11 @@ export default function ManagerBookingDashboard() {
           {/* Create Location Dialog */}
           {showCreateLocation && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+              <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Create New Location</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {locations.length === 0 ? 'Create Your First Location' : 'Add New Location'}
+                  </h3>
                   <button
                     onClick={() => {
                       setShowCreateLocation(false);
@@ -461,12 +465,26 @@ export default function ManagerBookingDashboard() {
                       setNewLocationAddress('');
                       setNewLocationNotificationEmail('');
                       setNewLocationNotificationPhone('');
+                      setNewLocationLicenseFile(null);
                     }}
                     className="text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
+                
+                {/* Info banner for additional locations */}
+                {locations.length > 0 && (
+                  <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-amber-800">
+                        <p className="font-medium mb-1">License Required for Each Location</p>
+                        <p className="text-xs">Each location requires its own kitchen license approval before bookings can be accepted. You can upload the license now or later from the settings.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="space-y-4">
                   <div>
@@ -477,8 +495,8 @@ export default function ManagerBookingDashboard() {
                       type="text"
                       value={newLocationName}
                       onChange={(e) => setNewLocationName(e.target.value)}
-                      placeholder="e.g., The Lantern"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="e.g., The Lantern Downtown"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
                     />
                   </div>
                   
@@ -491,34 +509,87 @@ export default function ManagerBookingDashboard() {
                       value={newLocationAddress}
                       onChange={(e) => setNewLocationAddress(e.target.value)}
                       placeholder="e.g., 123 Main St, St. John's, NL"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
                     />
                   </div>
                   
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Notification Email (Optional)
-                    </label>
-                    <input
-                      type="email"
-                      value={newLocationNotificationEmail}
-                      onChange={(e) => setNewLocationNotificationEmail(e.target.value)}
-                      placeholder="notifications@example.com"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Notification Email
+                      </label>
+                      <input
+                        type="email"
+                        value={newLocationNotificationEmail}
+                        onChange={(e) => setNewLocationNotificationEmail(e.target.value)}
+                        placeholder="email@example.com"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Notification Phone
+                      </label>
+                      <input
+                        type="tel"
+                        value={newLocationNotificationPhone}
+                        onChange={(e) => setNewLocationNotificationPhone(e.target.value)}
+                        placeholder="(709) 555-1234"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
+                      />
+                    </div>
                   </div>
                   
+                  {/* Kitchen License Upload */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Notification Phone (Optional)
+                      Kitchen License {locations.length > 0 ? '*' : '(Optional - can add later)'}
                     </label>
-                    <input
-                      type="tel"
-                      value={newLocationNotificationPhone}
-                      onChange={(e) => setNewLocationNotificationPhone(e.target.value)}
-                      placeholder="(709) 555-1234"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-[#F51042] transition-colors">
+                      {newLocationLicenseFile ? (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-5 w-5 text-[#F51042]" />
+                            <span className="text-sm text-gray-700">{newLocationLicenseFile.name}</span>
+                          </div>
+                          <button
+                            onClick={() => setNewLocationLicenseFile(null)}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer flex flex-col items-center gap-2">
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 10 * 1024 * 1024) {
+                                  toast({
+                                    title: "File Too Large",
+                                    description: "Please upload a file smaller than 10MB",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
+                                setNewLocationLicenseFile(file);
+                              }
+                            }}
+                            className="hidden"
+                          />
+                          <Upload className="h-8 w-8 text-gray-400" />
+                          <span className="text-sm font-medium text-[#F51042]">Click to upload license</span>
+                          <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
+                        </label>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Required for booking activation. Will be reviewed by admin.
+                    </p>
                   </div>
                   
                   <div className="flex gap-2 pt-2">
@@ -541,6 +612,33 @@ export default function ManagerBookingDashboard() {
                           }
                           
                           const token = await currentFirebaseUser.getIdToken();
+                          
+                          // Upload license file if provided
+                          let licenseUrl: string | undefined;
+                          if (newLocationLicenseFile) {
+                            setIsUploadingLicense(true);
+                            const formData = new FormData();
+                            formData.append("file", newLocationLicenseFile);
+                            
+                            const uploadResponse = await fetch("/api/upload-file", {
+                              method: "POST",
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                              },
+                              credentials: "include",
+                              body: formData,
+                            });
+                            
+                            if (!uploadResponse.ok) {
+                              throw new Error("Failed to upload license file");
+                            }
+                            
+                            const uploadResult = await uploadResponse.json();
+                            licenseUrl = uploadResult.url;
+                            setIsUploadingLicense(false);
+                          }
+                          
+                          // Create the location
                           const response = await fetch(`/api/manager/locations`, {
                             method: "POST",
                             headers: {
@@ -562,16 +660,40 @@ export default function ManagerBookingDashboard() {
                           }
                           
                           const newLocation = await response.json();
+                          
+                          // Update location with license if uploaded
+                          if (licenseUrl) {
+                            const updateResponse = await fetch(`/api/manager/locations/${newLocation.id}`, {
+                              method: "PUT",
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                              },
+                              credentials: "include",
+                              body: JSON.stringify({
+                                kitchenLicenseUrl: licenseUrl,
+                                kitchenLicenseStatus: 'pending',
+                              }),
+                            });
+                            
+                            if (!updateResponse.ok) {
+                              console.error("Failed to update license, but location was created");
+                            }
+                          }
+                          
                           queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
                           toast({
                             title: "Location Created",
-                            description: `${newLocation.name} has been created successfully.`,
+                            description: licenseUrl 
+                              ? `${newLocation.name} has been created. License submitted for approval.`
+                              : `${newLocation.name} has been created. Upload a license to activate bookings.`,
                           });
                           
                           setNewLocationName('');
                           setNewLocationAddress('');
                           setNewLocationNotificationEmail('');
                           setNewLocationNotificationPhone('');
+                          setNewLocationLicenseFile(null);
                           setShowCreateLocation(false);
                           setSelectedLocation(newLocation);
                         } catch (error: any) {
@@ -582,12 +704,18 @@ export default function ManagerBookingDashboard() {
                           });
                         } finally {
                           setIsCreatingLocation(false);
+                          setIsUploadingLicense(false);
                         }
                       }}
-                      disabled={isCreatingLocation}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                      disabled={isCreatingLocation || isUploadingLicense}
+                      className="flex-1 bg-[#F51042] hover:bg-rose-600 text-white"
                     >
-                      {isCreatingLocation ? (
+                      {isUploadingLicense ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Uploading License...
+                        </>
+                      ) : isCreatingLocation ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                           Creating...
@@ -607,8 +735,9 @@ export default function ManagerBookingDashboard() {
                         setNewLocationAddress('');
                         setNewLocationNotificationEmail('');
                         setNewLocationNotificationPhone('');
+                        setNewLocationLicenseFile(null);
                       }}
-                      disabled={isCreatingLocation}
+                      disabled={isCreatingLocation || isUploadingLicense}
                     >
                       Cancel
                     </Button>
