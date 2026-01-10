@@ -89,29 +89,52 @@ export default function ManagerBookingDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const footerRef = useRef<HTMLElement>(null);
-  const [footerHeight, setFooterHeight] = useState(400); // Default estimate
+  const [footerHeight, setFooterHeight] = useState(0);
 
   // Measure footer height after it renders
   useEffect(() => {
     const measureFooter = () => {
       if (footerRef.current) {
-        setFooterHeight(footerRef.current.offsetHeight);
+        const height = footerRef.current.offsetHeight;
+        setFooterHeight(height);
       } else {
         // Fallback: measure any footer on the page
         const footer = document.querySelector('footer');
         if (footer) {
           setFooterHeight(footer.offsetHeight);
+        } else {
+          // If no footer found, use a reasonable default
+          setFooterHeight(0);
         }
       }
     };
     
-    // Measure after a short delay to ensure footer is rendered
-    const timeoutId = setTimeout(measureFooter, 100);
+    // Measure multiple times to catch footer after render
+    const timeoutId1 = setTimeout(measureFooter, 100);
+    const timeoutId2 = setTimeout(measureFooter, 500);
+    const timeoutId3 = setTimeout(measureFooter, 1000);
     window.addEventListener('resize', measureFooter);
     
+    // Also use IntersectionObserver to detect when footer is visible
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          measureFooter();
+        }
+      });
+    });
+    
+    const footer = footerRef.current || document.querySelector('footer');
+    if (footer) {
+      observer.observe(footer);
+    }
+    
     return () => {
-      clearTimeout(timeoutId);
+      clearTimeout(timeoutId1);
+      clearTimeout(timeoutId2);
+      clearTimeout(timeoutId3);
       window.removeEventListener('resize', measureFooter);
+      observer.disconnect();
     };
   }, []);
 
@@ -323,8 +346,9 @@ export default function ManagerBookingDashboard() {
           className="hidden lg:block fixed left-0 z-20" 
           style={{ 
             top: '6rem', // Header height (pt-24 = 6rem)
-            bottom: footerHeight > 0 ? `${footerHeight}px` : '0',
-            height: footerHeight > 0 ? `calc(100vh - 6rem - ${footerHeight}px)` : 'calc(100vh - 6rem)',
+            height: footerHeight > 0 
+              ? `calc(100vh - 6rem - ${footerHeight}px)` // Subtract footer height exactly
+              : 'calc(100vh - 6rem)', // Full height minus header
           }}
         >
           <AnimatedManagerSidebar
