@@ -89,52 +89,45 @@ export default function ManagerBookingDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const footerRef = useRef<HTMLElement>(null);
-  const [footerHeight, setFooterHeight] = useState(0);
+  const [sidebarBottom, setSidebarBottom] = useState(0);
 
-  // Measure footer height after it renders
+  // Track scroll position and adjust sidebar height only when footer would conflict
   useEffect(() => {
-    const measureFooter = () => {
-      if (footerRef.current) {
-        const height = footerRef.current.offsetHeight;
-        setFooterHeight(height);
-      } else {
-        // Fallback: measure any footer on the page
-        const footer = document.querySelector('footer');
-        if (footer) {
-          setFooterHeight(footer.offsetHeight);
+    const handleScroll = () => {
+      const footer = footerRef.current || document.querySelector('footer');
+      if (footer) {
+        const rect = footer.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const headerHeight = 96; // 6rem = 96px
+        const sidebarTop = headerHeight; // Sidebar starts below header
+        
+        // Only shrink if footer is actually overlapping with sidebar's bottom area
+        // Sidebar bottom would be at: viewportHeight - sidebarTop
+        // Footer top is at: rect.top
+        // Conflict occurs when: rect.top < (viewportHeight - sidebarTop)
+        const sidebarBottomPosition = viewportHeight - sidebarTop;
+        
+        if (rect.top < sidebarBottomPosition && rect.top > 0) {
+          // Footer is overlapping with sidebar's bottom area - need to shrink
+          const overlap = sidebarBottomPosition - rect.top;
+          setSidebarBottom(Math.max(0, overlap));
         } else {
-          // If no footer found, use a reasonable default
-          setFooterHeight(0);
+          // No conflict - footer is either above or below the sidebar's area
+          setSidebarBottom(0);
         }
+      } else {
+        // No footer found, use full height
+        setSidebarBottom(0);
       }
     };
-    
-    // Measure multiple times to catch footer after render
-    const timeoutId1 = setTimeout(measureFooter, 100);
-    const timeoutId2 = setTimeout(measureFooter, 500);
-    const timeoutId3 = setTimeout(measureFooter, 1000);
-    window.addEventListener('resize', measureFooter);
-    
-    // Also use IntersectionObserver to detect when footer is visible
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          measureFooter();
-        }
-      });
-    });
-    
-    const footer = footerRef.current || document.querySelector('footer');
-    if (footer) {
-      observer.observe(footer);
-    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
+    handleScroll(); // Initial check
     
     return () => {
-      clearTimeout(timeoutId1);
-      clearTimeout(timeoutId2);
-      clearTimeout(timeoutId3);
-      window.removeEventListener('resize', measureFooter);
-      observer.disconnect();
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
     };
   }, []);
 
@@ -341,14 +334,13 @@ export default function ManagerBookingDashboard() {
       <ManagerHeader />
       <ManagerOnboardingWizard />
       <main className="flex-1 pt-24 pb-8 relative z-10 flex">
-        {/* Animated Sidebar - positioned to avoid footer */}
+        {/* Animated Sidebar - scroll-aware height */}
         <div 
           className="hidden lg:block fixed left-0 z-20" 
           style={{ 
             top: '6rem', // Header height (pt-24 = 6rem)
-            height: footerHeight > 0 
-              ? `calc(100vh - 6rem - ${footerHeight}px)` // Subtract footer height exactly
-              : 'calc(100vh - 6rem)', // Full height minus header
+            bottom: `${sidebarBottom}px`, // Dynamically adjusted based on scroll
+            transition: 'bottom 0.2s ease-out',
           }}
         >
           <AnimatedManagerSidebar
