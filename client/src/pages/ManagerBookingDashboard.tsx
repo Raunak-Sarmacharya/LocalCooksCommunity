@@ -363,6 +363,7 @@ export default function ManagerBookingDashboard() {
               id: selectedLocation.id,
               name: selectedLocation.name,
               address: selectedLocation.address,
+              logoUrl: selectedLocation.logoUrl,
             } : null}
             locations={locations.map((loc: any) => ({ id: loc.id, name: loc.name }))}
             onLocationChange={(loc) => {

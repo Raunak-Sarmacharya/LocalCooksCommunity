@@ -22,6 +22,7 @@ interface AnimatedManagerSidebarProps {
     id: number;
     name: string;
     address?: string;
+    logoUrl?: string;
   } | null;
   locations: Array<{ id: number; name: string }>;
   onLocationChange: (location: { id: number; name: string } | null) => void;
@@ -44,12 +45,26 @@ export default function AnimatedManagerSidebar({
   onCollapseChange,
 }: AnimatedManagerSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [logoLoadError, setLogoLoadError] = useState(false);
+  
+  // Reset logo error when location changes
+  useEffect(() => {
+    setLogoLoadError(false);
+  }, [selectedLocation?.logoUrl]);
 
   // Handle toggle - directly change persistent state
   const handleToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
     setIsCollapsed(prev => !prev);
-    // Remove focus after click to prevent persistent highlight
-    e.currentTarget.blur();
+    // Immediately remove focus and any visual indicators
+    const button = e.currentTarget;
+    button.blur();
+    // Force remove any focus styles
+    button.style.outline = 'none';
+    button.style.boxShadow = 'none';
+    // Remove focus from any parent elements
+    if (document.activeElement === button) {
+      (document.activeElement as HTMLElement).blur();
+    }
   };
 
   // Notify parent of collapse state changes
@@ -103,10 +118,27 @@ export default function AnimatedManagerSidebar({
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleToggle}
-            className="flex items-center justify-center w-6 h-6 rounded-full shadow-md hover:shadow-lg transition-shadow focus:outline-none"
+            className="flex items-center justify-center w-6 h-6 rounded-full shadow-md hover:shadow-lg transition-shadow"
             style={{ 
               backgroundColor: '#FFE8DD',
-              border: '1px solid rgba(255, 212, 196, 0.8)'
+              border: '1px solid rgba(255, 212, 196, 0.8)',
+              outline: 'none',
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+            }}
+            onFocus={(e) => {
+              // Immediately remove focus visual indicators
+              e.currentTarget.style.outline = 'none';
+              e.currentTarget.style.boxShadow = '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)';
+              // Blur after a tiny delay to allow click to complete
+              setTimeout(() => {
+                e.currentTarget.blur();
+              }, 0);
+            }}
+            onMouseDown={(e) => {
+              // Prevent focus on mousedown for mouse users
+              if (e.detail > 0) {
+                e.preventDefault();
+              }
             }}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!isCollapsed}
@@ -342,10 +374,24 @@ export default function AnimatedManagerSidebar({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-3"
                 >
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg" style={{ backgroundColor: 'rgba(245, 16, 66, 0.1)' }}>
-                    <MapPin className="w-4 h-4" style={{ color: '#F51042' }} />
+                  {/* Location Logo Avatar - Professional avatar display */}
+                  <div className="flex-shrink-0">
+                    {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
+                      <img
+                        src={selectedLocation.logoUrl}
+                        alt={selectedLocation.name}
+                        className="w-10 h-10 rounded-lg object-cover border-2 border-white shadow-sm"
+                        onError={() => {
+                          setLogoLoadError(true);
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center w-10 h-10 rounded-lg" style={{ backgroundColor: 'rgba(245, 16, 66, 0.1)' }}>
+                        <MapPin className="w-5 h-5" style={{ color: '#F51042' }} />
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-gray-900 truncate">
@@ -360,6 +406,53 @@ export default function AnimatedManagerSidebar({
                 </motion.div>
               )}
             </AnimatePresence>
+          </motion.div>
+        )}
+        
+        {/* Footer/Selected Location Info - Collapsed State with Tooltip */}
+        {selectedLocation && !isContentVisible && !isMobile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="px-3 py-3 flex-shrink-0"
+            style={{ 
+              borderTop: '1px solid rgba(255, 212, 196, 0.5)',
+              backgroundColor: '#FFD4C4',
+              marginTop: 'auto', // Push to bottom
+            }}
+          >
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center justify-center">
+                  {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
+                    <img
+                      src={selectedLocation.logoUrl}
+                      alt={selectedLocation.name}
+                      className="w-10 h-10 rounded-lg object-cover border-2 border-white shadow-sm cursor-default"
+                      onError={() => {
+                        setLogoLoadError(true);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center w-10 h-10 rounded-lg cursor-default hover:bg-[#FFD4C4] transition-colors" style={{ backgroundColor: 'rgba(245, 16, 66, 0.1)' }}>
+                      <MapPin className="w-5 h-5" style={{ color: '#F51042' }} />
+                    </div>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                align="center"
+                sideOffset={8}
+                className="bg-gray-900 text-white text-sm font-medium px-3 py-2 shadow-lg border-0 max-w-[200px]"
+              >
+                <p className="font-semibold">{selectedLocation.name}</p>
+                {selectedLocation.address && (
+                  <p className="text-xs text-gray-300 mt-1">{selectedLocation.address}</p>
+                )}
+              </TooltipContent>
+            </Tooltip>
           </motion.div>
         )}
       </div>

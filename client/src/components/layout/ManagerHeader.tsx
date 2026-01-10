@@ -121,28 +121,7 @@ export default function ManagerHeader() {
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
       <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-3">
-          {locationLogoUrl && locationLogoUrl.trim() !== '' ? (
-            <div className="flex items-center gap-2 sm:gap-3">
-              <img 
-                src={locationLogoUrl} 
-                alt="Location logo" 
-                className="h-8 sm:h-10 lg:h-12 w-auto object-contain max-h-12"
-                onError={(e) => {
-                  console.error('Failed to load location logo:', locationLogoUrl);
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-                onLoad={() => {
-                  console.log('Location logo loaded successfully:', locationLogoUrl);
-                }}
-              />
-              <div className="flex items-center gap-1 sm:gap-2 text-gray-400">
-                <span className="text-xs sm:text-sm">×</span>
-              </div>
-              <Logo className="h-10 sm:h-12 lg:h-14 w-auto" />
-            </div>
-          ) : (
-            <Logo className="h-12 sm:h-14 lg:h-16 w-auto" />
-          )}
+          <Logo className="h-12 sm:h-14 lg:h-16 w-auto" />
         </Link>
 
         <nav className="flex items-center space-x-4">
