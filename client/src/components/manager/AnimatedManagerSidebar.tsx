@@ -103,28 +103,32 @@ export default function AnimatedManagerSidebar({
         initial={false}
         animate={{ width: sidebarWidth }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="relative flex flex-col shadow-lg h-full overflow-hidden"
+        className="relative flex flex-col shadow-lg h-full"
         style={{ 
           backgroundColor: '#FFE8DD',
           borderRight: '1px solid rgba(255, 212, 196, 0.5)',
+          overflow: 'visible', // Allow button to extend outside sidebar
         }}
       >
       {/* Collapse Toggle Button - Always visible on desktop, positioned for easy access */}
       {!isMobile && (
         <div 
-          className="absolute -right-3 top-6 z-50"
-          style={{ pointerEvents: 'auto' }}
+          className="absolute top-6 z-50"
+          style={{ 
+            right: '-14px', // Position half outside sidebar (button is 28px wide, so -14px centers it on edge)
+            pointerEvents: 'auto',
+          }}
         >
           <motion.button
-            whileHover={{ scale: 1.1 }}
+            whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleToggle}
             className="flex items-center justify-center w-7 h-7 rounded-full shadow-lg hover:shadow-xl transition-all"
             style={{ 
-              backgroundColor: '#FFE8DD',
-              border: '2px solid rgba(255, 212, 196, 0.9)',
+              backgroundColor: '#FFFFFF',
+              border: '2px solid rgba(255, 212, 196, 0.8)',
               outline: 'none',
-              boxShadow: '0 2px 4px 0 rgba(0, 0, 0, 0.15), 0 1px 2px 0 rgba(0, 0, 0, 0.1)',
+              boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.15), 0 1px 3px 0 rgba(0, 0, 0, 0.1)',
             }}
             onFocus={(e) => {
               // Immediately remove focus visual indicators
@@ -171,7 +175,7 @@ export default function AnimatedManagerSidebar({
         </div>
       )}
 
-      <div className="flex flex-col h-full min-h-0 overflow-hidden">
+      <div className="flex flex-col h-full min-h-0" style={{ overflow: 'hidden' }}>
         {/* Location Selection */}
         <div className="px-3 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}>
           <AnimatePresence mode="wait">
