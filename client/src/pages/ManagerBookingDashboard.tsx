@@ -29,6 +29,7 @@ import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOve
 import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizard";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar";
+import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface Location {
@@ -72,7 +73,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -277,6 +278,7 @@ export default function ManagerBookingDashboard() {
   });
 
   const navItems = [
+    { id: 'my-locations' as ViewType, label: 'My Locations', icon: Building2 },
     { id: 'overview' as ViewType, label: 'Overview', icon: Calendar },
     { id: 'bookings' as ViewType, label: 'Bookings', icon: BookOpen },
     { id: 'availability' as ViewType, label: 'Availability', icon: Clock },
@@ -760,6 +762,18 @@ export default function ManagerBookingDashboard() {
                 </div>
               ) : (
                 <>
+                  {activeView === 'my-locations' && (
+                    <ManagerLocationsPage
+                      locations={locations}
+                      isLoading={isLoadingLocations}
+                      onCreateLocation={() => setShowCreateLocation(true)}
+                      onSelectLocation={(loc) => {
+                        setSelectedLocation(loc as Location);
+                        setActiveView('overview');
+                      }}
+                    />
+                  )}
+                  
                   {activeView === 'overview' && (
                     <KitchenDashboardOverview 
                       selectedLocation={selectedLocation}
