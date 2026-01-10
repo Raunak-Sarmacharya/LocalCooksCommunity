@@ -49,6 +49,26 @@ export default function KitchenBookingCalendar() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   
+  // Filter kitchens by location if location parameter is provided
+  // Reads location from URL query parameter fresh on each computation
+  const filteredKitchens = useMemo(() => {
+    // Read location from URL query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const locationParam = urlParams.get('location');
+    const locationFilterId = locationParam ? parseInt(locationParam) : null;
+    
+    if (!locationFilterId) {
+      // No filter - return all kitchens (existing behavior)
+      return kitchens;
+    }
+    
+    // Filter kitchens to only show those matching the location ID
+    return kitchens.filter((kitchen: any) => {
+      const kitchenLocationId = kitchen.location?.id || kitchen.locationId || kitchen.location_id;
+      return kitchenLocationId === locationFilterId;
+    });
+  }, [kitchens]); // Re-compute when kitchens change, and read location fresh each time
+  
   // Memoize enriched bookings to prevent infinite re-renders
   // Only recalculate when bookings or kitchens data actually changes
   const enrichedBookings = useMemo(() => {
@@ -842,19 +862,22 @@ export default function KitchenBookingCalendar() {
           )}
 
           {/* No Kitchens Available */}
-          {!isLoadingKitchens && !kitchensQuery.isError && kitchens.length === 0 && (
+          {!isLoadingKitchens && !kitchensQuery.isError && filteredKitchens.length === 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
               <Building className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold text-gray-900 mb-2">No Kitchens Available</h2>
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                {locationFilterId ? "No Kitchens Available at This Location" : "No Kitchens Available"}
+              </h2>
               <p className="text-gray-600 max-w-md mx-auto">
-                There are currently no commercial kitchens available for booking. 
-                Please check back later or contact support.
+                {locationFilterId 
+                  ? "There are currently no commercial kitchens available for booking at this location. Please check back later or contact support."
+                  : "There are currently no commercial kitchens available for booking. Please check back later or contact support."}
               </p>
             </div>
           )}
 
           {/* Main Content */}
-          {!isLoadingKitchens && kitchens.length > 0 && (
+          {!isLoadingKitchens && filteredKitchens.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Left Column - Kitchen Selection & Calendar */}
               <div className="lg:col-span-2 space-y-6">
@@ -868,7 +891,7 @@ export default function KitchenBookingCalendar() {
                     
                     <div className="space-y-6">
                       {Object.entries(
-                        kitchens.reduce((acc: any, kitchen: any) => {
+                        filteredKitchens.reduce((acc: any, kitchen: any) => {
                           const locationName =
                             kitchen.location?.name ||
                             kitchen.locationName ||
