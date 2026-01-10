@@ -100,19 +100,31 @@ export default function ManagerBookingDashboard() {
         const viewportHeight = window.innerHeight;
         const headerHeight = 96; // 6rem = 96px
         const sidebarTop = headerHeight; // Sidebar starts below header
+        const buffer = 20; // Buffer to prevent any overlap
         
-        // Only shrink if footer is actually overlapping with sidebar's bottom area
-        // Sidebar bottom would be at: viewportHeight - sidebarTop
-        // Footer top is at: rect.top
-        // Conflict occurs when: rect.top < (viewportHeight - sidebarTop)
-        const sidebarBottomPosition = viewportHeight - sidebarTop;
+        // Calculate the sidebar's available height area
+        const sidebarAvailableHeight = viewportHeight - sidebarTop;
         
-        if (rect.top < sidebarBottomPosition && rect.top > 0) {
-          // Footer is overlapping with sidebar's bottom area - need to shrink
-          const overlap = sidebarBottomPosition - rect.top;
-          setSidebarBottom(Math.max(0, overlap));
+        // Check if footer is visible in viewport and would conflict
+        if (rect.top < viewportHeight && rect.bottom > sidebarTop) {
+          // Footer is in viewport and overlaps with sidebar area
+          // Calculate how much of the footer is in the sidebar's vertical space
+          const footerTopInSidebarArea = Math.max(sidebarTop, rect.top);
+          const footerBottomInViewport = Math.min(viewportHeight, rect.bottom);
+          
+          // Calculate how much space the footer takes in the sidebar's area
+          const footerHeightInSidebarArea = footerBottomInViewport - footerTopInSidebarArea;
+          
+          if (footerHeightInSidebarArea > 0) {
+            // Footer is overlapping - shrink sidebar by footer height + buffer
+            const shrinkAmount = viewportHeight - footerTopInSidebarArea + buffer;
+            setSidebarBottom(Math.max(0, shrinkAmount));
+          } else {
+            // No overlap
+            setSidebarBottom(0);
+          }
         } else {
-          // No conflict - footer is either above or below the sidebar's area
+          // Footer is not in viewport or not overlapping sidebar area
           setSidebarBottom(0);
         }
       } else {
