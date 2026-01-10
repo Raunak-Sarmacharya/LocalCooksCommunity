@@ -72,12 +72,10 @@ export default function AnimatedManagerSidebar({
       initial={false}
       animate={{ width: sidebarWidth }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      className="relative flex flex-col shadow-lg"
+      className="relative flex flex-col shadow-lg h-full"
       style={{ 
         backgroundColor: '#FFE8DD',
         borderRight: '1px solid rgba(255, 212, 196, 0.5)',
-        height: '100%',
-        maxHeight: '100%',
       }}
       onMouseEnter={() => !isMobile && setIsHovered(true)}
       onMouseLeave={() => !isMobile && setIsHovered(false)}
