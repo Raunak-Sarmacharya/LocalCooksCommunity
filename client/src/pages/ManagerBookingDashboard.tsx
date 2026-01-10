@@ -299,6 +299,7 @@ export default function ManagerBookingDashboard() {
             top: '6rem', // Header height (pt-24 = 6rem)
             bottom: 0, // Fixed to bottom of viewport
             height: 'calc(100vh - 6rem)', // Full viewport height minus header
+            overflow: 'visible', // Allow toggle button to extend outside
           }}
         >
           <AnimatedManagerSidebar
