@@ -70,6 +70,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const queryClient = useQueryClient();
   const { locations } = useManagerDashboard();
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
 
@@ -318,10 +319,10 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     return { upcomingBookings: upcoming, pastBookings: past };
   }, [bookings]);
 
-  // Filter bookings based on status filter and time category
+  // Filter bookings based on status filter, location filter and time category
   const filteredBookings = useMemo(() => {
     let filtered: Booking[] = [];
-    
+
     if (statusFilter === 'all') {
       // Show all bookings in timeline order: Upcoming, Past
       filtered = [...upcomingBookings, ...pastBookings];
@@ -335,9 +336,14 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       // Filter by status (pending, cancelled)
       filtered = bookings.filter((booking: Booking) => booking.status === statusFilter);
     }
-    
+
+    // Apply location filter if not 'all'
+    if (locationFilter !== 'all') {
+      filtered = filtered.filter((booking: Booking) => booking.locationName === locationFilter);
+    }
+
     return filtered;
-  }, [bookings, statusFilter, upcomingBookings, pastBookings]);
+  }, [bookings, statusFilter, locationFilter, upcomingBookings, pastBookings]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -383,6 +389,25 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
             <p className="text-gray-600 mt-2">Review and manage chef booking requests</p>
           </div>
 
+          {/* Location Filter (shown only when multiple locations exist) */}
+          {locations.length > 1 && (
+            <div className="flex items-center gap-3 mb-4">
+              <label className="text-sm font-medium text-gray-700">Location:</label>
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="all">All Locations</option>
+                {locations.map((loc: any) => (
+                  <option key={loc.id} value={loc.name}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Filter Tabs */}
           <div className="flex gap-4 mb-6 border-b overflow-x-auto">
             {[
@@ -392,15 +417,20 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               { key: 'pending', label: 'Pending' },
               { key: 'cancelled', label: 'Cancelled' },
             ].map((filter) => {
+              // Calculate counts considering location filter
+              let baseBookings = locationFilter === 'all' 
+                ? bookings 
+                : bookings.filter((b: Booking) => b.locationName === locationFilter);
+              
               let count = 0;
               if (filter.key === 'all') {
-                count = bookings.length;
+                count = baseBookings.length;
               } else if (filter.key === 'upcoming') {
-                count = upcomingBookings.length;
+                count = upcomingBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
               } else if (filter.key === 'past') {
-                count = pastBookings.length;
+                count = pastBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
               } else {
-                count = bookings.filter((b: Booking) => b.status === filter.key).length;
+                count = baseBookings.filter((b: Booking) => b.status === filter.key).length;
               }
 
               return (

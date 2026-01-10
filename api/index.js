@@ -12789,14 +12789,8 @@ app.post("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, 
       return res.status(500).json({ error: "Database not available" });
     }
 
-    // Check if manager already has a location
-    const existingLocations = await pool.query(
-      'SELECT id FROM locations WHERE manager_id = $1',
-      [user.id]
-    );
-    if (existingLocations.rows.length > 0) {
-      return res.status(400).json({ error: "Manager already has a location. Use PUT to update it." });
-    }
+    // Multiple locations per manager are now supported
+    // Each location requires its own kitchen license approval before bookings can be accepted
 
     // Normalize phone number if provided
     let normalizedNotificationPhone = null;

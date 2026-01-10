@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Calendar, Clock, BookOpen, DollarSign, Package, 
   Wrench, Users, CreditCard, Settings, ChevronLeft, 
-  ChevronRight, MapPin
+  ChevronRight, MapPin, Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -206,29 +206,49 @@ export default function AnimatedManagerSidebar({
                     No locations
                   </button>
                 ) : locations.length === 1 ? (
-                  <div className="px-3 py-2 text-sm font-medium text-gray-900 rounded-lg" style={{ backgroundColor: '#FFD4C4', border: '1px solid rgba(255, 212, 196, 0.8)' }}>
-                    {locations[0].name}
+                  <div className="space-y-2">
+                    <div className="px-3 py-2 text-sm font-medium text-gray-900 rounded-lg" style={{ backgroundColor: '#FFD4C4', border: '1px solid rgba(255, 212, 196, 0.8)' }}>
+                      {locations[0].name}
+                    </div>
+                    <button
+                      onClick={onCreateLocation}
+                      className="w-full flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium text-[#F51042] hover:text-white hover:bg-[#F51042] rounded-lg transition-all duration-200 border border-[#F51042]/30 hover:border-[#F51042]"
+                      style={{ backgroundColor: 'rgba(245, 16, 66, 0.05)' }}
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add Location
+                    </button>
                   </div>
                 ) : (
-                  <select
-                    value={selectedLocation?.id || ""}
-                    onChange={(e) => {
-                      const loc = locations.find((l) => l.id === parseInt(e.target.value));
-                      onLocationChange(loc || null);
-                    }}
-                    className="w-full rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
-                    style={{ 
-                      backgroundColor: '#FFFFFF',
-                      border: '1px solid rgba(255, 212, 196, 0.8)'
-                    }}
-                  >
-                    <option value="">Choose location...</option>
-                    {locations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="space-y-2">
+                    <select
+                      value={selectedLocation?.id || ""}
+                      onChange={(e) => {
+                        const loc = locations.find((l) => l.id === parseInt(e.target.value));
+                        onLocationChange(loc || null);
+                      }}
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
+                      style={{ 
+                        backgroundColor: '#FFFFFF',
+                        border: '1px solid rgba(255, 212, 196, 0.8)'
+                      }}
+                    >
+                      <option value="">Choose location...</option>
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={onCreateLocation}
+                      className="w-full flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium text-[#F51042] hover:text-white hover:bg-[#F51042] rounded-lg transition-all duration-200 border border-[#F51042]/30 hover:border-[#F51042]"
+                      style={{ backgroundColor: 'rgba(245, 16, 66, 0.05)' }}
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add Location
+                    </button>
+                  </div>
                 )}
               </motion.div>
             ) : !isMobile && isCollapsed ? (
