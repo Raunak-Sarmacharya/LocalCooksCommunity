@@ -72,12 +72,10 @@ export default function AnimatedManagerSidebar({
       initial={false}
       animate={{ width: sidebarWidth }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      className="relative flex flex-col shadow-lg overflow-hidden"
+      className="relative flex flex-col shadow-lg h-full"
       style={{ 
         backgroundColor: '#FFE8DD',
         borderRight: '1px solid rgba(255, 212, 196, 0.5)',
-        height: '100%',
-        maxHeight: '100%',
       }}
       onMouseEnter={() => !isMobile && setIsHovered(true)}
       onMouseLeave={() => !isMobile && setIsHovered(false)}
@@ -122,10 +120,10 @@ export default function AnimatedManagerSidebar({
         </div>
       )}
 
-      <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex flex-col h-full min-h-0">
         {/* Logo/Header Section */}
         <motion.div
-          className="px-4 py-6"
+          className="px-4 py-6 flex-shrink-0"
           style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}
           animate={{ opacity: (isMobile || !isCollapsed || isHovered) ? 1 : 0 }}
           transition={{ duration: 0.2 }}
@@ -152,7 +150,7 @@ export default function AnimatedManagerSidebar({
         </motion.div>
 
         {/* Location Selection */}
-          <div className="px-3 py-4" style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}>
+        <div className="px-3 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}>
           <AnimatePresence>
             {(isMobile || !isCollapsed || isHovered) && (
               <motion.div
@@ -210,7 +208,7 @@ export default function AnimatedManagerSidebar({
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-1" style={{ minHeight: 0 }}>
           {navItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = activeView === item.id;
@@ -295,7 +293,7 @@ export default function AnimatedManagerSidebar({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="px-3 py-4"
+            className="px-3 py-4 flex-shrink-0"
             style={{ 
               borderTop: '1px solid rgba(255, 212, 196, 0.5)',
               backgroundColor: '#FFD4C4'
