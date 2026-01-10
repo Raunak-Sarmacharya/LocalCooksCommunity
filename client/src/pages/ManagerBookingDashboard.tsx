@@ -427,8 +427,8 @@ export default function ManagerBookingDashboard() {
 
         <div 
           className={cn(
-            "flex-1 transition-all duration-300 pt-12 lg:pt-0",
-            isSidebarCollapsed ? "lg:pl-20" : "lg:pl-[280px]"
+            "flex-1 pt-12 lg:pt-0",
+            "lg:pl-[280px]" // Fixed padding - sidebar is fixed positioned so content doesn't move
           )}
         >
           <div className="container mx-auto px-4 py-6 max-w-7xl">

@@ -6,6 +6,7 @@ import {
   ChevronRight, MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NavItem {
   id: string;
@@ -43,14 +44,13 @@ export default function AnimatedManagerSidebar({
   onCollapseChange,
 }: AnimatedManagerSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   // Handle toggle - directly change persistent state
   const handleToggle = () => {
     setIsCollapsed(prev => !prev);
   };
 
-  // Notify parent of collapse state changes (only persistent state, not hover)
+  // Notify parent of collapse state changes
   useEffect(() => {
     if (onCollapseChange && !isMobile) {
       onCollapseChange(isCollapsed);
@@ -72,27 +72,26 @@ export default function AnimatedManagerSidebar({
 
   // Calculate sidebar width: 
   // - Mobile: always full width (280px)
-  // - Desktop collapsed + not hovered: narrow (80px)
-  // - Desktop expanded OR collapsed + hovered: full width (280px)
-  const sidebarWidth = isMobile ? 280 : (isCollapsed && !isHovered ? 80 : 280);
+  // - Desktop collapsed: narrow (80px)
+  // - Desktop expanded: full width (280px)
+  const sidebarWidth = isMobile ? 280 : (isCollapsed ? 80 : 280);
   
   // Determine if content should be visible (for labels, location selector, etc.)
-  // Visible when: mobile, expanded, or collapsed but hovered (peek mode)
-  const isContentVisible = isMobile || !isCollapsed || isHovered;
+  // Visible when: mobile or expanded (NOT when collapsed - tooltips will show instead)
+  const isContentVisible = isMobile || !isCollapsed;
 
   return (
-    <motion.aside
-      initial={false}
-      animate={{ width: sidebarWidth }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      className="relative flex flex-col shadow-lg h-full"
-      style={{ 
-        backgroundColor: '#FFE8DD',
-        borderRight: '1px solid rgba(255, 212, 196, 0.5)',
-      }}
-      onMouseEnter={() => !isMobile && setIsHovered(true)}
-      onMouseLeave={() => !isMobile && setIsHovered(false)}
-    >
+    <TooltipProvider delayDuration={300}>
+      <motion.aside
+        initial={false}
+        animate={{ width: sidebarWidth }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+        className="relative flex flex-col shadow-lg h-full"
+        style={{ 
+          backgroundColor: '#FFE8DD',
+          borderRight: '1px solid rgba(255, 212, 196, 0.5)',
+        }}
+      >
       {/* Collapse Toggle Button - Always visible on desktop, positioned for easy access */}
       {!isMobile && (
         <div 
@@ -140,9 +139,10 @@ export default function AnimatedManagerSidebar({
       <div className="flex flex-col h-full min-h-0 overflow-hidden">
         {/* Location Selection */}
         <div className="px-3 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}>
-          <AnimatePresence>
-            {isContentVisible && (
+          <AnimatePresence mode="wait">
+            {isContentVisible ? (
               <motion.div
+                key="expanded"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
@@ -192,7 +192,32 @@ export default function AnimatedManagerSidebar({
                   </select>
                 )}
               </motion.div>
-            )}
+            ) : !isMobile && isCollapsed ? (
+              // Collapsed state - show icon only with tooltip
+              <motion.div
+                key="collapsed"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center justify-center"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center justify-center w-10 h-10 rounded-lg cursor-default hover:bg-[#FFD4C4] transition-colors" style={{ backgroundColor: 'rgba(255, 212, 196, 0.3)' }}>
+                      <MapPin className="w-5 h-5 text-gray-700" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="right"
+                    align="center"
+                    sideOffset={8}
+                    className="bg-gray-900 text-white text-sm font-medium px-3 py-2 shadow-lg border-0"
+                  >
+                    {selectedLocation ? selectedLocation.name : "Location"}
+                  </TooltipContent>
+                </Tooltip>
+              </motion.div>
+            ) : null}
           </AnimatePresence>
         </div>
 
@@ -202,15 +227,16 @@ export default function AnimatedManagerSidebar({
             const Icon = item.icon;
             const isActive = activeView === item.id;
 
-            return (
+            const buttonContent = (
               <motion.button
                 key={item.id}
                 initial={false}
-                whileHover={{ x: 4 }}
+                whileHover={{ x: isCollapsed ? 0 : 4 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => onViewChange(item.id)}
                 className={cn(
                   "relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
+                  isCollapsed && !isMobile ? "justify-center" : "justify-start",
                   isActive
                     ? "text-white shadow-lg"
                     : "text-gray-700 hover:text-[#F51042]"
@@ -255,7 +281,7 @@ export default function AnimatedManagerSidebar({
                   <Icon className={cn("w-5 h-5 flex-shrink-0", isActive && "text-white")} />
                 </motion.div>
 
-                {/* Label */}
+                {/* Label - only show when expanded */}
                 <AnimatePresence>
                   {isContentVisible && (
                     <motion.span
@@ -263,16 +289,35 @@ export default function AnimatedManagerSidebar({
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -10 }}
                       transition={{ duration: 0.2 }}
-                      className="flex-1 text-left"
+                      className="flex-1 text-left hidden lg:block"
                     >
                       {item.label}
                     </motion.span>
                   )}
                 </AnimatePresence>
-
-                {/* Hover effect - removed since we're using onMouseEnter/Leave for cream background */}
               </motion.button>
             );
+
+            // Wrap with tooltip when collapsed (desktop only)
+            if (!isMobile && isCollapsed) {
+              return (
+                <Tooltip key={item.id}>
+                  <TooltipTrigger asChild>
+                    {buttonContent}
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="right"
+                    align="center"
+                    sideOffset={8}
+                    className="bg-gray-900 text-white text-sm font-medium px-3 py-2 shadow-lg border-0"
+                  >
+                    {item.label}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+
+            return buttonContent;
           })}
         </nav>
 
@@ -317,5 +362,6 @@ export default function AnimatedManagerSidebar({
         )}
       </div>
     </motion.aside>
+    </TooltipProvider>
   );
 }
