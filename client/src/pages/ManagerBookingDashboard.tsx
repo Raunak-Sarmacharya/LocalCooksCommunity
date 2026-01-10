@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import Footer from "@/components/layout/Footer";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
@@ -86,6 +87,33 @@ export default function ManagerBookingDashboard() {
   const [newLocationNotificationPhone, setNewLocationNotificationPhone] = useState('');
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const footerRef = useRef<HTMLElement>(null);
+  const [footerHeight, setFooterHeight] = useState(400); // Default estimate
+
+  // Measure footer height after it renders
+  useEffect(() => {
+    const measureFooter = () => {
+      if (footerRef.current) {
+        setFooterHeight(footerRef.current.offsetHeight);
+      } else {
+        // Fallback: measure any footer on the page
+        const footer = document.querySelector('footer');
+        if (footer) {
+          setFooterHeight(footer.offsetHeight);
+        }
+      }
+    };
+    
+    // Measure after a short delay to ensure footer is rendered
+    const timeoutId = setTimeout(measureFooter, 100);
+    window.addEventListener('resize', measureFooter);
+    
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('resize', measureFooter);
+    };
+  }, []);
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
@@ -291,7 +319,13 @@ export default function ManagerBookingDashboard() {
       <ManagerOnboardingWizard />
       <main className="flex-1 pt-24 pb-8 relative z-10 flex">
         {/* Animated Sidebar */}
-        <div className="hidden lg:block fixed left-0 top-24 bottom-8 z-20">
+        <div 
+          className="hidden lg:block fixed left-0 top-24 z-20" 
+          style={{ 
+            bottom: footerHeight > 0 ? `${footerHeight}px` : '0',
+            height: footerHeight > 0 ? `calc(100vh - 6rem - ${footerHeight}px)` : 'calc(100vh - 6rem)',
+          }}
+        >
           <AnimatedManagerSidebar
             navItems={navItems}
             activeView={activeView}
@@ -312,6 +346,7 @@ export default function ManagerBookingDashboard() {
             }}
             onCreateLocation={() => setShowCreateLocation(true)}
             isLoadingLocations={isLoadingLocations}
+            onCollapseChange={setIsSidebarCollapsed}
           />
         </div>
         
@@ -361,7 +396,12 @@ export default function ManagerBookingDashboard() {
           </Button>
         </div>
 
-        <div className="flex-1 lg:pl-[280px] transition-all duration-300 pt-12 lg:pt-0">
+        <div 
+          className={cn(
+            "flex-1 transition-all duration-300 pt-12 lg:pt-0",
+            isSidebarCollapsed ? "lg:pl-20" : "lg:pl-[280px]"
+          )}
+        >
           <div className="container mx-auto px-4 py-6 max-w-7xl">
           {/* Onboarding Reminder Banner */}
           {needsOnboarding && (
@@ -686,7 +726,7 @@ export default function ManagerBookingDashboard() {
           </div>
         </div>
       </main>
-      <Footer />
+      <Footer ref={footerRef} />
     </div>
   );
 }

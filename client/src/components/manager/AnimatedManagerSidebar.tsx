@@ -27,6 +27,7 @@ interface AnimatedManagerSidebarProps {
   onCreateLocation: () => void;
   isLoadingLocations?: boolean;
   isMobile?: boolean;
+  onCollapseChange?: (isCollapsed: boolean) => void;
 }
 
 export default function AnimatedManagerSidebar({
@@ -39,9 +40,17 @@ export default function AnimatedManagerSidebar({
   onCreateLocation,
   isLoadingLocations = false,
   isMobile = false,
+  onCollapseChange,
 }: AnimatedManagerSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+
+  // Notify parent of collapse state changes
+  useEffect(() => {
+    if (onCollapseChange && !isMobile) {
+      onCollapseChange(isCollapsed && !isHovered);
+    }
+  }, [isCollapsed, isHovered, onCollapseChange, isMobile]);
 
   // Auto-collapse on mobile (but not in Sheet)
   useEffect(() => {
