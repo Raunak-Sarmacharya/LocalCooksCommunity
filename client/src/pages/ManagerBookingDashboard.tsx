@@ -322,8 +322,9 @@ export default function ManagerBookingDashboard() {
         <div 
           className="hidden lg:block fixed left-0 z-20" 
           style={{ 
-            top: '6rem', // Header height
+            top: '6rem', // Header height (pt-24 = 6rem)
             bottom: footerHeight > 0 ? `${footerHeight}px` : '0',
+            height: footerHeight > 0 ? `calc(100vh - 6rem - ${footerHeight}px)` : 'calc(100vh - 6rem)',
           }}
         >
           <AnimatedManagerSidebar
