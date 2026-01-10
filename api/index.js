@@ -13153,6 +13153,161 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", requireFirebas
   }
 });
 
+// ===================================
+// STRIPE CONNECT ENDPOINTS FOR MANAGERS
+// ===================================
+
+// Create Stripe Connect account for manager
+app.post("/api/manager/stripe-connect/create", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const managerId = req.neonUser.id;
+    const managerEmail = req.neonUser.username; // Use username as email
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
+    // Check if account already exists
+    const userResult = await pool.query(
+      'SELECT stripe_connect_account_id FROM users WHERE id = $1',
+      [managerId]
+    );
+
+    if (userResult.rows[0]?.stripe_connect_account_id) {
+      return res.status(400).json({ 
+        error: 'Stripe Connect account already exists',
+        accountId: userResult.rows[0].stripe_connect_account_id
+      });
+    }
+
+    // Create Connect account
+    const { createConnectAccount } = await import('../server/services/stripe-connect-service.js');
+    const { accountId } = await createConnectAccount({
+      managerId,
+      email: managerEmail,
+      country: 'CA', // Canada
+    });
+
+    // Save account ID to database
+    await pool.query(
+      'UPDATE users SET stripe_connect_account_id = $1, stripe_connect_onboarding_status = $2 WHERE id = $3',
+      [accountId, 'in_progress', managerId]
+    );
+
+    res.json({ accountId });
+  } catch (error) {
+    console.error('Error creating Connect account:', error);
+    res.status(500).json({ error: error.message || 'Failed to create Stripe Connect account' });
+  }
+});
+
+// Get onboarding link for Stripe Connect
+app.get("/api/manager/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const managerId = req.neonUser.id;
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
+    // Get Connect account ID
+    const userResult = await pool.query(
+      'SELECT stripe_connect_account_id FROM users WHERE id = $1',
+      [managerId]
+    );
+
+    if (!userResult.rows[0]?.stripe_connect_account_id) {
+      return res.status(400).json({ error: 'Stripe Connect account not found. Please create one first.' });
+    }
+
+    const accountId = userResult.rows[0].stripe_connect_account_id;
+    
+    // Determine base URL - use same pattern as email.js
+    let baseUrl;
+    const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+    
+    if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
+      baseUrl = process.env.BASE_URL;
+    } else if (isProduction) {
+      // In production, use the main domain (managers use kitchen subdomain but return to main)
+      baseUrl = `https://${baseDomain}`;
+    } else {
+      baseUrl = 'http://localhost:5173';
+    }
+
+    // Create account link
+    const { createAccountLink } = await import('../server/services/stripe-connect-service.js');
+    const { url } = await createAccountLink(
+      accountId,
+      `${baseUrl}/manager/stripe-connect/refresh`,
+      `${baseUrl}/manager/stripe-connect/return`
+    );
+
+    res.json({ url });
+  } catch (error) {
+    console.error('Error creating onboarding link:', error);
+    res.status(500).json({ error: error.message || 'Failed to create onboarding link' });
+  }
+});
+
+// Check Stripe Connect onboarding status
+app.get("/api/manager/stripe-connect/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const managerId = req.neonUser.id;
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
+    const userResult = await pool.query(
+      'SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1',
+      [managerId]
+    );
+
+    if (!userResult.rows[0]?.stripe_connect_account_id) {
+      return res.json({ 
+        hasAccount: false,
+        status: 'not_started'
+      });
+    }
+
+    const accountId = userResult.rows[0].stripe_connect_account_id;
+    const { isAccountReady, getAccountStatus } = await import('../server/services/stripe-connect-service.js');
+    
+    const accountStatus = await getAccountStatus(accountId);
+    const ready = await isAccountReady(accountId);
+
+    // Update database if status changed
+    if (ready && userResult.rows[0].stripe_connect_onboarding_status !== 'complete') {
+      await pool.query(
+        'UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2',
+        ['complete', managerId]
+      );
+    } else if (!ready && userResult.rows[0].stripe_connect_onboarding_status === 'complete') {
+      // Account might have been disabled - update status
+      await pool.query(
+        'UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2',
+        ['in_progress', managerId]
+      );
+    }
+
+    res.json({
+      hasAccount: true,
+      accountId,
+      status: ready ? 'complete' : 'in_progress',
+      details: accountStatus,
+    });
+  } catch (error) {
+    console.error('Error checking Connect status:', error);
+    res.status(500).json({ error: error.message || 'Failed to check Connect status' });
+  }
+});
+
+// ===================================
+// END STRIPE CONNECT ENDPOINTS
+// ===================================
+
 // Get kitchens for a location (manager)
 app.get("/api/manager/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
@@ -17404,6 +17559,32 @@ app.post("/api/payments/create-intent", requireChef, async (req, res) => {
     const serviceFeeCents = calculatePlatformFee(totalPriceCents, 0.05);
     const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, serviceFeeCents, 0);
 
+    // Get manager's Stripe Connect account ID if available
+    let managerConnectAccountId;
+    if (pool) {
+      try {
+        const managerResult = await pool.query(`
+          SELECT 
+            u.stripe_connect_account_id,
+            u.stripe_connect_onboarding_status
+          FROM kitchens k
+          JOIN locations l ON k.location_id = l.id
+          JOIN users u ON l.manager_id = u.id
+          WHERE k.id = $1
+            AND u.stripe_connect_account_id IS NOT NULL
+            AND u.stripe_connect_onboarding_status = 'complete'
+        `, [kitchenId]);
+
+        if (managerResult.rows.length > 0 && managerResult.rows[0].stripe_connect_account_id) {
+          managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
+          console.log('Using Stripe Connect for manager:', managerConnectAccountId);
+        }
+      } catch (error) {
+        console.error('Error fetching manager Connect account:', error);
+        // Continue without Connect - payment will go to platform only
+      }
+    }
+
     // Debug logging to identify calculation issues
     console.log('Payment intent calculation:', {
       kitchenPriceCents: kitchenPricing.totalPriceCents,
@@ -17413,7 +17594,9 @@ app.post("/api/payments/create-intent", requireChef, async (req, res) => {
       totalWithFeesDollars: totalWithFeesCents / 100,
       expectedAmountCents,
       expectedAmountDollars: expectedAmountCents ? expectedAmountCents / 100 : null,
-      currency: kitchenPricing.currency
+      currency: kitchenPricing.currency,
+      usingConnect: !!managerConnectAccountId,
+      managerAccountId: managerConnectAccountId
     });
 
     // Skip payment if total is zero
@@ -17447,12 +17630,14 @@ app.post("/api/payments/create-intent", requireChef, async (req, res) => {
       }
     }
 
-    // Create PaymentIntent
+    // Create PaymentIntent with Connect split if manager has account
     const paymentIntent = await createPaymentIntent({
       amount: finalAmountCents,
       currency: kitchenPricing.currency.toLowerCase(),
       chefId,
       kitchenId,
+      managerConnectAccountId: managerConnectAccountId || undefined,
+      applicationFeeAmount: managerConnectAccountId ? serviceFeeCents : undefined,
       metadata: {
         booking_date: bookingDate,
         start_time: startTime,

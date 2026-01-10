@@ -24,6 +24,9 @@ export interface CreatePaymentIntentParams {
   kitchenId: number;
   metadata?: Record<string, string>;
   statementDescriptor?: string;
+  // Stripe Connect fields (optional - if provided, payment will be split)
+  managerConnectAccountId?: string; // Manager's Stripe Connect account ID
+  applicationFeeAmount?: number; // Platform service fee in cents
 }
 
 export interface PaymentIntentResult {
@@ -47,11 +50,24 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     kitchenId,
     metadata = {},
     statementDescriptor = 'LOCALCOOKS',
+    managerConnectAccountId,
+    applicationFeeAmount,
   } = params;
 
   // Validate amount
   if (amount <= 0) {
     throw new Error('Payment amount must be greater than 0');
+  }
+
+  // Validate Connect parameters if provided
+  if (managerConnectAccountId && !applicationFeeAmount) {
+    throw new Error('applicationFeeAmount is required when managerConnectAccountId is provided');
+  }
+  if (applicationFeeAmount && !managerConnectAccountId) {
+    throw new Error('managerConnectAccountId is required when applicationFeeAmount is provided');
+  }
+  if (applicationFeeAmount && applicationFeeAmount >= amount) {
+    throw new Error('Application fee must be less than total amount');
   }
 
   // Truncate statement descriptor to 15 characters and remove special chars
@@ -61,7 +77,8 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     .toUpperCase();
 
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
+    // Build payment intent parameters
+    const paymentIntentParams: any = {
       amount,
       currency,
       payment_method_types: ['acss_debit'],
@@ -83,7 +100,20 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
         expected_amount: amount.toString(), // Store expected amount for verification
         ...metadata,
       },
-    });
+    };
+
+    // Add Stripe Connect split payment if manager has Connect account
+    if (managerConnectAccountId && applicationFeeAmount) {
+      paymentIntentParams.application_fee_amount = applicationFeeAmount;
+      paymentIntentParams.transfer_data = {
+        destination: managerConnectAccountId,
+      };
+      // Add manager account ID to metadata for tracking
+      paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
+      paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
 
     return {
       id: paymentIntent.id,

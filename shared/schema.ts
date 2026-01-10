@@ -63,6 +63,9 @@ export const users = pgTable("users", {
   managerOnboardingCompleted: boolean("manager_onboarding_completed").default(false).notNull(), // Whether manager completed onboarding
   managerOnboardingSkipped: boolean("manager_onboarding_skipped").default(false).notNull(), // Whether manager skipped onboarding
   managerOnboardingStepsCompleted: jsonb("manager_onboarding_steps_completed").default({}).notNull(), // JSON object tracking completed onboarding steps
+  // Stripe Connect fields for manager payments
+  stripeConnectAccountId: text("stripe_connect_account_id").unique(), // Stripe Connect Express account ID
+  stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(), // Status: 'not_started', 'in_progress', 'complete', 'failed'
 });
 
 // Define the applications table (for chefs)

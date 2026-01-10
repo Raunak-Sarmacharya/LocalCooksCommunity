@@ -134,19 +134,35 @@ export async function generateInvoicePDF(
       });
       const invoiceNumber = `LC-${booking.id}-${new Date().getFullYear()}`;
       
-      const rightMargin = 550;
+      // Right-align invoice details in top right corner
+      const pageWidth = doc.page.width;
+      const rightMargin = pageWidth - 50; // 50px margin from right edge
+      const labelWidth = 80; // Width for labels
+      const valueStartX = rightMargin - 200; // Start position for values
+      
       let rightY = 50;
-      doc.fontSize(10).font('Helvetica-Bold').text('Invoice #:', rightMargin - 100, rightY, { width: 100, align: 'right' });
-      doc.font('Helvetica').text(invoiceNumber, rightMargin, rightY);
+      
+      // Invoice Number
+      doc.fontSize(10).font('Helvetica-Bold');
+      doc.text('Invoice #:', valueStartX, rightY, { width: labelWidth, align: 'right' });
+      doc.font('Helvetica');
+      doc.text(invoiceNumber, valueStartX + labelWidth + 5, rightY);
       rightY += 15;
       
-      doc.font('Helvetica-Bold').text('Date:', rightMargin - 100, rightY, { width: 100, align: 'right' });
-      doc.font('Helvetica').text(invoiceDate, rightMargin, rightY);
+      // Date
+      doc.font('Helvetica-Bold');
+      doc.text('Date:', valueStartX, rightY, { width: labelWidth, align: 'right' });
+      doc.font('Helvetica');
+      doc.text(invoiceDate, valueStartX + labelWidth + 5, rightY);
       rightY += 15;
       
+      // Payment ID (if available)
       if (paymentIntentId) {
-        doc.font('Helvetica-Bold').text('Payment ID:', rightMargin - 100, rightY, { width: 100, align: 'right' });
-        doc.font('Helvetica').text(paymentIntentId.substring(0, 20) + '...', rightMargin, rightY);
+        doc.font('Helvetica-Bold');
+        doc.text('Payment ID:', valueStartX, rightY, { width: labelWidth, align: 'right' });
+        doc.font('Helvetica');
+        const paymentIdDisplay = paymentIntentId.length > 20 ? paymentIntentId.substring(0, 20) + '...' : paymentIntentId;
+        doc.text(paymentIdDisplay, valueStartX + labelWidth + 5, rightY);
       }
       
       // Company info section
@@ -200,10 +216,10 @@ export async function generateInvoicePDF(
       doc.rect(50, tableTop, 500, 25).fill('#f3f4f6');
       doc.fontSize(10).font('Helvetica-Bold');
       doc.fillColor('#000000');
-      doc.text('Description', 60, tableTop + 8);
-      doc.text('Qty', 320, tableTop + 8);
-      doc.text('Rate', 380, tableTop + 8, { align: 'right' });
-      doc.text('Amount', 500, tableTop + 8, { align: 'right' });
+      doc.text('Description', 60, tableTop + 8, { width: 250 });
+      doc.text('Qty', 320, tableTop + 8, { width: 50 });
+      doc.text('Rate', 380, tableTop + 8, { width: 110, align: 'right' });
+      doc.text('Amount', 500, tableTop + 8, { width: 50, align: 'right' });
       
       // Draw header border
       doc.moveTo(50, tableTop + 25).lineTo(550, tableTop + 25).stroke();
