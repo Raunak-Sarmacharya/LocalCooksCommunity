@@ -358,6 +358,20 @@ function Router() {
             </ManagerProtectedRoute>
           ) : null}
         </Route>
+        <Route path="/manager/stripe-connect/return">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerBookingDashboard />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
+        <Route path="/manager/stripe-connect/refresh">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerBookingDashboard />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
         {/* Portal User Routes */}
         <Route path="/portal/register" component={PortalRegister} />
         <Route path="/portal/login" component={PortalLogin} />

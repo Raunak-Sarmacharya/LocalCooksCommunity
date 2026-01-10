@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard
 } from "lucide-react";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
@@ -26,6 +26,7 @@ import EquipmentListingManagement from "./EquipmentListingManagement";
 import ChangePassword from "@/components/auth/ChangePassword";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
 import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizard";
+import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 
 interface Location {
   id: number;
@@ -68,7 +69,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings';
+type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -276,6 +277,7 @@ export default function ManagerBookingDashboard() {
     { id: 'storage-listings' as ViewType, label: 'Storage Listings', icon: Package },
     { id: 'equipment-listings' as ViewType, label: 'Equipment Listings', icon: Wrench },
     { id: 'applications' as ViewType, label: 'Applications', icon: Users },
+    { id: 'payments' as ViewType, label: 'Payments', icon: CreditCard },
     { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
   ];
 
@@ -679,6 +681,18 @@ export default function ManagerBookingDashboard() {
                   
                   {activeView === 'applications' && (
                     <ManagerKitchenApplications embedded={true} />
+                  )}
+                  
+                  {activeView === 'payments' && (
+                    <div className="space-y-6">
+                      <div>
+                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Setup</h2>
+                        <p className="text-gray-600">
+                          Connect your Stripe account to receive payments directly for kitchen bookings.
+                        </p>
+                      </div>
+                      <StripeConnectSetup />
+                    </div>
                   )}
                   
                   {activeView === 'settings' && selectedLocation && (

@@ -120,6 +120,8 @@ export class MemStorage implements IStorage {
       isDeliveryPartner: false,
       isPortalUser: false,
       applicationType: null,
+      stripeConnectAccountId: null,
+      stripeConnectOnboardingStatus: 'not_started',
     };
     this.users.set(adminUser.id, adminUser);
     console.log("Development: Default admin user created (username: admin, password: localcooks)");
@@ -193,6 +195,8 @@ export class MemStorage implements IStorage {
       managerOnboardingCompleted: (insertUser as any).managerOnboardingCompleted !== undefined ? (insertUser as any).managerOnboardingCompleted : false,
       managerOnboardingSkipped: (insertUser as any).managerOnboardingSkipped !== undefined ? (insertUser as any).managerOnboardingSkipped : false,
       managerOnboardingStepsCompleted: (insertUser as any).managerOnboardingStepsCompleted !== undefined ? (insertUser as any).managerOnboardingStepsCompleted : {},
+      stripeConnectAccountId: (insertUser as any).stripeConnectAccountId || null,
+      stripeConnectOnboardingStatus: (insertUser as any).stripeConnectOnboardingStatus || 'not_started',
     };
 
     this.users.set(user.id, user);
