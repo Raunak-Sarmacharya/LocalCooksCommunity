@@ -3416,6 +3416,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         minimumBookingWindowHours: (loc as any).minimumBookingWindowHours || (loc as any).minimum_booking_window_hours || 1,
         logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
         timezone: (loc as any).timezone || DEFAULT_TIMEZONE,
+        // Kitchen license status fields
+        kitchenLicenseUrl: (loc as any).kitchenLicenseUrl || (loc as any).kitchen_license_url || null,
+        kitchenLicenseStatus: (loc as any).kitchenLicenseStatus || (loc as any).kitchen_license_status || 'pending',
+        kitchenLicenseApprovedBy: (loc as any).kitchenLicenseApprovedBy || (loc as any).kitchen_license_approved_by || null,
+        kitchenLicenseApprovedAt: (loc as any).kitchenLicenseApprovedAt || (loc as any).kitchen_license_approved_at || null,
+        kitchenLicenseFeedback: (loc as any).kitchenLicenseFeedback || (loc as any).kitchen_license_feedback || null,
       }));
       
       // Log to verify logoUrl is included in response
