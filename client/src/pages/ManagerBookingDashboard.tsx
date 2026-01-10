@@ -318,12 +318,12 @@ export default function ManagerBookingDashboard() {
       <ManagerHeader />
       <ManagerOnboardingWizard />
       <main className="flex-1 pt-24 pb-8 relative z-10 flex">
-        {/* Animated Sidebar */}
+        {/* Animated Sidebar - positioned to avoid footer */}
         <div 
-          className="hidden lg:block fixed left-0 top-24 z-20" 
+          className="hidden lg:block fixed left-0 z-20" 
           style={{ 
+            top: '6rem', // Header height
             bottom: footerHeight > 0 ? `${footerHeight}px` : '0',
-            height: footerHeight > 0 ? `calc(100vh - 6rem - ${footerHeight}px)` : 'calc(100vh - 6rem)',
           }}
         >
           <AnimatedManagerSidebar
