@@ -3,10 +3,10 @@ import { useApplicationStatus } from "@/hooks/use-application-status";
 import { Building2, Mail, MapPin, Phone } from "lucide-react";
 import { FaFacebook, FaLinkedin } from "react-icons/fa";
 import { Link, useLocation } from "wouter";
-import { useMemo } from "react";
+import { useMemo, forwardRef } from "react";
 import { getSubdomainFromHostname } from "@shared/subdomain-utils";
 
-export default function Footer() {
+const Footer = forwardRef<HTMLElement>((props, ref) => {
   const [location, navigate] = useLocation();
   const { getButtonText, getNavigationPath, isLoading } = useApplicationStatus();
   
@@ -67,7 +67,7 @@ export default function Footer() {
   };
 
   return (
-    <footer className="bg-gradient-to-t from-[#1a1a1a] via-[#2C2C2C] to-[#1a1a1a] text-white pt-12 pb-8 px-4 relative overflow-hidden">
+    <footer ref={ref} className="bg-gradient-to-t from-[#1a1a1a] via-[#2C2C2C] to-[#1a1a1a] text-white pt-12 pb-8 px-4 relative overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute inset-0 opacity-10 pointer-events-none">
         <div className="absolute top-20 left-20 w-96 h-96 bg-[var(--color-primary)] rounded-full blur-3xl"></div>
@@ -310,4 +310,8 @@ export default function Footer() {
       </div>
     </footer>
   );
-}
+});
+
+Footer.displayName = "Footer";
+
+export default Footer;
