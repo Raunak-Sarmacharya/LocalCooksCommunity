@@ -1223,10 +1223,12 @@ export class FirebaseStorage {
       }
 
       // Get all bookings for these kitchens (fetch bookings first, then enrich like chef profiles)
+      // Include payment fields so managers can see payment statistics
       const bookingsResult = await pool.query(
         `SELECT 
           id, chef_id, kitchen_id, booking_date, start_time, end_time, 
-          status, special_notes, created_at, updated_at
+          status, special_notes, created_at, updated_at,
+          total_price, payment_status, payment_intent_id, service_fee, currency
         FROM kitchen_bookings 
         WHERE kitchen_id = ANY($1::int[])
         ORDER BY booking_date DESC, start_time ASC`,
@@ -1316,6 +1318,12 @@ export class FirebaseStorage {
             kitchenName: kitchenName,
             locationName: locationName,
             locationTimezone: locationTimezone,
+            // Include payment fields for revenue dashboard
+            totalPrice: booking.total_price ? parseInt(String(booking.total_price)) || 0 : null,
+            paymentStatus: booking.payment_status || null,
+            paymentIntentId: booking.payment_intent_id || null,
+            serviceFee: booking.service_fee ? parseInt(String(booking.service_fee)) || 0 : null,
+            currency: booking.currency || 'CAD',
           };
         })
       );

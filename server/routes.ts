@@ -45,6 +45,7 @@ import { verifyFirebaseToken } from "./firebase-admin";
 import { requireFirebaseAuthWithUser, requireManager } from "./firebase-auth-middleware";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
+import Stripe from "stripe";
 import { eq, inArray, and, desc } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
@@ -3771,6 +3772,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================================
 
   // ===================================
+  // STRIPE WEBHOOK ENDPOINTS
+  // ===================================
+
+  // Stripe webhook handler for payment events
+  app.post("/api/webhooks/stripe", async (req: Request, res: Response) => {
+    try {
+      const sig = req.headers['stripe-signature'];
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+      if (!stripeSecretKey) {
+        return res.status(500).json({ error: 'Stripe not configured' });
+      }
+
+      const stripe = new Stripe(stripeSecretKey, {
+        apiVersion: '2025-12-15.clover',
+      });
+
+      if (!webhookSecret) {
+        console.warn('⚠️ STRIPE_WEBHOOK_SECRET not configured - webhook verification disabled');
+        // In development, allow webhooks without verification
+        // In production, this should be required
+      }
+
+      let event: Stripe.Event;
+
+      // Verify webhook signature if secret is configured
+      if (webhookSecret && sig) {
+        try {
+          event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+        } catch (err: any) {
+          console.error('⚠️ Webhook signature verification failed:', err.message);
+          return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+        }
+      } else {
+        // In development, parse event without verification
+        event = req.body as Stripe.Event;
+      }
+
+      // Handle different event types
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+          break;
+        case 'payment_intent.payment_failed':
+          await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+          break;
+        case 'payment_intent.canceled':
+          await handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent);
+          break;
+        case 'charge.refunded':
+        case 'charge.partially_refunded':
+          await handleChargeRefunded(event.data.object as Stripe.Charge);
+          break;
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+
+      res.json({ received: true });
+    } catch (error: any) {
+      console.error('Error handling webhook:', error);
+      res.status(500).json({ error: error.message || 'Webhook handler failed' });
+    }
+  });
+
+  // Webhook event handlers
+  async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+    if (!pool) {
+      console.error('Database pool not available for webhook');
+      return;
+    }
+
+    try {
+      await pool.query(`
+        UPDATE kitchen_bookings
+        SET 
+          payment_status = 'paid',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status != 'paid'
+      `, [paymentIntent.id]);
+
+      console.log(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`);
+    } catch (error: any) {
+      console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+    }
+  }
+
+  async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+    if (!pool) {
+      console.error('Database pool not available for webhook');
+      return;
+    }
+
+    try {
+      await pool.query(`
+        UPDATE kitchen_bookings
+        SET 
+          payment_status = 'failed',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
+      `, [paymentIntent.id]);
+
+      console.log(`[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`);
+    } catch (error: any) {
+      console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+    }
+  }
+
+  async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) {
+    if (!pool) {
+      console.error('Database pool not available for webhook');
+      return;
+    }
+
+    try {
+      await pool.query(`
+        UPDATE kitchen_bookings
+        SET 
+          payment_status = 'canceled',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
+      `, [paymentIntent.id]);
+
+      console.log(`[Webhook] Updated booking payment status to 'canceled' for PaymentIntent ${paymentIntent.id}`);
+    } catch (error: any) {
+      console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+    }
+  }
+
+  async function handleChargeRefunded(charge: Stripe.Charge) {
+    if (!pool) {
+      console.error('Database pool not available for webhook');
+      return;
+    }
+
+    try {
+      // Find booking by payment intent ID from charge
+      const paymentIntentId = typeof charge.payment_intent === 'string' 
+        ? charge.payment_intent 
+        : charge.payment_intent?.id;
+
+      if (!paymentIntentId) {
+        console.warn(`[Webhook] Charge ${charge.id} has no payment_intent`);
+        return;
+      }
+
+      // Check if it's a full or partial refund
+      const isPartial = charge.amount_refunded < charge.amount;
+      const refundStatus = isPartial ? 'partially_refunded' : 'refunded';
+
+      await pool.query(`
+        UPDATE kitchen_bookings
+        SET 
+          payment_status = $1,
+          updated_at = NOW()
+        WHERE payment_intent_id = $2
+          AND payment_status = 'paid'
+      `, [refundStatus, paymentIntentId]);
+
+      console.log(`[Webhook] Updated booking payment status to '${refundStatus}' for PaymentIntent ${paymentIntentId}`);
+    } catch (error: any) {
+      console.error(`[Webhook] Error updating refund status for charge ${charge.id}:`, error);
+    }
+  }
+
+  // ===================================
   // MANAGER REVENUE ENDPOINTS
   // ===================================
 
@@ -3778,10 +3948,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/manager/revenue/overview", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
       const managerId = req.neonUser!.id;
-      const { startDate, endDate, locationId } = req.query;
+      const { startDate, endDate, locationId, syncPayments } = req.query;
 
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Optionally sync payments before calculating metrics (if syncPayments=true)
+      if (syncPayments === 'true') {
+        try {
+          const { syncManagerPayments } = await import('./services/payment-tracking-service');
+          await syncManagerPayments(managerId, pool);
+          console.log(`[Revenue] Synced payments for manager ${managerId} before calculating metrics`);
+        } catch (syncError: any) {
+          console.warn(`[Revenue] Payment sync failed (continuing anyway):`, syncError.message);
+          // Continue even if sync fails
+        }
       }
 
       const { getCompleteRevenueMetrics } = await import('./services/revenue-service');
@@ -3853,6 +4035,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Error getting revenue by location:', error);
       res.status(500).json({ error: error.message || 'Failed to get revenue by location' });
+    }
+  });
+
+  // Sync payment statuses for manager (ensures all payments are up-to-date)
+  app.post("/api/manager/revenue/sync-payments", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { syncManagerPayments } = await import('./services/payment-tracking-service');
+      
+      const result = await syncManagerPayments(managerId, pool);
+
+      res.json({
+        success: true,
+        synced: result.synced,
+        updated: result.updated,
+        errors: result.errors,
+        message: `Synced ${result.synced} payments: ${result.updated} updated, ${result.errors} errors`
+      });
+    } catch (error: any) {
+      console.error('Error syncing payments:', error);
+      res.status(500).json({ error: error.message || 'Failed to sync payments' });
+    }
+  });
+
+  // Get payment status for a specific booking
+  app.get("/api/manager/payments/booking/:bookingId/status", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Verify booking belongs to manager
+      const bookingCheck = await pool.query(`
+        SELECT kb.id
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE kb.id = $1 AND l.manager_id = $2
+      `, [bookingId, req.neonUser!.id]);
+
+      if (bookingCheck.rows.length === 0) {
+        return res.status(404).json({ error: "Booking not found or access denied" });
+      }
+
+      const { getPaymentStatus } = await import('./services/payment-tracking-service');
+      const status = await getPaymentStatus(bookingId, pool);
+
+      res.json(status);
+    } catch (error: any) {
+      console.error('Error getting payment status:', error);
+      res.status(500).json({ error: error.message || 'Failed to get payment status' });
+    }
+  });
+
+  // Sync payment status for a specific booking
+  app.post("/api/manager/payments/booking/:bookingId/sync", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Verify booking belongs to manager
+      const bookingCheck = await pool.query(`
+        SELECT kb.id
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE kb.id = $1 AND l.manager_id = $2
+      `, [bookingId, req.neonUser!.id]);
+
+      if (bookingCheck.rows.length === 0) {
+        return res.status(404).json({ error: "Booking not found or access denied" });
+      }
+
+      const { syncPaymentStatusFromStripe } = await import('./services/payment-tracking-service');
+      const result = await syncPaymentStatusFromStripe(bookingId, pool);
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error syncing payment status:', error);
+      res.status(500).json({ error: error.message || 'Failed to sync payment status' });
+    }
+  });
+
+  // Recover missing payment data for a booking
+  app.post("/api/manager/payments/booking/:bookingId/recover", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Verify booking belongs to manager
+      const bookingCheck = await pool.query(`
+        SELECT kb.id
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE kb.id = $1 AND l.manager_id = $2
+      `, [bookingId, req.neonUser!.id]);
+
+      if (bookingCheck.rows.length === 0) {
+        return res.status(404).json({ error: "Booking not found or access denied" });
+      }
+
+      const { recoverMissingPaymentData } = await import('./services/payment-tracking-service');
+      const result = await recoverMissingPaymentData(bookingId, pool);
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error recovering payment data:', error);
+      res.status(500).json({ error: error.message || 'Failed to recover payment data' });
     }
   });
 

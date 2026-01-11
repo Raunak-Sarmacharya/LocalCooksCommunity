@@ -144,11 +144,11 @@ export async function getRevenueMetrics(
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
-        COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END)::int as pending_count,
+        COUNT(CASE WHEN kb.payment_status IN ('pending', 'processing') THEN 1 END)::int as pending_count,
         COUNT(CASE WHEN kb.status = 'cancelled' THEN 1 END)::int as cancelled_count,
         COUNT(CASE WHEN kb.payment_status = 'refunded' OR kb.payment_status = 'partially_refunded' THEN 1 END)::int as refunded_count,
         COALESCE(SUM(CASE WHEN kb.payment_status = 'paid' THEN COALESCE(kb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN kb.payment_status = 'pending' THEN COALESCE(kb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments,
+        COALESCE(SUM(CASE WHEN kb.payment_status IN ('pending', 'processing') THEN COALESCE(kb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments,
         COALESCE(SUM(CASE WHEN kb.payment_status = 'refunded' OR kb.payment_status = 'partially_refunded' THEN COALESCE(kb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(COALESCE(kb.total_price, 0)::numeric), 0)::numeric as avg_booking_value
       FROM kitchen_bookings kb
@@ -160,11 +160,18 @@ export async function getRevenueMetrics(
 
     // Query ALL pending payments (pre-authorized) regardless of booking date
     // This ensures future bookings with pre-authorized payments are included
+    // Include bookings with payment_status='pending' OR 'processing' (pre-authorized but not yet captured)
+    // OR bookings with payment_intent_id but payment_status is NULL or not paid
+    // (some older bookings might not have payment_status set but have a payment intent)
     let pendingWhereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
-        AND kb.payment_status = 'pending'
         AND kb.total_price IS NOT NULL
+        AND (
+          kb.payment_status = 'pending' 
+          OR kb.payment_status = 'processing'
+          OR (kb.payment_intent_id IS NOT NULL AND (kb.payment_status IS NULL OR kb.payment_status NOT IN ('paid', 'refunded', 'partially_refunded')))
+        )
     `;
     const pendingParams: any[] = [managerId];
     let pendingParamIndex = 2;
@@ -185,17 +192,80 @@ export async function getRevenueMetrics(
       ${pendingWhereClause}
     `, pendingParams);
 
+    // Debug: Log pending payments query results
+    console.log('[Revenue Service] Pending payments query:', {
+      managerId,
+      locationId,
+      pendingCount: pendingResult.rows[0]?.pending_count_all || 0,
+      pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0,
+      whereClause: pendingWhereClause,
+      params: pendingParams
+    });
+
+    // Query ALL completed payments regardless of booking date
+    // This ensures old completed payments are always visible to managers
+    // Also include payments with status 'processing' or 'requires_capture' that have a payment_intent_id
+    // as these are pre-authorized payments that should be counted
+    let completedWhereClause = `
+      WHERE l.manager_id = $1
+        AND kb.status != 'cancelled'
+        AND kb.payment_status = 'paid'
+        AND kb.total_price IS NOT NULL
+    `;
+    const completedParams: any[] = [managerId];
+    let completedParamIndex = 2;
+
+    if (locationId) {
+      completedWhereClause += ` AND l.id = $${completedParamIndex}`;
+      completedParams.push(locationId);
+      completedParamIndex++;
+    }
+
+    const completedResult = await dbPool.query(`
+      SELECT 
+        COALESCE(SUM(COALESCE(kb.total_price, 0)::numeric), 0)::bigint as completed_payments_all,
+        COUNT(*)::int as completed_count_all
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      ${completedWhereClause}
+    `, completedParams);
+
+    // Get ALL pending payments (pre-authorized) regardless of date
+    const pendingRow = pendingResult.rows[0] || {};
+    const allPendingPayments = typeof pendingRow.pending_payments_all === 'string'
+      ? parseInt(pendingRow.pending_payments_all) || 0
+      : (pendingRow.pending_payments_all ? parseInt(String(pendingRow.pending_payments_all)) : 0);
+
+    // Debug: Log the pending payments result
+    console.log('[Revenue Service] Pending payments result:', {
+      allPendingPayments,
+      pendingCount: pendingRow.pending_count_all || 0,
+      rawValue: pendingRow.pending_payments_all
+    });
+
+    // Get ALL completed payments regardless of booking date
+    const completedRow = completedResult.rows[0] || {};
+    const allCompletedPayments = typeof completedRow.completed_payments_all === 'string'
+      ? parseInt(completedRow.completed_payments_all) || 0
+      : (completedRow.completed_payments_all ? parseInt(String(completedRow.completed_payments_all)) : 0);
+
     if (result.rows.length === 0) {
-      // Return zero metrics if no bookings
+      // Even if no bookings in date range, check if there are pending or completed payments
+      // Calculate revenue based on all payments (completed + pending)
+      const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
+      const managerRevenue = calculateManagerRevenue(totalRevenueWithAllPayments, serviceFeeRate);
+      const totalPlatformFee = Math.round(totalRevenueWithAllPayments * serviceFeeRate);
+      
       return {
-        totalRevenue: 0,
-        platformFee: 0,
-        managerRevenue: 0,
-        pendingPayments: 0,
-        completedPayments: 0,
+        totalRevenue: totalRevenueWithAllPayments || 0,
+        platformFee: totalPlatformFee || 0,
+        managerRevenue,
+        pendingPayments: allPendingPayments,
+        completedPayments: allCompletedPayments, // Show ALL completed payments, not just in date range
         averageBookingValue: 0,
         bookingCount: 0,
-        paidBookingCount: 0,
+        paidBookingCount: parseInt(completedRow.completed_count_all) || 0,
         cancelledBookingCount: 0,
         refundedAmount: 0,
       };
@@ -221,41 +291,31 @@ export async function getRevenueMetrics(
       ? parseInt(row.platform_fee)
       : (row.platform_fee ? parseInt(String(row.platform_fee)) : 0);
     
-    // Get completed payments from date range
-    const completedPayments = typeof row.completed_payments === 'string'
-      ? parseInt(row.completed_payments) || 0
-      : (row.completed_payments ? parseInt(String(row.completed_payments)) : 0);
+    // Use ALL completed payments (regardless of booking date) instead of just those in date range
+    // This ensures managers can see all their historical completed payments
+    // Total revenue should include both ALL completed payments and ALL pending payments
+    // This gives managers complete visibility into all revenue (historical + future committed)
+    const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
     
-    // Get ALL pending payments (pre-authorized) regardless of date
-    const pendingRow = pendingResult.rows[0] || {};
-    const allPendingPayments = typeof pendingRow.pending_payments_all === 'string'
-      ? parseInt(pendingRow.pending_payments_all) || 0
-      : (pendingRow.pending_payments_all ? parseInt(String(pendingRow.pending_payments_all)) : 0);
-    
-    // Total revenue should include both completed payments (within date range) and all pending payments
-    // This gives managers visibility into committed revenue from pre-authorized payments
-    // Note: We use completedPayments instead of totalRevenue to avoid double-counting pending payments
-    const totalRevenueWithPending = completedPayments + allPendingPayments;
-    
-    // Calculate manager revenue dynamically based on total revenue including pending
+    // Calculate manager revenue dynamically based on total revenue including all payments
     // If service_fee_rate = 0, manager gets 100%
     // If service_fee_rate = 0.20, manager gets 80%
-    const managerRevenue = calculateManagerRevenue(totalRevenueWithPending, serviceFeeRate);
+    const managerRevenue = calculateManagerRevenue(totalRevenueWithAllPayments, serviceFeeRate);
     
-    // Platform fee should also be calculated on total including pending
-    const totalPlatformFee = Math.round(totalRevenueWithPending * serviceFeeRate);
+    // Platform fee should also be calculated on total including all payments
+    const totalPlatformFee = Math.round(totalRevenueWithAllPayments * serviceFeeRate);
 
     return {
-      totalRevenue: totalRevenueWithPending || 0,
+      totalRevenue: totalRevenueWithAllPayments || 0,
       platformFee: totalPlatformFee || 0,
       managerRevenue,
       pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
-      completedPayments: completedPayments,
+      completedPayments: allCompletedPayments, // Use ALL completed payments, not just those in date range
       averageBookingValue: row.avg_booking_value 
         ? Math.round(parseFloat(String(row.avg_booking_value))) 
         : 0,
       bookingCount: parseInt(row.booking_count) || 0,
-      paidBookingCount: parseInt(row.paid_count) || 0,
+      paidBookingCount: parseInt(completedRow.completed_count_all) || 0, // Use count from all completed payments query
       cancelledBookingCount: parseInt(row.cancelled_count) || 0,
       refundedAmount: typeof row.refunded_amount === 'string'
         ? parseInt(row.refunded_amount) || 0
@@ -588,7 +648,7 @@ export async function getCompleteRevenueMetrics(
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN sb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COALESCE(SUM(CASE WHEN sb.payment_status = 'paid' THEN COALESCE(sb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN sb.payment_status = 'pending' THEN COALESCE(sb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments
+        COALESCE(SUM(CASE WHEN sb.payment_status IN ('pending', 'processing') THEN COALESCE(sb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments
       FROM storage_bookings sb
       JOIN storage_listings sl ON sb.storage_listing_id = sl.id
       JOIN kitchens k ON sl.kitchen_id = k.id
@@ -633,7 +693,7 @@ export async function getCompleteRevenueMetrics(
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN eb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COALESCE(SUM(CASE WHEN eb.payment_status = 'paid' THEN COALESCE(eb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN eb.payment_status = 'pending' THEN COALESCE(eb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments
+        COALESCE(SUM(CASE WHEN eb.payment_status IN ('pending', 'processing') THEN COALESCE(eb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments
       FROM equipment_bookings eb
       JOIN equipment_listings el ON eb.equipment_listing_id = el.id
       JOIN kitchens k ON el.kitchen_id = k.id
