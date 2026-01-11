@@ -42,6 +42,12 @@ export const equipmentAvailabilityTypeEnum = pgEnum('equipment_availability_type
 // Define enum for payment status
 export const paymentStatusEnum = pgEnum('payment_status', ['pending', 'paid', 'refunded', 'failed', 'partially_refunded']);
 
+// Define enum for transaction status (more comprehensive than payment_status)
+export const transactionStatusEnum = pgEnum('transaction_status', ['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded', 'partially_refunded']);
+
+// Define enum for booking type in payment transactions
+export const bookingTypeEnum = pgEnum('booking_type_enum', ['kitchen', 'storage', 'equipment', 'bundle']);
+
 // Define users table (for both admins and users)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -1288,3 +1294,78 @@ export type InsertChefKitchenApplication = z.infer<typeof insertChefKitchenAppli
 export type UpdateChefKitchenApplication = z.infer<typeof updateChefKitchenApplicationSchema>;
 export type UpdateChefKitchenApplicationStatus = z.infer<typeof updateChefKitchenApplicationStatusSchema>;
 export type UpdateChefKitchenApplicationDocuments = z.infer<typeof updateChefKitchenApplicationDocumentsSchema>;
+
+// ===== PAYMENT TRANSACTIONS TABLE =====
+// Centralized table for tracking all payment transactions across booking types
+export const paymentTransactions = pgTable("payment_transactions", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(), // References kitchen_bookings.id, storage_bookings.id, or equipment_bookings.id
+  bookingType: bookingTypeEnum("booking_type").notNull(), // Which booking table this transaction belongs to
+  chefId: integer("chef_id").references(() => users.id, { onDelete: "set null" }), // Chef who made the payment
+  managerId: integer("manager_id").references(() => users.id, { onDelete: "set null" }), // Manager who receives the payment
+  // Payment amounts (all in cents)
+  amount: numeric("amount").notNull(), // Total transaction amount (includes service fee)
+  baseAmount: numeric("base_amount").notNull(), // Base amount before service fee
+  serviceFee: numeric("service_fee").notNull().default("0"), // Platform service fee
+  managerRevenue: numeric("manager_revenue").notNull(), // Manager earnings (base_amount - service_fee)
+  refundAmount: numeric("refund_amount").default("0"), // Total refunded amount
+  netAmount: numeric("net_amount").notNull(), // Final amount after refunds (amount - refund_amount)
+  currency: text("currency").notNull().default("CAD"),
+  // Stripe integration
+  paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique when set)
+  chargeId: text("charge_id"), // Stripe Charge ID
+  refundId: text("refund_id"), // Stripe Refund ID
+  paymentMethodId: text("payment_method_id"), // Stripe PaymentMethod ID
+  // Status tracking
+  status: transactionStatusEnum("status").notNull().default("pending"),
+  stripeStatus: text("stripe_status"), // Raw Stripe status for comparison
+  // Metadata and tracking
+  metadata: jsonb("metadata").default({}), // Additional metadata
+  refundReason: text("refund_reason"), // Reason for refund
+  failureReason: text("failure_reason"), // Reason for payment failure
+  webhookEventId: text("webhook_event_id"), // Stripe webhook event ID
+  lastSyncedAt: timestamp("last_synced_at"), // Last time synced with Stripe
+  // Timestamps
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  paidAt: timestamp("paid_at"), // When payment was successfully captured
+  refundedAt: timestamp("refunded_at"), // When refund was issued
+});
+
+// ===== PAYMENT HISTORY TABLE =====
+// Audit trail for payment transaction status changes and events
+export const paymentHistory = pgTable("payment_history", {
+  id: serial("id").primaryKey(),
+  transactionId: integer("transaction_id").references(() => paymentTransactions.id, { onDelete: "cascade" }).notNull(),
+  previousStatus: transactionStatusEnum("previous_status"),
+  newStatus: transactionStatusEnum("new_status").notNull(),
+  eventType: text("event_type").notNull(), // 'status_change', 'refund', 'webhook', 'manual_update', etc.
+  eventSource: text("event_source"), // 'stripe_webhook', 'admin', 'system', 'sync', etc.
+  stripeEventId: text("stripe_event_id"), // Stripe event ID if from webhook
+  description: text("description"), // Human-readable description
+  metadata: jsonb("metadata").default({}), // Additional event data
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }), // User who triggered the change
+});
+
+// Zod validation schemas for payment transactions
+export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions);
+export const updatePaymentTransactionSchema = z.object({
+  status: z.enum(['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded', 'partially_refunded']).optional(),
+  stripeStatus: z.string().optional(),
+  refundAmount: z.number().optional(),
+  refundReason: z.string().optional(),
+  failureReason: z.string().optional(),
+  chargeId: z.string().optional(),
+  refundId: z.string().optional(),
+  paidAt: z.date().optional(),
+  refundedAt: z.date().optional(),
+  lastSyncedAt: z.date().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+// Type exports for payment transactions
+export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
+export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
+export type UpdatePaymentTransaction = z.infer<typeof updatePaymentTransactionSchema>;
+export type PaymentHistory = typeof paymentHistory.$inferSelect;
