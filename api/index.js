@@ -14099,6 +14099,7 @@ app.get("/api/manager/revenue/transactions", requireFirebaseAuthWithUser, requir
 
     // Try to use payment_transactions first, fallback to legacy method
     let transactions = [];
+    let usePaymentTransactions = false;
     try {
       const { getManagerPaymentTransactions } = await import('../server/services/payment-transactions-service.js');
       const result = await getManagerPaymentTransactions(managerId, pool, {
@@ -14108,65 +14109,77 @@ app.get("/api/manager/revenue/transactions", requireFirebaseAuthWithUser, requir
         offset: parseInt(offset),
       });
       
-      // Convert payment_transactions to transaction history format
-      transactions = result.transactions.map(pt => {
-        // Get booking details for kitchen_name, location_name, chef_name
-        return {
-          id: pt.booking_id,
-          bookingType: pt.booking_type,
-          totalPrice: parseInt(pt.amount),
-          serviceFee: parseInt(pt.service_fee),
-          managerRevenue: parseInt(pt.manager_revenue),
-          paymentStatus: pt.status === 'succeeded' ? 'paid' : pt.status === 'pending' ? 'pending' : pt.status === 'failed' ? 'failed' : pt.status,
-          paymentIntentId: pt.payment_intent_id,
-          currency: pt.currency,
-          createdAt: pt.created_at,
-          paidAt: pt.paid_at,
-        };
-      });
-      
-      // Fetch booking details for display
-      if (transactions.length > 0) {
-        const bookingIds = transactions.filter(t => t.bookingType === 'kitchen' || t.bookingType === 'bundle').map(t => t.id);
-        if (bookingIds.length > 0) {
-          const bookingDetails = await pool.query(`
-            SELECT 
-              kb.id,
-              kb.booking_date,
-              kb.start_time,
-              kb.end_time,
-              kb.status,
-              k.name as kitchen_name,
-              l.id as location_id,
-              l.name as location_name,
-              u.username as chef_name,
-              u.email as chef_email
-            FROM kitchen_bookings kb
-            JOIN kitchens k ON kb.kitchen_id = k.id
-            JOIN locations l ON k.location_id = l.id
-            LEFT JOIN users u ON kb.chef_id = u.id
-            WHERE kb.id = ANY($1)
-          `, [bookingIds]);
-          
-          const detailsMap = new Map(bookingDetails.rows.map(b => [b.id, b]));
-          transactions = transactions.map(t => ({
-            ...t,
-            bookingDate: detailsMap.get(t.id)?.booking_date,
-            startTime: detailsMap.get(t.id)?.start_time,
-            endTime: detailsMap.get(t.id)?.end_time,
-            status: detailsMap.get(t.id)?.status,
-            kitchenName: detailsMap.get(t.id)?.kitchen_name,
-            locationId: detailsMap.get(t.id)?.location_id,
-            locationName: detailsMap.get(t.id)?.location_name,
-            chefName: detailsMap.get(t.id)?.chef_name || 'Guest',
-            chefEmail: detailsMap.get(t.id)?.chef_email,
-          }));
+      // Only use payment_transactions if we have results OR if we're explicitly filtering
+      // If no results and no filters, fall back to legacy method (which queries bookings directly)
+      if (result.transactions.length > 0 || paymentStatus) {
+        usePaymentTransactions = true;
+        
+        // Convert payment_transactions to transaction history format
+        transactions = result.transactions.map(pt => {
+          // Get booking details for kitchen_name, location_name, chef_name
+          return {
+            id: pt.booking_id,
+            bookingType: pt.booking_type,
+            totalPrice: parseInt(pt.amount),
+            serviceFee: parseInt(pt.service_fee),
+            managerRevenue: parseInt(pt.manager_revenue),
+            paymentStatus: pt.status === 'succeeded' ? 'paid' : pt.status === 'pending' ? 'pending' : pt.status === 'failed' ? 'failed' : pt.status,
+            paymentIntentId: pt.payment_intent_id,
+            currency: pt.currency,
+            createdAt: pt.created_at,
+            paidAt: pt.paid_at,
+          };
+        });
+        
+        // Fetch booking details for display
+        if (transactions.length > 0) {
+          const bookingIds = transactions.filter(t => t.bookingType === 'kitchen' || t.bookingType === 'bundle').map(t => t.id);
+          if (bookingIds.length > 0) {
+            const bookingDetails = await pool.query(`
+              SELECT 
+                kb.id,
+                kb.booking_date,
+                kb.start_time,
+                kb.end_time,
+                kb.status,
+                k.name as kitchen_name,
+                l.id as location_id,
+                l.name as location_name,
+                u.username as chef_name,
+                u.email as chef_email
+              FROM kitchen_bookings kb
+              JOIN kitchens k ON kb.kitchen_id = k.id
+              JOIN locations l ON k.location_id = l.id
+              LEFT JOIN users u ON kb.chef_id = u.id
+              WHERE kb.id = ANY($1)
+            `, [bookingIds]);
+            
+            const detailsMap = new Map(bookingDetails.rows.map(b => [b.id, b]));
+            transactions = transactions.map(t => ({
+              ...t,
+              bookingDate: detailsMap.get(t.id)?.booking_date,
+              startTime: detailsMap.get(t.id)?.start_time,
+              endTime: detailsMap.get(t.id)?.end_time,
+              status: detailsMap.get(t.id)?.status,
+              kitchenName: detailsMap.get(t.id)?.kitchen_name,
+              locationId: detailsMap.get(t.id)?.location_id,
+              locationName: detailsMap.get(t.id)?.location_name,
+              chefName: detailsMap.get(t.id)?.chef_name || 'Guest',
+              chefEmail: detailsMap.get(t.id)?.chef_email,
+            }));
+          }
         }
+        
+        console.log(`[Revenue] Using payment_transactions for transaction history: ${transactions.length} transactions`);
       }
-      
-      console.log(`[Revenue] Using payment_transactions for transaction history: ${transactions.length} transactions`);
     } catch (error) {
-      console.warn('[Revenue] Falling back to legacy getTransactionHistory:', error);
+      console.warn('[Revenue] Error using payment_transactions, falling back to legacy method:', error);
+      usePaymentTransactions = false;
+    }
+    
+    // Fall back to legacy method if payment_transactions had no results or failed
+    if (!usePaymentTransactions) {
+      console.log('[Revenue] Using legacy getTransactionHistory method');
       const { getTransactionHistory } = await import('../server/services/revenue-service.js');
       transactions = await getTransactionHistory(
         managerId,
