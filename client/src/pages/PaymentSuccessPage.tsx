@@ -257,7 +257,8 @@ export default function PaymentSuccessPage() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <h3 className="font-semibold text-blue-900 mb-2">Payment Information</h3>
                 <p className="text-sm text-blue-800 mb-2">
-                  Your payment has been authorized via pre-authorized debit. The payment will be processed within 3-5 business days.
+                  Your payment has been pre-authorized. An authorization hold has been placed on your card. 
+                  The actual charge will be processed after the cancellation period expires (typically 24 hours before your booking).
                 </p>
                 <p className="text-sm text-blue-700">
                   You will receive an email confirmation once the payment is processed.

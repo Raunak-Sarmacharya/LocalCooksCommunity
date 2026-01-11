@@ -7338,6 +7338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create PaymentIntent with Connect split if manager has account
+      // Only enable cards for pre-authorized payments (ACSS disabled)
       const paymentIntent = await createPaymentIntent({
         amount: finalAmountCents,
         currency: kitchenPricing.currency.toLowerCase(),
@@ -7345,6 +7346,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         kitchenId,
         managerConnectAccountId: managerConnectAccountId,
         applicationFeeAmount: managerConnectAccountId ? serviceFeeCents : undefined,
+        enableACSS: false, // Disable ACSS - only use card payments with pre-authorization
+        enableCards: true, // Enable card payments only
         metadata: {
           booking_date: bookingDate,
           start_time: startTime,
