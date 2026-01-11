@@ -11,12 +11,11 @@
  */
 
 import type { Pool } from '@neondatabase/serverless';
-import { getServiceFeeRate } from './pricing-service';
 
 export interface RevenueMetrics {
   totalRevenue: number;        // Total booking revenue (cents)
   platformFee: number;         // Platform commission (cents)
-  managerRevenue: number;      // Manager earnings (cents) = totalRevenue × (1 - serviceFeeRate)
+  managerRevenue: number;      // Manager earnings (cents) = totalRevenue - platformFee
   pendingPayments: number;     // Unpaid bookings (cents)
   completedPayments: number;   // Paid bookings (cents)
   averageBookingValue: number; // Average per booking (cents)
@@ -112,7 +111,8 @@ export async function getRevenueMetrics(
       paramIndex++;
     }
 
-    // Get service fee rate
+    // Get service fee rate (for reference, but we use direct subtraction now)
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Debug: Check if there are any bookings for this manager
@@ -482,7 +482,8 @@ export async function getRevenueByLocation(
       paramIndex++;
     }
 
-    // Get service fee rate
+    // Get service fee rate (for reference, but we use direct subtraction now)
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Query revenue by location
@@ -555,7 +556,8 @@ export async function getRevenueByDate(
     const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
     const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
 
-    // Get service fee rate
+    // Get service fee rate (for reference, but we use direct subtraction now)
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Query revenue by date
@@ -664,7 +666,8 @@ export async function getTransactionHistory(
       paramIndex++;
     }
 
-    // Get service fee rate
+    // Get service fee rate (for reference, but we use direct subtraction now)
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Query transactions
@@ -786,7 +789,8 @@ export async function getCompleteRevenueMetrics(
       paramIndex++;
     }
 
-    // Get service fee rate
+    // Get service fee rate (for reference, but we use direct subtraction now)
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Get storage booking revenue

@@ -3823,11 +3823,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent);
           break;
         case 'charge.refunded':
-        case 'charge.partially_refunded':
           await handleChargeRefunded(event.data.object as Stripe.Charge);
           break;
         default:
-          console.log(`Unhandled event type: ${event.type}`);
+          // Handle charge.partially_refunded and other charge events
+          if (event.type.startsWith('charge.')) {
+            await handleChargeRefunded(event.data.object as Stripe.Charge);
+          } else {
+            console.log(`Unhandled event type: ${event.type}`);
+          }
       }
 
       res.json({ received: true });
