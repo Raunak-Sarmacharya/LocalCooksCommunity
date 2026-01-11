@@ -5405,7 +5405,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (overrideResult.rows.length > 0) {
             const val = Number(overrideResult.rows[0].max_slots_per_chef);
-            if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+            if (Number.isFinite(val) && val > 0) {
+              maxSlotsPerChef = val;
+              console.log(`[Booking Limit] Using date override: ${maxSlotsPerChef} hours for kitchen ${kitchenId} on ${bookingDateStr}`);
+            }
           } else {
             // 2. Try weekly schedule for this day of week
             const dayOfWeek = bookingDateObj.getDay();
@@ -5417,11 +5420,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             if (availabilityResult.rows.length > 0) {
               const v = Number(availabilityResult.rows[0].max_slots_per_chef);
-              if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+              if (Number.isFinite(v) && v > 0) {
+                maxSlotsPerChef = v;
+                console.log(`[Booking Limit] Using weekly schedule: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (day ${dayOfWeek})`);
+              }
             } else {
               // 3. Fall back to location default
               const locationLimitResult = await pool.query(`
-                SELECT l.default_daily_booking_limit
+                SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
                 FROM locations l
                 INNER JOIN kitchens k ON k.location_id = l.id
                 WHERE k.id = $1
@@ -5429,7 +5435,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               if (locationLimitResult.rows.length > 0) {
                 const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
-                if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+                if (Number.isFinite(locVal) && locVal > 0) {
+                  maxSlotsPerChef = locVal;
+                  console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+                } else {
+                  console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
+                }
+              } else {
+                console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
               }
             }
           }
@@ -8177,7 +8190,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (overrideResult.rows.length > 0) {
             const val = Number(overrideResult.rows[0].max_slots_per_chef);
-            if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+            if (Number.isFinite(val) && val > 0) {
+              maxSlotsPerChef = val;
+              console.log(`[Booking Limit] Using date override: ${maxSlotsPerChef} hours for kitchen ${kitchenId} on ${bookingDateStr}`);
+            }
           } else {
             // 2. Try weekly schedule for this day of week
             const dayOfWeek = bookingDateObj.getDay();
@@ -8189,11 +8205,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             if (availabilityResult.rows.length > 0) {
               const v = Number(availabilityResult.rows[0].max_slots_per_chef);
-              if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+              if (Number.isFinite(v) && v > 0) {
+                maxSlotsPerChef = v;
+                console.log(`[Booking Limit] Using weekly schedule: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (day ${dayOfWeek})`);
+              }
             } else {
               // 3. Fall back to location default
               const locationLimitResult = await pool.query(`
-                SELECT l.default_daily_booking_limit
+                SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
                 FROM locations l
                 INNER JOIN kitchens k ON k.location_id = l.id
                 WHERE k.id = $1
@@ -8201,7 +8220,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
               if (locationLimitResult.rows.length > 0) {
                 const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
-                if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+                if (Number.isFinite(locVal) && locVal > 0) {
+                  maxSlotsPerChef = locVal;
+                  console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+                } else {
+                  console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
+                }
+              } else {
+                console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
               }
             }
           }

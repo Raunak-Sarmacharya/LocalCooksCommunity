@@ -18605,18 +18605,26 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
         } else {
           // 3. Fall back to location default
           const loc = await pool.query(`
-            SELECT l.default_daily_booking_limit
+            SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
             FROM locations l
             INNER JOIN kitchens k ON k.location_id = l.id
             WHERE k.id = $1
           `, [kitchenId]);
           if (loc.rows.length > 0) {
             const locVal = Number(loc.rows[0].default_daily_booking_limit);
-            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+            if (Number.isFinite(locVal) && locVal > 0) {
+              maxSlotsPerChef = locVal;
+              console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+            } else {
+              console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
+            }
+          } else {
+            console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
           }
         }
       }
-    } catch (_e) {
+    } catch (error) {
+      console.error('Error fetching daily booking limit:', error);
       // Columns might not exist yet; fallback
       maxSlotsPerChef = 2;
     }
@@ -18963,7 +18971,10 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
       `, [kitchenId, bookingDate]);
       if (over.rows.length > 0) {
         const val = Number(over.rows[0].max_slots_per_chef);
-        if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
+        if (Number.isFinite(val) && val > 0) {
+          maxSlotsPerChef = val;
+          console.log(`[Booking Limit] Using date override: ${maxSlotsPerChef} hours for kitchen ${kitchenId} on ${bookingDate}`);
+        }
       } else {
         // 2. Try weekly schedule for this day of week
         const avail = await pool.query(`
@@ -18973,22 +18984,33 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
         `, [kitchenId, bookingDate]);
         if (avail.rows.length > 0) {
           const v = Number(avail.rows[0].max_slots_per_chef);
-          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
+          if (Number.isFinite(v) && v > 0) {
+            maxSlotsPerChef = v;
+            console.log(`[Booking Limit] Using weekly schedule: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+          }
         } else {
           // 3. Fall back to location default
           const loc = await pool.query(`
-            SELECT l.default_daily_booking_limit
+            SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
             FROM locations l
             INNER JOIN kitchens k ON k.location_id = l.id
             WHERE k.id = $1
           `, [kitchenId]);
           if (loc.rows.length > 0) {
             const locVal = Number(loc.rows[0].default_daily_booking_limit);
-            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+            if (Number.isFinite(locVal) && locVal > 0) {
+              maxSlotsPerChef = locVal;
+              console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+            } else {
+              console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
+            }
+          } else {
+            console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
           }
         }
       }
-    } catch (_e) {
+    } catch (error) {
+      console.error('Error fetching daily booking limit:', error);
       maxSlotsPerChef = 2;
     }
 
@@ -19023,12 +19045,19 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
     `, [kitchenId]);
     
     let timezone = DEFAULT_TIMEZONE;
-    let minimumBookingWindowHours = 1;
+    let minimumBookingWindowHours = 1; // Default fallback
     
     if (locationData.rows.length > 0) {
       const location = locationData.rows[0];
       timezone = location.timezone || DEFAULT_TIMEZONE;
-      minimumBookingWindowHours = location.minimum_booking_window_hours || 1;
+      // Use COALESCE to handle NULL values - managers can set this to 0 to allow same-day bookings
+      const minWindow = location.minimum_booking_window_hours;
+      if (minWindow !== null && minWindow !== undefined) {
+        minimumBookingWindowHours = Number(minWindow);
+        console.log(`[Booking Window] Using location minimum booking window: ${minimumBookingWindowHours} hours for kitchen ${kitchenId}`);
+      } else {
+        console.log(`[Booking Window] Location has no minimum booking window set, using default: 1 hour`);
+      }
     }
     
     // Convert booking date to string format (YYYY-MM-DD)
@@ -21601,7 +21630,12 @@ app.post("/api/public/bookings", async (req, res) => {
 
     const location = locationResult.rows[0];
     const timezone = location.timezone || DEFAULT_TIMEZONE;
-    const minimumBookingWindowHours = location.minimum_booking_window_hours || 1;
+    // Use manager's setting - allow 0 for same-day bookings
+    const minWindow = location.minimum_booking_window_hours;
+    const minimumBookingWindowHours = (minWindow !== null && minWindow !== undefined) ? Number(minWindow) : 1;
+    if (minimumBookingWindowHours !== 1) {
+      console.log(`[Booking Window] Using location minimum booking window: ${minimumBookingWindowHours} hours`);
+    }
 
     // Convert booking date to string format (YYYY-MM-DD)
     const bookingDateStr = bookingDate.split('T')[0];
@@ -22974,7 +23008,12 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     
     const location = locationResult.rows[0];
     const timezone = location.timezone || DEFAULT_TIMEZONE;
-    const minimumBookingWindowHours = location.minimum_booking_window_hours || 1;
+    // Use manager's setting - allow 0 for same-day bookings
+    const minWindow = location.minimum_booking_window_hours;
+    const minimumBookingWindowHours = (minWindow !== null && minWindow !== undefined) ? Number(minWindow) : 1;
+    if (minimumBookingWindowHours !== 1) {
+      console.log(`[Booking Window] Using location minimum booking window: ${minimumBookingWindowHours} hours`);
+    }
 
     // Convert booking date to string format (YYYY-MM-DD)
     const bookingDateStr = bookingDate.split('T')[0];
@@ -23032,7 +23071,7 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
         } else {
           // 3. Fall back to location default
           const locationLimitResult = await pool.query(`
-            SELECT l.default_daily_booking_limit
+            SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
             FROM locations l
             INNER JOIN kitchens k ON k.location_id = l.id
             WHERE k.id = $1
@@ -23040,11 +23079,19 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
           
           if (locationLimitResult.rows.length > 0) {
             const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
-            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
+            if (Number.isFinite(locVal) && locVal > 0) {
+              maxSlotsPerChef = locVal;
+              console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+            } else {
+              console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
+            }
+          } else {
+            console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
           }
         }
       }
     } catch (error) {
+      console.error('Error fetching daily booking limit:', error);
       // Columns might not exist yet; use default
       maxSlotsPerChef = 2;
     }
