@@ -120,7 +120,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       statement_descriptor: cleanDescriptor,
       // Manual capture: place authorization hold, capture after cancellation period expires
       // This allows chefs to cancel within the cancellation window without being charged
-      capture_method: 'manual',
+      capture_method: 'automatic',
       metadata: {
         booking_type: 'kitchen',
         kitchen_id: kitchenId.toString(),
@@ -129,6 +129,36 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
         ...metadata,
       },
     };
+
+    // Initialize payment_method_options object
+    paymentIntentParams.payment_method_options = {};
+
+    // Configure card payments with manual capture (pre-authorization)
+    // Manual capture: place authorization hold, capture after cancellation period expires
+    // This allows chefs to cancel within the cancellation window without being charged
+    if (enableCards) {
+      paymentIntentParams.payment_method_options.card = {
+        capture_method: 'automatic',
+      };
+    }
+
+    // Configure ACSS debit for pre-authorized debits (mandate-based)
+    // NOTE: ACSS does NOT support manual capture/authorization holds like cards do.
+    // ACSS payments process immediately when confirmed (automatic capture).
+    // However, ACSS mandates allow future charges without re-entering bank details
+    // (similar to saved cards). Using 'combined' payment schedule creates a mandate
+    // that allows future charges. This is the standard way Canadian companies handle
+    // handle pre-authorized debits.
+    if (enableACSS) {
+      paymentIntentParams.payment_method_options.acss_debit = {
+        mandate_options: {
+          payment_schedule: 'combined', // Creates a mandate for pre-authorized debits
+          transaction_type: 'personal', // Default to personal, can be made configurable
+          interval_description: 'Payment for kitchen booking and future bookings as authorized', // Required for 'combined' or 'interval' payment schedules
+        },
+      };
+      // ACSS uses automatic capture by default (cannot be changed)
+    }
 
     // Save card for future off-session payments (like Uber's one-tap payments)
     // This allows charging the customer's saved card for future orders without them being present
@@ -141,26 +171,6 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     // This creates/uses a Stripe Customer to save payment methods for future use
     if (customerId) {
       paymentIntentParams.customer = customerId;
-    }
-
-    // Configure ACSS debit for pre-authorized debits (mandate-based)
-    // NOTE: ACSS does NOT support manual capture/authorization holds like cards do.
-    // ACSS payments process immediately when confirmed. However, ACSS mandates allow
-    // future charges without re-entering bank details (similar to saved cards).
-    // Using 'combined' payment schedule creates a mandate that allows future charges.
-    // This is the standard way Canadian companies handle pre-authorized debits.
-    if (enableACSS) {
-      paymentIntentParams.payment_method_options = {
-        acss_debit: {
-          mandate_options: {
-            payment_schedule: 'combined', // Creates a mandate for pre-authorized debits
-            transaction_type: 'personal', // Default to personal, can be made configurable
-            interval_description: 'Payment for kitchen booking and future bookings as authorized', // Required for 'combined' or 'interval' payment schedules
-          },
-        },
-      };
-      // Note: ACSS will process immediately even with capture_method: 'manual'
-      // Manual capture only applies to card payments
     }
 
     // Add Stripe Connect split payment if manager has Connect account
