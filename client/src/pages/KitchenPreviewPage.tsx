@@ -860,7 +860,7 @@ export default function KitchenPreviewPage() {
                     {location.kitchenLicenseStatus === 'approved' && (
                       <Badge className="bg-green-100 text-green-800 border-green-200 text-xs">
                         <Check className="h-3 w-3 mr-1" />
-                        Approved
+                        Licensed Kitchen
                       </Badge>
                     )}
                   </div>
