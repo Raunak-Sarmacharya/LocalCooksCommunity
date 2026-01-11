@@ -1,11 +1,13 @@
 import { useMemo } from "react";
-import { differenceInDays } from "date-fns";
+import { differenceInDays, differenceInHours } from "date-fns";
 
 interface StorageListing {
   id: number;
   name: string;
-  basePrice: number; // Daily rate in dollars
-  minimumBookingDuration: number; // Minimum days required
+  basePrice: number; // Base price in dollars (interpretation depends on pricingModel)
+  pricingModel?: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
+  minimumBookingDuration: number; // Minimum duration required
+  bookingDurationUnit?: 'hourly' | 'daily' | 'monthly';
   photos?: string[];
 }
 
@@ -20,6 +22,7 @@ interface StoragePricingItem {
   startDate: Date;
   endDate: Date;
   days: number;
+  hours: number; // Always set (0 for non-hourly pricing models)
   basePrice: number;
   serviceFee: number;
   total: number;
@@ -53,22 +56,43 @@ export function useStoragePricing(
       };
     }
 
-    const items: StoragePricingItem[] = selectedStorage
+    const items = selectedStorage
       .map((selection) => {
         const listing = storageListings.find((s) => s.id === selection.storageListingId);
         if (!listing) return null;
 
-        // Calculate number of days
-        const days = Math.ceil(
-          differenceInDays(selection.endDate, selection.startDate)
-        );
+        // Get pricing model (default to 'daily' for backwards compatibility)
+        const pricingModel = listing.pricingModel || 'daily';
         
-        // Enforce minimum booking duration
-        const minDays = listing.minimumBookingDuration || 1;
-        const effectiveDays = Math.max(days, minDays);
+        let basePrice = 0;
+        let effectiveDays = 0;
+        let effectiveHours = 0;
         
-        // Calculate pricing
-        const basePrice = listing.basePrice * effectiveDays;
+        if (pricingModel === 'monthly-flat') {
+          // Flat rate - no multiplication by duration
+          basePrice = listing.basePrice;
+          effectiveDays = Math.ceil(
+            differenceInDays(selection.endDate, selection.startDate)
+          );
+        } else if (pricingModel === 'hourly') {
+          // Calculate by hours
+          const hours = Math.ceil(
+            differenceInHours(selection.endDate, selection.startDate)
+          );
+          const minHours = listing.minimumBookingDuration || 1;
+          effectiveHours = Math.max(hours, minHours);
+          basePrice = listing.basePrice * effectiveHours;
+          effectiveDays = Math.ceil(effectiveHours / 24); // For display purposes
+        } else {
+          // Default: 'daily' or any other model - calculate by days
+          const days = Math.ceil(
+            differenceInDays(selection.endDate, selection.startDate)
+          );
+          const minDays = listing.minimumBookingDuration || 1;
+          effectiveDays = Math.max(days, minDays);
+          basePrice = listing.basePrice * effectiveDays;
+        }
+        
         const serviceFee = basePrice * 0.05; // 5% service fee
         const total = basePrice + serviceFee;
 
@@ -77,6 +101,7 @@ export function useStoragePricing(
           startDate: selection.startDate,
           endDate: selection.endDate,
           days: effectiveDays,
+          hours: effectiveHours,
           basePrice,
           serviceFee,
           total,
