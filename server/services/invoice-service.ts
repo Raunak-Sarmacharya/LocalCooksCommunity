@@ -65,7 +65,7 @@ export async function generateInvoicePDF(
       }
       // Fall back to recalculating from pricing service
       else if (dbPool && startTime && endTime) {
-        const { calculateKitchenBookingPrice } = await import('./pricing-service');
+        const { calculateKitchenBookingPrice } = await import('./pricing-service.js');
         const kitchenPricing = await calculateKitchenBookingPrice(
           kitchenId,
           startTime,
@@ -210,7 +210,7 @@ export async function generateInvoicePDF(
   // Get service fee rate from platform settings
   if (dbPool) {
     try {
-      const { getServiceFeeRate } = await import('./pricing-service');
+      const { getServiceFeeRate } = await import('./pricing-service.js');
       serviceFeeRate = await getServiceFeeRate(dbPool);
     } catch (error) {
       console.error('Error getting service fee rate for invoice:', error);

@@ -25,7 +25,7 @@ export async function generatePayoutStatementPDF(
   let serviceFeeRate = 0.05; // Default
   if (dbPool) {
     try {
-      const { getServiceFeeRate } = await import('./pricing-service');
+      const { getServiceFeeRate } = await import('./pricing-service.js');
       serviceFeeRate = await getServiceFeeRate(dbPool);
     } catch (error) {
       console.error('Error getting service fee rate for payout statement:', error);

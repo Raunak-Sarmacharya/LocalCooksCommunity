@@ -107,7 +107,7 @@ export async function getRevenueMetrics(
     }
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service');
+    const { getServiceFeeRate } = await import('./pricing-service.js');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Debug: Check if there are any bookings for this manager
@@ -499,7 +499,7 @@ export async function getRevenueByLocation(
     }
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service');
+    const { getServiceFeeRate } = await import('./pricing-service.js');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Query revenue by location
@@ -573,7 +573,7 @@ export async function getRevenueByDate(
     const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service');
+    const { getServiceFeeRate } = await import('./pricing-service.js');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Query revenue by date
@@ -687,7 +687,7 @@ export async function getTransactionHistory(
     }
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service');
+    const { getServiceFeeRate } = await import('./pricing-service.js');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Query transactions
@@ -714,7 +714,7 @@ export async function getTransactionHistory(
         l.id as location_id,
         l.name as location_name,
         u.username as chef_name,
-        u.email as chef_email,
+        u.username as chef_email,
         kb.created_at
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
@@ -779,7 +779,7 @@ export async function getCompleteRevenueMetrics(
     
     // Try to use payment_transactions first (more accurate and faster)
     try {
-      const { getRevenueMetricsFromTransactions } = await import('./revenue-service-v2');
+      const { getRevenueMetricsFromTransactions } = await import('./revenue-service-v2.js');
       const metrics = await getRevenueMetricsFromTransactions(managerId, dbPool, startDate, endDate, locationId);
       console.log('[Revenue Service] Using payment_transactions for revenue metrics');
       return metrics;
@@ -821,7 +821,7 @@ export async function getCompleteRevenueMetrics(
     }
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service');
+    const { getServiceFeeRate } = await import('./pricing-service.js');
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Get storage booking revenue

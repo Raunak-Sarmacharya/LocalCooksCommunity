@@ -25,7 +25,7 @@ export async function getRevenueMetricsFromTransactions(
     // regardless of date filters - managers need to see all their revenue (completed + pre-authorized).
     // Pending/processing payments represent pre-authorized revenue that should always be counted.
     // Date filters are only used for display/breakdown purposes, not for total revenue calculation.
-    let whereClause = `WHERE pt.manager_id = $1`;
+    // Handle NULL manager_id by joining with locations through bookings
     const params: any[] = [managerId];
     let paramIndex = 2;
 
@@ -34,37 +34,9 @@ export async function getRevenueMetricsFromTransactions(
     // - ALL pending/processing transactions (all pre-authorized payments)
     // Date filters don't affect total revenue - they're only for breakdown/display
     // This ensures managers see all committed revenue (both captured and pre-authorized)
-    whereClause += ` AND (pt.status = 'succeeded' OR pt.status IN ('pending', 'processing'))`;
+    // We'll handle the manager_id check in the main query with a JOIN
 
     if (locationId) {
-      // Join with bookings to filter by location
-      // Keep the date filtering logic (all succeeded + filtered pending/processing)
-      const locationFilter = `AND EXISTS (
-        SELECT 1 FROM kitchens k
-        JOIN locations l ON k.location_id = l.id
-        WHERE (
-          (pt.booking_type = 'kitchen' AND pt.booking_id IN (
-            SELECT id FROM kitchen_bookings WHERE kitchen_id = k.id
-          ))
-          OR (pt.booking_type = 'storage' AND pt.booking_id IN (
-            SELECT sb.id FROM storage_bookings sb
-            JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-            WHERE sl.kitchen_id = k.id
-          ))
-          OR (pt.booking_type = 'equipment' AND pt.booking_id IN (
-            SELECT eb.id FROM equipment_bookings eb
-            JOIN equipment_listings el ON eb.equipment_listing_id = el.id
-            WHERE el.kitchen_id = k.id
-          ))
-          OR (pt.booking_type = 'bundle' AND pt.booking_id IN (
-            SELECT id FROM kitchen_bookings WHERE kitchen_id = k.id
-          ))
-        )
-        AND l.id = $${paramIndex}
-      )`;
-      
-      // Add location filter to existing where clause
-      whereClause += ` ${locationFilter}`;
       params.push(locationId);
       paramIndex++;
     }
@@ -85,11 +57,17 @@ export async function getRevenueMetricsFromTransactions(
       throw new Error('payment_transactions table does not exist');
     }
     
-    // Check if there are any transactions for this manager
+    // Check if there are any transactions for this manager (including NULL manager_id resolved through locations)
     const countCheck = await dbPool.query(`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
-      WHERE pt.manager_id = $1
+      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
+      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+      LEFT JOIN locations l ON k.location_id = l.id
+      WHERE (
+        pt.manager_id = $1 
+        OR (pt.manager_id IS NULL AND l.manager_id = $1)
+      )
         AND pt.booking_type IN ('kitchen', 'bundle')
     `, [managerId]);
     
@@ -99,6 +77,7 @@ export async function getRevenueMetricsFromTransactions(
     // Check how many bookings have payment_transactions vs total bookings
     // If not all bookings have payment_transactions, we should fall back to legacy method
     // This check includes both kitchen and bundle bookings
+    // Handle NULL manager_id by joining with locations
     const bookingCountCheck = await dbPool.query(`
       SELECT 
         COUNT(DISTINCT kb.id) as total_bookings,
@@ -108,10 +87,10 @@ export async function getRevenueMetricsFromTransactions(
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN payment_transactions pt_kitchen ON pt_kitchen.booking_id = kb.id 
         AND pt_kitchen.booking_type = 'kitchen'
-        AND pt_kitchen.manager_id = $1
+        AND (pt_kitchen.manager_id = $1 OR (pt_kitchen.manager_id IS NULL AND l.manager_id = $1))
       LEFT JOIN payment_transactions pt_bundle ON pt_bundle.booking_id = kb.id 
         AND pt_bundle.booking_type = 'bundle'
-        AND pt_bundle.manager_id = $1
+        AND (pt_bundle.manager_id = $1 OR (pt_bundle.manager_id IS NULL AND l.manager_id = $1))
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
         AND (kb.payment_intent_id IS NOT NULL OR kb.total_price IS NOT NULL)
@@ -138,6 +117,12 @@ export async function getRevenueMetricsFromTransactions(
     // Get all revenue metrics from payment_transactions
     // Use bundle transactions when available (they include kitchen + storage + equipment)
     // Only count bundle transactions OR kitchen-only transactions (not both to avoid double counting)
+    // Handle NULL manager_id by joining with locations through bookings
+    let locationFilter = '';
+    if (locationId) {
+      locationFilter = `AND l.id = $${paramIndex}`;
+    }
+    
     const result = await dbPool.query(`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
@@ -151,16 +136,27 @@ export async function getRevenueMetricsFromTransactions(
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value
       FROM payment_transactions pt
-      ${whereClause}
+      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
+      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+      LEFT JOIN locations l ON k.location_id = l.id
+      WHERE (
+        pt.manager_id = $1 
+        OR (pt.manager_id IS NULL AND l.manager_id = $1)
+      )
+        AND (pt.status = 'succeeded' OR pt.status IN ('pending', 'processing'))
         AND pt.booking_type IN ('kitchen', 'bundle')
+        ${locationFilter}
         -- Exclude kitchen transactions that are part of a bundle (to avoid double counting)
         AND NOT (
           pt.booking_type = 'kitchen' 
           AND EXISTS (
             SELECT 1 FROM payment_transactions pt2
+            LEFT JOIN kitchen_bookings kb2 ON pt2.booking_id = kb2.id AND pt2.booking_type IN ('kitchen', 'bundle')
+            LEFT JOIN kitchens k2 ON kb2.kitchen_id = k2.id
+            LEFT JOIN locations l2 ON k2.location_id = l2.id
             WHERE pt2.booking_id = pt.booking_id
               AND pt2.booking_type = 'bundle'
-              AND pt2.manager_id = pt.manager_id
+              AND (pt2.manager_id = $1 OR (pt2.manager_id IS NULL AND l2.manager_id = $1))
           )
         )
     `, params);
