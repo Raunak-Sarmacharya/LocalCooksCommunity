@@ -13920,7 +13920,14 @@ app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireMan
       SELECT 
         kb.id as booking_id,
         kb.booking_date,
-        kb.total_price::bigint as total_price,
+        COALESCE(
+          kb.total_price,
+          CASE 
+            WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+            THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+            ELSE 0
+          END
+        )::bigint as total_price,
         kb.payment_status,
         k.name as kitchen_name,
         l.name as location_name,
@@ -13935,15 +13942,21 @@ app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireMan
     `, [...params, parseInt(limit), parseInt(offset)]);
 
     res.json({
-      invoices: result.rows.map(row => ({
-        bookingId: row.booking_id,
-        bookingDate: row.booking_date,
-        totalPrice: parseInt(row.total_price) / 100,
-        paymentStatus: row.payment_status,
-        kitchenName: row.kitchen_name,
-        locationName: row.location_name,
-        chefName: row.chef_name || 'Guest',
-      })),
+      invoices: result.rows.map(row => {
+        // Handle null/undefined total_price gracefully
+        const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
+        const totalPrice = totalPriceCents / 100;
+        
+        return {
+          bookingId: row.booking_id,
+          bookingDate: row.booking_date,
+          totalPrice: totalPrice,
+          paymentStatus: row.payment_status,
+          kitchenName: row.kitchen_name,
+          locationName: row.location_name,
+          chefName: row.chef_name || 'Guest',
+        };
+      }),
       total: result.rows.length
     });
   } catch (error) {

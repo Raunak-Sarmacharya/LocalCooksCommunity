@@ -136,26 +136,67 @@ export async function getRevenueMetrics(
     });
 
     // Query completed/paid payments with date filter
-    // Note: We filter out bookings with NULL total_price to only count bookings with pricing
+    // Calculate effective total_price: use total_price if available, otherwise calculate from hourly_rate * duration_hours
     // Also handle numeric type properly by casting to numeric first, then to bigint
     const result = await dbPool.query(`
       SELECT 
-        COALESCE(SUM(COALESCE(kb.total_price, 0)::numeric), 0)::bigint as total_revenue,
+        COALESCE(SUM(
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric
+        ), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COUNT(CASE WHEN kb.payment_status IN ('pending', 'processing') THEN 1 END)::int as pending_count,
         COUNT(CASE WHEN kb.status = 'cancelled' THEN 1 END)::int as cancelled_count,
         COUNT(CASE WHEN kb.payment_status = 'refunded' OR kb.payment_status = 'partially_refunded' THEN 1 END)::int as refunded_count,
-        COALESCE(SUM(CASE WHEN kb.payment_status = 'paid' THEN COALESCE(kb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN kb.payment_status IN ('pending', 'processing') THEN COALESCE(kb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments,
-        COALESCE(SUM(CASE WHEN kb.payment_status = 'refunded' OR kb.payment_status = 'partially_refunded' THEN COALESCE(kb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as refunded_amount,
-        COALESCE(AVG(COALESCE(kb.total_price, 0)::numeric), 0)::numeric as avg_booking_value
+        COALESCE(SUM(CASE WHEN kb.payment_status = 'paid' THEN 
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric ELSE 0 END), 0)::bigint as completed_payments,
+        COALESCE(SUM(CASE WHEN kb.payment_status IN ('pending', 'processing') THEN 
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric ELSE 0 END), 0)::bigint as pending_payments,
+        COALESCE(SUM(CASE WHEN kb.payment_status = 'refunded' OR kb.payment_status = 'partially_refunded' THEN 
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric ELSE 0 END), 0)::bigint as refunded_amount,
+        COALESCE(AVG(
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric
+        ), 0)::numeric as avg_booking_value
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${whereClause}
-        AND kb.total_price IS NOT NULL
     `, params);
 
     // Query ALL pending payments (pre-authorized) regardless of booking date
@@ -166,7 +207,6 @@ export async function getRevenueMetrics(
     let pendingWhereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
-        AND kb.total_price IS NOT NULL
         AND (
           kb.payment_status = 'pending' 
           OR kb.payment_status = 'processing'
@@ -184,7 +224,16 @@ export async function getRevenueMetrics(
 
     const pendingResult = await dbPool.query(`
       SELECT 
-        COALESCE(SUM(COALESCE(kb.total_price, 0)::numeric), 0)::bigint as pending_payments_all,
+        COALESCE(SUM(
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric
+        ), 0)::bigint as pending_payments_all,
         COUNT(*)::int as pending_count_all
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
@@ -210,7 +259,6 @@ export async function getRevenueMetrics(
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
         AND kb.payment_status = 'paid'
-        AND kb.total_price IS NOT NULL
     `;
     const completedParams: any[] = [managerId];
     let completedParamIndex = 2;
@@ -223,7 +271,16 @@ export async function getRevenueMetrics(
 
     const completedResult = await dbPool.query(`
       SELECT 
-        COALESCE(SUM(COALESCE(kb.total_price, 0)::numeric), 0)::bigint as completed_payments_all,
+        COALESCE(SUM(
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric
+        ), 0)::bigint as completed_payments_all,
         COUNT(*)::int as completed_count_all
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
@@ -253,14 +310,46 @@ export async function getRevenueMetrics(
     if (result.rows.length === 0) {
       // Even if no bookings in date range, check if there are pending or completed payments
       // Calculate revenue based on all payments (completed + pending)
+      // We need to get the service fees for these payments too
+      const pendingServiceFeeResult = await dbPool.query(`
+        SELECT 
+          COALESCE(SUM(
+            COALESCE(kb.service_fee, 0)::numeric
+          ), 0)::bigint as pending_service_fee
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        ${pendingWhereClause}
+      `, pendingParams);
+      
+      const completedServiceFeeResult = await dbPool.query(`
+        SELECT 
+          COALESCE(SUM(
+            COALESCE(kb.service_fee, 0)::numeric
+          ), 0)::bigint as completed_service_fee
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        ${completedWhereClause}
+      `, completedParams);
+      
+      const pendingServiceFee = typeof pendingServiceFeeResult.rows[0]?.pending_service_fee === 'string'
+        ? parseInt(pendingServiceFeeResult.rows[0].pending_service_fee) || 0
+        : (pendingServiceFeeResult.rows[0]?.pending_service_fee ? parseInt(String(pendingServiceFeeResult.rows[0].pending_service_fee)) : 0);
+      
+      const completedServiceFee = typeof completedServiceFeeResult.rows[0]?.completed_service_fee === 'string'
+        ? parseInt(completedServiceFeeResult.rows[0].completed_service_fee) || 0
+        : (completedServiceFeeResult.rows[0]?.completed_service_fee ? parseInt(String(completedServiceFeeResult.rows[0].completed_service_fee)) : 0);
+      
       const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-      const managerRevenue = calculateManagerRevenue(totalRevenueWithAllPayments, serviceFeeRate);
-      const totalPlatformFee = Math.round(totalRevenueWithAllPayments * serviceFeeRate);
+      const totalServiceFee = pendingServiceFee + completedServiceFee;
+      // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+      const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
       
       return {
         totalRevenue: totalRevenueWithAllPayments || 0,
-        platformFee: totalPlatformFee || 0,
-        managerRevenue,
+        platformFee: totalServiceFee || 0,
+        managerRevenue: managerRevenue || 0,
         pendingPayments: allPendingPayments,
         completedPayments: allCompletedPayments, // Show ALL completed payments, not just in date range
         averageBookingValue: 0,
@@ -297,18 +386,46 @@ export async function getRevenueMetrics(
     // This gives managers complete visibility into all revenue (historical + future committed)
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
     
-    // Calculate manager revenue dynamically based on total revenue including all payments
-    // If service_fee_rate = 0, manager gets 100%
-    // If service_fee_rate = 0.20, manager gets 80%
-    const managerRevenue = calculateManagerRevenue(totalRevenueWithAllPayments, serviceFeeRate);
+    // Get service fees for all payments (pending + completed)
+    const pendingServiceFeeResult = await dbPool.query(`
+      SELECT 
+        COALESCE(SUM(
+          COALESCE(kb.service_fee, 0)::numeric
+        ), 0)::bigint as pending_service_fee
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      ${pendingWhereClause}
+    `, pendingParams);
     
-    // Platform fee should also be calculated on total including all payments
-    const totalPlatformFee = Math.round(totalRevenueWithAllPayments * serviceFeeRate);
+    const completedServiceFeeResult = await dbPool.query(`
+      SELECT 
+        COALESCE(SUM(
+          COALESCE(kb.service_fee, 0)::numeric
+        ), 0)::bigint as completed_service_fee
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      ${completedWhereClause}
+    `, completedParams);
+    
+    const pendingServiceFee = typeof pendingServiceFeeResult.rows[0]?.pending_service_fee === 'string'
+      ? parseInt(pendingServiceFeeResult.rows[0].pending_service_fee) || 0
+      : (pendingServiceFeeResult.rows[0]?.pending_service_fee ? parseInt(String(pendingServiceFeeResult.rows[0].pending_service_fee)) : 0);
+    
+    const completedServiceFee = typeof completedServiceFeeResult.rows[0]?.completed_service_fee === 'string'
+      ? parseInt(completedServiceFeeResult.rows[0].completed_service_fee) || 0
+      : (completedServiceFeeResult.rows[0]?.completed_service_fee ? parseInt(String(completedServiceFeeResult.rows[0].completed_service_fee)) : 0);
+    
+    const totalServiceFee = pendingServiceFee + completedServiceFee;
+    
+    // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+    const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
 
     return {
       totalRevenue: totalRevenueWithAllPayments || 0,
-      platformFee: totalPlatformFee || 0,
-      managerRevenue,
+      platformFee: totalServiceFee || 0,
+      managerRevenue: managerRevenue || 0,
       pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
       completedPayments: allCompletedPayments, // Use ALL completed payments, not just those in date range
       averageBookingValue: row.avg_booking_value 
@@ -373,7 +490,16 @@ export async function getRevenueByLocation(
       SELECT 
         l.id as location_id,
         l.name as location_name,
-        COALESCE(SUM(COALESCE(kb.total_price, 0)::numeric), 0)::bigint as total_revenue,
+        COALESCE(SUM(
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric
+        ), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count
@@ -381,7 +507,6 @@ export async function getRevenueByLocation(
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${whereClause}
-        AND kb.total_price IS NOT NULL
       GROUP BY l.id, l.name
       ORDER BY total_revenue DESC
     `, params);
@@ -393,12 +518,14 @@ export async function getRevenueByLocation(
       const platformFee = typeof row.platform_fee === 'string'
         ? parseInt(row.platform_fee) || 0
         : (row.platform_fee ? parseInt(String(row.platform_fee)) : 0);
+      // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+      const managerRevenue = totalRevenue - platformFee;
       return {
         locationId: parseInt(row.location_id),
         locationName: row.location_name,
         totalRevenue,
         platformFee,
-        managerRevenue: calculateManagerRevenue(totalRevenue, serviceFeeRate),
+        managerRevenue: managerRevenue || 0,
         bookingCount: parseInt(row.booking_count) || 0,
         paidBookingCount: parseInt(row.paid_count) || 0,
       };
@@ -435,7 +562,16 @@ export async function getRevenueByDate(
     const result = await dbPool.query(`
       SELECT 
         DATE(kb.booking_date)::text as date,
-        COALESCE(SUM(COALESCE(kb.total_price, 0)::numeric), 0)::bigint as total_revenue,
+        COALESCE(SUM(
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::numeric
+        ), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
         COUNT(*)::int as booking_count
       FROM kitchen_bookings kb
@@ -443,7 +579,6 @@ export async function getRevenueByDate(
       JOIN locations l ON k.location_id = l.id
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
-        AND kb.total_price IS NOT NULL
         AND DATE(kb.booking_date) >= $2::date
         AND DATE(kb.booking_date) <= $3::date
       GROUP BY DATE(kb.booking_date)
@@ -464,11 +599,13 @@ export async function getRevenueByDate(
       const platformFee = typeof row.platform_fee === 'string'
         ? parseInt(row.platform_fee) || 0
         : (row.platform_fee ? parseInt(String(row.platform_fee)) : 0);
+      // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+      const managerRevenue = totalRevenue - platformFee;
       return {
         date: row.date,
         totalRevenue,
         platformFee,
-        managerRevenue: calculateManagerRevenue(totalRevenue, serviceFeeRate),
+        managerRevenue: managerRevenue || 0,
         bookingCount: parseInt(row.booking_count) || 0,
       };
     });
@@ -537,8 +674,15 @@ export async function getTransactionHistory(
         kb.booking_date,
         kb.start_time,
         kb.end_time,
-        kb.total_price::bigint as total_price,
-        kb.service_fee::bigint as service_fee,
+        COALESCE(
+          kb.total_price,
+          CASE 
+            WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+            THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+            ELSE 0
+          END
+        )::bigint as total_price,
+        COALESCE(kb.service_fee, 0)::bigint as service_fee,
         kb.payment_status,
         kb.payment_intent_id,
         kb.status,
@@ -559,15 +703,20 @@ export async function getTransactionHistory(
     `, [...params, limit, offset]);
 
     return result.rows.map((row: any) => {
-      const totalRevenue = parseInt(row.total_price) || 0;
+      // Handle null/undefined total_price gracefully
+      const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
+      const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
+      // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+      const managerRevenue = totalPriceCents - serviceFeeCents;
+      
       return {
         id: row.id,
         bookingDate: row.booking_date,
         startTime: row.start_time,
         endTime: row.end_time,
-        totalPrice: totalRevenue,
-        serviceFee: parseInt(row.service_fee) || 0,
-        managerRevenue: calculateManagerRevenue(totalRevenue, serviceFeeRate),
+        totalPrice: totalPriceCents,
+        serviceFee: serviceFeeCents,
+        managerRevenue: managerRevenue || 0,
         paymentStatus: row.payment_status,
         paymentIntentId: row.payment_intent_id,
         status: row.status,
@@ -722,12 +871,13 @@ export async function getCompleteRevenueMetrics(
       parseNumeric(storageRow.platform_fee) + 
       parseNumeric(equipmentRow.platform_fee);
 
-    const managerRevenue = calculateManagerRevenue(totalRevenue, serviceFeeRate);
+    // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+    const managerRevenue = totalRevenue - platformFee;
 
     const finalMetrics = {
       totalRevenue,
       platformFee,
-      managerRevenue,
+      managerRevenue: managerRevenue || 0,
       pendingPayments: kitchenMetrics.pendingPayments + 
         parseNumeric(storageRow.pending_payments) + 
         parseNumeric(equipmentRow.pending_payments),
