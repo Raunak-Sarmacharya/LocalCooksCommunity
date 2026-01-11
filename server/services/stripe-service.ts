@@ -155,6 +155,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
           mandate_options: {
             payment_schedule: 'combined', // Creates a mandate for pre-authorized debits
             transaction_type: 'personal', // Default to personal, can be made configurable
+            interval_description: 'Payment for kitchen booking and future bookings as authorized', // Required for 'combined' or 'interval' payment schedules
           },
         },
       };

@@ -7277,7 +7277,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             frontend: expectedAmountCents,
             frontendDollars: (expectedAmountCents / 100).toFixed(2),
             difference,
-            differenceDollars: (difference / 100).toFixed(2)
+            differenceDollars: (difference / 100).toFixed(2),
+            breakdown: {
+              kitchenBase: kitchenPricing.totalPriceCents,
+              kitchenBaseDollars: (kitchenPricing.totalPriceCents / 100).toFixed(2),
+              storageEquipmentAddons: totalPriceCents - kitchenPricing.totalPriceCents,
+              storageEquipmentAddonsDollars: ((totalPriceCents - kitchenPricing.totalPriceCents) / 100).toFixed(2),
+              serviceFee: serviceFeeCents,
+              serviceFeeDollars: (serviceFeeCents / 100).toFixed(2),
+            },
+            selectedStorage: selectedStorage?.length || 0,
+            selectedEquipment: selectedEquipmentIds?.length || 0,
           });
         } else {
           console.log('Using frontend-calculated amount:', {
