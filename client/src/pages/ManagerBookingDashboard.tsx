@@ -63,16 +63,42 @@ interface Kitchen {
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
-  if (token) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  }
-  return {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  
+  try {
+    const { auth } = await import('@/lib/firebase');
+    const currentUser = auth.currentUser;
+    
+    if (currentUser?.uid) {
+      // Get fresh Firebase token
+      try {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+          return headers;
+        }
+      } catch (tokenError) {
+        console.error('Failed to get Firebase token:', tokenError);
+      }
+    }
+    
+    // Fallback to localStorage if Firebase auth not ready
+    const storedToken = localStorage.getItem('firebaseToken');
+    if (storedToken) {
+      headers['Authorization'] = `Bearer ${storedToken}`;
+    }
+  } catch (error) {
+    console.error('Error getting auth headers:', error);
+    // Fallback to localStorage
+    const storedToken = localStorage.getItem('firebaseToken');
+    if (storedToken) {
+      headers['Authorization'] = `Bearer ${storedToken}`;
+    }
+  }
+  
+  return headers;
 }
 
 type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue';
