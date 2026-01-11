@@ -9,7 +9,7 @@ import {
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 
 // Safe Icon Component to prevent crashes
@@ -94,7 +94,11 @@ import {
     X,
     Users,
     Building2,
-    Menu
+    Menu,
+    TrendingUp,
+    BarChart3,
+    Loader2,
+    Eye
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -120,6 +124,8 @@ function AdminDashboard() {
       setActiveTab("chef-kitchen-access");
     } else if (activeCategory === "communications" && activeTab !== "promos") {
       setActiveTab("promos");
+    } else if (activeCategory === "revenue" && activeTab !== "manager-revenues" && activeTab !== "platform-overview") {
+      setActiveTab("manager-revenues");
     } else if (activeCategory === "settings" && activeTab !== "platform-settings" && activeTab !== "account-settings") {
       setActiveTab("platform-settings");
     }
@@ -1209,6 +1215,18 @@ function AdminDashboard() {
                   Communications
                 </Button>
                 <Button
+                  variant={activeCategory === "revenue" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveCategory("revenue");
+                    setActiveTab("manager-revenues");
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <DollarSign className="h-4 w-4" />
+                  Revenue
+                </Button>
+                <Button
                   variant={activeCategory === "settings" ? "default" : "outline"}
                   size="sm"
                   onClick={() => {
@@ -1259,6 +1277,19 @@ function AdminDashboard() {
                     <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
                       <Gift className="h-4 w-4" />
                       Send Promo Codes
+                    </TabsTrigger>
+                  </TabsList>
+                )}
+
+                {activeCategory === "revenue" && (
+                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                    <TabsTrigger value="manager-revenues" className="flex items-center gap-2 rounded-lg">
+                      <Users className="h-4 w-4" />
+                      Manager Revenues
+                    </TabsTrigger>
+                    <TabsTrigger value="platform-overview" className="flex items-center gap-2 rounded-lg">
+                      <DollarSign className="h-4 w-4" />
+                      Platform Overview
                     </TabsTrigger>
                   </TabsList>
                 )}
@@ -1582,6 +1613,16 @@ function AdminDashboard() {
                   </div>
                   <ChangePassword role="admin" />
                 </div>
+              </TabsContent>
+
+              {/* Manager Revenues Tab Content */}
+              <TabsContent value="manager-revenues" className="mt-0">
+                <AdminManagerRevenuesView getFirebaseToken={getFirebaseToken} />
+              </TabsContent>
+
+              {/* Platform Overview Tab Content */}
+              <TabsContent value="platform-overview" className="mt-0">
+                <AdminPlatformRevenueView getFirebaseToken={getFirebaseToken} />
               </TabsContent>
               </Tabs>
             </div>
@@ -3159,6 +3200,428 @@ function PlatformSettingsView() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// Admin Manager Revenues View Component
+function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () => Promise<string> }) {
+  const [dateRange, setDateRange] = useState<'week' | 'month' | 'all'>('month');
+  const [selectedManager, setSelectedManager] = useState<number | 'all'>('all');
+
+  // Calculate date range
+  const dateRangeParams = useMemo(() => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    let startDate: Date;
+
+    switch (dateRange) {
+      case 'week':
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - 7);
+        break;
+      case 'month':
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      default:
+        startDate = new Date(0); // All time
+    }
+
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0],
+    };
+  }, [dateRange]);
+
+  // Fetch all managers revenue
+  const { data: managersRevenue, isLoading } = useQuery({
+    queryKey: ['/api/admin/revenue/all-managers', dateRangeParams.startDate, dateRangeParams.endDate],
+    queryFn: async () => {
+      const token = await getFirebaseToken();
+      const params = new URLSearchParams({
+        startDate: dateRangeParams.startDate,
+        endDate: dateRangeParams.endDate,
+      });
+      
+      const response = await fetch(`/api/admin/revenue/all-managers?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch managers revenue');
+      }
+      return response.json();
+    },
+  });
+
+  // Fetch specific manager details if selected
+  const { data: managerDetails } = useQuery({
+    queryKey: ['/api/admin/revenue/manager', selectedManager, dateRangeParams.startDate, dateRangeParams.endDate],
+    queryFn: async () => {
+      if (selectedManager === 'all') return null;
+      const token = await getFirebaseToken();
+      const params = new URLSearchParams({
+        startDate: dateRangeParams.startDate,
+        endDate: dateRangeParams.endDate,
+      });
+      
+      const response = await fetch(`/api/admin/revenue/manager/${selectedManager}?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch manager revenue details');
+      }
+      return response.json();
+    },
+    enabled: selectedManager !== 'all',
+  });
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-CA', {
+      style: 'currency',
+      currency: 'CAD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Manager Revenues</h3>
+          <p className="text-gray-600">View revenue metrics for all managers</p>
+        </div>
+        <Select value={dateRange} onValueChange={(value) => setDateRange(value as 'week' | 'month' | 'all')}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="week">This Week</SelectItem>
+            <SelectItem value="month">This Month</SelectItem>
+            <SelectItem value="all">All Time</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+        </div>
+      ) : managersRevenue && managersRevenue.managers ? (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500">Total Managers</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                      {managersRevenue.managers.length}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-indigo-100 rounded-lg">
+                    <Users className="h-6 w-6 text-indigo-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500">Total Revenue</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                      {formatCurrency(
+                        managersRevenue.managers.reduce((sum: number, m: any) => sum + (m.totalRevenue || 0), 0)
+                      )}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-emerald-100 rounded-lg">
+                    <DollarSign className="h-6 w-6 text-emerald-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500">Platform Fees</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                      {formatCurrency(
+                        managersRevenue.managers.reduce((sum: number, m: any) => sum + (m.platformFee || 0), 0)
+                      )}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-violet-100 rounded-lg">
+                    <TrendingUp className="h-6 w-6 text-violet-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Managers Table */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Manager</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total Revenue</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Platform Fee</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Manager Earnings</th>
+                      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Bookings</th>
+                      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {managersRevenue.managers.map((manager: any) => (
+                      <tr key={manager.managerId} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-3 px-4">
+                          <div>
+                            <p className="font-medium text-gray-900">{manager.managerName || `Manager #${manager.managerId}`}</p>
+                            <p className="text-sm text-gray-500">{manager.managerEmail}</p>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-medium text-gray-900">
+                          {formatCurrency(manager.totalRevenue || 0)}
+                        </td>
+                        <td className="py-3 px-4 text-right text-gray-600">
+                          {formatCurrency(manager.platformFee || 0)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-semibold text-emerald-600">
+                          {formatCurrency(manager.managerRevenue || 0)}
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-600">
+                          {manager.bookingCount || 0}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedManager(selectedManager === manager.managerId ? 'all' : manager.managerId)}
+                            className="h-8"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            {selectedManager === manager.managerId ? 'Hide' : 'View'}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Manager Details */}
+          {selectedManager !== 'all' && managerDetails && (
+            <Card>
+              <CardContent className="p-6">
+                <h4 className="text-lg font-semibold text-gray-900 mb-4">Location Breakdown</h4>
+                <div className="space-y-3">
+                  {managerDetails.locations && managerDetails.locations.length > 0 ? (
+                    managerDetails.locations.map((loc: any) => (
+                      <div key={loc.locationId} className="p-4 rounded-lg bg-gray-50 border border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">{loc.locationName}</p>
+                            <p className="text-sm text-gray-500">{loc.bookingCount} bookings</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-gray-900">{formatCurrency(loc.totalRevenue || 0)}</p>
+                            <p className="text-sm text-emerald-600">Earnings: {formatCurrency(loc.managerRevenue || 0)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-gray-500 text-center py-4">No location data available</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      ) : (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <BarChart3 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">No revenue data available</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// Admin Platform Revenue Overview Component
+function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () => Promise<string> }) {
+  const [dateRange, setDateRange] = useState<'week' | 'month' | 'all'>('month');
+
+  const dateRangeParams = useMemo(() => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    let startDate: Date;
+
+    switch (dateRange) {
+      case 'week':
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - 7);
+        break;
+      case 'month':
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      default:
+        startDate = new Date(0);
+    }
+
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: today.toISOString().split('T')[0],
+    };
+  }, [dateRange]);
+
+  const { data: platformOverview, isLoading } = useQuery({
+    queryKey: ['/api/admin/revenue/platform-overview', dateRangeParams.startDate, dateRangeParams.endDate],
+    queryFn: async () => {
+      const token = await getFirebaseToken();
+      const params = new URLSearchParams({
+        startDate: dateRangeParams.startDate,
+        endDate: dateRangeParams.endDate,
+      });
+      
+      const response = await fetch(`/api/admin/revenue/platform-overview?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch platform overview');
+      }
+      return response.json();
+    },
+  });
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-CA', {
+      style: 'currency',
+      currency: 'CAD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Platform Revenue Overview</h3>
+          <p className="text-gray-600">Platform-wide revenue statistics</p>
+        </div>
+        <Select value={dateRange} onValueChange={(value) => setDateRange(value as 'week' | 'month' | 'all')}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="week">This Week</SelectItem>
+            <SelectItem value="month">This Month</SelectItem>
+            <SelectItem value="all">All Time</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+        </div>
+      ) : platformOverview ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Total Platform Revenue</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {formatCurrency(platformOverview.totalPlatformRevenue || 0)}
+                  </p>
+                </div>
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Total Platform Fees</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {formatCurrency(platformOverview.totalPlatformFees || 0)}
+                  </p>
+                </div>
+                <div className="p-3 bg-violet-100 rounded-lg">
+                  <TrendingUp className="h-6 w-6 text-violet-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Total Bookings</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {platformOverview.totalBookings || 0}
+                  </p>
+                </div>
+                <div className="p-3 bg-emerald-100 rounded-lg">
+                  <BarChart3 className="h-6 w-6 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Active Managers</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {platformOverview.activeManagers || 0}
+                  </p>
+                </div>
+                <div className="p-3 bg-indigo-100 rounded-lg">
+                  <Users className="h-6 w-6 text-indigo-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <BarChart3 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">No platform data available</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

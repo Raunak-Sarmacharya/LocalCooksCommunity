@@ -102,8 +102,21 @@ export async function generateInvoicePDF(
     }
   }
 
-  // Service fee (5%)
-  const serviceFee = totalAmount * 0.05;
+  // Service fee - get dynamically from platform_settings
+  // Note: This is for display purposes in the invoice PDF
+  // The actual service fee is already calculated and stored in the booking
+  // We'll use 5% as default for invoice display if we can't get the rate
+  let serviceFeeRate = 0.05; // Default
+  if (dbPool) {
+    try {
+      const { getServiceFeeRate } = await import('./pricing-service');
+      serviceFeeRate = await getServiceFeeRate(dbPool);
+    } catch (error) {
+      console.error('Error getting service fee rate for invoice:', error);
+      // Use default 5%
+    }
+  }
+  const serviceFee = totalAmount * serviceFeeRate;
   const grandTotal = totalAmount + serviceFee;
 
   // Now generate PDF

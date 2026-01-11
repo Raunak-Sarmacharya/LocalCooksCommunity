@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { 
+import {
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp
 } from "lucide-react";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
@@ -30,6 +30,7 @@ import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizar
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
+import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 interface Location {
@@ -73,7 +74,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -286,6 +287,7 @@ export default function ManagerBookingDashboard() {
     { id: 'storage-listings' as ViewType, label: 'Storage Listings', icon: Package },
     { id: 'equipment-listings' as ViewType, label: 'Equipment Listings', icon: Wrench },
     { id: 'applications' as ViewType, label: 'Applications', icon: Users },
+    { id: 'revenue' as ViewType, label: 'Revenue', icon: TrendingUp },
     { id: 'payments' as ViewType, label: 'Payments', icon: CreditCard },
     { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
   ];
@@ -803,6 +805,13 @@ export default function ManagerBookingDashboard() {
                   
                   {activeView === 'applications' && (
                     <ManagerKitchenApplications embedded={true} />
+                  )}
+                  
+                  {activeView === 'revenue' && (
+                    <ManagerRevenueDashboard 
+                      selectedLocation={selectedLocation}
+                      locations={locations}
+                    />
                   )}
                   
                   {activeView === 'payments' && (

@@ -115,6 +115,16 @@
     "api/unsubscribe.js": {
       "memory": 512,
       "maxDuration": 10
+    },
+    "api/process-payouts.js": {
+      "memory": 1024,
+      "maxDuration": 30
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/process-payouts",
+      "schedule": "0 0 * * 1"
+    }
+  ]
 }

@@ -3726,6 +3726,606 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // END STRIPE CONNECT ENDPOINTS
   // ===================================
 
+  // ===================================
+  // MANAGER REVENUE ENDPOINTS
+  // ===================================
+
+  // Get revenue overview metrics
+  app.get("/api/manager/revenue/overview", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const { startDate, endDate, locationId } = req.query;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { getCompleteRevenueMetrics } = await import('./services/revenue-service');
+      
+      const metrics = await getCompleteRevenueMetrics(
+        managerId,
+        pool,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined,
+        locationId ? parseInt(locationId as string) : undefined
+      );
+
+      // Convert cents to dollars for response
+      res.json({
+        totalRevenue: metrics.totalRevenue / 100,
+        platformFee: metrics.platformFee / 100,
+        managerRevenue: metrics.managerRevenue / 100,
+        pendingPayments: metrics.pendingPayments / 100,
+        completedPayments: metrics.completedPayments / 100,
+        averageBookingValue: metrics.averageBookingValue / 100,
+        bookingCount: metrics.bookingCount,
+        paidBookingCount: metrics.paidBookingCount,
+        cancelledBookingCount: metrics.cancelledBookingCount,
+        refundedAmount: metrics.refundedAmount / 100,
+        // Include raw values in cents for precise calculations
+        _raw: {
+          totalRevenue: metrics.totalRevenue,
+          platformFee: metrics.platformFee,
+          managerRevenue: metrics.managerRevenue,
+        }
+      });
+    } catch (error: any) {
+      console.error('Error getting revenue overview:', error);
+      res.status(500).json({ error: error.message || 'Failed to get revenue overview' });
+    }
+  });
+
+  // Get revenue by location breakdown
+  app.get("/api/manager/revenue/by-location", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const { startDate, endDate } = req.query;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { getRevenueByLocation } = await import('./services/revenue-service');
+      
+      const revenueByLocation = await getRevenueByLocation(
+        managerId,
+        pool,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+
+      // Convert cents to dollars for response
+      res.json(revenueByLocation.map(loc => ({
+        ...loc,
+        totalRevenue: loc.totalRevenue / 100,
+        platformFee: loc.platformFee / 100,
+        managerRevenue: loc.managerRevenue / 100,
+        _raw: {
+          totalRevenue: loc.totalRevenue,
+          platformFee: loc.platformFee,
+          managerRevenue: loc.managerRevenue,
+        }
+      })));
+    } catch (error: any) {
+      console.error('Error getting revenue by location:', error);
+      res.status(500).json({ error: error.message || 'Failed to get revenue by location' });
+    }
+  });
+
+  // Get revenue chart data (daily breakdown)
+  app.get("/api/manager/revenue/charts", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const { startDate, endDate, locationId, period = 'daily' } = req.query;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Default to last 30 days if no dates provided
+      const end = endDate ? new Date(endDate as string) : new Date();
+      const start = startDate ? new Date(startDate as string) : (() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return d;
+      })();
+
+      const { getRevenueByDate } = await import('./services/revenue-service');
+      
+      const revenueByDate = await getRevenueByDate(
+        managerId,
+        pool,
+        start,
+        end
+      );
+
+      // Convert cents to dollars and format for charts
+      res.json({
+        period,
+        data: revenueByDate.map(item => ({
+          date: item.date,
+          totalRevenue: item.totalRevenue / 100,
+          platformFee: item.platformFee / 100,
+          managerRevenue: item.managerRevenue / 100,
+          bookingCount: item.bookingCount,
+          _raw: {
+            totalRevenue: item.totalRevenue,
+            platformFee: item.platformFee,
+            managerRevenue: item.managerRevenue,
+          }
+        }))
+      });
+    } catch (error: any) {
+      console.error('Error getting revenue chart data:', error);
+      res.status(500).json({ error: error.message || 'Failed to get revenue chart data' });
+    }
+  });
+
+  // Get transaction history
+  app.get("/api/manager/revenue/transactions", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const { startDate, endDate, locationId, limit = '100', offset = '0', paymentStatus } = req.query;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { getTransactionHistory } = await import('./services/revenue-service');
+      
+      let transactions = await getTransactionHistory(
+        managerId,
+        pool,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined,
+        locationId ? parseInt(locationId as string) : undefined,
+        parseInt(limit as string),
+        parseInt(offset as string)
+      );
+
+      // Filter by payment status if provided
+      if (paymentStatus) {
+        transactions = transactions.filter(t => t.paymentStatus === paymentStatus);
+      }
+
+      // Convert cents to dollars for response
+      res.json({
+        transactions: transactions.map(t => ({
+          ...t,
+          totalPrice: t.totalPrice / 100,
+          serviceFee: t.serviceFee / 100,
+          managerRevenue: t.managerRevenue / 100,
+          _raw: {
+            totalPrice: t.totalPrice,
+            serviceFee: t.serviceFee,
+            managerRevenue: t.managerRevenue,
+          }
+        })),
+        total: transactions.length
+      });
+    } catch (error: any) {
+      console.error('Error getting transaction history:', error);
+      res.status(500).json({ error: error.message || 'Failed to get transaction history' });
+    }
+  });
+
+  // Get booking invoices for manager
+  app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const { startDate, endDate, locationId, limit = '50', offset = '0' } = req.query;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Get bookings with invoice data
+      let whereClause = `
+        WHERE l.manager_id = $1
+          AND kb.status != 'cancelled'
+      `;
+      const params: any[] = [managerId];
+      let paramIndex = 2;
+
+      if (startDate) {
+        whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+        params.push(startDate);
+        paramIndex++;
+      }
+
+      if (endDate) {
+        whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+        params.push(endDate);
+        paramIndex++;
+      }
+
+      if (locationId) {
+        whereClause += ` AND l.id = $${paramIndex}`;
+        params.push(parseInt(locationId as string));
+        paramIndex++;
+      }
+
+      const result = await pool.query(`
+        SELECT 
+          kb.id,
+          kb.booking_date,
+          kb.start_time,
+          kb.end_time,
+          kb.total_price::bigint as total_price,
+          kb.service_fee::bigint as service_fee,
+          kb.payment_status,
+          kb.payment_intent_id,
+          kb.currency,
+          k.name as kitchen_name,
+          l.name as location_name,
+          u.username as chef_name,
+          u.email as chef_email,
+          kb.created_at
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        LEFT JOIN users u ON kb.chef_id = u.id
+        ${whereClause}
+        ORDER BY kb.booking_date DESC, kb.created_at DESC
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+      `, [...params, parseInt(limit as string), parseInt(offset as string)]);
+
+      res.json({
+        invoices: result.rows.map((row: any) => ({
+          bookingId: row.id,
+          bookingDate: row.booking_date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          totalPrice: (parseInt(row.total_price) || 0) / 100,
+          serviceFee: (parseInt(row.service_fee) || 0) / 100,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          currency: row.currency || 'CAD',
+          kitchenName: row.kitchen_name,
+          locationName: row.location_name,
+          chefName: row.chef_name || 'Guest',
+          chefEmail: row.chef_email,
+          createdAt: row.created_at,
+        })),
+        total: result.rows.length
+      });
+    } catch (error: any) {
+      console.error('Error getting invoices:', error);
+      res.status(500).json({ error: error.message || 'Failed to get invoices' });
+    }
+  });
+
+  // Download invoice PDF for a specific booking
+  app.get("/api/manager/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const bookingId = parseInt(req.params.bookingId);
+
+      if (isNaN(bookingId) || bookingId <= 0) {
+        return res.status(400).json({ error: "Invalid booking ID" });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Verify manager has access to this booking
+      const bookingResult = await pool.query(`
+        SELECT kb.*, k.name as kitchen_name, l.name as location_name, l.manager_id
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE kb.id = $1
+      `, [bookingId]);
+
+      if (bookingResult.rows.length === 0) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+
+      const booking = bookingResult.rows[0];
+      if (booking.manager_id !== managerId) {
+        return res.status(403).json({ error: "Access denied to this booking" });
+      }
+
+      // Get chef info
+      let chef = null;
+      if (booking.chef_id) {
+        const chefResult = await pool.query('SELECT id, username, email FROM users WHERE id = $1', [booking.chef_id]);
+        chef = chefResult.rows[0] || null;
+      }
+
+      // Get storage and equipment bookings
+      const storageResult = await pool.query(`
+        SELECT sb.*, sl.name as storage_name
+        FROM storage_bookings sb
+        JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+        WHERE sb.kitchen_booking_id = $1
+      `, [bookingId]);
+
+      const equipmentResult = await pool.query(`
+        SELECT eb.*, el.equipment_type, el.brand, el.model
+        FROM equipment_bookings eb
+        JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+        WHERE eb.kitchen_booking_id = $1
+      `, [bookingId]);
+
+      // Generate invoice PDF
+      const { generateInvoicePDF } = await import('./services/invoice-service');
+      const pdfBuffer = await generateInvoicePDF(
+        booking,
+        chef,
+        { name: booking.kitchen_name },
+        { name: booking.location_name },
+        storageResult.rows,
+        equipmentResult.rows,
+        booking.payment_intent_id,
+        pool
+      );
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="invoice-${bookingId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error('Error generating invoice PDF:', error);
+      res.status(500).json({ error: error.message || 'Failed to generate invoice' });
+    }
+  });
+
+  // Get payout history for manager
+  app.get("/api/manager/revenue/payouts", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const { limit = '50' } = req.query;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Get manager's Stripe Connect account ID
+      const userResult = await pool.query(
+        'SELECT stripe_connect_account_id FROM users WHERE id = $1',
+        [managerId]
+      );
+
+      if (!userResult.rows[0]?.stripe_connect_account_id) {
+        return res.json({
+          payouts: [],
+          total: 0,
+          message: 'No Stripe Connect account linked'
+        });
+      }
+
+      const accountId = userResult.rows[0].stripe_connect_account_id;
+      const { getPayouts } = await import('./services/stripe-connect-service');
+
+      const payouts = await getPayouts(accountId, parseInt(limit as string));
+
+      res.json({
+        payouts: payouts.map(p => ({
+          id: p.id,
+          amount: p.amount / 100, // Convert cents to dollars
+          currency: p.currency,
+          status: p.status,
+          arrivalDate: new Date(p.arrival_date * 1000).toISOString(),
+          created: new Date(p.created * 1000).toISOString(),
+          description: p.description,
+          method: p.method,
+          type: p.type,
+        })),
+        total: payouts.length
+      });
+    } catch (error: any) {
+      console.error('Error getting payouts:', error);
+      res.status(500).json({ error: error.message || 'Failed to get payouts' });
+    }
+  });
+
+  // Get specific payout details
+  app.get("/api/manager/revenue/payouts/:payoutId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const payoutId = req.params.payoutId;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Get manager's Stripe Connect account ID
+      const userResult = await pool.query(
+        'SELECT stripe_connect_account_id FROM users WHERE id = $1',
+        [managerId]
+      );
+
+      if (!userResult.rows[0]?.stripe_connect_account_id) {
+        return res.status(404).json({ error: 'No Stripe Connect account linked' });
+      }
+
+      const accountId = userResult.rows[0].stripe_connect_account_id;
+      const { getPayout } = await import('./services/stripe-connect-service');
+
+      const payout = await getPayout(accountId, payoutId);
+
+      if (!payout) {
+        return res.status(404).json({ error: 'Payout not found' });
+      }
+
+      // Get balance transactions for this payout period
+      const payoutDate = new Date(payout.created * 1000);
+      const periodStart = new Date(payoutDate);
+      periodStart.setDate(periodStart.getDate() - 7); // Week before payout
+
+      const { getBalanceTransactions } = await import('./services/stripe-connect-service');
+      const transactions = await getBalanceTransactions(
+        accountId,
+        periodStart,
+        payoutDate,
+        100
+      );
+
+      // Get bookings for this period
+      const bookingsResult = await pool.query(`
+        SELECT 
+          kb.id,
+          kb.booking_date,
+          kb.start_time,
+          kb.end_time,
+          kb.total_price,
+          kb.service_fee,
+          kb.payment_status,
+          kb.payment_intent_id,
+          k.name as kitchen_name,
+          l.name as location_name,
+          u.username as chef_name,
+          u.email as chef_email
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        LEFT JOIN users u ON kb.chef_id = u.id
+        WHERE l.manager_id = $1
+          AND kb.payment_status = 'paid'
+          AND kb.booking_date >= $2::date
+          AND kb.booking_date <= $3::date
+        ORDER BY kb.booking_date DESC
+      `, [managerId, periodStart.toISOString().split('T')[0], payoutDate.toISOString().split('T')[0]]);
+
+      res.json({
+        payout: {
+          id: payout.id,
+          amount: payout.amount / 100,
+          currency: payout.currency,
+          status: payout.status,
+          arrivalDate: new Date(payout.arrival_date * 1000).toISOString(),
+          created: new Date(payout.created * 1000).toISOString(),
+          description: payout.description,
+          method: payout.method,
+          type: payout.type,
+        },
+        transactions: transactions.map(t => ({
+          id: t.id,
+          amount: t.amount / 100,
+          currency: t.currency,
+          description: t.description,
+          fee: t.fee / 100,
+          net: t.net / 100,
+          status: t.status,
+          type: t.type,
+          created: new Date(t.created * 1000).toISOString(),
+        })),
+        bookings: bookingsResult.rows.map((row: any) => ({
+          id: row.id,
+          bookingDate: row.booking_date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          totalPrice: (parseInt(row.total_price) || 0) / 100,
+          serviceFee: (parseInt(row.service_fee) || 0) / 100,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          kitchenName: row.kitchen_name,
+          locationName: row.location_name,
+          chefName: row.chef_name || 'Guest',
+          chefEmail: row.chef_email,
+        }))
+      });
+    } catch (error: any) {
+      console.error('Error getting payout details:', error);
+      res.status(500).json({ error: error.message || 'Failed to get payout details' });
+    }
+  });
+
+  // Download payout statement PDF
+  app.get("/api/manager/revenue/payouts/:payoutId/statement", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+      const payoutId = req.params.payoutId;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Get manager info
+      const userResult = await pool.query(
+        'SELECT id, username, email, stripe_connect_account_id FROM users WHERE id = $1',
+        [managerId]
+      );
+
+      if (!userResult.rows[0]?.stripe_connect_account_id) {
+        return res.status(404).json({ error: 'No Stripe Connect account linked' });
+      }
+
+      const manager = userResult.rows[0];
+      const accountId = manager.stripe_connect_account_id;
+
+      const { getPayout } = await import('./services/stripe-connect-service');
+      const payout = await getPayout(accountId, payoutId);
+
+      if (!payout) {
+        return res.status(404).json({ error: 'Payout not found' });
+      }
+
+      // Get bookings for payout period
+      const payoutDate = new Date(payout.created * 1000);
+      const periodStart = new Date(payoutDate);
+      periodStart.setDate(periodStart.getDate() - 7); // Week before payout
+
+      const bookingsResult = await pool.query(`
+        SELECT 
+          kb.id,
+          kb.booking_date,
+          kb.start_time,
+          kb.end_time,
+          kb.total_price,
+          kb.service_fee,
+          kb.payment_status,
+          kb.payment_intent_id,
+          k.name as kitchen_name,
+          l.name as location_name,
+          u.username as chef_name,
+          u.email as chef_email
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        LEFT JOIN users u ON kb.chef_id = u.id
+        WHERE l.manager_id = $1
+          AND kb.payment_status = 'paid'
+          AND kb.booking_date >= $2::date
+          AND kb.booking_date <= $3::date
+        ORDER BY kb.booking_date DESC
+      `, [managerId, periodStart.toISOString().split('T')[0], payoutDate.toISOString().split('T')[0]]);
+
+      // Get balance transactions
+      const { getBalanceTransactions } = await import('./services/stripe-connect-service');
+      const transactions = await getBalanceTransactions(
+        accountId,
+        periodStart,
+        payoutDate,
+        100
+      );
+
+      // Generate payout statement PDF
+      const { generatePayoutStatementPDF } = await import('./services/payout-statement-service');
+      const pdfBuffer = await generatePayoutStatementPDF(
+        managerId,
+        manager.username || 'Manager',
+        manager.email || '',
+        payout,
+        transactions,
+        bookingsResult.rows,
+        pool
+      );
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="payout-statement-${payoutId.substring(3)}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error('Error generating payout statement PDF:', error);
+      res.status(500).json({ error: error.message || 'Failed to generate payout statement' });
+    }
+  });
+
+  // ===================================
+  // END MANAGER REVENUE ENDPOINTS
+  // ===================================
+
   app.get("/api/manager/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
@@ -5791,7 +6391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Import Stripe service and pricing service
       const { createPaymentIntent } = await import('./services/stripe-service');
-      const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+      const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
 
       // Calculate kitchen booking price (pass pool for compatibility)
       const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
@@ -5856,8 +6456,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Calculate service fee (5% of total)
-      const serviceFeeCents = calculatePlatformFee(totalPriceCents, 0.05);
+      // Calculate service fee dynamically from platform_settings
+      const serviceFeeCents = await calculatePlatformFeeDynamic(totalPriceCents, pool);
       const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, serviceFeeCents, 0);
 
       // Get manager's Stripe Connect account ID if available
@@ -6187,7 +6787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (paymentIntentId) {
         console.log(`💳 STEP 0: Verifying payment intent ${paymentIntentId}...`);
         const { verifyPaymentIntentForBooking } = await import('./services/stripe-service');
-        const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+        const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
 
         // Calculate expected total for verification
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
@@ -6240,7 +6840,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        const serviceFee = calculatePlatformFee(expectedTotal, 0.05);
+        const serviceFee = await calculatePlatformFeeDynamic(expectedTotal, pool);
         expectedTotal = calculateTotalWithFees(expectedTotal, serviceFee, 0);
 
         const verification = await verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedTotal);
@@ -6256,9 +6856,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✅ STEP 0 COMPLETE: Payment verified with status: ${paymentStatus}`);
       } else {
         // If no payment intent, check if booking requires payment
-        const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+        const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
-        const serviceFee = calculatePlatformFee(kitchenPricing.totalPriceCents, 0.05);
+        const serviceFee = await calculatePlatformFeeDynamic(kitchenPricing.totalPriceCents, pool);
         const total = calculateTotalWithFees(kitchenPricing.totalPriceCents, serviceFee, 0);
         
         if (total > 0) {
@@ -6352,8 +6952,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   totalPrice = basePriceCents;
                 }
                 
-                // Calculate service fee (5%)
-                const serviceFee = Math.round(totalPrice * 0.05);
+                // Calculate service fee dynamically from platform_settings
+                const { calculatePlatformFeeDynamic } = await import('./services/pricing-service');
+                const serviceFee = await calculatePlatformFeeDynamic(totalPrice, pool);
                 
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
@@ -6413,8 +7014,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
                 // For monthly-flat, use base price directly (pro-rated storage not implemented)
                 
-                // Calculate service fee (5%)
-                const serviceFee = Math.round(totalPrice * 0.05);
+                // Calculate service fee dynamically from platform_settings
+                const { calculatePlatformFeeDynamic: calcFee2 } = await import('./services/pricing-service');
+                const serviceFee = await calcFee2(totalPrice, pool);
                 
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
@@ -6475,8 +7077,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
                 
-                // Calculate service fee (5%)
-                const serviceFee = Math.round(totalPrice * 0.05);
+                // Calculate service fee dynamically from platform_settings
+                const { calculatePlatformFeeDynamic: calcEquipFee2 } = await import('./services/pricing-service');
+                const serviceFee = await calcEquipFee2(totalPrice, pool);
                 
                 const insertResult = await pool.query(
                   `INSERT INTO equipment_bookings 
@@ -7288,6 +7891,307 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===================================
   // KITCHEN BOOKING SYSTEM - ADMIN ROUTES
+  // ===================================
+
+  // ===================================
+  // ADMIN REVENUE ENDPOINTS
+  // ===================================
+
+  // Helper function to check admin access
+  async function requireAdminAccess(req: Request, res: Response): Promise<{ user: any; error?: string } | null> {
+    try {
+      const sessionUser = await getAuthenticatedUser(req);
+      const isFirebaseAuth = req.neonUser;
+      
+      if (!sessionUser && !isFirebaseAuth) {
+        return { user: null, error: "Not authenticated" };
+      }
+      
+      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
+      if (user.role !== "admin") {
+        return { user: null, error: "Admin access required" };
+      }
+      
+      return { user };
+    } catch (error: any) {
+      return { user: null, error: error.message || "Authentication error" };
+    }
+  }
+
+  // Get all managers revenue overview
+  app.get("/api/admin/revenue/all-managers", async (req: Request, res: Response) => {
+    try {
+      const authResult = await requireAdminAccess(req, res);
+      if (!authResult || authResult.error) {
+        return res.status(authResult?.error === "Admin access required" ? 403 : 401)
+          .json({ error: authResult?.error || "Not authenticated" });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { startDate, endDate } = req.query;
+
+      // Get all managers with their revenue
+      let whereClause = `WHERE kb.status != 'cancelled'`;
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (startDate) {
+        whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+        params.push(startDate);
+        paramIndex++;
+      }
+
+      if (endDate) {
+        whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+        params.push(endDate);
+        paramIndex++;
+      }
+
+      // Get service fee rate
+      const { getServiceFeeRate } = await import('./services/pricing-service');
+      const serviceFeeRate = await getServiceFeeRate(pool);
+      const { calculateManagerRevenue } = await import('./services/revenue-service');
+
+      const result = await pool.query(`
+        SELECT 
+          u.id as manager_id,
+          u.username as manager_name,
+          u.email as manager_email,
+          l.id as location_id,
+          l.name as location_name,
+          COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
+          COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
+          COUNT(*)::int as booking_count,
+          COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        JOIN users u ON l.manager_id = u.id
+        ${whereClause}
+        GROUP BY u.id, u.username, u.email, l.id, l.name
+        ORDER BY total_revenue DESC
+      `, params);
+
+      // Group by manager (managers can have multiple locations)
+      const managerMap = new Map<number, {
+        managerId: number;
+        managerName: string;
+        managerEmail: string;
+        totalRevenue: number;
+        platformFee: number;
+        managerRevenue: number;
+        bookingCount: number;
+        paidBookingCount: number;
+        locations: Array<{
+          locationId: number;
+          locationName: string;
+          totalRevenue: number;
+          platformFee: number;
+          managerRevenue: number;
+          bookingCount: number;
+          paidBookingCount: number;
+        }>;
+      }>();
+
+      result.rows.forEach((row: any) => {
+        const managerId = parseInt(row.manager_id);
+        const totalRevenue = parseInt(row.total_revenue) || 0;
+        const managerRevenue = calculateManagerRevenue(totalRevenue, serviceFeeRate);
+
+        if (!managerMap.has(managerId)) {
+          managerMap.set(managerId, {
+            managerId,
+            managerName: row.manager_name,
+            managerEmail: row.manager_email,
+            totalRevenue: 0,
+            platformFee: 0,
+            managerRevenue: 0,
+            bookingCount: 0,
+            paidBookingCount: 0,
+            locations: [],
+          });
+        }
+
+        const manager = managerMap.get(managerId)!;
+        manager.totalRevenue += totalRevenue;
+        manager.platformFee += parseInt(row.platform_fee) || 0;
+        manager.managerRevenue += managerRevenue;
+        manager.bookingCount += parseInt(row.booking_count) || 0;
+        manager.paidBookingCount += parseInt(row.paid_count) || 0;
+
+        manager.locations.push({
+          locationId: parseInt(row.location_id),
+          locationName: row.location_name,
+          totalRevenue,
+          platformFee: parseInt(row.platform_fee) || 0,
+          managerRevenue,
+          bookingCount: parseInt(row.booking_count) || 0,
+          paidBookingCount: parseInt(row.paid_count) || 0,
+        });
+      });
+
+      // Convert to array and format for response
+      const managers = Array.from(managerMap.values()).map(m => ({
+        ...m,
+        totalRevenue: m.totalRevenue / 100,
+        platformFee: m.platformFee / 100,
+        managerRevenue: m.managerRevenue / 100,
+        locations: m.locations.map(loc => ({
+          ...loc,
+          totalRevenue: loc.totalRevenue / 100,
+          platformFee: loc.platformFee / 100,
+          managerRevenue: loc.managerRevenue / 100,
+        })),
+        _raw: {
+          totalRevenue: m.totalRevenue,
+          platformFee: m.platformFee,
+          managerRevenue: m.managerRevenue,
+        }
+      }));
+
+      res.json({ managers, total: managers.length });
+    } catch (error: any) {
+      console.error('Error getting all managers revenue:', error);
+      res.status(500).json({ error: error.message || 'Failed to get all managers revenue' });
+    }
+  });
+
+  // Get platform-wide revenue overview
+  app.get("/api/admin/revenue/platform-overview", async (req: Request, res: Response) => {
+    try {
+      const authResult = await requireAdminAccess(req, res);
+      if (!authResult || authResult.error) {
+        return res.status(authResult?.error === "Admin access required" ? 403 : 401)
+          .json({ error: authResult?.error || "Not authenticated" });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { startDate, endDate } = req.query;
+
+      let whereClause = `WHERE kb.status != 'cancelled'`;
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (startDate) {
+        whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+        params.push(startDate);
+        paramIndex++;
+      }
+
+      if (endDate) {
+        whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+        params.push(endDate);
+        paramIndex++;
+      }
+
+      const result = await pool.query(`
+        SELECT 
+          COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
+          COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
+          COUNT(DISTINCT l.manager_id)::int as manager_count,
+          COUNT(*)::int as booking_count,
+          COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
+          COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END)::int as pending_count
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        ${whereClause}
+      `, params);
+
+      const row = result.rows[0];
+
+      res.json({
+        totalRevenue: (parseInt(row.total_revenue) || 0) / 100,
+        platformFee: (parseInt(row.platform_fee) || 0) / 100,
+        managerCount: parseInt(row.manager_count) || 0,
+        bookingCount: parseInt(row.booking_count) || 0,
+        paidBookingCount: parseInt(row.paid_count) || 0,
+        pendingBookingCount: parseInt(row.pending_count) || 0,
+        _raw: {
+          totalRevenue: parseInt(row.total_revenue) || 0,
+          platformFee: parseInt(row.platform_fee) || 0,
+        }
+      });
+    } catch (error: any) {
+      console.error('Error getting platform overview:', error);
+      res.status(500).json({ error: error.message || 'Failed to get platform overview' });
+    }
+  });
+
+  // Get specific manager revenue details
+  app.get("/api/admin/revenue/manager/:managerId", async (req: Request, res: Response) => {
+    try {
+      const authResult = await requireAdminAccess(req, res);
+      if (!authResult || authResult.error) {
+        return res.status(authResult?.error === "Admin access required" ? 403 : 401)
+          .json({ error: authResult?.error || "Not authenticated" });
+      }
+
+      const managerId = parseInt(req.params.managerId);
+      if (isNaN(managerId) || managerId <= 0) {
+        return res.status(400).json({ error: "Invalid manager ID" });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const { startDate, endDate } = req.query;
+      const { getCompleteRevenueMetrics, getRevenueByLocation } = await import('./services/revenue-service');
+
+      const metrics = await getCompleteRevenueMetrics(
+        managerId,
+        pool,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+
+      const revenueByLocation = await getRevenueByLocation(
+        managerId,
+        pool,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+
+      // Get manager info
+      const managerResult = await pool.query(
+        'SELECT id, username, email FROM users WHERE id = $1',
+        [managerId]
+      );
+
+      res.json({
+        manager: managerResult.rows[0] || null,
+        metrics: {
+          ...metrics,
+          totalRevenue: metrics.totalRevenue / 100,
+          platformFee: metrics.platformFee / 100,
+          managerRevenue: metrics.managerRevenue / 100,
+          pendingPayments: metrics.pendingPayments / 100,
+          completedPayments: metrics.completedPayments / 100,
+          averageBookingValue: metrics.averageBookingValue / 100,
+          refundedAmount: metrics.refundedAmount / 100,
+        },
+        revenueByLocation: revenueByLocation.map(loc => ({
+          ...loc,
+          totalRevenue: loc.totalRevenue / 100,
+          platformFee: loc.platformFee / 100,
+          managerRevenue: loc.managerRevenue / 100,
+        })),
+      });
+    } catch (error: any) {
+      console.error('Error getting manager revenue details:', error);
+      res.status(500).json({ error: error.message || 'Failed to get manager revenue details' });
+    }
+  });
+
+  // ===================================
+  // END ADMIN REVENUE ENDPOINTS
   // ===================================
 
   // Admin: Grant chef access to a location (NEW - location-based access)

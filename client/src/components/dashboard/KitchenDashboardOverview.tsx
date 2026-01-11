@@ -52,7 +52,7 @@ import BookingCalendarWidget from "./BookingCalendarWidget";
 // Inspired by Peerspace, Splacer, Airbnb, and top booking platforms
 // ═══════════════════════════════════════════════════════════════════════════════
 
-type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings';
+type ViewType = 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'revenue';
 
 interface Location {
   id: number;
@@ -159,6 +159,49 @@ export default function KitchenDashboardOverview({
     },
     enabled: !!firebaseUser,
     refetchInterval: 10000, // Real-time updates
+    refetchOnWindowFocus: true,
+  });
+
+  // Fetch revenue metrics for this month
+  const { data: revenueMetrics, isLoading: isLoadingRevenue } = useQuery({
+    queryKey: ['/api/manager/revenue/overview', 'this-month'],
+    queryFn: async () => {
+      if (!firebaseUser) {
+        throw new Error('Not authenticated');
+      }
+      
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error('Not authenticated');
+      }
+      const token = await currentFirebaseUser.getIdToken();
+      
+      // Calculate this month's date range
+      const today = new Date();
+      const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+      const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      
+      const params = new URLSearchParams({
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+      });
+      
+      const response = await fetch(`/api/manager/revenue/overview?${params}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch revenue metrics');
+      }
+      
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+    refetchInterval: 30000, // Refresh every 30 seconds
     refetchOnWindowFocus: true,
   });
 
@@ -558,6 +601,142 @@ export default function KitchenDashboardOverview({
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Row 3: Revenue Metrics - This Month */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Total Revenue This Month */}
+          <Card 
+            className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+            onClick={() => onNavigate('revenue')}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-emerald-100 text-[10px] font-medium uppercase tracking-wider">This Month</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {isLoadingRevenue ? (
+                      <span className="text-emerald-100">...</span>
+                    ) : revenueMetrics ? (
+                      new Intl.NumberFormat('en-CA', {
+                        style: 'currency',
+                        currency: 'CAD',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(revenueMetrics.totalRevenue || 0)
+                    ) : (
+                      '$0'
+                    )}
+                  </p>
+                  <p className="text-emerald-100 text-xs mt-1">Total revenue</p>
+                </div>
+                <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
+                  <DollarSign className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
+              <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-emerald-100">
+                <span>View details</span>
+                <ArrowRight className="h-3 w-3" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Your Earnings This Month */}
+          <Card 
+            className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 hover:-translate-y-1 cursor-pointer"
+            onClick={() => onNavigate('revenue')}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-blue-100 text-[10px] font-medium uppercase tracking-wider">Your Earnings</p>
+                  <p className="text-2xl font-bold mt-1">
+                    {isLoadingRevenue ? (
+                      <span className="text-blue-100">...</span>
+                    ) : revenueMetrics ? (
+                      new Intl.NumberFormat('en-CA', {
+                        style: 'currency',
+                        currency: 'CAD',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(revenueMetrics.managerRevenue || 0)
+                    ) : (
+                      '$0'
+                    )}
+                  </p>
+                  <p className="text-blue-100 text-xs mt-1">After platform fee</p>
+                </div>
+                <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
+              <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-blue-100">
+                <span>View details</span>
+                <ArrowRight className="h-3 w-3" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pending Payments */}
+          <Card 
+            className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer ${
+              revenueMetrics && revenueMetrics.pendingPayments > 0
+                ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30'
+                : 'bg-white border border-gray-100 text-gray-900 hover:shadow-xl'
+            }`}
+            onClick={() => onNavigate('revenue')}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className={`text-[10px] font-medium uppercase tracking-wider ${
+                    revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
+                  }`}>
+                    Pending
+                  </p>
+                  <p className="text-2xl font-bold mt-1">
+                    {isLoadingRevenue ? (
+                      <span className={revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'}>...</span>
+                    ) : revenueMetrics ? (
+                      new Intl.NumberFormat('en-CA', {
+                        style: 'currency',
+                        currency: 'CAD',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      }).format(revenueMetrics.pendingPayments || 0)
+                    ) : (
+                      '$0'
+                    )}
+                  </p>
+                  <p className={`text-xs mt-1 ${
+                    revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
+                  }`}>
+                    Awaiting payment
+                  </p>
+                </div>
+                <div className={`p-1.5 rounded-lg ${
+                  revenueMetrics && revenueMetrics.pendingPayments > 0 
+                    ? 'bg-white/20 backdrop-blur-sm' 
+                    : 'bg-amber-100'
+                }`}>
+                  <Clock className={`h-4 w-4 ${
+                    revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-white' : 'text-amber-600'
+                  }`} />
+                </div>
+              </div>
+              {revenueMetrics && revenueMetrics.pendingPayments > 0 && (
+                <>
+                  <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
+                  <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-amber-100">
+                    <span>View details</span>
+                    <ArrowRight className="h-3 w-3" />
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
