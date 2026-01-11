@@ -235,8 +235,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
                 },
               },
             },
-            // Show payment method types: card first, then ACSS if enabled
-            paymentMethodTypes: ['card', 'acss_debit'],
+            // Payment method types are automatically determined from the PaymentIntent
+            // No need to specify paymentMethodTypes here - Stripe Elements shows what's available
           }}
         />
       </div>
