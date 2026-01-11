@@ -382,8 +382,8 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   };
 
   const content = (
-    <main className={embedded ? "flex-1 py-6" : "flex-1 pt-24 pb-8"}>
-        <div className="container mx-auto px-4 py-8">
+    <main className={embedded ? "flex-1 py-4 sm:py-6" : "flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8"}>
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Booking Requests</h1>
             <p className="text-gray-600 mt-2">Review and manage chef booking requests</p>

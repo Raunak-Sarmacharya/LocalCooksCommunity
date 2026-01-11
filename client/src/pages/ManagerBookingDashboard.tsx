@@ -422,12 +422,12 @@ export default function ManagerBookingDashboard() {
         </Sheet>
         
         {/* Mobile Menu Button */}
-        <div className="lg:hidden fixed top-20 left-4 z-30">
+        <div className="lg:hidden fixed top-20 sm:top-24 left-3 sm:left-4 z-30">
           <Button
             variant="outline"
             size="icon"
             onClick={() => setMobileMenuOpen(true)}
-            className="bg-white shadow-lg"
+            className="bg-white shadow-lg mobile-touch-target mobile-no-tap-highlight"
           >
             <Menu className="h-5 w-5" />
           </Button>
@@ -435,22 +435,22 @@ export default function ManagerBookingDashboard() {
 
         <div 
           className={cn(
-            "flex-1 pt-12 lg:pt-0 transition-all duration-300",
+            "flex-1 pt-12 sm:pt-16 lg:pt-0 transition-all duration-300",
             isSidebarCollapsed ? "lg:pl-20" : "lg:pl-[280px]" // Dynamic padding based on sidebar state
           )}
         >
-          <div className="container mx-auto px-4 py-6 max-w-7xl">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl">
           {/* Onboarding Reminder Banner */}
           {needsOnboarding && (
-            <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm">
+            <div className="mb-4 sm:mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 sm:p-4 shadow-sm">
               <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-blue-900 mb-1">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-xs sm:text-sm font-semibold text-blue-900 mb-1">
                       Complete Your Setup to Activate Bookings
                     </h3>
-                    <p className="text-sm text-blue-700 mb-3">
+                    <p className="text-xs sm:text-sm text-blue-700 mb-2 sm:mb-3">
                       Finish your onboarding to start accepting bookings. Upload your kitchen license
                       and get it approved by an admin to activate bookings.
                     </p>
@@ -464,18 +464,18 @@ export default function ManagerBookingDashboard() {
           {!needsOnboarding &&
             selectedLocation &&
             selectedLocation.kitchenLicenseStatus !== "approved" && (
-              <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <h3 className="text-sm font-semibold text-yellow-900 mb-1">
+              <div className="mb-4 sm:mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4 shadow-sm">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xs sm:text-sm font-semibold text-yellow-900 mb-1">
                       {selectedLocation.kitchenLicenseStatus === "pending"
                         ? "License Pending Approval"
                         : selectedLocation.kitchenLicenseStatus === "rejected"
                         ? "License Rejected"
                         : "License Not Uploaded"}
                     </h3>
-                    <p className="text-sm text-yellow-700 mb-2">
+                    <p className="text-xs sm:text-sm text-yellow-700 mb-2">
                       {selectedLocation.kitchenLicenseStatus === "pending"
                         ? "Your kitchen license is pending admin approval. Bookings will be activated once approved."
                         : selectedLocation.kitchenLicenseStatus === "rejected"
@@ -488,7 +488,7 @@ export default function ManagerBookingDashboard() {
                         onClick={() => setActiveView("settings")}
                         size="sm"
                         variant="outline"
-                        className="border-yellow-300 text-yellow-700 hover:bg-yellow-100"
+                        className="border-yellow-300 text-yellow-700 hover:bg-yellow-100 min-h-[36px] sm:min-h-[40px] text-xs sm:text-sm"
                       >
                         Upload License
                       </Button>
@@ -500,18 +500,18 @@ export default function ManagerBookingDashboard() {
 
           {/* Header - Only show on non-overview pages */}
           {activeView !== 'overview' && (
-            <div className="mb-6 flex items-start justify-between">
+            <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">Booking Management</h1>
-                <p className="text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Booking Management</h1>
+                <p className="text-sm sm:text-base text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
               </div>
             </div>
           )}
 
           {/* Create Location Dialog */}
           {showCreateLocation && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
+              <div className="bg-white rounded-lg sm:rounded-xl shadow-xl max-w-lg w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">
                     {locations.length === 0 ? 'Create Your First Location' : 'Add New Location'}
@@ -809,10 +809,10 @@ export default function ManagerBookingDashboard() {
           <div className="w-full">
               {/* Show onboarding prompt if manager has no locations */}
               {locations.length === 0 && !isLoadingLocations ? (
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-12 text-center">
-                  <Building2 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">No Locations Yet</h3>
-                  <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8 md:p-12 text-center">
+                  <Building2 className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                  <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">No Locations Yet</h3>
+                  <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 max-w-md mx-auto px-4">
                     You need to complete the setup wizard to create your first location and start accepting bookings.
                   </p>
                 </div>
@@ -871,8 +871,8 @@ export default function ManagerBookingDashboard() {
                   {activeView === 'payments' && (
                     <div className="space-y-6">
                       <div>
-                        <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Setup</h2>
-                        <p className="text-gray-600">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Payment Setup</h2>
+                        <p className="text-sm sm:text-base text-gray-600">
                           Connect your Stripe account to receive payments directly for kitchen bookings.
                         </p>
                       </div>
@@ -889,18 +889,18 @@ export default function ManagerBookingDashboard() {
                   )}
 
                   {activeView === 'availability' && !selectedLocation && (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-                      <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-                      <p className="text-gray-500">Choose a location to manage availability</p>
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 md:p-12 text-center">
+                      <Calendar className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                      <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+                      <p className="text-sm sm:text-base text-gray-500">Choose a location to manage availability</p>
                     </div>
                   )}
 
                   {activeView === 'settings' && !selectedLocation && (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-                      <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-                      <p className="text-gray-500">Choose a location to manage settings</p>
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 md:p-12 text-center">
+                      <Settings className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
+                      <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+                      <p className="text-sm sm:text-base text-gray-500">Choose a location to manage settings</p>
                     </div>
                   )}
                 </>

@@ -853,12 +853,12 @@ export default function KitchenBookingCalendar() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
-      <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
-        <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-8 sm:pb-12">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-900">Book a Kitchen</h1>
-            <p className="text-gray-600 mt-2 text-lg">Reserve a professional kitchen space for your culinary needs</p>
+          <div className="mb-6 sm:mb-8">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Book a Kitchen</h1>
+            <p className="text-gray-600 mt-2 text-sm sm:text-base md:text-lg">Reserve a professional kitchen space for your culinary needs</p>
           </div>
 
           {/* Loading State */}
@@ -871,23 +871,23 @@ export default function KitchenBookingCalendar() {
 
           {/* Error State */}
           {kitchensQuery.isError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-              <div className="flex items-center gap-3 mb-2">
-                <AlertCircle className="h-6 w-6 text-red-600" />
-                <h3 className="text-lg font-semibold text-red-900">Error Loading Kitchens</h3>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 sm:p-6">
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-red-600 flex-shrink-0" />
+                <h3 className="text-base sm:text-lg font-semibold text-red-900">Error Loading Kitchens</h3>
               </div>
-              <p className="text-red-700">{(kitchensQuery.error as Error)?.message || "Failed to fetch kitchens"}</p>
+              <p className="text-sm sm:text-base text-red-700">{(kitchensQuery.error as Error)?.message || "Failed to fetch kitchens"}</p>
             </div>
           )}
 
           {/* No Kitchens Available */}
           {!isLoadingKitchens && !kitchensQuery.isError && filteredKitchens.length === 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
-              <Building className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 sm:p-8 md:p-12 text-center">
+              <Building className="h-12 w-12 sm:h-16 sm:w-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+              <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2 px-4">
                 {locationFilterId ? "No Kitchens Available at This Location" : "No Kitchens Available"}
               </h2>
-              <p className="text-gray-600 max-w-md mx-auto">
+              <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto px-4">
                 {locationFilterId 
                   ? "There are currently no commercial kitchens available for booking at this location. Please check back later or contact support."
                   : "There are currently no commercial kitchens available for booking. Please check back later or contact support."}
@@ -897,15 +897,15 @@ export default function KitchenBookingCalendar() {
 
           {/* Main Content */}
           {!isLoadingKitchens && filteredKitchens.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
               {/* Left Column - Kitchen Selection & Calendar */}
-              <div className="lg:col-span-2 space-y-6">
+              <div className="lg:col-span-2 space-y-4 sm:space-y-6">
                 {/* Step 1: Kitchen Selection */}
                 {!selectedKitchen ? (
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                    <div className="flex items-center gap-2 mb-6">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-semibold">1</div>
-                      <h2 className="text-xl font-bold text-gray-900">Select a Kitchen</h2>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                    <div className="flex items-center gap-2 mb-4 sm:mb-6">
+                      <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 text-blue-600 font-semibold text-sm sm:text-base">1</div>
+                      <h2 className="text-lg sm:text-xl font-bold text-gray-900">Select a Kitchen</h2>
                     </div>
                     
                     <div className="space-y-6">
@@ -944,20 +944,20 @@ export default function KitchenBookingCalendar() {
                           </div>
 
                           {/* Kitchen Cards */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 ml-7">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 ml-0 sm:ml-7">
                             {data.kitchens.map((kitchen: any) => (
                               <button
                                 key={kitchen.id}
                                 onClick={() => handleKitchenSelect(kitchen)}
-                                className="group p-5 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-left"
+                                className="group p-4 sm:p-5 rounded-lg border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-left mobile-touch-target"
                               >
-                                <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 mb-2">{kitchen.name}</h4>
+                                <h4 className="font-semibold text-sm sm:text-base text-gray-900 group-hover:text-blue-600 mb-1.5 sm:mb-2">{kitchen.name}</h4>
                                 {kitchen.description && (
-                                  <p className="text-sm text-gray-600 mb-3">{kitchen.description}</p>
+                                  <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3 line-clamp-2">{kitchen.description}</p>
                                 )}
                                 <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-sm text-blue-600 font-medium">
-                                    <CalendarIcon className="h-4 w-4" />
+                                  <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-600 font-medium">
+                                    <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                     Select Kitchen
                                   </div>
                                   {/* Pricing will be loaded after selection */}
@@ -972,28 +972,28 @@ export default function KitchenBookingCalendar() {
                 ) : (
                   <>
                     {/* Selected Kitchen Summary */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Building className="h-5 w-5 text-blue-600" />
-                            <h3 className="font-semibold text-blue-900">{selectedKitchen.name}</h3>
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
+                            <Building className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+                            <h3 className="font-semibold text-sm sm:text-base text-blue-900 truncate">{selectedKitchen.name}</h3>
                           </div>
                           {(selectedKitchen.location?.name || selectedKitchen.locationName) && (
-                            <p className="text-sm text-blue-700">📍 {selectedKitchen.location?.name || selectedKitchen.locationName}</p>
+                            <p className="text-xs sm:text-sm text-blue-700 truncate">📍 {selectedKitchen.location?.name || selectedKitchen.locationName}</p>
                           )}
                           {kitchenPricing && kitchenPricing.hourlyRate && (
-                            <p className="text-sm font-semibold text-blue-900 mt-2">
+                            <p className="text-xs sm:text-sm font-semibold text-blue-900 mt-1.5 sm:mt-2">
                               ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)} {kitchenPricing.currency}/hour
                             </p>
                           )}
                           {kitchenPricing && !kitchenPricing.hourlyRate && (
-                            <p className="text-sm text-blue-600 mt-2 italic">Pricing not set</p>
+                            <p className="text-xs sm:text-sm text-blue-600 mt-1.5 sm:mt-2 italic">Pricing not set</p>
                           )}
                         </div>
                         <button
                           onClick={() => handleKitchenSelect(null)}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm font-medium flex-shrink-0 mobile-touch-target px-2 py-1"
                         >
                           Change
                         </button>
@@ -1150,48 +1150,48 @@ export default function KitchenBookingCalendar() {
                     )}
 
                     {/* Step 2: Date Selection (Calendar) */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 relative">
-                      <div className="flex items-center gap-2 mb-6">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-semibold">2</div>
-                        <h2 className="text-xl font-bold text-gray-900">Choose a Date</h2>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 relative">
+                      <div className="flex items-center gap-2 mb-4 sm:mb-6">
+                        <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 text-blue-600 font-semibold text-sm sm:text-base">2</div>
+                        <h2 className="text-lg sm:text-xl font-bold text-gray-900">Choose a Date</h2>
                       </div>
 
                       {/* Calendar Header */}
-                      <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center justify-between mb-4 sm:mb-6">
                         <button
                           onClick={() => navigateMonth('prev')}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors mobile-touch-target"
                           aria-label="Previous month"
                         >
-                          <ChevronLeft className="h-5 w-5 text-gray-600" />
+                          <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                         </button>
                         
-                        <h3 className="text-lg font-bold text-gray-900">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900 px-2">
                           {monthNames[currentMonth]} {currentYear}
                         </h3>
                         
                         <button
                           onClick={() => navigateMonth('next')}
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors mobile-touch-target"
                           aria-label="Next month"
                         >
-                          <ChevronRight className="h-5 w-5 text-gray-600" />
+                          <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                         </button>
                       </div>
 
                       {/* Calendar Grid */}
-                      <div>
+                      <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
                         {/* Day headers */}
-                        <div className="grid grid-cols-7 gap-2 mb-2">
+                        <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 min-w-[280px]">
                           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                            <div key={day} className="text-center text-xs font-semibold text-gray-600 py-2">
+                            <div key={day} className="text-center text-[10px] sm:text-xs font-semibold text-gray-600 py-1 sm:py-2">
                               {day}
                             </div>
                           ))}
                         </div>
 
                         {/* Calendar days */}
-                        <div className="grid grid-cols-7 gap-2">
+                        <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-[280px]">
                           {calendarDays.map((date, index) => {
                             if (!date) return null;
                             const isCurrent = isCurrentMonth(date);
@@ -1229,13 +1229,13 @@ export default function KitchenBookingCalendar() {
                                 onClick={() => !isPastDate && isCurrent && canSelectDate && handleDateClick(date)}
                                 disabled={isDisabled}
                                 className={`
-                                  aspect-square p-2 rounded-lg border transition-all
+                                  aspect-square p-1 sm:p-2 rounded-lg border transition-all
                                   ${bgColor} ${borderColor} ${textColor} ${isDisabled ? 'cursor-not-allowed' : cursor}
                                   ${isDisabled ? 'opacity-40' : ''}
-                                  relative
+                                  relative mobile-touch-target
                                 `}
                               >
-                                <span className="text-sm font-medium">{date.getDate()}</span>
+                                <span className="text-xs sm:text-sm font-medium">{date.getDate()}</span>
                                 {isSelected && (
                                   <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2">
                                     <Check className="h-3 w-3" />
@@ -1308,11 +1308,11 @@ export default function KitchenBookingCalendar() {
 
                     {/* Step 3: Time Slot Selection */}
                     {selectedDate && canBook && (
-                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div className="flex items-center justify-between mb-6">
+                      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
                           <div className="flex items-center gap-2">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-semibold">3</div>
-                            <h2 className="text-xl font-bold text-gray-900">Select Time Slots</h2>
+                            <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 text-blue-600 font-semibold text-sm sm:text-base">3</div>
+                            <h2 className="text-lg sm:text-xl font-bold text-gray-900">Select Time Slots</h2>
                           </div>
                           {selectedSlots.length > 0 && (
                             <button
@@ -1346,7 +1346,7 @@ export default function KitchenBookingCalendar() {
                                 
                                 setLocation(`/book-kitchen/confirm?${params.toString()}`);
                               }}
-                              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center gap-2"
+                              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px] text-sm sm:text-base"
                             >
                               Continue
                               <Check className="h-4 w-4" />
@@ -1354,32 +1354,32 @@ export default function KitchenBookingCalendar() {
                           )}
                         </div>
 
-                        <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                          <p className="text-sm text-gray-700 mb-2">
-                            <CalendarIcon className="inline h-4 w-4 mr-1 text-blue-600" />
+                        <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                          <p className="text-xs sm:text-sm text-gray-700 mb-1.5 sm:mb-2">
+                            <CalendarIcon className="inline h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 text-blue-600" />
                             <span className="font-semibold">{formatDate(selectedDate)}</span>
                           </p>
-                          <p className="text-xs text-gray-600">
+                          <p className="text-[10px] sm:text-xs text-gray-600">
                                    💡 Daily booking limit: {maxSlotsPerChef} {maxSlotsPerChef === 1 ? 'hour' : 'hours'} per chef
                           </p>
                         </div>
 
                         {isLoadingSlots ? (
-                          <div className="text-center py-12">
+                          <div className="text-center py-8 sm:py-12">
                             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                            <p className="text-gray-600 mt-3">Loading time slots...</p>
+                            <p className="text-sm sm:text-base text-gray-600 mt-3">Loading time slots...</p>
                           </div>
                         ) : allSlots.length === 0 ? (
-                          <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
-                            <Info className="h-8 w-8 text-yellow-600 mx-auto mb-3" />
-                            <p className="text-gray-800 font-medium mb-2">Kitchen Closed</p>
-                            <p className="text-sm text-gray-600">
+                          <div className="p-4 sm:p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-center">
+                            <Info className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-600 mx-auto mb-2 sm:mb-3" />
+                            <p className="text-sm sm:text-base text-gray-800 font-medium mb-1.5 sm:mb-2">Kitchen Closed</p>
+                            <p className="text-xs sm:text-sm text-gray-600">
                               The kitchen manager has not set operating hours for this day.
                             </p>
                           </div>
                         ) : (
                           <>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
                               {allSlots.map((slot) => {
                                 const isSelected = selectedSlots.includes(slot.time);
                                 const isFullyBooked = slot.isFullyBooked;
@@ -1417,18 +1417,19 @@ export default function KitchenBookingCalendar() {
                                     onClick={() => handleSlotClick(slot)}
                                     disabled={isFullyBooked}
                                     className={`
-                                      relative p-4 border-2 rounded-xl transition-all font-medium text-center
+                                      relative p-2.5 sm:p-4 border-2 rounded-lg sm:rounded-xl transition-all font-medium text-center
                                       ${statusBg} ${statusColor} ${statusText} ${cursorStyle}
                                       ${isSelected ? 'shadow-lg scale-105' : !isFullyBooked && 'hover:scale-102'}
+                                      mobile-touch-target
                                     `}
                                   >
-                                    <div className="flex flex-col items-center gap-1">
+                                    <div className="flex flex-col items-center gap-0.5 sm:gap-1">
                                       <div className="flex flex-col items-center">
                                         <div className="flex items-center gap-1">
-                                          <Clock className="h-4 w-4" />
-                                          <span className="text-sm font-semibold">{formatSlotRange(slot.time)}</span>
+                                          <Clock className="h-3 w-3 sm:h-4 sm:w-4" />
+                                          <span className="text-xs sm:text-sm font-semibold">{formatSlotRange(slot.time)}</span>
                                         </div>
-                                        <span className="text-xs opacity-75">(1 hour)</span>
+                                        <span className="text-[10px] sm:text-xs opacity-75">(1 hour)</span>
                                       </div>
                                       
                                       {/* Capacity indicator */}
@@ -1460,9 +1461,9 @@ export default function KitchenBookingCalendar() {
                             </div>
                             
                             {/* Legend */}
-                            <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                              <p className="text-xs font-semibold text-gray-700 mb-3">Availability Legend:</p>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                              <p className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-2 sm:mb-3">Availability Legend:</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] sm:text-xs">
                                 <div className="flex items-center gap-2">
                                   <div className="w-4 h-4 bg-white border-2 border-gray-200 rounded"></div>
                                   <span className="text-gray-600">Available</span>
@@ -1483,24 +1484,24 @@ export default function KitchenBookingCalendar() {
                             </div>
                             
                             {selectedSlots.length > 0 && (
-                              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="text-sm font-medium text-green-900">
+                              <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                                  <div className="flex-1">
+                                    <p className="text-xs sm:text-sm font-medium text-green-900">
                                       {selectedSlots.length} hour{selectedSlots.length > 1 ? 's' : ''} selected
                                     </p>
-                                    <p className="text-xs text-green-700 mt-1">
+                                    <p className="text-[10px] sm:text-xs text-green-700 mt-0.5 sm:mt-1">
                                       Duration: {selectedSlots.length} {selectedSlots.length === 1 ? 'hour' : 'hours'}
                                     </p>
                                     {estimatedPrice && (
-                                      <p className="text-sm font-semibold text-green-900 mt-2">
+                                      <p className="text-xs sm:text-sm font-semibold text-green-900 mt-1.5 sm:mt-2">
                                         Estimated Total: ${estimatedPrice.totalPrice.toFixed(2)} {kitchenPricing?.currency || 'CAD'}
                                       </p>
                                     )}
                                   </div>
                                   <button
                                     onClick={() => setSelectedSlots([])}
-                                    className="text-sm text-green-700 hover:text-green-900 font-medium underline"
+                                    className="text-xs sm:text-sm text-green-700 hover:text-green-900 font-medium underline mobile-touch-target py-1"
                                   >
                                     Clear Selection
                                   </button>

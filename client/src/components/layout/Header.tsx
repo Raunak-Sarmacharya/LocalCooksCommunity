@@ -235,19 +235,19 @@ export default function Header() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b border-gray-200/50" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
-          <Logo variant="brand" className="h-10 sm:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110" />
-          <div className="flex flex-col justify-center">
-            <span className="font-logo text-xl sm:text-2xl lg:text-3xl leading-none text-[#F51042] tracking-tight font-normal">
+        <Link href="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 hover:scale-[1.02] group">
+          <Logo variant="brand" className="h-8 sm:h-10 md:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110 flex-shrink-0" />
+          <div className="flex flex-col justify-center min-w-0">
+            <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-3xl leading-none text-[#F51042] tracking-tight font-normal truncate">
               LocalCooks
             </span>
             {currentSubdomain === 'chef' && (
-              <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
+              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
                 for chefs
               </span>
             )}
             {currentSubdomain === 'kitchen' && (
-              <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
+              <span className="text-[9px] sm:text-[10px] md:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
                 for kitchens
               </span>
             )}

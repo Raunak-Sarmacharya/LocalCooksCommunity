@@ -841,8 +841,8 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
   const isCurrentMonth = (date: Date) => date.getMonth() === currentMonth;
 
   const content = (
-    <main className={embedded ? "flex-1 py-6" : "flex-1 pt-24 pb-8"}>
-      <div className={embedded ? "px-4 py-6" : "container mx-auto px-4 py-6 max-w-7xl"}>
+    <main className={embedded ? "flex-1 py-4 sm:py-6" : "flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8"}>
+      <div className={embedded ? "px-4 sm:px-6 py-4 sm:py-6" : "container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl"}>
           {/* Header */}
           <div className="mb-6">
             <h1 className="text-3xl font-bold text-gray-900">Kitchen Availability Management</h1>
@@ -977,17 +977,84 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                         </Button>
                       </div>
                       
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b border-gray-200">
-                              <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Day</th>
-                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Available</th>
-                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">Start Time</th>
-                              <th className="text-center py-3 px-4 text-sm font-semibold text-gray-700">End Time</th>
-                            </tr>
-                          </thead>
-                          <tbody>
+                      <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                        <div className="min-w-full inline-block align-middle">
+                          <div className="hidden md:block overflow-hidden">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b border-gray-200">
+                                  <th className="text-left py-3 px-4 text-xs sm:text-sm font-semibold text-gray-700">Day</th>
+                                  <th className="text-center py-3 px-4 text-xs sm:text-sm font-semibold text-gray-700">Available</th>
+                                  <th className="text-center py-3 px-4 text-xs sm:text-sm font-semibold text-gray-700">Start Time</th>
+                                  <th className="text-center py-3 px-4 text-xs sm:text-sm font-semibold text-gray-700">End Time</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[
+                                  { day: 0, name: 'Sunday' },
+                                  { day: 1, name: 'Monday' },
+                                  { day: 2, name: 'Tuesday' },
+                                  { day: 3, name: 'Wednesday' },
+                                  { day: 4, name: 'Thursday' },
+                                  { day: 5, name: 'Friday' },
+                                  { day: 6, name: 'Saturday' },
+                                ].map(({ day, name }) => {
+                                  const schedule = weeklySchedule[day];
+                                  return (
+                                    <tr key={day} className="border-b border-gray-100 hover:bg-gray-50">
+                                      <td className="py-3 px-4 text-xs sm:text-sm font-medium text-gray-900">{name}</td>
+                                      <td className="py-3 px-4 text-center">
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={schedule.isAvailable}
+                                            onChange={(e) => {
+                                              setWeeklySchedule({
+                                                ...weeklySchedule,
+                                                [day]: { ...schedule, isAvailable: e.target.checked },
+                                              });
+                                            }}
+                                            className="sr-only peer"
+                                          />
+                                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                        </label>
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                        <input
+                                          type="time"
+                                          value={schedule.startTime}
+                                          onChange={(e) => {
+                                            setWeeklySchedule({
+                                              ...weeklySchedule,
+                                              [day]: { ...schedule, startTime: e.target.value },
+                                            });
+                                          }}
+                                          disabled={!schedule.isAvailable}
+                                          className="px-2 py-1.5 sm:py-2 border border-gray-300 rounded text-xs sm:text-sm disabled:bg-gray-100 disabled:text-gray-400 min-h-[36px] sm:min-h-[40px]"
+                                        />
+                                      </td>
+                                      <td className="py-3 px-4 text-center">
+                                        <input
+                                          type="time"
+                                          value={schedule.endTime}
+                                          onChange={(e) => {
+                                            setWeeklySchedule({
+                                              ...weeklySchedule,
+                                              [day]: { ...schedule, endTime: e.target.value },
+                                            });
+                                          }}
+                                          disabled={!schedule.isAvailable}
+                                          className="px-2 py-1.5 sm:py-2 border border-gray-300 rounded text-xs sm:text-sm disabled:bg-gray-100 disabled:text-gray-400 min-h-[36px] sm:min-h-[40px]"
+                                        />
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          {/* Mobile Card View */}
+                          <div className="md:hidden space-y-3">
                             {[
                               { day: 0, name: 'Sunday' },
                               { day: 1, name: 'Monday' },
@@ -999,9 +1066,9 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                             ].map(({ day, name }) => {
                               const schedule = weeklySchedule[day];
                               return (
-                                <tr key={day} className="border-b border-gray-100 hover:bg-gray-50">
-                                  <td className="py-3 px-4 text-sm font-medium text-gray-900">{name}</td>
-                                  <td className="py-3 px-4 text-center">
+                                <div key={day} className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-medium text-sm text-gray-900">{name}</span>
                                     <label className="relative inline-flex items-center cursor-pointer">
                                       <input
                                         type="checkbox"
@@ -1016,40 +1083,44 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
                                       />
                                       <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                                     </label>
-                                  </td>
-                                  <td className="py-3 px-4 text-center">
-                                    <input
-                                      type="time"
-                                      value={schedule.startTime}
-                                      onChange={(e) => {
-                                        setWeeklySchedule({
-                                          ...weeklySchedule,
-                                          [day]: { ...schedule, startTime: e.target.value },
-                                        });
-                                      }}
-                                      disabled={!schedule.isAvailable}
-                                      className="px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
-                                    />
-                                  </td>
-                                  <td className="py-3 px-4 text-center">
-                                    <input
-                                      type="time"
-                                      value={schedule.endTime}
-                                      onChange={(e) => {
-                                        setWeeklySchedule({
-                                          ...weeklySchedule,
-                                          [day]: { ...schedule, endTime: e.target.value },
-                                        });
-                                      }}
-                                      disabled={!schedule.isAvailable}
-                                      className="px-2 py-1 border border-gray-300 rounded text-sm disabled:bg-gray-100 disabled:text-gray-400"
-                                    />
-                                  </td>
-                                </tr>
+                                  </div>
+                                  {schedule.isAvailable && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">Start Time</label>
+                                        <input
+                                          type="time"
+                                          value={schedule.startTime}
+                                          onChange={(e) => {
+                                            setWeeklySchedule({
+                                              ...weeklySchedule,
+                                              [day]: { ...schedule, startTime: e.target.value },
+                                            });
+                                          }}
+                                          className="w-full px-2 py-2 border border-gray-300 rounded text-sm min-h-[40px]"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs text-gray-600 mb-1">End Time</label>
+                                        <input
+                                          type="time"
+                                          value={schedule.endTime}
+                                          onChange={(e) => {
+                                            setWeeklySchedule({
+                                              ...weeklySchedule,
+                                              [day]: { ...schedule, endTime: e.target.value },
+                                            });
+                                          }}
+                                          className="w-full px-2 py-2 border border-gray-300 rounded text-sm min-h-[40px]"
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               );
                             })}
-                          </tbody>
-                        </table>
+                          </div>
+                        </div>
                       </div>
                     </div>
 

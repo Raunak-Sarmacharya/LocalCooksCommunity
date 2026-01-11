@@ -539,7 +539,7 @@ function TestimonialCarouselSection() {
   ];
 
   return (
-    <section id="testimonials" className="py-20 md:py-32 px-4 bg-white relative overflow-visible">
+    <section id="testimonials" className="py-12 sm:py-16 md:py-20 lg:py-32 px-4 sm:px-6 bg-white relative overflow-visible">
       <div className="container mx-auto max-w-7xl">
         <FadeInSection>
           <div className="text-center mb-12 md:mb-16">
@@ -995,7 +995,7 @@ export default function ChefLanding() {
             }} />
           </div>
 
-          <div className="container mx-auto max-w-7xl px-4 pt-28 pb-16 relative z-10">
+          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-14 md:pb-16 relative z-10">
             {/* Mobile-only "Monetize Your Cooking" pill - appears above image on mobile */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -1010,7 +1010,7 @@ export default function ChefLanding() {
               </div>
             </motion.div>
 
-            <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center min-h-[calc(100vh-200px)]">
+            <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-16 items-center min-h-[calc(100vh-180px)] sm:min-h-[calc(100vh-200px)]">
               
               {/* Left Content Column */}
               <div className="order-2 lg:order-1">
@@ -1034,10 +1034,10 @@ export default function ChefLanding() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.7, delay: 0.3 }}
                 >
-                  <h1 className="font-logo text-[3.5rem] md:text-[5rem] lg:text-[6rem] text-[#F51042] leading-none mb-4 md:mb-5 tracking-tight">
+                  <h1 className="font-logo text-[2.5rem] sm:text-[3rem] md:text-[4rem] lg:text-[5rem] xl:text-[6rem] text-[#F51042] leading-none mb-3 sm:mb-4 md:mb-5 tracking-tight">
                   LocalCooks
                 </h1>
-                  <p className="font-mono text-[10px] md:text-[11px] text-[#6B4A4F] uppercase tracking-[0.4em] mb-8">
+                  <p className="font-mono text-[9px] sm:text-[10px] md:text-[11px] text-[#6B4A4F] uppercase tracking-[0.3em] sm:tracking-[0.4em] mb-6 sm:mb-8">
                     For Chefs Who Dream Bigger
                 </p>
                 </motion.div>
@@ -1049,7 +1049,7 @@ export default function ChefLanding() {
                   transition={{ duration: 0.7, delay: 0.5 }}
                   className="mb-8"
                 >
-                  <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-6">
+                  <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-4 sm:mb-6">
                     Turn Your Kitchen
                   <br />
                     <span className="relative inline-block">
@@ -1096,7 +1096,7 @@ export default function ChefLanding() {
                   <Button
                     onClick={handleGetStarted}
                     size="lg"
-                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-4 px-4 md:py-7 md:px-12 text-xs md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1"
+                    className="group relative bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-12 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/30 hover:-translate-y-1 overflow-hidden flex-1 min-h-[44px] sm:min-h-[48px]"
                   >
                     <span className="relative z-10 flex items-center justify-center">
                       Start Your Journey
@@ -1112,7 +1112,7 @@ export default function ChefLanding() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-4 px-4 md:py-7 md:px-10 text-xs md:text-lg rounded-full transition-all duration-300 flex-1"
+                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-[#F51042]/5 font-semibold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-10 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-h-[44px] sm:min-h-[48px]"
                     onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
                   >
                     How It Works

@@ -40,14 +40,14 @@ function FormStep() {
 
   return (
     <>
-      <div className="container mx-auto px-4 mb-8">
+      <div className="container mx-auto px-4 sm:px-6 mb-6 sm:mb-8">
         <ProgressIndicator step={currentStep} />
       </div>
 
-      <div className="container mx-auto px-3 sm:px-4">
+      <div className="container mx-auto px-4 sm:px-6">
         <FadeInSection>
           <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center">Cook Application</h1>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center px-2">Cook Application</h1>
 
           {currentStep === 1 && (
             <div className="fade-in">
@@ -206,14 +206,14 @@ export default function ApplicationForm() {
       <div className="min-h-screen flex flex-col bg-light-gray relative">
         <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
         <Header />
-        <main className="flex-grow pt-28 pb-16 relative z-10">
+        <main className="flex-grow pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-16 relative z-10">
           {isLoading ? (
-            <div className="container mx-auto px-4 flex justify-center py-12">
+            <div className="container mx-auto px-4 sm:px-6 flex justify-center py-8 sm:py-12">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : activeApplication ? (
             <motion.div
-              className="container mx-auto px-4 max-w-2xl"
+              className="container mx-auto px-4 sm:px-6 max-w-2xl"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}

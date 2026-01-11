@@ -60,7 +60,7 @@ export default function AdminLanding() {
                 <Button
                   size="lg"
                   onClick={() => setLocation("/admin/login")}
-                  className="bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-6 md:py-7 px-12 md:px-16 text-lg md:text-xl rounded-xl flex items-center gap-2 mx-auto transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform"
+                  className="w-full sm:w-auto bg-gradient-to-r from-[var(--color-primary)] to-[#FF5470] hover:from-[#FF5470] hover:to-[var(--color-primary)] text-white font-bold py-4 sm:py-5 md:py-6 lg:py-7 px-8 sm:px-10 md:px-12 lg:px-16 text-base sm:text-lg md:text-xl rounded-xl flex items-center gap-2 mx-auto transition-all duration-300 shadow-2xl hover:shadow-[0_0_30px_rgba(245,16,66,0.5)] hover:-translate-y-1 transform min-h-[48px] sm:min-h-[56px]"
                 >
                   <Lock className="h-5 w-5" />
                   Sign In to Admin Dashboard
@@ -202,7 +202,7 @@ export default function AdminLanding() {
               <Button
                 size="lg"
                 onClick={() => setLocation("/admin/login")}
-                className="bg-white text-[var(--color-primary)] hover:bg-gray-50 font-bold py-7 px-14 text-lg md:text-xl rounded-xl flex items-center gap-2 mx-auto transition-all duration-300 shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] hover:-translate-y-2 transform"
+                className="w-full sm:w-auto bg-white text-[var(--color-primary)] hover:bg-gray-50 font-bold py-4 sm:py-6 md:py-7 px-8 sm:px-12 md:px-14 text-base sm:text-lg md:text-xl rounded-xl flex items-center gap-2 mx-auto transition-all duration-300 shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] hover:-translate-y-2 transform min-h-[48px] sm:min-h-[56px]"
               >
                 <Lock className="h-5 w-5" />
                 Sign In to Admin Dashboard
