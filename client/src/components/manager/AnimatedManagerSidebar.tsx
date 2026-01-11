@@ -108,6 +108,7 @@ export default function AnimatedManagerSidebar({
           backgroundColor: '#FFE8DD',
           borderRight: '1px solid rgba(255, 212, 196, 0.5)',
           overflow: 'visible', // Allow button to extend outside sidebar
+          minHeight: 0, // Allow flex child to shrink below content size
         }}
       >
       {/* Collapse Toggle Button - Always visible on desktop, positioned for easy access */}
@@ -175,7 +176,7 @@ export default function AnimatedManagerSidebar({
         </div>
       )}
 
-      <div className="flex flex-col h-full min-h-0" style={{ overflow: 'hidden' }}>
+      <div className="flex flex-col h-full min-h-0 overflow-hidden">
         {/* Location Selection */}
         <div className="px-3 py-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255, 212, 196, 0.5)' }}>
           <AnimatePresence mode="wait">
@@ -348,7 +349,7 @@ export default function AnimatedManagerSidebar({
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -10 }}
                       transition={{ duration: 0.2 }}
-                      className="flex-1 text-left hidden lg:block"
+                      className="flex-1 text-left"
                     >
                       {item.label}
                     </motion.span>
