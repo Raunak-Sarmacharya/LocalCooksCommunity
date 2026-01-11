@@ -146,22 +146,6 @@ export default function ManagerBookingDashboard() {
       
       // Sidebar sticky positioning is now handled directly in the JSX
       // No need to update sidebarStyle for top position
-      
-      if (footer) {
-        const footerRect = footer.getBoundingClientRect();
-        const footerTop = footerRect.top;
-        const footerHeight = footerRect.height;
-        
-        // Calculate when footer would start to conflict with sidebar
-        // When footer enters viewport, sidebar should scroll with content to avoid overlap
-        if (footerTop < viewportHeight) {
-          // Footer is in viewport - calculate how much space is available
-          const spaceAboveFooter = footerTop - measuredHeaderHeight;
-          
-          // When footer is visible and would overlap sidebar, limit height to allow scrolling
-          // Note: maxHeight is now handled in the JSX, but we can update it here if needed
-          // For now, the JSX handles the height constraint
-        }
     };
 
     // Measure header on mount and resize
@@ -170,10 +154,7 @@ export default function ManagerBookingDashboard() {
       if (header) {
         const headerRect = header.getBoundingClientRect();
         const measuredHeaderHeight = headerRect.height;
-        // Only update if the height actually changed to avoid unnecessary re-renders
-        if (Math.abs(measuredHeaderHeight - headerHeight) > 1) {
-          setHeaderHeight(measuredHeaderHeight);
-        }
+        setHeaderHeight(measuredHeaderHeight);
         handleScroll();
       }
     };
@@ -199,7 +180,7 @@ export default function ManagerBookingDashboard() {
       window.removeEventListener('resize', measureHeader);
       clearTimeout(timeoutId);
     };
-  }, [headerHeight]);
+  }, []);
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
