@@ -121,9 +121,10 @@ export default function ManagerBookingDashboard() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const footerRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(96); // Default header height
   const [sidebarStyle, setSidebarStyle] = useState<React.CSSProperties>({
     position: 'sticky',
-    top: 0,
+    top: '96px', // Initial header height
     left: 0,
     alignSelf: 'flex-start',
   });
@@ -138,9 +139,10 @@ export default function ManagerBookingDashboard() {
       
       // Measure actual header height dynamically
       const headerRect = header.getBoundingClientRect();
-      const headerHeight = headerRect.height;
+      const measuredHeaderHeight = headerRect.height;
+      setHeaderHeight(measuredHeaderHeight); // Store for use in content padding
       const viewportHeight = window.innerHeight;
-      const sidebarAvailableHeight = viewportHeight - headerHeight;
+      const sidebarAvailableHeight = viewportHeight - measuredHeaderHeight;
       
       if (footer) {
         const footerRect = footer.getBoundingClientRect();
@@ -151,14 +153,14 @@ export default function ManagerBookingDashboard() {
         // When footer enters viewport, sidebar should scroll with content to avoid overlap
         if (footerTop < viewportHeight) {
           // Footer is in viewport - calculate how much space is available
-          const spaceAboveFooter = footerTop - headerHeight;
+          const spaceAboveFooter = footerTop - measuredHeaderHeight;
           
           // When footer is visible and would overlap sidebar, limit height to allow scrolling
           if (spaceAboveFooter > 0 && spaceAboveFooter < sidebarAvailableHeight) {
             // Footer is conflicting - limit sidebar height so it can scroll
             setSidebarStyle({
               position: 'sticky',
-              top: `${headerHeight}px`,
+              top: `${measuredHeaderHeight}px`,
               left: 0,
               maxHeight: `${spaceAboveFooter}px`,
               alignSelf: 'flex-start',
@@ -167,7 +169,7 @@ export default function ManagerBookingDashboard() {
             // Footer has passed sidebar top - allow full scrolling
             setSidebarStyle({
               position: 'sticky',
-              top: `${headerHeight}px`,
+              top: `${measuredHeaderHeight}px`,
               left: 0,
               maxHeight: `${sidebarAvailableHeight}px`,
               alignSelf: 'flex-start',
@@ -176,7 +178,7 @@ export default function ManagerBookingDashboard() {
             // Footer is approaching but not yet conflicting
             setSidebarStyle({
               position: 'sticky',
-              top: `${headerHeight}px`,
+              top: `${measuredHeaderHeight}px`,
               left: 0,
               maxHeight: `${sidebarAvailableHeight}px`,
               alignSelf: 'flex-start',
@@ -186,7 +188,7 @@ export default function ManagerBookingDashboard() {
           // Footer is below viewport - sidebar stays sticky (appears fixed)
           setSidebarStyle({
             position: 'sticky',
-            top: `${headerHeight}px`,
+            top: `${measuredHeaderHeight}px`,
             left: 0,
             maxHeight: `${sidebarAvailableHeight}px`,
             alignSelf: 'flex-start',
@@ -196,7 +198,7 @@ export default function ManagerBookingDashboard() {
         // No footer found, use sticky positioning (appears fixed)
         setSidebarStyle({
           position: 'sticky',
-          top: `${headerHeight}px`,
+          top: `${measuredHeaderHeight}px`,
           left: 0,
           maxHeight: `${sidebarAvailableHeight}px`,
           alignSelf: 'flex-start',
@@ -208,6 +210,9 @@ export default function ManagerBookingDashboard() {
     const measureHeader = () => {
       const header = headerRef.current || document.querySelector('header');
       if (header) {
+        const headerRect = header.getBoundingClientRect();
+        const measuredHeaderHeight = headerRect.height;
+        setHeaderHeight(measuredHeaderHeight);
         handleScroll();
       }
     };
@@ -512,9 +517,12 @@ export default function ManagerBookingDashboard() {
 
         <div 
           className={cn(
-            "flex-1 pt-12 sm:pt-16 lg:pt-0 transition-all duration-300",
+            "flex-1 transition-all duration-300",
             isSidebarCollapsed ? "lg:pl-20" : "lg:pl-[280px]" // Dynamic padding based on sidebar state
           )}
+          style={{
+            paddingTop: `${headerHeight}px`,
+          }}
         >
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl">
           {/* Onboarding Reminder Banner */}
