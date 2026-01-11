@@ -50,6 +50,7 @@ const UnsubscribePage = lazy(() => import("@/pages/UnsubscribePage"));
 
 // Kitchen Booking System components
 const ManagerChangePassword = lazy(() => import("@/pages/ManagerChangePassword"));
+const ManagerProfile = lazy(() => import("@/pages/ManagerProfile"));
 const KitchenAvailabilityManagement = lazy(() => import("@/pages/KitchenAvailabilityManagement"));
 const ManagerBookingsPanel = lazy(() => import("@/pages/ManagerBookingsPanel"));
 const ManagerBookingDashboard = lazy(() => import("@/pages/ManagerBookingDashboard"));
@@ -323,6 +324,13 @@ function Router() {
         <Route path="/manager" component={ManagerLanding} />
         <Route path="/manager/login" component={ManagerLogin} />
         <Route path="/manager/change-password" component={ManagerChangePassword} />
+        <Route path="/manager/profile">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerProfile />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
         <Route path="/manager/dashboard">
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>

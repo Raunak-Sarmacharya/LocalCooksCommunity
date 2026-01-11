@@ -5,6 +5,7 @@ import {
   X, Check, Save, AlertCircle, Building2, FileText, 
   ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp
 } from "lucide-react";
+import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
@@ -1912,62 +1913,36 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               </div>
             </div>
 
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-2xl p-4 md:p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Logo Image
                 </label>
-                {logoUrl ? (
-                  <div className="flex items-center gap-4 mb-4">
-                    <img 
-                      src={logoUrl} 
-                      alt="Location logo" 
-                      className="h-16 w-auto object-contain border border-gray-200 rounded-lg p-2 bg-white"
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-600">Current logo</p>
-                      <button
-                        onClick={() => setLogoUrl('')}
-                        className="text-sm text-red-600 hover:text-red-700 mt-1"
-                      >
-                        Remove logo
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        handleLogoUpload(file).catch((error) => {
-                          console.error('Logo upload failed:', error);
-                        });
+                <div className="max-w-md">
+                  <ImageWithReplace
+                    imageUrl={logoUrl || undefined}
+                    onImageChange={(newUrl) => {
+                      if (newUrl) {
+                        setLogoUrl(newUrl);
+                        // Auto-save when logo changes
+                        handleSave(newUrl);
+                      } else {
+                        setLogoUrl('');
+                        handleSave('');
                       }
                     }}
-                    disabled={isUploadingLogo}
-                    className="hidden"
-                    id="logo-upload"
+                    onRemove={() => {
+                      setLogoUrl('');
+                      handleSave('');
+                    }}
+                    alt="Location logo"
+                    className="w-full h-32 object-contain rounded-lg"
+                    containerClassName="w-full"
+                    aspectRatio="16/9"
+                    fieldName="logo"
+                    maxSize={4.5 * 1024 * 1024}
+                    allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
                   />
-                  <label
-                    htmlFor="logo-upload"
-                    className="cursor-pointer flex flex-col items-center gap-2"
-                  >
-                    {isUploadingLogo ? (
-                      <>
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-                        <span className="text-sm text-gray-600">Uploading...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-8 w-8 text-gray-400" />
-                        <span className="text-sm font-medium text-green-600">Click to upload logo</span>
-                        <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB)</span>
-                      </>
-                    )}
-                  </label>
                 </div>
                 <p className="text-xs text-gray-600 mt-2">
                   Logo will appear in the manager header next to Local Cooks logo
@@ -2177,50 +2152,105 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                             )}
                           </div>
                         </div>
-                        {(kitchen as any).imageUrl ? (
-                          <img 
-                            src={(kitchen as any).imageUrl} 
-                            alt={kitchen.name} 
-                            className="h-20 w-32 object-cover rounded-lg border border-gray-200"
-                          />
-                        ) : (
-                          <div className="h-20 w-32 bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
-                            <ImageIcon className="h-8 w-8 text-gray-400" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-3">
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/jpg,image/png,image/webp"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              handleKitchenImageUpload(kitchen.id, file).catch((error) => {
-                                console.error('Kitchen image upload failed:', error);
+                        <div className="w-48">
+                          <ImageWithReplace
+                            imageUrl={(kitchen as any).imageUrl || undefined}
+                            onImageChange={async (newUrl) => {
+                              if (newUrl) {
+                                // Update the kitchen with the new image URL
+                                const currentFirebaseUser = auth.currentUser;
+                                if (!currentFirebaseUser) {
+                                  throw new Error("Firebase user not available");
+                                }
+                                
+                                const token = await currentFirebaseUser.getIdToken();
+                                const headers: HeadersInit = {
+                                  'Authorization': `Bearer ${token}`,
+                                  'Content-Type': 'application/json',
+                                };
+                                
+                                const updateResponse = await fetch(`/api/manager/kitchens/${kitchen.id}/image`, {
+                                  method: 'PUT',
+                                  headers,
+                                  credentials: 'include',
+                                  body: JSON.stringify({ imageUrl: newUrl }),
+                                });
+                                
+                                if (!updateResponse.ok) {
+                                  const errorData = await updateResponse.json();
+                                  throw new Error(errorData.error || 'Failed to update kitchen image');
+                                }
+                                
+                                // Refresh the kitchens list
+                                queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                                
+                                toast({
+                                  title: "Success",
+                                  description: "Kitchen image updated successfully",
+                                });
+                              } else {
+                                // Remove image
+                                const currentFirebaseUser = auth.currentUser;
+                                if (!currentFirebaseUser) {
+                                  throw new Error("Firebase user not available");
+                                }
+                                
+                                const token = await currentFirebaseUser.getIdToken();
+                                const headers: HeadersInit = {
+                                  'Authorization': `Bearer ${token}`,
+                                  'Content-Type': 'application/json',
+                                };
+                                
+                                const updateResponse = await fetch(`/api/manager/kitchens/${kitchen.id}/image`, {
+                                  method: 'PUT',
+                                  headers,
+                                  credentials: 'include',
+                                  body: JSON.stringify({ imageUrl: null }),
+                                });
+                                
+                                if (!updateResponse.ok) {
+                                  const errorData = await updateResponse.json();
+                                  throw new Error(errorData.error || 'Failed to remove kitchen image');
+                                }
+                                
+                                queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                              }
+                            }}
+                            onRemove={async () => {
+                              const currentFirebaseUser = auth.currentUser;
+                              if (!currentFirebaseUser) {
+                                throw new Error("Firebase user not available");
+                              }
+                              
+                              const token = await currentFirebaseUser.getIdToken();
+                              const headers: HeadersInit = {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                              };
+                              
+                              const updateResponse = await fetch(`/api/manager/kitchens/${kitchen.id}/image`, {
+                                method: 'PUT',
+                                headers,
+                                credentials: 'include',
+                                body: JSON.stringify({ imageUrl: null }),
                               });
-                            }
-                          }}
-                          disabled={uploadingKitchenId === kitchen.id}
-                          className="hidden"
-                          id={`kitchen-image-upload-${kitchen.id}`}
-                        />
-                        <label
-                          htmlFor={`kitchen-image-upload-${kitchen.id}`}
-                          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 rounded-lg cursor-pointer transition-colors"
-                        >
-                          {uploadingKitchenId === kitchen.id ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-700"></div>
-                              <span>Uploading...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="h-4 w-4" />
-                              <span>{(kitchen as any).imageUrl ? 'Change Image' : 'Upload Image'}</span>
-                            </>
-                          )}
-                        </label>
+                              
+                              if (!updateResponse.ok) {
+                                const errorData = await updateResponse.json();
+                                throw new Error(errorData.error || 'Failed to remove kitchen image');
+                              }
+                              
+                              queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                            }}
+                            alt={kitchen.name}
+                            className="w-full h-32 object-cover rounded-lg"
+                            containerClassName="w-full"
+                            aspectRatio="16/9"
+                            fieldName="kitchenImage"
+                            maxSize={4.5 * 1024 * 1024}
+                            allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}

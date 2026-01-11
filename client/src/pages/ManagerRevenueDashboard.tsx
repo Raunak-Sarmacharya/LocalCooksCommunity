@@ -31,6 +31,7 @@ import {
   Receipt,
   CheckCircle2,
   Percent,
+  Info,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -362,8 +363,16 @@ export default function ManagerRevenueDashboard({
       statusCounts[status] = (statusCounts[status] || 0) + 1;
     });
     
+    const statusLabels: Record<string, string> = {
+      paid: 'Paid',
+      pending: 'Pre-Authorized',
+      failed: 'Failed',
+      refunded: 'Refunded',
+      partially_refunded: 'Partially Refunded',
+    };
+    
     return Object.entries(statusCounts).map(([status, count]) => ({
-      name: status.charAt(0).toUpperCase() + status.slice(1),
+      name: statusLabels[status] || status.charAt(0).toUpperCase() + status.slice(1),
       value: count,
       status,
     }));
@@ -382,19 +391,37 @@ export default function ManagerRevenueDashboard({
   };
 
   const getPaymentStatusBadge = (status: string) => {
-    const colors: Record<string, { bg: string; text: string }> = {
-      paid: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
-      pending: { bg: 'bg-amber-100', text: 'text-amber-700' },
-      failed: { bg: 'bg-red-100', text: 'text-red-700' },
-      refunded: { bg: 'bg-gray-100', text: 'text-gray-700' },
-      partially_refunded: { bg: 'bg-gray-100', text: 'text-gray-700' },
+    const colors: Record<string, { bg: string; text: string; label: string; tooltip?: string }> = {
+      paid: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Paid' },
+      pending: { 
+        bg: 'bg-amber-100', 
+        text: 'text-amber-700', 
+        label: 'Pre-Authorized',
+        tooltip: 'Payment is pre-authorized via Stripe and will be processed on the booking date'
+      },
+      failed: { bg: 'bg-red-100', text: 'text-red-700', label: 'Failed' },
+      refunded: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Refunded' },
+      partially_refunded: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Partially Refunded' },
     };
     const color = colors[status] || colors.pending;
-    return (
+    const badge = (
       <Badge className={`${color.bg} ${color.text} border-0 font-medium`}>
-        {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+        {color.label}
       </Badge>
     );
+    
+    if (color.tooltip) {
+      return (
+        <div className="group relative inline-block">
+          {badge}
+          <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+            {color.tooltip}
+          </div>
+        </div>
+      );
+    }
+    
+    return badge;
   };
 
   // Download invoice handler
@@ -547,6 +574,20 @@ export default function ManagerRevenueDashboard({
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Payment System Info Banner */}
+          <Card className="border border-amber-200 bg-amber-50/50">
+            <CardContent className="p-3">
+              <div className="flex items-start gap-2">
+                <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-amber-800">
+                  <p className="font-medium mb-1">Pre-Authorized Payment System</p>
+                  <p className="text-amber-700">
+                    All payments are pre-authorized via Stripe when bookings are made. "Pre-Authorized Payments" represent committed revenue that will be automatically processed on the booking date. "Completed Payments" are payments that have already been processed.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           {/* Row 1: Four Revenue Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Revenue */}
@@ -580,7 +621,7 @@ export default function ManagerRevenueDashboard({
                     <p className="text-blue-100 text-xs mt-1">After platform fee</p>
                   </div>
                   <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                    <CreditCard className="h-4 w-4" />
+                    <TrendingUp className="h-4 w-4" />
                   </div>
                 </div>
                 <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
@@ -595,19 +636,29 @@ export default function ManagerRevenueDashboard({
             }`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
-                  <div>
-                    <p className={`text-[10px] font-medium uppercase tracking-wider ${
-                      revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
-                    }`}>
-                      Pending
-                    </p>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-[10px] font-medium uppercase tracking-wider ${
+                        revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
+                      }`}>
+                        Pre-Authorized Payments
+                      </p>
+                      <div className="group relative">
+                        <Info className={`h-3 w-3 ${
+                          revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-400'
+                        } cursor-help`} />
+                        <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                          Payments are pre-authorized via Stripe and will be automatically processed on the booking date. These are committed revenue.
+                        </div>
+                      </div>
+                    </div>
                     <p className="text-2xl font-bold mt-1">
                       {revenueMetrics ? formatCurrency(revenueMetrics.pendingPayments) : '$0.00'}
                     </p>
                     <p className={`text-xs mt-1 ${
                       revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
                     }`}>
-                      Awaiting payment
+                      Will process on booking date
                     </p>
                   </div>
                   <div className={`p-1.5 rounded-lg ${
@@ -615,7 +666,7 @@ export default function ManagerRevenueDashboard({
                       ? 'bg-white/20 backdrop-blur-sm' 
                       : 'bg-amber-100'
                   }`}>
-                    <Clock className={`h-4 w-4 ${
+                    <CreditCard className={`h-4 w-4 ${
                       revenueMetrics?.pendingPayments > 0 ? 'text-white' : 'text-amber-600'
                     }`} />
                   </div>
@@ -672,12 +723,12 @@ export default function ManagerRevenueDashboard({
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-500 text-xs font-medium">Paid</p>
+                    <p className="text-gray-500 text-xs font-medium">Processed</p>
                     <p className="text-xl font-bold text-emerald-600 mt-1">
                       {revenueMetrics ? formatCurrency(revenueMetrics.completedPayments) : '$0.00'}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {revenueMetrics?.paidBookingCount || 0} bookings
+                      {revenueMetrics?.paidBookingCount || 0} bookings processed
                     </p>
                   </div>
                   <div className="p-2 bg-emerald-100 rounded-lg">
@@ -926,7 +977,7 @@ export default function ManagerRevenueDashboard({
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="pending">Pre-Authorized (Pending)</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
                   <SelectItem value="refunded">Refunded</SelectItem>
                 </SelectContent>
