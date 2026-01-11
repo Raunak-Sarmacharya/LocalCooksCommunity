@@ -16,6 +16,29 @@ import useEmblaCarousel from 'embla-carousel-react';
 import kitchenTableIcon from "@assets/kitchen-table.png";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
+import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+
+// Component for individual carousel image with presigned URL
+function CarouselImage({ imageUrl, kitchenName, index }: { imageUrl: string; kitchenName: string; index: number }) {
+  const presignedUrl = usePresignedImageUrl(imageUrl);
+  
+  return (
+    <div className="flex-[0_0_100%] min-w-0">
+      <div className="aspect-[16/9] bg-gray-100">
+        <img 
+          src={presignedUrl || imageUrl} 
+          alt={`${kitchenName} - Image ${index + 1}`}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            console.error('Image failed to load:', imageUrl);
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 interface PublicLocation {
   id: number;
@@ -206,15 +229,7 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
       <div className="overflow-hidden rounded-xl" ref={emblaRef}>
         <div className="flex">
           {images.map((img, index) => (
-            <div key={index} className="flex-[0_0_100%] min-w-0">
-              <div className="aspect-[16/9] bg-gray-100">
-                <img 
-                  src={img} 
-                  alt={`${kitchenName} - Image ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
+            <CarouselImage key={index} imageUrl={img} kitchenName={kitchenName} index={index} />
           ))}
         </div>
       </div>

@@ -267,10 +267,18 @@ export async function getBalanceTransactions(
     }
 
     if (endDate) {
-      params.created = {
-        ...params.created,
-        lte: Math.floor(endDate.getTime() / 1000),
-      };
+      if (params.created && typeof params.created === 'object' && 'gte' in params.created) {
+        // params.created is already a range object, add lte to it
+        params.created = {
+          ...params.created,
+          lte: Math.floor(endDate.getTime() / 1000),
+        };
+      } else {
+        // params.created is not set or is a number, create new range object
+        params.created = {
+          lte: Math.floor(endDate.getTime() / 1000),
+        };
+      }
     }
 
     const transactions = await stripe.balanceTransactions.list(

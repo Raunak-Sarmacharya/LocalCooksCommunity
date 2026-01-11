@@ -9,6 +9,26 @@ import { StorageSelection } from "@/components/booking/StorageSelection";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useLocation } from "wouter";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
+import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+
+// Component for equipment image with presigned URL
+function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
+  const presignedUrl = usePresignedImageUrl(imageUrl);
+  
+  return (
+    <div className="flex-shrink-0">
+      <img
+        src={presignedUrl || imageUrl}
+        alt={alt}
+        className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+        onError={(e) => {
+          console.error('Equipment image failed to load:', imageUrl);
+          e.currentTarget.style.display = 'none';
+        }}
+      />
+    </div>
+  );
+}
 
 // Helper functions for calendar
 function getDaysInMonth(year: number, month: number) {
@@ -51,12 +71,11 @@ export default function KitchenBookingCalendar() {
   
   // Filter kitchens by location if location parameter is provided
   // Reads location from URL query parameter fresh on each computation
+  const urlParams = new URLSearchParams(window.location.search);
+  const locationParam = urlParams.get('location');
+  const locationFilterId = locationParam ? parseInt(locationParam) : null;
+  
   const filteredKitchens = useMemo(() => {
-    // Read location from URL query parameter
-    const urlParams = new URLSearchParams(window.location.search);
-    const locationParam = urlParams.get('location');
-    const locationFilterId = locationParam ? parseInt(locationParam) : null;
-    
     if (!locationFilterId) {
       // No filter - return all kitchens (existing behavior)
       return kitchens;
@@ -67,7 +86,7 @@ export default function KitchenBookingCalendar() {
       const kitchenLocationId = kitchen.location?.id || kitchen.locationId || kitchen.location_id;
       return kitchenLocationId === locationFilterId;
     });
-  }, [kitchens]); // Re-compute when kitchens change, and read location fresh each time
+  }, [kitchens, locationFilterId]); // Re-compute when kitchens or location filter changes
   
   // Memoize enriched bookings to prevent infinite re-renders
   // Only recalculate when bookings or kitchens data actually changes
@@ -1049,16 +1068,7 @@ export default function KitchenBookingCalendar() {
                                     <div className="flex items-start justify-between gap-3">
                                       {/* Equipment Image */}
                                       {equipment.photos && equipment.photos.length > 0 && (
-                                        <div className="flex-shrink-0">
-                                          <img
-                                            src={equipment.photos[0]}
-                                            alt={equipment.equipmentType}
-                                            className="w-20 h-20 object-cover rounded-lg border border-gray-200"
-                                            onError={(e) => {
-                                              e.currentTarget.style.display = 'none';
-                                            }}
-                                          />
-                                        </div>
+                                        <EquipmentImage imageUrl={equipment.photos[0]} alt={equipment.equipmentType} />
                                       )}
                                       <div className="flex-1 min-w-0">
                                         <p className="font-medium text-gray-900">{equipment.equipmentType}</p>

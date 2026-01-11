@@ -682,9 +682,9 @@ export default function KitchenDashboardOverview({
           </Card>
 
           {/* Pending Payments */}
-          <Card 
+          <Card
             className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer ${
-              revenueMetrics && revenueMetrics.pendingPayments > 0
+              revenueMetrics && (revenueMetrics as any).pendingPayments > 0
                 ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30'
                 : 'bg-white border border-gray-100 text-gray-900 hover:shadow-xl'
             }`}
@@ -694,20 +694,20 @@ export default function KitchenDashboardOverview({
               <div className="flex items-start justify-between">
                 <div>
                   <p className={`text-[10px] font-medium uppercase tracking-wider ${
-                    revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
+                    revenueMetrics && (revenueMetrics as any).pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
                   }`}>
                     Pending
                   </p>
                   <p className="text-2xl font-bold mt-1">
                     {isLoadingRevenue ? (
-                      <span className={revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'}>...</span>
+                      <span className={revenueMetrics && (revenueMetrics as any).pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'}>...</span>
                     ) : revenueMetrics ? (
                       new Intl.NumberFormat('en-CA', {
                         style: 'currency',
                         currency: 'CAD',
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(revenueMetrics.pendingPayments || 0)
+                      }).format((revenueMetrics as any).pendingPayments || 0)
                     ) : (
                       '$0'
                     )}
@@ -719,16 +719,16 @@ export default function KitchenDashboardOverview({
                   </p>
                 </div>
                 <div className={`p-1.5 rounded-lg ${
-                  revenueMetrics && revenueMetrics.pendingPayments > 0 
-                    ? 'bg-white/20 backdrop-blur-sm' 
+                  revenueMetrics && (revenueMetrics as any).pendingPayments > 0
+                    ? 'bg-white/20 backdrop-blur-sm'
                     : 'bg-amber-100'
                 }`}>
                   <Clock className={`h-4 w-4 ${
-                    revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-white' : 'text-amber-600'
+                    revenueMetrics && (revenueMetrics as any).pendingPayments > 0 ? 'text-white' : 'text-amber-600'
                   }`} />
                 </div>
               </div>
-              {revenueMetrics && revenueMetrics.pendingPayments > 0 && (
+              {revenueMetrics && (revenueMetrics as any).pendingPayments > 0 && (
                 <>
                   <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
                   <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-amber-100">
