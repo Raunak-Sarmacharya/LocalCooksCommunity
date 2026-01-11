@@ -136,7 +136,7 @@
     },
     {
       "path": "/api/capture-payments",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
