@@ -4521,7 +4521,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Log transaction count for debugging
-      console.log(`[Revenue] Transaction history for manager ${managerId}: ${transactions.length} transactions`);
+      console.log(`[Revenue] Transaction history for manager ${managerId}: ${transactions.length} transactions`, {
+        usedPaymentTransactions: usePaymentTransactions,
+        dateRange: { startDate, endDate },
+        locationId,
+        paymentStatusFilter: paymentStatus
+      });
 
       // Convert cents to dollars for response
       res.json({
@@ -4555,22 +4560,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get bookings with invoice data
+      // Show all bookings for the manager, with optional date filtering
+      // Use both booking_date and created_at for date filtering to catch all recent bookings
       let whereClause = `
         WHERE l.manager_id = $1
-          AND kb.status != 'cancelled'
+        AND kb.status != 'cancelled'
       `;
       const params: any[] = [managerId];
       let paramIndex = 2;
 
+      // Date filters apply to either booking_date OR created_at to include recent bookings
+      // This ensures bookings show up even if booking_date is in the future
       if (startDate) {
-        whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
-        params.push(startDate);
+        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+        whereClause += ` AND (DATE(kb.booking_date) >= $${paramIndex}::date OR DATE(kb.created_at) >= $${paramIndex}::date)`;
+        params.push(start);
         paramIndex++;
       }
 
       if (endDate) {
-        whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
-        params.push(endDate);
+        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        whereClause += ` AND (DATE(kb.booking_date) <= $${paramIndex}::date OR DATE(kb.created_at) <= $${paramIndex}::date)`;
+        params.push(end);
         paramIndex++;
       }
 
@@ -4608,9 +4619,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         JOIN locations l ON k.location_id = l.id
         LEFT JOIN users u ON kb.chef_id = u.id
         ${whereClause}
-        ORDER BY kb.booking_date DESC, kb.created_at DESC
+        ORDER BY kb.created_at DESC, kb.booking_date DESC
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
       `, [...params, parseInt(limit as string), parseInt(offset as string)]);
+
+      console.log(`[Revenue] Invoices query for manager ${managerId}: Found ${result.rows.length} invoices`);
 
       res.json({
         invoices: result.rows.map((row: any) => {
@@ -7605,22 +7618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`[Booking Limit] Using date override: ${maxSlotsPerChef} hours for kitchen ${kitchenId} on ${bookingDateStr}`);
             }
           } else {
-            // 2. Try weekly schedule for this day of week
-            const dayOfWeek = bookingDateObj.getDay();
-            const availabilityResult = await pool.query(`
-              SELECT max_slots_per_chef
-              FROM kitchen_availability
-              WHERE kitchen_id = $1 AND day_of_week = $2
-            `, [kitchenId, dayOfWeek]);
-            
-            if (availabilityResult.rows.length > 0) {
-              const v = Number(availabilityResult.rows[0].max_slots_per_chef);
-              if (Number.isFinite(v) && v > 0) {
-                maxSlotsPerChef = v;
-                console.log(`[Booking Limit] Using weekly schedule: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (day ${dayOfWeek})`);
-              }
-            } else {
-              // 3. Fall back to location default
+            // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
               const locationLimitResult = await pool.query(`
                 SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
                 FROM locations l
@@ -11303,22 +11301,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`[Booking Limit] Using date override: ${maxSlotsPerChef} hours for kitchen ${kitchenId} on ${dateStr}`);
             }
           } else {
-            // 2. Try weekly schedule for this day of week
-            const dayOfWeek = bookingDateObj.getDay();
-            const availabilityResult = await pool.query(`
-              SELECT max_slots_per_chef
-              FROM kitchen_availability
-              WHERE kitchen_id = $1 AND day_of_week = $2
-            `, [kitchenId, dayOfWeek]);
-            
-            if (availabilityResult.rows.length > 0) {
-              const v = Number(availabilityResult.rows[0].max_slots_per_chef);
-              if (Number.isFinite(v) && v > 0) {
-                maxSlotsPerChef = v;
-                console.log(`[Booking Limit] Using weekly schedule: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (day ${dayOfWeek})`);
-              }
-            } else {
-              // 3. Fall back to location default
+            // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
               const locationLimitResult = await pool.query(`
                 SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
                 FROM locations l

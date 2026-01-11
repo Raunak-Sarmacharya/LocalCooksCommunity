@@ -14198,7 +14198,12 @@ app.get("/api/manager/revenue/transactions", requireFirebaseAuthWithUser, requir
     }
 
     // Log transaction count for debugging
-    console.log(`[Revenue] Transaction history for manager ${managerId}: ${transactions.length} transactions`);
+    console.log(`[Revenue] Transaction history for manager ${managerId}: ${transactions.length} transactions`, {
+      usedPaymentTransactions: usePaymentTransactions,
+      dateRange: { startDate, endDate },
+      locationId,
+      paymentStatusFilter: paymentStatus
+    });
 
     // Convert cents to dollars for response
     res.json({
@@ -14232,6 +14237,8 @@ app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireMan
     }
 
     // Get bookings with invoice data
+    // Show all bookings for the manager, with optional date filtering
+    // Use both booking_date and created_at for date filtering to catch all recent bookings
     let whereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
@@ -14239,15 +14246,19 @@ app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireMan
     const params = [managerId];
     let paramIndex = 2;
 
+    // Date filters apply to either booking_date OR created_at to include recent bookings
+    // This ensures bookings show up even if booking_date is in the future
     if (startDate) {
-      whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
-      params.push(startDate);
+      const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+      whereClause += ` AND (DATE(kb.booking_date) >= $${paramIndex}::date OR DATE(kb.created_at) >= $${paramIndex}::date)`;
+      params.push(start);
       paramIndex++;
     }
 
     if (endDate) {
-      whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
-      params.push(endDate);
+      const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+      whereClause += ` AND (DATE(kb.booking_date) <= $${paramIndex}::date OR DATE(kb.created_at) <= $${paramIndex}::date)`;
+      params.push(end);
       paramIndex++;
     }
 
@@ -14257,30 +14268,32 @@ app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireMan
       paramIndex++;
     }
 
-    const result = await pool.query(`
-      SELECT 
-        kb.id as booking_id,
-        kb.booking_date,
-        COALESCE(
-          kb.total_price,
-          CASE 
-            WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-            THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
-            ELSE 0
-          END
-        )::bigint as total_price,
-        kb.payment_status,
-        k.name as kitchen_name,
-        l.name as location_name,
-        u.username as chef_name
+      const result = await pool.query(`
+        SELECT 
+          kb.id as booking_id,
+          kb.booking_date,
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::bigint as total_price,
+          kb.payment_status,
+          k.name as kitchen_name,
+          l.name as location_name,
+          u.username as chef_name
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON kb.chef_id = u.id
       ${whereClause}
-      ORDER BY kb.booking_date DESC
+      ORDER BY kb.created_at DESC, kb.booking_date DESC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `, [...params, parseInt(limit), parseInt(offset)]);
+
+    console.log(`[Revenue] Invoices query for manager ${managerId}: Found ${result.rows.length} invoices`);
 
     res.json({
       invoices: result.rows.map(row => {
@@ -18667,7 +18680,7 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
 
     if (!pool) return res.json({ maxSlotsPerChef: 2 });
 
-    // Priority order: 1) Date override, 2) Weekly schedule, 3) Location default, 4) Hardcoded 2
+    // Priority order: 1) Date override, 2) Location default, 3) Hardcoded 2
     let maxSlotsPerChef = 2;
     try {
       // 1. Try date-specific override first
@@ -18682,17 +18695,7 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
         const val = Number(over.rows[0].max_slots_per_chef);
         if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
       } else {
-        // 2. Try weekly schedule for this day of week
-        const avail = await pool.query(`
-          SELECT max_slots_per_chef
-          FROM kitchen_availability
-          WHERE kitchen_id = $1 AND day_of_week = $2
-        `, [kitchenId, bookingDate.getDay()]);
-        if (avail.rows.length > 0) {
-          const v = Number(avail.rows[0].max_slots_per_chef);
-          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
-        } else {
-          // 3. Fall back to location default
+        // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
           const loc = await pool.query(`
             SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
             FROM locations l
@@ -19185,20 +19188,7 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
           console.log(`[Booking Limit] Using date override: ${maxSlotsPerChef} hours for kitchen ${kitchenId} on ${bookingDate}`);
         }
       } else {
-        // 2. Try weekly schedule for this day of week
-        const avail = await pool.query(`
-          SELECT max_slots_per_chef
-          FROM kitchen_availability
-          WHERE kitchen_id = $1 AND day_of_week = EXTRACT(DOW FROM $2::date)
-        `, [kitchenId, bookingDate]);
-        if (avail.rows.length > 0) {
-          const v = Number(avail.rows[0].max_slots_per_chef);
-          if (Number.isFinite(v) && v > 0) {
-            maxSlotsPerChef = v;
-            console.log(`[Booking Limit] Using weekly schedule: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
-          }
-        } else {
-          // 3. Fall back to location default
+        // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
           const loc = await pool.query(`
             SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
             FROM locations l
@@ -22943,7 +22933,7 @@ app.get("/api/portal/kitchens/:kitchenId/policy", requirePortalUser, async (req,
       return res.status(403).json({ error: "Access denied" });
     }
 
-    // Priority order: 1) Date override, 2) Weekly schedule, 3) Location default, 4) Hardcoded 2
+    // Priority order: 1) Date override, 2) Location default, 3) Hardcoded 2
     let maxSlotsPerChef = 2;
     try {
       // 1. Try date-specific override first
@@ -22958,27 +22948,16 @@ app.get("/api/portal/kitchens/:kitchenId/policy", requirePortalUser, async (req,
         const val = Number(over.rows[0].max_slots_per_chef);
         if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
       } else {
-        // 2. Try weekly schedule for this day of week
-        const avail = await pool.query(`
-          SELECT max_slots_per_chef
-          FROM kitchen_availability
-          WHERE kitchen_id = $1 AND day_of_week = $2
-        `, [kitchenId, bookingDate.getDay()]);
-        if (avail.rows.length > 0) {
-          const v = Number(avail.rows[0].max_slots_per_chef);
-          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
-        } else {
-          // 3. Fall back to location default
-          const loc = await pool.query(`
-            SELECT l.default_daily_booking_limit
-            FROM locations l
-            INNER JOIN kitchens k ON k.location_id = l.id
-            WHERE k.id = $1
-          `, [kitchenId]);
-          if (loc.rows.length > 0) {
-            const locVal = Number(loc.rows[0].default_daily_booking_limit);
-            if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
-          }
+        // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
+        const loc = await pool.query(`
+          SELECT l.default_daily_booking_limit
+          FROM locations l
+          INNER JOIN kitchens k ON k.location_id = l.id
+          WHERE k.id = $1
+        `, [kitchenId]);
+        if (loc.rows.length > 0) {
+          const locVal = Number(loc.rows[0].default_daily_booking_limit);
+          if (Number.isFinite(locVal) && locVal > 0) maxSlotsPerChef = locVal;
         }
       }
     } catch (_e) {
@@ -23322,18 +23301,7 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
         const val = Number(overrideResult.rows[0].max_slots_per_chef);
         if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
       } else {
-        // 2. Try weekly schedule for this day of week
-        const availabilityResult = await pool.query(`
-          SELECT max_slots_per_chef
-          FROM kitchen_availability
-          WHERE kitchen_id = $1 AND day_of_week = $2
-        `, [kitchenId, bookingDateObj.getDay()]);
-        
-        if (availabilityResult.rows.length > 0) {
-          const v = Number(availabilityResult.rows[0].max_slots_per_chef);
-          if (Number.isFinite(v) && v > 0) maxSlotsPerChef = v;
-        } else {
-          // 3. Fall back to location default
+        // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
           const locationLimitResult = await pool.query(`
             SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
             FROM locations l

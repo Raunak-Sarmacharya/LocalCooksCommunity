@@ -96,10 +96,43 @@ export async function getRevenueMetricsFromTransactions(
     const transactionCount = parseInt(countCheck.rows[0]?.count || '0');
     console.log(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
     
+    // Check how many bookings have payment_transactions vs total bookings
+    // If not all bookings have payment_transactions, we should fall back to legacy method
+    // This check includes both kitchen and bundle bookings
+    const bookingCountCheck = await dbPool.query(`
+      SELECT 
+        COUNT(DISTINCT kb.id) as total_bookings,
+        COUNT(DISTINCT CASE WHEN pt_kitchen.id IS NOT NULL OR pt_bundle.id IS NOT NULL THEN kb.id END) as bookings_with_transactions
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      LEFT JOIN payment_transactions pt_kitchen ON pt_kitchen.booking_id = kb.id 
+        AND pt_kitchen.booking_type = 'kitchen'
+        AND pt_kitchen.manager_id = $1
+      LEFT JOIN payment_transactions pt_bundle ON pt_bundle.booking_id = kb.id 
+        AND pt_bundle.booking_type = 'bundle'
+        AND pt_bundle.manager_id = $1
+      WHERE l.manager_id = $1
+        AND kb.status != 'cancelled'
+        AND (kb.payment_intent_id IS NOT NULL OR kb.total_price IS NOT NULL)
+    `, [managerId]);
+    
+    const totalBookings = parseInt(bookingCountCheck.rows[0]?.total_bookings || '0');
+    const bookingsWithTransactions = parseInt(bookingCountCheck.rows[0]?.bookings_with_transactions || '0');
+    
+    console.log(`[Revenue Service V2] Booking coverage: ${bookingsWithTransactions}/${totalBookings} bookings have payment_transactions`);
+    
     // If no transactions found, throw error to trigger fallback
     if (transactionCount === 0) {
       console.log('[Revenue Service V2] No payment_transactions found, falling back to legacy method');
       throw new Error('No payment_transactions found for manager');
+    }
+    
+    // If not all bookings have payment_transactions, fall back to legacy method
+    // This ensures we don't miss bookings that don't have payment_transactions yet
+    if (totalBookings > 0 && bookingsWithTransactions < totalBookings) {
+      console.log(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
+      throw new Error('Incomplete payment_transactions coverage');
     }
 
     // Get all revenue metrics from payment_transactions
