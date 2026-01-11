@@ -13510,11 +13510,28 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", requireFirebas
       locationId: updated.id,
       cancellationPolicyHours: updated.cancellationPolicyHours,
       defaultDailyBookingLimit: updated.defaultDailyBookingLimit,
+      defaultDailyBookingLimitRaw: updated.default_daily_booking_limit,
       minimumBookingWindowHours: updated.minimumBookingWindowHours,
       notificationEmail: updated.notificationEmail || 'not set',
       logoUrl: updated.logoUrl || 'not set',
       timezone: updated.timezone || DEFAULT_TIMEZONE
     });
+    
+    // Verify the defaultDailyBookingLimit was actually saved
+    if (defaultDailyBookingLimit !== undefined) {
+      const savedValue = updated.defaultDailyBookingLimit ?? updated.default_daily_booking_limit;
+      console.log('[PUT] ✅ Verified defaultDailyBookingLimit save:', {
+        requested: defaultDailyBookingLimit,
+        saved: savedValue,
+        match: savedValue === defaultDailyBookingLimit
+      });
+      if (savedValue !== defaultDailyBookingLimit) {
+        console.error('[PUT] ❌ WARNING: defaultDailyBookingLimit mismatch!', {
+          requested: defaultDailyBookingLimit,
+          saved: savedValue
+        });
+      }
+    }
     
     // Return timezone in response
     const response = {
@@ -18605,21 +18622,39 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
         } else {
           // 3. Fall back to location default
           const loc = await pool.query(`
-            SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
+            SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
             FROM locations l
             INNER JOIN kitchens k ON k.location_id = l.id
             WHERE k.id = $1
           `, [kitchenId]);
+          
+          console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
+            rowCount: loc.rows.length,
+            rawValue: loc.rows[0]?.default_daily_booking_limit,
+            locationId: loc.rows[0]?.location_id,
+            locationName: loc.rows[0]?.location_name
+          });
+          
           if (loc.rows.length > 0) {
-            const locVal = Number(loc.rows[0].default_daily_booking_limit);
-            if (Number.isFinite(locVal) && locVal > 0) {
+            const rawValue = loc.rows[0].default_daily_booking_limit;
+            const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
+            
+            console.log(`[Booking Limit] Parsed location default value:`, {
+              rawValue,
+              locVal,
+              isFinite: Number.isFinite(locVal),
+              isPositive: locVal !== null && locVal > 0
+            });
+            
+            if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
               maxSlotsPerChef = locVal;
-              console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+              console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${loc.rows[0].location_name || loc.rows[0].location_id})`);
             } else {
-              console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
+              console.warn(`[Booking Limit] ⚠️ Invalid location default value: ${locVal} (raw: ${rawValue}), using fallback: 2`);
+              maxSlotsPerChef = 2;
             }
           } else {
-            console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
+            console.warn(`[Booking Limit] ⚠️ No location found for kitchen ${kitchenId}, using fallback: 2`);
           }
         }
       }
@@ -18991,21 +19026,39 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
         } else {
           // 3. Fall back to location default
           const loc = await pool.query(`
-            SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
+            SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
             FROM locations l
             INNER JOIN kitchens k ON k.location_id = l.id
             WHERE k.id = $1
           `, [kitchenId]);
+          
+          console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
+            rowCount: loc.rows.length,
+            rawValue: loc.rows[0]?.default_daily_booking_limit,
+            locationId: loc.rows[0]?.location_id,
+            locationName: loc.rows[0]?.location_name
+          });
+          
           if (loc.rows.length > 0) {
-            const locVal = Number(loc.rows[0].default_daily_booking_limit);
-            if (Number.isFinite(locVal) && locVal > 0) {
+            const rawValue = loc.rows[0].default_daily_booking_limit;
+            const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
+            
+            console.log(`[Booking Limit] Parsed location default value:`, {
+              rawValue,
+              locVal,
+              isFinite: Number.isFinite(locVal),
+              isPositive: locVal !== null && locVal > 0
+            });
+            
+            if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
               maxSlotsPerChef = locVal;
-              console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
+              console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${loc.rows[0].location_name || loc.rows[0].location_id})`);
             } else {
-              console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
+              console.warn(`[Booking Limit] ⚠️ Invalid location default value: ${locVal} (raw: ${rawValue}), using fallback: 2`);
+              maxSlotsPerChef = 2;
             }
           } else {
-            console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
+            console.warn(`[Booking Limit] ⚠️ No location found for kitchen ${kitchenId}, using fallback: 2`);
           }
         }
       }
