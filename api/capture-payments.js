@@ -1,8 +1,13 @@
 /**
  * Vercel Cron Job: Capture Pre-Authorized Payments
  * 
- * This endpoint is called hourly by Vercel Cron to capture payments for bookings
+ * This endpoint is called daily by Vercel Cron to capture payments for bookings
  * after the cancellation period has expired.
+ * 
+ * Note: Vercel Hobby plan only supports daily cron jobs (not hourly).
+ * This job runs once per day and captures all payments that should have been
+ * captured since the last run. There may be up to a 24-hour delay between
+ * cancellation period expiration and payment capture.
  * 
  * Flow:
  * 1. Find bookings with payment_intent_id in 'requires_capture' status
@@ -10,7 +15,10 @@
  * 3. If expired, capture the payment intent
  * 4. Update booking payment_status to 'paid'
  * 
- * Schedule: Hourly (configure in vercel.json)
+ * Schedule: Daily at midnight (configure in vercel.json)
+ * 
+ * Alternative: This endpoint can also be called manually via HTTP POST
+ * for more frequent captures if needed (e.g., from an external cron service).
  */
 
 const { pool } = require('./server/db');
