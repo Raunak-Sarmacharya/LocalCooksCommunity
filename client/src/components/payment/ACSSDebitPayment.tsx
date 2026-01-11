@@ -1,3 +1,17 @@
+/**
+ * Customer Payment Component
+ * 
+ * This component handles customer payments (chefs booking kitchens) using:
+ * - Credit/debit cards (standard in Canada) - primary payment method
+ * - ACSS pre-authorized debit (optional, for recurring payments)
+ * 
+ * This is SEPARATE from Stripe Connect onboarding (which is for managers/chefs to receive payouts).
+ * 
+ * Uses PaymentIntent with manual capture (pre-authorization):
+ * - Places authorization hold when booking is confirmed
+ * - Payment is captured after cancellation period expires
+ * - If cancelled within cancellation period, hold is released
+ */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { loadStripe, StripeElementsOptions } from '@stripe/stripe-js';
 import {
@@ -7,7 +21,7 @@ import {
   useElements
 } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, Loader2, CheckCircle2, CreditCard } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 // Initialize Stripe
@@ -15,7 +29,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || import.meta.env.STRIPE_PUBLISHABLE_KEY || '';
 const stripePromise = loadStripe(stripePublishableKey);
 
-interface ACSSDebitPaymentProps {
+interface CustomerPaymentProps {
   clientSecret: string;
   amount: number; // in cents
   currency: string;
@@ -23,7 +37,7 @@ interface ACSSDebitPaymentProps {
   onError: (error: string) => void;
 }
 
-function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACSSDebitPaymentProps) {
+function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: CustomerPaymentProps) {
   const stripe = useStripe();
   const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -50,7 +64,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
       const retrieved = await stripe.retrievePaymentIntent(clientSecret);
       if (retrieved.paymentIntent) {
         const pi = retrieved.paymentIntent;
-        if (pi.status === 'succeeded' || pi.status === 'processing') {
+        // Authorization hold successful or payment succeeded
+        if (pi.status === 'succeeded' || pi.status === 'processing' || pi.status === 'requires_capture') {
           // Payment already confirmed
           let paymentMethodId = '';
           if (typeof pi.payment_method === 'string') {
@@ -110,8 +125,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
 
       // Check payment intent status
       if (paymentIntent) {
-        // For ACSS debit, payment might be processing or succeeded
-        if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
+        // Authorization hold successful or payment succeeded
+        if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing' || paymentIntent.status === 'requires_capture') {
           // Get payment method ID - can be string or object
           let paymentMethodId = '';
           if (typeof paymentIntent.payment_method === 'string') {
@@ -145,7 +160,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
           const retrieved = await stripe.retrievePaymentIntent(clientSecret);
           if (retrieved.paymentIntent) {
             const pi = retrieved.paymentIntent;
-            if (pi.status === 'succeeded' || pi.status === 'processing') {
+            // Authorization hold successful or payment succeeded
+            if (pi.status === 'succeeded' || pi.status === 'processing' || pi.status === 'requires_capture') {
               let paymentMethodId = '';
               if (typeof pi.payment_method === 'string') {
                 paymentMethodId = pi.payment_method;
@@ -196,7 +212,7 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
           <span className="text-lg font-bold text-gray-900">{formatAmount(amount, currency)}</span>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          Payment will be processed via pre-authorized debit from your Canadian bank account.
+          We'll place an authorization hold on your payment method. The charge will be processed after the cancellation period expires.
         </p>
       </div>
 
@@ -211,20 +227,41 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
         <PaymentElement
           options={{
             layout: 'tabs',
+            // Prioritize cards (standard in Canada), ACSS as secondary option
+            defaultValues: {
+              billingDetails: {
+                address: {
+                  country: 'CA', // Default to Canada
+                },
+              },
+            },
+            // Show payment method types: card first, then ACSS if enabled
+            paymentMethodTypes: ['card', 'acss_debit'],
           }}
         />
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold text-blue-900 mb-2">Pre-Authorized Debit Agreement</h4>
-        <p className="text-xs text-blue-800 mb-2">
-          By providing your bank account information, you authorize Local Cooks Community to debit your account 
-          for this booking and any future bookings you make. You can cancel this authorization at any time by 
-          contacting your bank or us.
-        </p>
-        <p className="text-xs text-blue-700">
-          Payments typically take 3-5 business days to process. You will receive email confirmation once the payment is processed.
-        </p>
+        <div className="flex items-start gap-2 mb-2">
+          <CreditCard className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <h4 className="text-sm font-semibold text-blue-900 mb-1">How Payment Works</h4>
+            <p className="text-xs text-blue-800 mb-2">
+              <strong>Credit/Debit Card:</strong> We'll place an <strong>authorization hold</strong> on your card when you confirm this booking. 
+              This appears as a "pending" transaction in your bank app. The <strong>actual charge</strong> will be processed 
+              after the cancellation period expires (typically 24 hours before your booking). If you cancel within the cancellation period, 
+              the hold will be released automatically.
+            </p>
+            <p className="text-xs text-blue-800 mb-2">
+              <strong>ACSS Bank Debit:</strong> ACSS payments process immediately when you confirm the booking. 
+              By providing your bank account information, you authorize us to debit your account for this booking 
+              and create a mandate for future bookings. You can cancel this authorization at any time.
+            </p>
+            <p className="text-xs text-blue-700">
+              <strong>Your payment method is saved securely</strong> for faster checkout on future bookings.
+            </p>
+          </div>
+        </div>
       </div>
 
       <Button
@@ -254,7 +291,17 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: ACS
   );
 }
 
-export default function ACSSDebitPayment({ clientSecret, amount, currency, onSuccess, onError }: ACSSDebitPaymentProps) {
+/**
+ * Customer Payment Component (Card + ACSS)
+ * 
+ * This is for CUSTOMERS (chefs) making payments for bookings.
+ * Uses PaymentElement which supports both cards and ACSS debit.
+ * 
+ * NOTE: This is separate from Stripe Connect onboarding (for managers to receive payouts).
+ * 
+ * Exported as ACSSDebitPayment for backward compatibility, but handles both cards and ACSS.
+ */
+export default function ACSSDebitPayment({ clientSecret, amount, currency, onSuccess, onError }: CustomerPaymentProps) {
   const [stripeError, setStripeError] = useState<string | null>(null);
 
   useEffect(() => {

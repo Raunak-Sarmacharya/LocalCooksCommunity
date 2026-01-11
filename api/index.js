@@ -224,6 +224,10 @@ app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), asyn
       case 'payment_intent.canceled':
         await handlePaymentIntentCanceled(event.data.object, webhookEventId);
         break;
+      case 'payment_intent.amount_capturable_updated':
+        // Fires when authorization hold is placed (status becomes requires_capture)
+        await handlePaymentIntentAmountCapturableUpdated(event.data.object, webhookEventId);
+        break;
       case 'charge.refunded':
       case 'charge.partially_refunded':
         await handleChargeRefunded(event.data.object, webhookEventId);
@@ -405,6 +409,61 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
     console.log(`[Webhook] Updated booking payment status to 'canceled' for PaymentIntent ${paymentIntent.id}`);
   } catch (error) {
     console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+  }
+}
+
+async function handlePaymentIntentAmountCapturableUpdated(paymentIntent, webhookEventId) {
+  if (!pool) {
+    console.error('Database pool not available for webhook');
+    return;
+  }
+
+  try {
+    const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('../server/services/payment-transactions-service.js');
+    
+    // Update payment_transactions table - authorization hold is placed
+    const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
+    if (transaction) {
+      await updatePaymentTransaction(transaction.id, {
+        status: 'pending', // Keep as pending until captured
+        stripeStatus: paymentIntent.status, // Should be 'requires_capture'
+        lastSyncedAt: new Date(),
+        webhookEventId: webhookEventId,
+      }, pool);
+      console.log(`[Webhook] Updated payment_transactions for authorization hold on PaymentIntent ${paymentIntent.id}`);
+    }
+
+    // Update booking tables - set to pending (authorization hold placed)
+    await pool.query(`
+      UPDATE kitchen_bookings
+      SET 
+        payment_status = 'pending',
+        updated_at = NOW()
+      WHERE payment_intent_id = $1
+        AND payment_status != 'paid'
+    `, [paymentIntent.id]);
+
+    await pool.query(`
+      UPDATE storage_bookings
+      SET 
+        payment_status = 'pending',
+        updated_at = NOW()
+      WHERE payment_intent_id = $1
+        AND payment_status != 'paid'
+    `, [paymentIntent.id]);
+
+    await pool.query(`
+      UPDATE equipment_bookings
+      SET 
+        payment_status = 'pending',
+        updated_at = NOW()
+      WHERE payment_intent_id = $1
+        AND payment_status != 'paid'
+    `, [paymentIntent.id]);
+
+    console.log(`[Webhook] Authorization hold placed for PaymentIntent ${paymentIntent.id} - status: ${paymentIntent.status}`);
+  } catch (error) {
+    console.error(`[Webhook] Error updating authorization hold status for ${paymentIntent.id}:`, error);
   }
 }
 
@@ -18914,6 +18973,98 @@ app.get("/api/payments/intent/:id/status", requireChef, async (req, res) => {
   }
 });
 
+// Capture a PaymentIntent (convert authorization hold to actual charge)
+// Use this when booking is finalized/delivered (Uber-like flow)
+app.post("/api/payments/capture", requireChef, async (req, res) => {
+  try {
+    const { paymentIntentId, amountToCapture } = req.body;
+    const chefId = req.user.id;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: "Missing paymentIntentId" });
+    }
+
+    const { capturePaymentIntent, getPaymentIntent } = await import('../server/services/stripe-service.js');
+
+    // Verify payment intent belongs to chef
+    const paymentIntent = await getPaymentIntent(paymentIntentId);
+    if (!paymentIntent) {
+      return res.status(404).json({ error: "Payment intent not found" });
+    }
+
+    // Check if payment intent is in a capturable state
+    if (paymentIntent.status !== 'requires_capture') {
+      return res.status(400).json({ 
+        error: `Payment intent is not capturable. Current status: ${paymentIntent.status}` 
+      });
+    }
+
+    // Capture the payment (convert authorization hold to charge)
+    const captured = await capturePaymentIntent(
+      paymentIntentId,
+      amountToCapture ? parseInt(amountToCapture) : undefined
+    );
+
+    res.json({
+      success: true,
+      paymentIntentId: captured.id,
+      status: captured.status,
+      amount: captured.amount,
+    });
+  } catch (error) {
+    console.error('Error capturing payment intent:', error);
+    res.status(500).json({ 
+      error: "Failed to capture payment intent",
+      message: error.message 
+    });
+  }
+});
+
+// Cancel a PaymentIntent (release authorization hold)
+// Use this when booking is cancelled before completion
+app.post("/api/payments/cancel", requireChef, async (req, res) => {
+  try {
+    const { paymentIntentId } = req.body;
+    const chefId = req.user.id;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: "Missing paymentIntentId" });
+    }
+
+    const { cancelPaymentIntent, getPaymentIntent } = await import('../server/services/stripe-service.js');
+
+    // Verify payment intent belongs to chef
+    const paymentIntent = await getPaymentIntent(paymentIntentId);
+    if (!paymentIntent) {
+      return res.status(404).json({ error: "Payment intent not found" });
+    }
+
+    // Check if payment intent can be cancelled
+    const cancellableStatuses = ['requires_payment_method', 'requires_capture', 'requires_confirmation'];
+    if (!cancellableStatuses.includes(paymentIntent.status)) {
+      return res.status(400).json({ 
+        error: `Payment intent cannot be cancelled. Current status: ${paymentIntent.status}` 
+      });
+    }
+
+    // Cancel the payment intent (releases authorization hold)
+    const canceled = await cancelPaymentIntent(paymentIntentId);
+
+    res.json({
+      success: true,
+      paymentIntentId: canceled.id,
+      status: canceled.status,
+      message: "Authorization hold released. The hold will disappear from your bank account within a few days.",
+    });
+  } catch (error) {
+    console.error('Error canceling payment intent:', error);
+    res.status(500).json({ 
+      error: "Failed to cancel payment intent",
+      message: error.message 
+    });
+  }
+});
+
 // Create a booking (enforce per-chef daily slot limit)
 app.post("/api/chef/bookings", requireChef, async (req, res) => {
   try {
@@ -19905,10 +20056,16 @@ app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) =>
       return res.status(500).json({ error: "Database not available" });
     }
     
-    // Get booking details before updating
+    // Get booking details with location cancellation policy
     const bookingResult = await pool.query(`
-      SELECT * FROM kitchen_bookings 
-      WHERE id = $1 AND chef_id = $2
+      SELECT 
+        kb.*,
+        l.cancellation_policy_hours,
+        l.cancellation_policy_message
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      WHERE kb.id = $1 AND kb.chef_id = $2
     `, [bookingId, req.user.id]);
     
     if (bookingResult.rows.length === 0) {
@@ -19916,6 +20073,37 @@ app.put("/api/chef/bookings/:bookingId/cancel", requireChef, async (req, res) =>
     }
     
     const booking = bookingResult.rows[0];
+    
+    // Check if booking is within cancellation period
+    const bookingDateTime = new Date(`${booking.booking_date.toISOString().split('T')[0]}T${booking.start_time}`);
+    const now = new Date();
+    const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+    const cancellationHours = booking.cancellation_policy_hours || 24;
+    
+    // If cancelled within cancellation period and payment intent exists, cancel the payment intent
+    if (booking.payment_intent_id && hoursUntilBooking >= cancellationHours) {
+      try {
+        const { cancelPaymentIntent, getPaymentIntent } = await import('../server/services/stripe-service.js');
+        
+        // Check if payment intent is still capturable (authorization hold)
+        const paymentIntent = await getPaymentIntent(booking.payment_intent_id);
+        if (paymentIntent && paymentIntent.status === 'requires_capture') {
+          // Cancel the payment intent to release the authorization hold
+          await cancelPaymentIntent(booking.payment_intent_id);
+          console.log(`[Cancel Booking] Released authorization hold for booking ${bookingId} (PaymentIntent: ${booking.payment_intent_id})`);
+          
+          // Update payment status
+          await pool.query(`
+            UPDATE kitchen_bookings 
+            SET payment_status = 'canceled'
+            WHERE id = $1
+          `, [bookingId]);
+        }
+      } catch (error) {
+        console.error(`[Cancel Booking] Error canceling payment intent for booking ${bookingId}:`, error);
+        // Continue with booking cancellation even if payment cancellation fails
+      }
+    }
     
     // Update booking status
     await pool.query(`

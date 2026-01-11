@@ -443,14 +443,22 @@ export async function getManagerPaymentTransactions(
     paramIndex++;
   }
 
+  // For date filtering, use paidAt for succeeded transactions (when payment was captured)
+  // and created_at for pending/processing transactions (when booking was made)
   if (filters?.startDate) {
-    whereClause += ` AND created_at >= $${paramIndex}`;
+    whereClause += ` AND (
+      (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= $${paramIndex})
+      OR (status != 'succeeded' AND created_at >= $${paramIndex})
+    )`;
     params.push(filters.startDate);
     paramIndex++;
   }
 
   if (filters?.endDate) {
-    whereClause += ` AND created_at <= $${paramIndex}`;
+    whereClause += ` AND (
+      (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= $${paramIndex})
+      OR (status != 'succeeded' AND created_at <= $${paramIndex})
+    )`;
     params.push(filters.endDate);
     paramIndex++;
   }
@@ -466,10 +474,17 @@ export async function getManagerPaymentTransactions(
   const offset = filters?.offset || 0;
   params.push(limit, offset);
 
+  // Order by paid_at for succeeded transactions, created_at for others
+  // This ensures captured payments appear in chronological order
   const result = await dbPool.query(`
     SELECT * FROM payment_transactions
     ${whereClause}
-    ORDER BY created_at DESC
+    ORDER BY 
+      CASE 
+        WHEN status = 'succeeded' AND paid_at IS NOT NULL 
+        THEN paid_at 
+        ELSE created_at 
+      END DESC
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `, params);
 

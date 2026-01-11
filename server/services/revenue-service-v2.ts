@@ -21,52 +21,73 @@ export async function getRevenueMetricsFromTransactions(
 ): Promise<RevenueMetrics> {
   try {
     // Build WHERE clause
+    // IMPORTANT: For revenue metrics, include ALL succeeded transactions (captured payments)
+    // regardless of date filters - managers need to see all their revenue.
+    // Date filters only apply to pending/processing transactions.
     let whereClause = `WHERE pt.manager_id = $1`;
     const params: any[] = [managerId];
     let paramIndex = 2;
 
-    if (startDate) {
-      const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(pt.created_at) >= $${paramIndex}::date`;
-      params.push(start);
-      paramIndex++;
-    }
-
-    if (endDate) {
-      const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(pt.created_at) <= $${paramIndex}::date`;
-      params.push(end);
-      paramIndex++;
+    // For date filtering:
+    // - Always include ALL succeeded transactions (all captured payments show in revenue)
+    // - Only filter pending/processing transactions by date
+    if (startDate || endDate) {
+      const dateConditions: string[] = [];
+      
+      // Always include all succeeded transactions (captured payments)
+      dateConditions.push(`pt.status = 'succeeded'`);
+      
+      // Apply date filters to pending/processing transactions only
+      if (startDate && endDate) {
+        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date AND DATE(pt.created_at) <= $${paramIndex + 1}::date)`);
+        params.push(start, end);
+        paramIndex += 2;
+      } else if (startDate) {
+        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date)`);
+        params.push(start);
+        paramIndex++;
+      } else if (endDate) {
+        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) <= $${paramIndex}::date)`);
+        params.push(end);
+        paramIndex++;
+      }
+      
+      whereClause += ` AND (${dateConditions.join(' OR ')})`;
     }
 
     if (locationId) {
       // Join with bookings to filter by location
-      whereClause = `
-        WHERE pt.manager_id = $1
-          AND EXISTS (
-            SELECT 1 FROM kitchens k
-            JOIN locations l ON k.location_id = l.id
-            WHERE (
-              (pt.booking_type = 'kitchen' AND pt.booking_id IN (
-                SELECT id FROM kitchen_bookings WHERE kitchen_id = k.id
-              ))
-              OR (pt.booking_type = 'storage' AND pt.booking_id IN (
-                SELECT sb.id FROM storage_bookings sb
-                JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-                WHERE sl.kitchen_id = k.id
-              ))
-              OR (pt.booking_type = 'equipment' AND pt.booking_id IN (
-                SELECT eb.id FROM equipment_bookings eb
-                JOIN equipment_listings el ON eb.equipment_listing_id = el.id
-                WHERE el.kitchen_id = k.id
-              ))
-              OR (pt.booking_type = 'bundle' AND pt.booking_id IN (
-                SELECT id FROM kitchen_bookings WHERE kitchen_id = k.id
-              ))
-            )
-            AND l.id = $${paramIndex}
-          )
-      `;
+      // Keep the date filtering logic (all succeeded + filtered pending/processing)
+      const locationFilter = `AND EXISTS (
+        SELECT 1 FROM kitchens k
+        JOIN locations l ON k.location_id = l.id
+        WHERE (
+          (pt.booking_type = 'kitchen' AND pt.booking_id IN (
+            SELECT id FROM kitchen_bookings WHERE kitchen_id = k.id
+          ))
+          OR (pt.booking_type = 'storage' AND pt.booking_id IN (
+            SELECT sb.id FROM storage_bookings sb
+            JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            WHERE sl.kitchen_id = k.id
+          ))
+          OR (pt.booking_type = 'equipment' AND pt.booking_id IN (
+            SELECT eb.id FROM equipment_bookings eb
+            JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+            WHERE el.kitchen_id = k.id
+          ))
+          OR (pt.booking_type = 'bundle' AND pt.booking_id IN (
+            SELECT id FROM kitchen_bookings WHERE kitchen_id = k.id
+          ))
+        )
+        AND l.id = $${paramIndex}
+      )`;
+      
+      // Add location filter to existing where clause
+      whereClause += ` ${locationFilter}`;
       params.push(locationId);
       paramIndex++;
     }
@@ -216,18 +237,34 @@ export async function getRevenueByLocationFromTransactions(
     const params: any[] = [managerId];
     let paramIndex = 2;
 
-    if (startDate) {
-      const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      dateFilter += ` AND DATE(pt.created_at) >= $${paramIndex}::date`;
-      params.push(start);
-      paramIndex++;
-    }
-
-    if (endDate) {
-      const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      dateFilter += ` AND DATE(pt.created_at) <= $${paramIndex}::date`;
-      params.push(end);
-      paramIndex++;
+    // For revenue by location, include ALL succeeded transactions (all captured payments)
+    // Date filters only apply to pending/processing transactions
+    if (startDate || endDate) {
+      const dateConditions: string[] = [];
+      
+      // Always include all succeeded transactions (captured payments)
+      dateConditions.push(`pt.status = 'succeeded'`);
+      
+      // Apply date filters to pending/processing transactions only
+      if (startDate && endDate) {
+        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date AND DATE(pt.created_at) <= $${paramIndex + 1}::date)`);
+        params.push(start, end);
+        paramIndex += 2;
+      } else if (startDate) {
+        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date)`);
+        params.push(start);
+        paramIndex++;
+      } else if (endDate) {
+        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) <= $${paramIndex}::date)`);
+        params.push(end);
+        paramIndex++;
+      }
+      
+      dateFilter = ` AND (${dateConditions.join(' OR ')})`;
     }
 
     // Get revenue by location
@@ -325,22 +362,23 @@ export async function getRevenueByDateFromTransactions(
     const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
 
     // Get revenue by date from payment_transactions
-    // For bundle transactions, use the kitchen booking date
+    // For succeeded transactions, use paid_at date (when payment was captured)
+    // For pending/processing, use created_at (when booking was made)
+    // For date grouping, use the same logic
     const result = await dbPool.query(`
       SELECT 
-        COALESCE(
-          DATE(kb.booking_date)::text,
-          DATE(pt.created_at)::text
-        ) as date,
+        DATE(
+          CASE 
+            WHEN pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
+            THEN pt.paid_at
+            ELSE pt.created_at
+          END
+        )::text as date,
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(pt.service_fee::numeric), 0)::bigint as platform_fee,
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count
       FROM payment_transactions pt
-      LEFT JOIN kitchen_bookings kb ON (
-        pt.booking_type IN ('kitchen', 'bundle') 
-        AND pt.booking_id = kb.id
-      )
       WHERE pt.manager_id = $1
         AND pt.booking_type IN ('kitchen', 'bundle')
         -- Exclude kitchen transactions that are part of a bundle
@@ -353,9 +391,17 @@ export async function getRevenueByDateFromTransactions(
               AND pt2.manager_id = pt.manager_id
           )
         )
-        AND DATE(COALESCE(kb.booking_date, pt.created_at)) >= $2::date
-        AND DATE(COALESCE(kb.booking_date, pt.created_at)) <= $3::date
-      GROUP BY DATE(COALESCE(kb.booking_date, pt.created_at))
+        AND (
+          (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= $2::date AND DATE(pt.paid_at) <= $3::date)
+          OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= $2::date AND DATE(pt.created_at) <= $3::date)
+        )
+      GROUP BY DATE(
+        CASE 
+          WHEN pt.status = 'succeeded' AND pt.paid_at IS NOT NULL 
+          THEN pt.paid_at
+          ELSE pt.created_at
+        END
+      )
       ORDER BY date ASC
     `, [managerId, start, end]);
 
