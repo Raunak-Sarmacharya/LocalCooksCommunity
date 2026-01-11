@@ -118,8 +118,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       // Don't auto-confirm - we'll confirm after collecting payment method
       confirm: false,
       statement_descriptor: cleanDescriptor,
-      // Manual capture: place authorization hold, capture after cancellation period expires
-      // This allows chefs to cancel within the cancellation window without being charged
+      // Default to automatic capture (ACSS requires this, cards will override to manual)
       capture_method: 'automatic',
       metadata: {
         booking_type: 'kitchen',
@@ -136,9 +135,10 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     // Configure card payments with manual capture (pre-authorization)
     // Manual capture: place authorization hold, capture after cancellation period expires
     // This allows chefs to cancel within the cancellation window without being charged
+    // NOTE: If you specify payment_method_options[card][capture_method], it MUST be 'manual'
     if (enableCards) {
       paymentIntentParams.payment_method_options.card = {
-        capture_method: 'automatic',
+        capture_method: 'manual',
       };
     }
 
