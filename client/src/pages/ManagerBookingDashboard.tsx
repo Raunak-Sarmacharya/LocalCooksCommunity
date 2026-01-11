@@ -153,18 +153,14 @@ export default function ManagerBookingDashboard() {
           // Footer is in viewport - calculate how much space is available
           const spaceAboveFooter = footerTop - headerHeight;
           
-          // When footer is visible and would overlap sidebar, use bottom constraint
-          // This makes the sidebar scroll with content instead of staying stuck
+          // When footer is visible and would overlap sidebar, limit height to allow scrolling
           if (spaceAboveFooter > 0 && spaceAboveFooter < sidebarAvailableHeight) {
-            // Footer is conflicting - set bottom constraint so sidebar scrolls with content
-            // The bottom value prevents sidebar from extending into footer area
-            const bottomConstraint = viewportHeight - footerTop;
+            // Footer is conflicting - limit sidebar height so it can scroll
             setSidebarStyle({
               position: 'sticky',
               top: `${headerHeight}px`,
-              bottom: `${bottomConstraint}px`,
               left: 0,
-              maxHeight: 'none',
+              maxHeight: `${spaceAboveFooter}px`,
               alignSelf: 'flex-start',
             });
           } else if (spaceAboveFooter <= 0) {
@@ -432,14 +428,15 @@ export default function ManagerBookingDashboard() {
         <ManagerHeader />
       </div>
       <ManagerOnboardingWizard />
-      <main className="flex-1 pb-8 relative z-10 flex">
+      <main className="flex-1 pb-8 relative z-10 flex min-h-0">
         {/* Animated Sidebar - scroll-aware height */}
         <div 
           className="hidden lg:block z-20" 
           style={{ 
             ...sidebarStyle,
             transition: 'max-height 0.2s ease-out, top 0.2s ease-out, position 0s',
-            overflowY: sidebarStyle.position === 'sticky' ? 'auto' : 'visible',
+            overflowY: 'auto',
+            overflowX: 'hidden',
           }}
         >
           <AnimatedManagerSidebar
