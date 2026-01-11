@@ -31,6 +31,7 @@ import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
 import type { LocationData } from "./LocationCard";
 import { cn } from "@/lib/utils";
+import { ImageWithReplace } from "@/components/ui/image-with-replace";
 
 interface LocationEditModalProps {
   location: LocationData;
@@ -239,10 +240,15 @@ export default function LocationEditModal({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {location.logoUrl ? (
-                <img 
-                  src={location.logoUrl} 
+                <ImageWithReplace
+                  imageUrl={location.logoUrl}
+                  onImageChange={() => {}} // Read-only in header
                   alt={location.name}
-                  className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                  className="w-12 h-12"
+                  containerClassName="w-12 h-12"
+                  aspectRatio="1/1"
+                  showReplaceButton={false}
+                  showRemoveButton={false}
                 />
               ) : (
                 <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4] flex items-center justify-center">
@@ -343,29 +349,20 @@ export default function LocationEditModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="logoUrl">Logo URL</Label>
-              <div className="relative">
-                <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  id="logoUrl"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  placeholder="https://example.com/logo.png"
-                  className="pl-10"
-                  disabled={viewOnly}
-                />
-              </div>
-              {logoUrl && (
-                <div className="mt-2">
-                  <img 
-                    src={logoUrl} 
-                    alt="Logo preview" 
-                    className="w-16 h-16 rounded-lg object-cover border border-gray-200"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                </div>
+              <Label>Location Logo</Label>
+              <ImageWithReplace
+                imageUrl={logoUrl || undefined}
+                onImageChange={(newUrl) => setLogoUrl(newUrl || "")}
+                alt="Location logo"
+                className="w-full max-w-xs"
+                containerClassName="w-full max-w-xs"
+                aspectRatio="1/1"
+                showReplaceButton={!viewOnly}
+                showRemoveButton={!viewOnly}
+                fieldName="logo"
+              />
+              {viewOnly && !logoUrl && (
+                <p className="text-sm text-gray-500">No logo uploaded</p>
               )}
             </div>
           </TabsContent>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
@@ -92,6 +92,60 @@ export default function ManagerBookingDashboard() {
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const footerRef = useRef<HTMLElement>(null);
+  const [sidebarBottom, setSidebarBottom] = useState(0);
+
+  // Track scroll position and adjust sidebar height only when footer would conflict
+  useEffect(() => {
+    const handleScroll = () => {
+      const footer = footerRef.current || document.querySelector('footer');
+      if (footer) {
+        const rect = footer.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const headerHeight = 96; // 6rem = 96px
+        const sidebarTop = headerHeight; // Sidebar starts below header
+        const buffer = 20; // Buffer to prevent any overlap
+        
+        // Calculate the sidebar's available height area
+        const sidebarAvailableHeight = viewportHeight - sidebarTop;
+        
+        // Check if footer is visible in viewport and would conflict
+        if (rect.top < viewportHeight && rect.bottom > sidebarTop) {
+          // Footer is in viewport and overlaps with sidebar area
+          // Calculate how much of the footer is in the sidebar's vertical space
+          const footerTopInSidebarArea = Math.max(sidebarTop, rect.top);
+          const footerBottomInViewport = Math.min(viewportHeight, rect.bottom);
+          
+          // Calculate how much space the footer takes in the sidebar's area
+          const footerHeightInSidebarArea = footerBottomInViewport - footerTopInSidebarArea;
+          
+          if (footerHeightInSidebarArea > 0) {
+            // Footer is overlapping - shrink sidebar by footer height + buffer
+            const shrinkAmount = viewportHeight - footerTopInSidebarArea + buffer;
+            setSidebarBottom(Math.max(0, shrinkAmount));
+          } else {
+            // No overlap
+            setSidebarBottom(0);
+          }
+        } else {
+          // Footer is not in viewport or not overlapping sidebar area
+          setSidebarBottom(0);
+        }
+      } else {
+        // No footer found, use full height
+        setSidebarBottom(0);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
+    handleScroll(); // Initial check
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, []);
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
@@ -298,14 +352,13 @@ export default function ManagerBookingDashboard() {
       <ManagerHeader />
       <ManagerOnboardingWizard />
       <main className="flex-1 pt-24 pb-8 relative z-10 flex">
-        {/* Animated Sidebar - Fixed full height */}
+        {/* Animated Sidebar - scroll-aware height */}
         <div 
           className="hidden lg:block fixed left-0 z-20" 
           style={{ 
             top: '6rem', // Header height (pt-24 = 6rem)
-            bottom: 0, // Fixed to bottom of viewport
-            height: 'calc(100vh - 6rem)', // Full viewport height minus header
-            overflow: 'visible', // Allow toggle button to extend outside
+            bottom: `${sidebarBottom}px`, // Dynamically adjusted based on scroll
+            transition: 'bottom 0.2s ease-out',
           }}
         >
           <AnimatedManagerSidebar
@@ -855,7 +908,7 @@ export default function ManagerBookingDashboard() {
           </div>
         </div>
       </main>
-      <Footer />
+      <Footer ref={footerRef} />
     </div>
   );
 }

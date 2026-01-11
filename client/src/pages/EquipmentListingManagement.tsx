@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -74,7 +75,7 @@ interface EquipmentListingManagementProps {
   embedded?: boolean;
 }
 
-// Photo Upload Component
+// Photo Upload Component with bucket-based image fetching
 function EquipmentPhotoUpload({ photos, onPhotosChange }: { photos: string[]; onPhotosChange: (photos: string[]) => void }) {
   const { toast } = useToast();
   const { uploadFile, isUploading, uploadProgress } = useSessionFileUpload({
@@ -104,30 +105,33 @@ function EquipmentPhotoUpload({ photos, onPhotosChange }: { photos: string[]; on
     }
   };
 
-  const removePhoto = (index: number) => {
-    onPhotosChange(photos.filter((_, i) => i !== index));
+  const updatePhoto = (index: number, newUrl: string | null) => {
+    if (newUrl === null) {
+      onPhotosChange(photos.filter((_, i) => i !== index));
+    } else {
+      const updated = [...photos];
+      updated[index] = newUrl;
+      onPhotosChange(updated);
+    }
   };
 
   return (
     <div className="space-y-3">
-      {/* Existing Photos */}
+      {/* Existing Photos with replace functionality */}
       {photos.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {photos.map((photo, index) => (
-            <div key={index} className="relative group">
-              <img
-                src={photo}
-                alt={`Equipment photo ${index + 1}`}
-                className="w-full h-32 object-cover rounded-lg border border-gray-200"
-              />
-              <button
-                type="button"
-                onClick={() => removePhoto(index)}
-                className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+            <ImageWithReplace
+              key={index}
+              imageUrl={photo}
+              onImageChange={(newUrl) => updatePhoto(index, newUrl)}
+              alt={`Equipment photo ${index + 1}`}
+              className="h-32"
+              containerClassName="w-full"
+              aspectRatio="1/1"
+              showReplaceButton={true}
+              showRemoveButton={true}
+            />
           ))}
         </div>
       )}

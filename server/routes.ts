@@ -1084,6 +1084,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // IMAGE PRESIGNED URL ENDPOINT
+  // ===============================
+  
+  // Get presigned URL for an image stored in R2 bucket
+  app.post("/api/images/presigned-url", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated
+      const user = await getAuthenticatedUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const { imageUrl } = req.body;
+      
+      if (!imageUrl || typeof imageUrl !== 'string') {
+        return res.status(400).json({ error: "imageUrl is required" });
+      }
+
+      // Check if R2 is configured
+      const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      
+      if (isProduction) {
+        try {
+          const { getPresignedUrl } = await import('./r2-storage');
+          const presignedUrl = await getPresignedUrl(imageUrl, 3600); // 1 hour expiry
+          return res.json({ url: presignedUrl });
+        } catch (error) {
+          console.error('Error generating presigned URL:', error);
+          // Fallback to public URL if presigned URL generation fails
+          return res.json({ url: imageUrl });
+        }
+      } else {
+        // In development, return the URL as-is (local file serving)
+        return res.json({ url: imageUrl });
+      }
+    } catch (error) {
+      console.error('Error in presigned URL endpoint:', error);
+      return res.status(500).json({ 
+        error: "Failed to generate presigned URL",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // FILE SERVING ROUTES
   // ===============================
 
