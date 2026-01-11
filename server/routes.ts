@@ -7378,6 +7378,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Capture a PaymentIntent (convert authorization hold to actual charge)
+  // Use this when booking is finalized/delivered (Uber-like flow)
+  app.post("/api/payments/capture", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { paymentIntentId, amountToCapture } = req.body;
+      const chefId = req.user!.id;
+
+      if (!paymentIntentId) {
+        return res.status(400).json({ error: "Missing paymentIntentId" });
+      }
+
+      const { capturePaymentIntent, getPaymentIntent } = await import('./services/stripe-service');
+
+      // Verify payment intent belongs to chef
+      const paymentIntent = await getPaymentIntent(paymentIntentId);
+      if (!paymentIntent) {
+        return res.status(404).json({ error: "Payment intent not found" });
+      }
+
+      // Check if payment intent is in a capturable state
+      if (paymentIntent.status !== 'requires_capture') {
+        return res.status(400).json({ 
+          error: `Payment intent is not capturable. Current status: ${paymentIntent.status}` 
+        });
+      }
+
+      // Capture the payment (convert authorization hold to charge)
+      const captured = await capturePaymentIntent(
+        paymentIntentId,
+        amountToCapture ? parseInt(amountToCapture) : undefined
+      );
+
+      res.json({
+        success: true,
+        paymentIntentId: captured.id,
+        status: captured.status,
+        amount: captured.amount,
+      });
+    } catch (error: any) {
+      console.error('Error capturing payment intent:', error);
+      res.status(500).json({ 
+        error: "Failed to capture payment intent",
+        message: error.message 
+      });
+    }
+  });
+
+  // Cancel a PaymentIntent (release authorization hold)
+  // Use this when booking is cancelled before completion
+  app.post("/api/payments/cancel", requireChef, async (req: Request, res: Response) => {
+    try {
+      const { paymentIntentId } = req.body;
+      const chefId = req.user!.id;
+
+      if (!paymentIntentId) {
+        return res.status(400).json({ error: "Missing paymentIntentId" });
+      }
+
+      const { cancelPaymentIntent, getPaymentIntent } = await import('./services/stripe-service');
+
+      // Verify payment intent belongs to chef
+      const paymentIntent = await getPaymentIntent(paymentIntentId);
+      if (!paymentIntent) {
+        return res.status(404).json({ error: "Payment intent not found" });
+      }
+
+      // Check if payment intent can be cancelled
+      const cancellableStatuses = ['requires_payment_method', 'requires_capture', 'requires_confirmation'];
+      if (!cancellableStatuses.includes(paymentIntent.status)) {
+        return res.status(400).json({ 
+          error: `Payment intent cannot be cancelled. Current status: ${paymentIntent.status}` 
+        });
+      }
+
+      // Cancel the payment intent (releases authorization hold)
+      const canceled = await cancelPaymentIntent(paymentIntentId);
+
+      res.json({
+        success: true,
+        paymentIntentId: canceled.id,
+        status: canceled.status,
+        message: "Authorization hold released. The hold will disappear from your bank account within a few days.",
+      });
+    } catch (error: any) {
+      console.error('Error canceling payment intent:', error);
+      res.status(500).json({ 
+        error: "Failed to cancel payment intent",
+        message: error.message 
+      });
+    }
+  });
+
   // Create a booking
   app.post("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
