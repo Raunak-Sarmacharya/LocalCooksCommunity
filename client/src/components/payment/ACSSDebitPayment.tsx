@@ -2,8 +2,7 @@
  * Customer Payment Component
  * 
  * This component handles customer payments (chefs booking kitchens) using:
- * - Credit/debit cards (standard in Canada) - primary payment method
- * - ACSS pre-authorized debit (optional, for recurring payments)
+ * - Credit/debit cards only (pre-authorized payments)
  * 
  * This is SEPARATE from Stripe Connect onboarding (which is for managers/chefs to receive payouts).
  * 
@@ -227,7 +226,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
         <PaymentElement
           options={{
             layout: 'tabs',
-            // Prioritize cards (standard in Canada), ACSS as secondary option
+            // Restrict to card payments only (pre-authorized)
+            paymentMethodTypes: ['card'],
             defaultValues: {
               billingDetails: {
                 address: {
@@ -235,8 +235,6 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
                 },
               },
             },
-            // Payment method types are automatically determined from the PaymentIntent
-            // No need to specify paymentMethodTypes here - Stripe Elements shows what's available
           }}
         />
       </div>
@@ -251,11 +249,6 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
               This appears as a "pending" transaction in your bank app. The <strong>actual charge</strong> will be processed 
               after the cancellation period expires (typically 24 hours before your booking). If you cancel within the cancellation period, 
               the hold will be released automatically.
-            </p>
-            <p className="text-xs text-blue-800 mb-2">
-              <strong>ACSS Bank Debit:</strong> ACSS payments process immediately when you confirm the booking. 
-              By providing your bank account information, you authorize us to debit your account for this booking 
-              and create a mandate for future bookings. You can cancel this authorization at any time.
             </p>
             <p className="text-xs text-blue-700">
               <strong>Your payment method is saved securely</strong> for faster checkout on future bookings.
@@ -292,14 +285,14 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
 }
 
 /**
- * Customer Payment Component (Card + ACSS)
+ * Customer Payment Component (Card Only - Pre-Authorized)
  * 
  * This is for CUSTOMERS (chefs) making payments for bookings.
- * Uses PaymentElement which supports both cards and ACSS debit.
+ * Uses PaymentElement restricted to card payments only with pre-authorization.
  * 
  * NOTE: This is separate from Stripe Connect onboarding (for managers to receive payouts).
  * 
- * Exported as ACSSDebitPayment for backward compatibility, but handles both cards and ACSS.
+ * Exported as ACSSDebitPayment for backward compatibility, but now only handles card payments.
  */
 export default function ACSSDebitPayment({ clientSecret, amount, currency, onSuccess, onError }: CustomerPaymentProps) {
   const [stripeError, setStripeError] = useState<string | null>(null);
