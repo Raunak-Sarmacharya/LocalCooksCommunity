@@ -410,10 +410,7 @@ export default function ManagerBookingDashboard() {
               overflowX: 'hidden',
               height: `calc(100vh - ${headerHeight}px)`,
               maxHeight: `calc(100vh - ${headerHeight}px)`,
-              paddingTop: '50px',
-              paddingBottom: '50px',
-              paddingLeft: '50px',
-              paddingRight: '50px',
+              paddingTop: '80px',
             }}
           >
           <AnimatedManagerSidebar
@@ -495,10 +492,7 @@ export default function ManagerBookingDashboard() {
         <div 
           className="flex-1 transition-all duration-300 min-w-0"
           style={{
-            paddingTop: '50px',
-            paddingBottom: '50px',
-            paddingLeft: '50px',
-            paddingRight: '50px',
+            paddingTop: '80px',
           }}
         >
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl">
