@@ -935,38 +935,94 @@ export default function ManagerRevenueDashboard({
                   </BarChart>
                 </ResponsiveContainer>
               ) : paymentStatusData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPieChart>
-                    <Pie
-                      data={paymentStatusData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {paymentStatusData.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={getPaymentStatusColor(entry.status)} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      contentStyle={{ 
-                        borderRadius: '8px', 
-                        border: 'none', 
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                        padding: '8px 12px',
-                        fontSize: '12px',
-                        backgroundColor: 'white'
-                      }}
-                    />
-                    <Legend 
-                      wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
-                      iconType="circle"
-                    />
-                  </RechartsPieChart>
-                </ResponsiveContainer>
+                <div className="flex flex-col items-center justify-center h-full">
+                  {paymentStatusData.length === 1 && paymentStatusData[0].value > 0 ? (
+                    // Special case: Single category (100%) - show donut chart with center text
+                    <div className="relative w-full h-full flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsPieChart>
+                          <Pie
+                            data={paymentStatusData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={90}
+                            fill="#8884d8"
+                            dataKey="value"
+                            startAngle={90}
+                            endAngle={-270}
+                          >
+                            {paymentStatusData.map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={getPaymentStatusColor(entry.status)} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ 
+                              borderRadius: '8px', 
+                              border: 'none', 
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                              padding: '8px 12px',
+                              fontSize: '12px',
+                              backgroundColor: 'white'
+                            }}
+                          />
+                        </RechartsPieChart>
+                      </ResponsiveContainer>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <div className="text-3xl font-bold" style={{ color: getPaymentStatusColor(paymentStatusData[0].status) }}>
+                          100%
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {paymentStatusData[0].name}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    // Multiple categories - show standard pie chart
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie
+                          data={paymentStatusData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={true}
+                          label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                          outerRadius={90}
+                          innerRadius={30}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {paymentStatusData.map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={getPaymentStatusColor(entry.status)} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{ 
+                            borderRadius: '8px', 
+                            border: 'none', 
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            padding: '8px 12px',
+                            fontSize: '12px',
+                            backgroundColor: 'white'
+                          }}
+                          formatter={(value: any, name: any) => [
+                            `${value} (${((value / paymentStatusData.reduce((sum: number, item: any) => sum + item.value, 0)) * 100).toFixed(1)}%)`,
+                            name
+                          ]}
+                        />
+                        <Legend 
+                          wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
+                          iconType="circle"
+                          formatter={(value, entry: any) => {
+                            const total = paymentStatusData.reduce((sum: number, item: any) => sum + item.value, 0);
+                            const percent = ((entry.payload.value / total) * 100).toFixed(1);
+                            return `${value} (${percent}%)`;
+                          }}
+                        />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center">
                   <PieChartIcon className="h-8 w-8 text-gray-300 mb-2" />
