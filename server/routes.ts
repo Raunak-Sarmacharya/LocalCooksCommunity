@@ -4572,14 +4572,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Date filters apply to either booking_date OR created_at to include recent bookings
       // This ensures bookings show up even if booking_date is in the future
       if (startDate) {
-        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
+        const start = typeof startDate === 'string' 
+          ? startDate 
+          : (Array.isArray(startDate) ? startDate[0] : String(startDate));
         whereClause += ` AND (DATE(kb.booking_date) >= $${paramIndex}::date OR DATE(kb.created_at) >= $${paramIndex}::date)`;
         params.push(start);
         paramIndex++;
       }
 
       if (endDate) {
-        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+        const end = typeof endDate === 'string' 
+          ? endDate 
+          : (Array.isArray(endDate) ? endDate[0] : String(endDate));
         whereClause += ` AND (DATE(kb.booking_date) <= $${paramIndex}::date OR DATE(kb.created_at) <= $${paramIndex}::date)`;
         params.push(end);
         paramIndex++;

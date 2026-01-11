@@ -23300,24 +23300,23 @@ app.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
         if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
       } else {
         // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
-          const locationLimitResult = await pool.query(`
-            SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
-            FROM locations l
-            INNER JOIN kitchens k ON k.location_id = l.id
-            WHERE k.id = $1
-          `, [kitchenId]);
-          
-          if (locationLimitResult.rows.length > 0) {
-            const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
-            if (Number.isFinite(locVal) && locVal > 0) {
-              maxSlotsPerChef = locVal;
-              console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
-            } else {
-              console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
-            }
+        const locationLimitResult = await pool.query(`
+          SELECT COALESCE(l.default_daily_booking_limit, 2) as default_daily_booking_limit
+          FROM locations l
+          INNER JOIN kitchens k ON k.location_id = l.id
+          WHERE k.id = $1
+        `, [kitchenId]);
+        
+        if (locationLimitResult.rows.length > 0) {
+          const locVal = Number(locationLimitResult.rows[0].default_daily_booking_limit);
+          if (Number.isFinite(locVal) && locVal > 0) {
+            maxSlotsPerChef = locVal;
+            console.log(`[Booking Limit] Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId}`);
           } else {
-            console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
+            console.warn(`[Booking Limit] Invalid location default value: ${locVal}, using fallback: 2`);
           }
+        } else {
+          console.warn(`[Booking Limit] No location found for kitchen ${kitchenId}, using fallback: 2`);
         }
       }
     } catch (error) {
