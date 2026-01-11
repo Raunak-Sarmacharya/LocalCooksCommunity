@@ -168,10 +168,8 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
         },
       };
       // ACSS uses automatic capture by default (cannot be changed)
-      // If cards are also enabled, set statement_descriptor here for ACSS
-      if (enableCards) {
-        paymentIntentParams.payment_method_options.acss_debit.statement_descriptor = cleanDescriptor;
-      }
+      // Note: ACSS does not support statement_descriptor in payment_method_options
+      // Statement descriptor is only set at top level when only ACSS is enabled
     }
 
     // Save card for future off-session payments (like Uber's one-tap payments)
