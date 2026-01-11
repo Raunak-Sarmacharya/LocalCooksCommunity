@@ -117,7 +117,6 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       payment_method_types: paymentMethodTypes,
       // Don't auto-confirm - we'll confirm after collecting payment method
       confirm: false,
-      statement_descriptor: cleanDescriptor,
       // Default to automatic capture (ACSS requires this, cards will override to manual)
       capture_method: 'automatic',
       metadata: {
@@ -129,6 +128,15 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       },
     };
 
+    // Statement descriptor handling:
+    // - Cards: Must use statement_descriptor_suffix (not statement_descriptor)
+    // - ACSS: Can use statement_descriptor in payment_method_options
+    // - If only ACSS is enabled, we can use top-level statement_descriptor
+    if (!enableCards && enableACSS) {
+      // Only ACSS enabled - can use top-level statement_descriptor
+      paymentIntentParams.statement_descriptor = cleanDescriptor;
+    }
+
     // Initialize payment_method_options object
     paymentIntentParams.payment_method_options = {};
 
@@ -139,6 +147,8 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     if (enableCards) {
       paymentIntentParams.payment_method_options.card = {
         capture_method: 'manual',
+        // Cards require statement_descriptor_suffix (max 22 chars, appears after merchant name)
+        statement_descriptor_suffix: cleanDescriptor.substring(0, 22),
       };
     }
 
@@ -158,6 +168,10 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
         },
       };
       // ACSS uses automatic capture by default (cannot be changed)
+      // If cards are also enabled, set statement_descriptor here for ACSS
+      if (enableCards) {
+        paymentIntentParams.payment_method_options.acss_debit.statement_descriptor = cleanDescriptor;
+      }
     }
 
     // Save card for future off-session payments (like Uber's one-tap payments)
