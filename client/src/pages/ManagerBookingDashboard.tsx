@@ -124,7 +124,7 @@ export default function ManagerBookingDashboard() {
   const [headerHeight, setHeaderHeight] = useState(96); // Default header height
   const [sidebarStyle, setSidebarStyle] = useState<React.CSSProperties>({
     position: 'sticky',
-    top: '0px', // Top of the main container (which has padding-top for header)
+    top: '0px', // Will be updated to account for header height
     left: 0,
     alignSelf: 'flex-start',
   });
@@ -144,6 +144,9 @@ export default function ManagerBookingDashboard() {
       const viewportHeight = window.innerHeight;
       const sidebarAvailableHeight = viewportHeight - measuredHeaderHeight;
       
+      // Update sidebar top to account for header (sticky positioning relative to viewport)
+      const sidebarTop = '0px'; // Sticky to top of main container (which has padding-top)
+      
       if (footer) {
         const footerRect = footer.getBoundingClientRect();
         const footerTop = footerRect.top;
@@ -160,7 +163,7 @@ export default function ManagerBookingDashboard() {
             // Footer is conflicting - limit sidebar height so it can scroll
             setSidebarStyle({
               position: 'sticky',
-              top: '0px', // Top of the main container (which has padding-top for header)
+              top: sidebarTop,
               left: 0,
               maxHeight: `${spaceAboveFooter}px`,
               alignSelf: 'flex-start',
@@ -169,7 +172,7 @@ export default function ManagerBookingDashboard() {
             // Footer has passed sidebar top - allow full scrolling
             setSidebarStyle({
               position: 'sticky',
-              top: '0px', // Top of the main container (which has padding-top for header)
+              top: sidebarTop,
               left: 0,
               maxHeight: `${sidebarAvailableHeight}px`,
               alignSelf: 'flex-start',
@@ -178,7 +181,7 @@ export default function ManagerBookingDashboard() {
             // Footer is approaching but not yet conflicting
             setSidebarStyle({
               position: 'sticky',
-              top: '0px', // Top of the main container (which has padding-top for header)
+              top: sidebarTop,
               left: 0,
               maxHeight: `${sidebarAvailableHeight}px`,
               alignSelf: 'flex-start',
@@ -188,7 +191,7 @@ export default function ManagerBookingDashboard() {
           // Footer is below viewport - sidebar stays sticky (appears fixed)
           setSidebarStyle({
             position: 'sticky',
-            top: '0px', // Top of the main container (which has padding-top for header)
+            top: sidebarTop,
             left: 0,
             maxHeight: `${sidebarAvailableHeight}px`,
             alignSelf: 'flex-start',
@@ -198,7 +201,7 @@ export default function ManagerBookingDashboard() {
         // No footer found, use sticky positioning (appears fixed)
         setSidebarStyle({
           position: 'sticky',
-          top: '0px', // Top of the main container (which has padding-top for header)
+          top: sidebarTop,
           left: 0,
           maxHeight: `${sidebarAvailableHeight}px`,
           alignSelf: 'flex-start',
@@ -219,11 +222,21 @@ export default function ManagerBookingDashboard() {
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('resize', measureHeader);
-    measureHeader(); // Initial measurement
+    
+    // Initial measurement - use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      measureHeader();
+    });
+    
+    // Also measure after a short delay to catch any dynamic header changes
+    const timeoutId = setTimeout(() => {
+      measureHeader();
+    }, 100);
     
     return () => {
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('resize', measureHeader);
+      clearTimeout(timeoutId);
     };
   }, []);
 
@@ -448,6 +461,8 @@ export default function ManagerBookingDashboard() {
             transition: 'max-height 0.2s ease-out, top 0.2s ease-out, position 0s, width 0.3s ease-out',
             overflowY: 'auto',
             overflowX: 'hidden',
+            height: `calc(100vh - ${headerHeight}px)`, // Ensure sidebar doesn't exceed viewport minus header
+            marginTop: '0px', // Ensure sidebar starts at top of main content area
           }}
         >
           <AnimatedManagerSidebar
