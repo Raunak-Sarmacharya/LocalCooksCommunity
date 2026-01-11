@@ -2183,7 +2183,9 @@ export class FirebaseStorage {
           const basePricePerDay = parseFloat(row.base_price) / 100; // Convert from cents to dollars
           const penaltyRatePerDay = basePricePerDay * 2; // 2x penalty rate
           const penaltyBasePrice = penaltyRatePerDay * daysToCharge;
-          const penaltyServiceFee = penaltyBasePrice * 0.05; // 5% service fee
+          // Get service fee rate dynamically
+          const serviceFeeRate = await this.getServiceFeeRate();
+          const penaltyServiceFee = penaltyBasePrice * serviceFeeRate;
           const penaltyTotalPrice = penaltyBasePrice + penaltyServiceFee;
 
           // Convert to cents
@@ -2755,15 +2757,16 @@ export class FirebaseStorage {
       console.log('Inserting kitchen booking into database:', bookingData);
       
       // Calculate pricing using pricing service
-      const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+      const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
       const pricing = await calculateKitchenBookingPrice(
         bookingData.kitchenId,
         bookingData.startTime,
-        bookingData.endTime
+        bookingData.endTime,
+        pool
       );
       
-      // Calculate service fee (5% commission)
-      const serviceFeeCents = calculatePlatformFee(pricing.totalPriceCents, 0.05);
+      // Calculate service fee dynamically from platform_settings
+      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
       
       // Calculate total with fees
       const totalWithFeesCents = calculateTotalWithFees(
@@ -2835,15 +2838,16 @@ export class FirebaseStorage {
       console.log('Creating booking (with external support):', bookingData);
       
       // Calculate pricing using pricing service
-      const { calculateKitchenBookingPrice, calculatePlatformFee, calculateTotalWithFees } = await import('./services/pricing-service');
+      const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
       const pricing = await calculateKitchenBookingPrice(
         bookingData.kitchenId,
         bookingData.startTime,
-        bookingData.endTime
+        bookingData.endTime,
+        pool
       );
       
-      // Calculate service fee (5% commission)
-      const serviceFeeCents = calculatePlatformFee(pricing.totalPriceCents, 0.05);
+      // Calculate service fee dynamically from platform_settings
+      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
       
       // Calculate total with fees
       const totalWithFeesCents = calculateTotalWithFees(

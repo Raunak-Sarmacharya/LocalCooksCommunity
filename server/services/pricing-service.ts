@@ -146,13 +146,65 @@ export async function calculateKitchenBookingPrice(
 }
 
 /**
+ * Get service fee rate from platform settings
+ * @param dbPool - Database pool (required)
+ * @returns Service fee rate as decimal (e.g., 0.05 for 5%), defaults to 0.05 if not found
+ */
+export async function getServiceFeeRate(dbPool?: Pool | null): Promise<number> {
+  try {
+    const activePool = dbPool || pool;
+    if (!activePool) {
+      console.warn('Database pool not available, using default service fee rate of 5%');
+      return 0.05; // Default 5%
+    }
+
+    const result = await activePool.query(
+      'SELECT value FROM platform_settings WHERE key = $1',
+      ['service_fee_rate']
+    );
+
+    if (result.rows.length === 0) {
+      console.warn('Service fee rate not found in platform_settings, using default 5%');
+      return 0.05; // Default 5%
+    }
+
+    const rate = parseFloat(result.rows[0].value);
+    
+    // Validate rate is between 0 and 1
+    if (isNaN(rate) || rate < 0 || rate > 1) {
+      console.warn(`Invalid service fee rate: ${rate}, using default 5%`);
+      return 0.05;
+    }
+
+    return rate;
+  } catch (error) {
+    console.error('Error getting service fee rate from platform_settings:', error);
+    return 0.05; // Default to 5% on error
+  }
+}
+
+/**
  * Calculate platform service fee (commission)
  * @param basePriceCents - Base price in cents
- * @param commissionRate - Commission rate as decimal (e.g., 0.05 for 5%)
+ * @param commissionRate - Commission rate as decimal (e.g., 0.05 for 5%). If not provided, will use default 0.05
  * @returns Service fee in cents
  */
 export function calculatePlatformFee(basePriceCents: number, commissionRate: number = 0.05): number {
   return Math.round(basePriceCents * commissionRate);
+}
+
+/**
+ * Calculate platform service fee with dynamic rate from database
+ * @param basePriceCents - Base price in cents
+ * @param dbPool - Database pool (required to fetch rate)
+ * @returns Service fee in cents
+ */
+export async function calculatePlatformFeeDynamic(
+  basePriceCents: number,
+  dbPool?: Pool | null
+): Promise<number> {
+  const rate = await getServiceFeeRate(dbPool);
+  return calculatePlatformFee(basePriceCents, rate);
 }
 
 /**

@@ -185,3 +185,123 @@ export async function getAccount(accountId: string): Promise<Stripe.Account | nu
     throw new Error(`Failed to retrieve account: ${error.message}`);
   }
 }
+
+/**
+ * Get payout history for a connected account
+ */
+export async function getPayouts(
+  accountId: string,
+  limit: number = 100
+): Promise<Stripe.Payout[]> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    const payouts = await stripe.payouts.list(
+      {
+        limit,
+      },
+      {
+        stripeAccount: accountId,
+      }
+    );
+
+    return payouts.data;
+  } catch (error: any) {
+    console.error('Error retrieving payouts:', error);
+    throw new Error(`Failed to retrieve payouts: ${error.message}`);
+  }
+}
+
+/**
+ * Get a specific payout by ID
+ */
+export async function getPayout(
+  accountId: string,
+  payoutId: string
+): Promise<Stripe.Payout | null> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    const payout = await stripe.payouts.retrieve(
+      payoutId,
+      {
+        stripeAccount: accountId,
+      }
+    );
+    return payout;
+  } catch (error: any) {
+    if (error.code === 'resource_missing') {
+      return null;
+    }
+    console.error('Error retrieving payout:', error);
+    throw new Error(`Failed to retrieve payout: ${error.message}`);
+  }
+}
+
+/**
+ * Get balance transactions for a connected account (for payout statements)
+ */
+export async function getBalanceTransactions(
+  accountId: string,
+  startDate?: Date,
+  endDate?: Date,
+  limit: number = 100
+): Promise<Stripe.BalanceTransaction[]> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    const params: Stripe.BalanceTransactionListParams = {
+      limit,
+    };
+
+    if (startDate) {
+      params.created = {
+        gte: Math.floor(startDate.getTime() / 1000),
+      };
+    }
+
+    if (endDate) {
+      params.created = {
+        ...params.created,
+        lte: Math.floor(endDate.getTime() / 1000),
+      };
+    }
+
+    const transactions = await stripe.balanceTransactions.list(
+      params,
+      {
+        stripeAccount: accountId,
+      }
+    );
+
+    return transactions.data;
+  } catch (error: any) {
+    console.error('Error retrieving balance transactions:', error);
+    throw new Error(`Failed to retrieve balance transactions: ${error.message}`);
+  }
+}
+
+/**
+ * Get account balance
+ */
+export async function getAccountBalance(accountId: string): Promise<Stripe.Balance> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    const balance = await stripe.balance.retrieve({
+      stripeAccount: accountId,
+    });
+    return balance;
+  } catch (error: any) {
+    console.error('Error retrieving balance:', error);
+    throw new Error(`Failed to retrieve balance: ${error.message}`);
+  }
+}
