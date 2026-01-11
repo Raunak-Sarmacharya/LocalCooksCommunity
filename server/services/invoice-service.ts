@@ -5,6 +5,7 @@ import type { Pool } from '@neondatabase/serverless';
 /**
  * Generate invoice PDF for a booking
  */
+
 export async function generateInvoicePDF(
   booking: any,
   chef: any,
