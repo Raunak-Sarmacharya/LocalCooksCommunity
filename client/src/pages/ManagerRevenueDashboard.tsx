@@ -32,10 +32,13 @@ import {
   CheckCircle2,
   Percent,
   Info,
+  AlertCircle,
+  ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -70,6 +73,7 @@ interface Location {
 interface ManagerRevenueDashboardProps {
   selectedLocation: Location | null;
   locations: Location[];
+  onNavigate?: (view: string) => void;
 }
 
 type DateRange = 'today' | 'week' | 'month' | 'custom';
@@ -116,6 +120,7 @@ function formatChartDate(dateStr: string): string {
 export default function ManagerRevenueDashboard({
   selectedLocation,
   locations,
+  onNavigate,
 }: ManagerRevenueDashboardProps) {
   const { user: firebaseUser } = useFirebaseAuth();
   const [dateRange, setDateRange] = useState<DateRange>('month');
@@ -296,6 +301,24 @@ export default function ManagerRevenueDashboard({
       
       if (!response.ok) {
         throw new Error('Failed to fetch invoices');
+      }
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+  });
+
+  // Fetch Stripe Connect status
+  const { data: stripeConnectStatus } = useQuery({
+    queryKey: ['/api/manager/stripe-connect/status'],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/manager/stripe-connect/status', {
+        headers,
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch Stripe Connect status');
       }
       return response.json();
     },
@@ -1143,6 +1166,44 @@ export default function ManagerRevenueDashboard({
           </div>
         </CardHeader>
         <CardContent>
+          {/* Stripe Connect Reminder */}
+          {stripeConnectStatus && (!stripeConnectStatus.hasAccount || stripeConnectStatus.status !== 'complete') && (
+            <Alert className="mb-4 border-amber-200 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-900 font-semibold">
+                {!stripeConnectStatus.hasAccount 
+                  ? 'Connect Your Stripe Account' 
+                  : 'Complete Your Stripe Connect Setup'}
+              </AlertTitle>
+              <AlertDescription className="text-amber-800 mt-2">
+                <p className="mb-3">
+                  {!stripeConnectStatus.hasAccount 
+                    ? "Connect your Stripe Connect account to receive automatic payouts directly to your bank account. Without it, you'll need to wait for manual payouts."
+                    : "Complete your Stripe Connect onboarding to start receiving automatic payouts. Finish the setup to avoid waiting for manual payouts."}
+                </p>
+                <Button
+                  onClick={() => {
+                    if (onNavigate) {
+                      onNavigate('payments');
+                    } else {
+                      // Fallback: try to find and click the payments tab
+                      const paymentsButton = document.querySelector('[data-view="payments"]');
+                      if (paymentsButton) {
+                        (paymentsButton as HTMLElement).click();
+                      }
+                    }
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  size="sm"
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  {!stripeConnectStatus.hasAccount ? 'Set Up Stripe Connect' : 'Complete Setup'}
+                  <ExternalLink className="h-3 w-3 ml-2" />
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {isLoadingPayouts ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
@@ -1151,7 +1212,11 @@ export default function ManagerRevenueDashboard({
             <div className="text-center py-12">
               <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No payouts yet</p>
-              <p className="text-sm text-gray-400 mt-1">Payouts will appear here once processed</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {stripeConnectStatus && !stripeConnectStatus.hasAccount 
+                  ? "Connect Stripe Connect to start receiving automatic payouts"
+                  : "Payouts will appear here once processed"}
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
