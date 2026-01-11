@@ -21,43 +21,20 @@ export async function getRevenueMetricsFromTransactions(
 ): Promise<RevenueMetrics> {
   try {
     // Build WHERE clause
-    // IMPORTANT: For revenue metrics, include ALL succeeded transactions (captured payments)
-    // regardless of date filters - managers need to see all their revenue.
-    // Date filters only apply to pending/processing transactions.
+    // IMPORTANT: For revenue metrics, include ALL succeeded AND ALL pending/processing transactions
+    // regardless of date filters - managers need to see all their revenue (completed + pre-authorized).
+    // Pending/processing payments represent pre-authorized revenue that should always be counted.
+    // Date filters are only used for display/breakdown purposes, not for total revenue calculation.
     let whereClause = `WHERE pt.manager_id = $1`;
     const params: any[] = [managerId];
     let paramIndex = 2;
 
-    // For date filtering:
-    // - Always include ALL succeeded transactions (all captured payments show in revenue)
-    // - Only filter pending/processing transactions by date
-    if (startDate || endDate) {
-      const dateConditions: string[] = [];
-      
-      // Always include all succeeded transactions (captured payments)
-      dateConditions.push(`pt.status = 'succeeded'`);
-      
-      // Apply date filters to pending/processing transactions only
-      if (startDate && endDate) {
-        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date AND DATE(pt.created_at) <= $${paramIndex + 1}::date)`);
-        params.push(start, end);
-        paramIndex += 2;
-      } else if (startDate) {
-        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date)`);
-        params.push(start);
-        paramIndex++;
-      } else if (endDate) {
-        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) <= $${paramIndex}::date)`);
-        params.push(end);
-        paramIndex++;
-      }
-      
-      whereClause += ` AND (${dateConditions.join(' OR ')})`;
-    }
+    // For revenue calculation, ALWAYS include:
+    // - ALL succeeded transactions (all captured payments)
+    // - ALL pending/processing transactions (all pre-authorized payments)
+    // Date filters don't affect total revenue - they're only for breakdown/display
+    // This ensures managers see all committed revenue (both captured and pre-authorized)
+    whereClause += ` AND (pt.status = 'succeeded' OR pt.status IN ('pending', 'processing'))`;
 
     if (locationId) {
       // Join with bookings to filter by location
@@ -175,11 +152,10 @@ export async function getRevenueMetricsFromTransactions(
       return parseInt(String(value)) || 0;
     };
 
-    const totalRevenue = parseNumeric(row.total_revenue);
-    const platformFee = parseNumeric(row.platform_fee);
-    const managerRevenue = parseNumeric(row.manager_revenue);
     const completedPayments = parseNumeric(row.completed_payments);
     const pendingPayments = parseNumeric(row.pending_payments);
+    const platformFee = parseNumeric(row.platform_fee);
+    const managerRevenue = parseNumeric(row.manager_revenue);
     const refundedAmount = parseNumeric(row.refunded_amount);
     const bookingCount = parseInt(row.booking_count) || 0;
     const paidBookingCount = parseInt(row.paid_booking_count) || 0;
@@ -187,6 +163,10 @@ export async function getRevenueMetricsFromTransactions(
     const averageBookingValue = row.avg_booking_value 
       ? Math.round(parseFloat(String(row.avg_booking_value)))
       : 0;
+
+    // Total revenue = completed payments + pending payments (pre-authorized)
+    // Pending payments represent committed revenue that will be charged after cancellation period
+    const totalRevenue = completedPayments + pendingPayments;
 
     // Ensure all values are numbers (not NaN or undefined)
     const metrics = {
@@ -233,39 +213,13 @@ export async function getRevenueByLocationFromTransactions(
       throw new Error('payment_transactions table does not exist');
     }
     
-    let dateFilter = '';
+    // For revenue by location, ALWAYS include ALL succeeded AND ALL pending/processing transactions
+    // Pending/processing payments represent pre-authorized revenue that should always be counted
+    // Date filters are only used for display/breakdown purposes, not for total revenue calculation
     const params: any[] = [managerId];
-    let paramIndex = 2;
-
-    // For revenue by location, include ALL succeeded transactions (all captured payments)
-    // Date filters only apply to pending/processing transactions
-    if (startDate || endDate) {
-      const dateConditions: string[] = [];
-      
-      // Always include all succeeded transactions (captured payments)
-      dateConditions.push(`pt.status = 'succeeded'`);
-      
-      // Apply date filters to pending/processing transactions only
-      if (startDate && endDate) {
-        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date AND DATE(pt.created_at) <= $${paramIndex + 1}::date)`);
-        params.push(start, end);
-        paramIndex += 2;
-      } else if (startDate) {
-        const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) >= $${paramIndex}::date)`);
-        params.push(start);
-        paramIndex++;
-      } else if (endDate) {
-        const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-        dateConditions.push(`(pt.status IN ('pending', 'processing') AND DATE(pt.created_at) <= $${paramIndex}::date)`);
-        params.push(end);
-        paramIndex++;
-      }
-      
-      dateFilter = ` AND (${dateConditions.join(' OR ')})`;
-    }
+    
+    // Always include all succeeded and pending/processing transactions
+    // This ensures managers see all committed revenue (both captured and pre-authorized) by location
 
     // Get revenue by location
     const result = await dbPool.query(`
@@ -295,6 +249,7 @@ export async function getRevenueByLocationFromTransactions(
       JOIN locations l ON k.location_id = l.id
       WHERE pt.manager_id = $1
         AND pt.booking_type IN ('kitchen', 'bundle')
+        AND (pt.status = 'succeeded' OR pt.status IN ('pending', 'processing'))
         -- Exclude kitchen transactions that are part of a bundle
         AND NOT (
           pt.booking_type = 'kitchen' 
@@ -305,7 +260,6 @@ export async function getRevenueByLocationFromTransactions(
               AND pt2.manager_id = pt.manager_id
           )
         )
-      ${dateFilter}
       GROUP BY l.id, l.name
       ORDER BY total_revenue DESC
     `, params);

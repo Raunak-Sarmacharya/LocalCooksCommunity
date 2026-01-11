@@ -109,7 +109,7 @@ export async function generateInvoicePDF(
   }
 
   // Storage bookings
-  // Use stored total_price if available (subtract service_fee to get base price)
+  // Use stored total_price if available (total_price is the BASE price in cents, service_fee is stored separately)
   // Otherwise calculate from listing base_price
   if (storageBookings && storageBookings.length > 0) {
     for (const storageBooking of storageBookings) {
@@ -119,17 +119,16 @@ export async function generateInvoicePDF(
         let days = 0;
         
         // Use stored total_price if available
+        // Note: total_price is stored as BASE price in cents (without service fee)
+        // service_fee is stored separately in cents
         if (storageBooking.total_price || storageBooking.totalPrice) {
-          const totalPriceCents = parseFloat(String(storageBooking.total_price || storageBooking.totalPrice));
-          const serviceFeeCents = parseFloat(String(storageBooking.service_fee || storageBooking.serviceFee || 0));
-          // Base price = total_price - service_fee (total_price includes service_fee)
-          const basePriceCents = totalPriceCents - serviceFeeCents;
-          storageAmount = basePriceCents / 100;
+          const basePriceCents = parseFloat(String(storageBooking.total_price || storageBooking.totalPrice));
+          storageAmount = basePriceCents / 100; // Convert cents to dollars
           
           const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
           const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
           days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-          basePrice = storageAmount / days;
+          basePrice = days > 0 ? storageAmount / days : 0;
         } else if (dbPool) {
           // Fall back to calculating from listing
           const result = await dbPool.query(
@@ -162,7 +161,7 @@ export async function generateInvoicePDF(
   }
 
   // Equipment bookings
-  // Use stored total_price if available (subtract service_fee to get base price)
+  // Use stored total_price if available (total_price is the BASE price in cents, service_fee is stored separately)
   // Otherwise calculate from listing session_rate
   if (equipmentBookings && equipmentBookings.length > 0) {
     for (const equipmentBooking of equipmentBookings) {
@@ -170,12 +169,11 @@ export async function generateInvoicePDF(
         let sessionRate = 0;
         
         // Use stored total_price if available
+        // Note: total_price is stored as BASE price in cents (without service fee)
+        // service_fee is stored separately in cents
         if (equipmentBooking.total_price || equipmentBooking.totalPrice) {
-          const totalPriceCents = parseFloat(String(equipmentBooking.total_price || equipmentBooking.totalPrice));
-          const serviceFeeCents = parseFloat(String(equipmentBooking.service_fee || equipmentBooking.serviceFee || 0));
-          // Base price = total_price - service_fee (total_price includes service_fee)
-          const basePriceCents = totalPriceCents - serviceFeeCents;
-          sessionRate = basePriceCents / 100;
+          const basePriceCents = parseFloat(String(equipmentBooking.total_price || equipmentBooking.totalPrice));
+          sessionRate = basePriceCents / 100; // Convert cents to dollars
         } else if (dbPool) {
           // Fall back to calculating from listing
           const result = await dbPool.query(
