@@ -120,9 +120,14 @@ export default function ManagerBookingDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const footerRef = useRef<HTMLElement>(null);
-  const [sidebarBottom, setSidebarBottom] = useState(0);
+  const [sidebarStyle, setSidebarStyle] = useState<React.CSSProperties>({
+    position: 'fixed',
+    top: '6rem',
+    left: 0,
+    maxHeight: 'calc(100vh - 6rem)',
+  });
 
-  // Track scroll position and adjust sidebar height only when footer would conflict
+  // Track scroll position and adjust sidebar behavior when footer would conflict
   useEffect(() => {
     const handleScroll = () => {
       const footer = footerRef.current || document.querySelector('footer');
@@ -131,36 +136,57 @@ export default function ManagerBookingDashboard() {
         const viewportHeight = window.innerHeight;
         const headerHeight = 96; // 6rem = 96px
         const sidebarTop = headerHeight; // Sidebar starts below header
-        const buffer = 20; // Buffer to prevent any overlap
         
-        // Calculate the sidebar's available height area
-        const sidebarAvailableHeight = viewportHeight - sidebarTop;
-        
-        // Check if footer is visible in viewport and would conflict
-        if (rect.top < viewportHeight && rect.bottom > sidebarTop) {
-          // Footer is in viewport and overlaps with sidebar area
-          // Calculate how much of the footer is in the sidebar's vertical space
-          const footerTopInSidebarArea = Math.max(sidebarTop, rect.top);
-          const footerBottomInViewport = Math.min(viewportHeight, rect.bottom);
+        // When footer top reaches or goes above the bottom of viewport,
+        // we need sidebar to scroll with content to avoid conflict
+        if (rect.top <= viewportHeight) {
+          // Footer is in or approaching viewport - switch to sticky so it scrolls with content
+          const distanceFromSidebarTop = rect.top - sidebarTop;
           
-          // Calculate how much space the footer takes in the sidebar's area
-          const footerHeightInSidebarArea = footerBottomInViewport - footerTopInSidebarArea;
-          
-          if (footerHeightInSidebarArea > 0) {
-            // Footer is overlapping - shrink sidebar by footer height + buffer
-            const shrinkAmount = viewportHeight - footerTopInSidebarArea + buffer;
-            setSidebarBottom(Math.max(0, shrinkAmount));
+          if (distanceFromSidebarTop < viewportHeight - sidebarTop && distanceFromSidebarTop > 0) {
+            // Footer is conflicting - use sticky positioning and limit height
+            setSidebarStyle({
+              position: 'sticky',
+              top: '6rem',
+              left: 0,
+              maxHeight: `${distanceFromSidebarTop}px`,
+              alignSelf: 'flex-start',
+            });
+          } else if (distanceFromSidebarTop <= 0) {
+            // Footer has passed sidebar top - allow full scrolling
+            setSidebarStyle({
+              position: 'sticky',
+              top: '6rem',
+              left: 0,
+              maxHeight: 'calc(100vh - 6rem)',
+              alignSelf: 'flex-start',
+            });
           } else {
-            // No overlap
-            setSidebarBottom(0);
+            // Footer is approaching but not yet conflicting - keep fixed
+            setSidebarStyle({
+              position: 'fixed',
+              top: '6rem',
+              left: 0,
+              maxHeight: 'calc(100vh - 6rem)',
+            });
           }
         } else {
-          // Footer is not in viewport or not overlapping sidebar area
-          setSidebarBottom(0);
+          // Footer is below viewport - sidebar should be fixed (not scrollable)
+          setSidebarStyle({
+            position: 'fixed',
+            top: '6rem',
+            left: 0,
+            maxHeight: 'calc(100vh - 6rem)',
+          });
         }
       } else {
-        // No footer found, use full height
-        setSidebarBottom(0);
+        // No footer found, use full height, fixed position
+        setSidebarStyle({
+          position: 'fixed',
+          top: '6rem',
+          left: 0,
+          maxHeight: 'calc(100vh - 6rem)',
+        });
       }
     };
 
@@ -381,11 +407,10 @@ export default function ManagerBookingDashboard() {
       <main className="flex-1 pt-24 pb-8 relative z-10 flex">
         {/* Animated Sidebar - scroll-aware height */}
         <div 
-          className="hidden lg:block fixed left-0 z-20" 
+          className="hidden lg:block z-20" 
           style={{ 
-            top: '6rem', // Header height (pt-24 = 6rem)
-            bottom: `${sidebarBottom}px`, // Dynamically adjusted based on scroll
-            transition: 'bottom 0.2s ease-out',
+            ...sidebarStyle,
+            transition: 'max-height 0.2s ease-out, position 0s',
           }}
         >
           <AnimatedManagerSidebar
