@@ -18696,41 +18696,40 @@ app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) =>
         if (Number.isFinite(val) && val > 0) maxSlotsPerChef = val;
       } else {
         // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
-          const loc = await pool.query(`
-            SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
-            FROM locations l
-            INNER JOIN kitchens k ON k.location_id = l.id
-            WHERE k.id = $1
-          `, [kitchenId]);
+        const loc = await pool.query(`
+          SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
+          FROM locations l
+          INNER JOIN kitchens k ON k.location_id = l.id
+          WHERE k.id = $1
+        `, [kitchenId]);
+        
+        console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
+          rowCount: loc.rows.length,
+          rawValue: loc.rows[0]?.default_daily_booking_limit,
+          locationId: loc.rows[0]?.location_id,
+          locationName: loc.rows[0]?.location_name
+        });
+        
+        if (loc.rows.length > 0) {
+          const rawValue = loc.rows[0].default_daily_booking_limit;
+          const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
           
-          console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
-            rowCount: loc.rows.length,
-            rawValue: loc.rows[0]?.default_daily_booking_limit,
-            locationId: loc.rows[0]?.location_id,
-            locationName: loc.rows[0]?.location_name
+          console.log(`[Booking Limit] Parsed location default value:`, {
+            rawValue,
+            locVal,
+            isFinite: Number.isFinite(locVal),
+            isPositive: locVal !== null && locVal > 0
           });
           
-          if (loc.rows.length > 0) {
-            const rawValue = loc.rows[0].default_daily_booking_limit;
-            const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
-            
-            console.log(`[Booking Limit] Parsed location default value:`, {
-              rawValue,
-              locVal,
-              isFinite: Number.isFinite(locVal),
-              isPositive: locVal !== null && locVal > 0
-            });
-            
-            if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
-              maxSlotsPerChef = locVal;
-              console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${loc.rows[0].location_name || loc.rows[0].location_id})`);
-            } else {
-              console.warn(`[Booking Limit] ⚠️ Invalid location default value: ${locVal} (raw: ${rawValue}), using fallback: 2`);
-              maxSlotsPerChef = 2;
-            }
+          if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
+            maxSlotsPerChef = locVal;
+            console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${loc.rows[0].location_name || loc.rows[0].location_id})`);
           } else {
-            console.warn(`[Booking Limit] ⚠️ No location found for kitchen ${kitchenId}, using fallback: 2`);
+            console.warn(`[Booking Limit] ⚠️ Invalid location default value: ${locVal} (raw: ${rawValue}), using fallback: 2`);
+            maxSlotsPerChef = 2;
           }
+        } else {
+          console.warn(`[Booking Limit] ⚠️ No location found for kitchen ${kitchenId}, using fallback: 2`);
         }
       }
     } catch (error) {
@@ -19189,41 +19188,40 @@ app.post("/api/chef/bookings", requireChef, async (req, res) => {
         }
       } else {
         // 2. Fall back to location default (kitchen_availability doesn't have max_slots_per_chef)
-          const loc = await pool.query(`
-            SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
-            FROM locations l
-            INNER JOIN kitchens k ON k.location_id = l.id
-            WHERE k.id = $1
-          `, [kitchenId]);
+        const loc = await pool.query(`
+          SELECT l.default_daily_booking_limit, l.id as location_id, l.name as location_name
+          FROM locations l
+          INNER JOIN kitchens k ON k.location_id = l.id
+          WHERE k.id = $1
+        `, [kitchenId]);
+        
+        console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
+          rowCount: loc.rows.length,
+          rawValue: loc.rows[0]?.default_daily_booking_limit,
+          locationId: loc.rows[0]?.location_id,
+          locationName: loc.rows[0]?.location_name
+        });
+        
+        if (loc.rows.length > 0) {
+          const rawValue = loc.rows[0].default_daily_booking_limit;
+          const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
           
-          console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
-            rowCount: loc.rows.length,
-            rawValue: loc.rows[0]?.default_daily_booking_limit,
-            locationId: loc.rows[0]?.location_id,
-            locationName: loc.rows[0]?.location_name
+          console.log(`[Booking Limit] Parsed location default value:`, {
+            rawValue,
+            locVal,
+            isFinite: Number.isFinite(locVal),
+            isPositive: locVal !== null && locVal > 0
           });
           
-          if (loc.rows.length > 0) {
-            const rawValue = loc.rows[0].default_daily_booking_limit;
-            const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
-            
-            console.log(`[Booking Limit] Parsed location default value:`, {
-              rawValue,
-              locVal,
-              isFinite: Number.isFinite(locVal),
-              isPositive: locVal !== null && locVal > 0
-            });
-            
-            if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
-              maxSlotsPerChef = locVal;
-              console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${loc.rows[0].location_name || loc.rows[0].location_id})`);
-            } else {
-              console.warn(`[Booking Limit] ⚠️ Invalid location default value: ${locVal} (raw: ${rawValue}), using fallback: 2`);
-              maxSlotsPerChef = 2;
-            }
+          if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
+            maxSlotsPerChef = locVal;
+            console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${loc.rows[0].location_name || loc.rows[0].location_id})`);
           } else {
-            console.warn(`[Booking Limit] ⚠️ No location found for kitchen ${kitchenId}, using fallback: 2`);
+            console.warn(`[Booking Limit] ⚠️ Invalid location default value: ${locVal} (raw: ${rawValue}), using fallback: 2`);
+            maxSlotsPerChef = 2;
           }
+        } else {
+          console.warn(`[Booking Limit] ⚠️ No location found for kitchen ${kitchenId}, using fallback: 2`);
         }
       }
     } catch (error) {
