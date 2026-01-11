@@ -307,7 +307,18 @@ export async function getRevenueMetrics(
       ? parseInt(completedRow.completed_payments_all) || 0
       : (completedRow.completed_payments_all ? parseInt(String(completedRow.completed_payments_all)) : 0);
 
+    // Debug: Log query results
+    console.log('[Revenue Service] Main query result count:', result.rows.length);
+    if (result.rows.length > 0) {
+      console.log('[Revenue Service] Main query result:', {
+        total_revenue: result.rows[0].total_revenue,
+        platform_fee: result.rows[0].platform_fee,
+        booking_count: result.rows[0].booking_count,
+      });
+    }
+    
     if (result.rows.length === 0) {
+      console.log('[Revenue Service] No bookings in date range, checking for payments outside date range...');
       // Even if no bookings in date range, check if there are pending or completed payments
       // Calculate revenue based on all payments (completed + pending)
       // We need to get the service fees for these payments too
@@ -423,20 +434,20 @@ export async function getRevenueMetrics(
     const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
 
     return {
-      totalRevenue: totalRevenueWithAllPayments || 0,
-      platformFee: totalServiceFee || 0,
-      managerRevenue: managerRevenue || 0,
+      totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : (totalRevenueWithAllPayments || 0),
+      platformFee: isNaN(totalServiceFee) ? 0 : (totalServiceFee || 0),
+      managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
       pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
       completedPayments: allCompletedPayments, // Use ALL completed payments, not just those in date range
       averageBookingValue: row.avg_booking_value 
-        ? Math.round(parseFloat(String(row.avg_booking_value))) 
+        ? (isNaN(Math.round(parseFloat(String(row.avg_booking_value)))) ? 0 : Math.round(parseFloat(String(row.avg_booking_value))))
         : 0,
-      bookingCount: parseInt(row.booking_count) || 0,
-      paidBookingCount: parseInt(completedRow.completed_count_all) || 0, // Use count from all completed payments query
-      cancelledBookingCount: parseInt(row.cancelled_count) || 0,
+      bookingCount: isNaN(parseInt(row.booking_count)) ? 0 : (parseInt(row.booking_count) || 0),
+      paidBookingCount: isNaN(parseInt(completedRow.completed_count_all)) ? 0 : (parseInt(completedRow.completed_count_all) || 0), // Use count from all completed payments query
+      cancelledBookingCount: isNaN(parseInt(row.cancelled_count)) ? 0 : (parseInt(row.cancelled_count) || 0),
       refundedAmount: typeof row.refunded_amount === 'string'
-        ? parseInt(row.refunded_amount) || 0
-        : (row.refunded_amount ? parseInt(String(row.refunded_amount)) : 0),
+        ? (isNaN(parseInt(row.refunded_amount)) ? 0 : (parseInt(row.refunded_amount) || 0))
+        : (row.refunded_amount ? (isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount))) : 0),
     };
   } catch (error) {
     console.error('Error getting revenue metrics:', error);
@@ -757,7 +768,18 @@ export async function getCompleteRevenueMetrics(
       locationId
     });
     
-    // Get kitchen booking metrics
+    // Try to use payment_transactions first (more accurate and faster)
+    try {
+      const { getRevenueMetricsFromTransactions } = await import('./revenue-service-v2');
+      const metrics = await getRevenueMetricsFromTransactions(managerId, dbPool, startDate, endDate, locationId);
+      console.log('[Revenue Service] Using payment_transactions for revenue metrics');
+      return metrics;
+    } catch (error) {
+      console.warn('[Revenue Service] Failed to use payment_transactions, falling back to booking tables:', error);
+      // Fall through to legacy method
+    }
+    
+    // Get kitchen booking metrics (legacy method)
     const kitchenMetrics = await getRevenueMetrics(managerId, dbPool, startDate, endDate, locationId);
     
     console.log('[Revenue Service] Kitchen metrics:', kitchenMetrics);
@@ -794,6 +816,8 @@ export async function getCompleteRevenueMetrics(
     const serviceFeeRate = await getServiceFeeRate(dbPool);
 
     // Get storage booking revenue
+    // Remove the total_price IS NOT NULL filter to include all bookings
+    // Use COALESCE to handle NULL total_price values
     const storageResult = await dbPool.query(`
       SELECT 
         COALESCE(SUM(COALESCE(sb.total_price, 0)::numeric), 0)::bigint as total_revenue,
@@ -808,7 +832,6 @@ export async function getCompleteRevenueMetrics(
       JOIN locations l ON k.location_id = l.id
       ${whereClause}
         AND sb.status != 'cancelled'
-        AND sb.total_price IS NOT NULL
     `, params);
 
     // Get equipment booking revenue
@@ -853,7 +876,6 @@ export async function getCompleteRevenueMetrics(
       JOIN locations l ON k.location_id = l.id
       ${equipmentWhereClause}
         AND eb.status != 'cancelled'
-        AND eb.total_price IS NOT NULL
     `, equipmentParams);
 
     const storageRow = storageResult.rows[0] || {};
@@ -878,27 +900,33 @@ export async function getCompleteRevenueMetrics(
     // Manager revenue = total_price - service_fee (total_price already includes service_fee)
     const managerRevenue = totalRevenue - platformFee;
 
+    // Ensure all values are numbers (not NaN or undefined)
+    const pendingPaymentsTotal = kitchenMetrics.pendingPayments + 
+      parseNumeric(storageRow.pending_payments) + 
+      parseNumeric(equipmentRow.pending_payments);
+    const completedPaymentsTotal = kitchenMetrics.completedPayments + 
+      parseNumeric(storageRow.completed_payments) + 
+      parseNumeric(equipmentRow.completed_payments);
+    const totalBookingCount = kitchenMetrics.bookingCount + 
+      parseNumeric(storageRow.booking_count) + 
+      parseNumeric(equipmentRow.booking_count);
+    const totalPaidCount = kitchenMetrics.paidBookingCount + 
+      parseNumeric(storageRow.paid_count) + 
+      parseNumeric(equipmentRow.paid_count);
+
     const finalMetrics = {
-      totalRevenue,
-      platformFee,
-      managerRevenue: managerRevenue || 0,
-      pendingPayments: kitchenMetrics.pendingPayments + 
-        parseNumeric(storageRow.pending_payments) + 
-        parseNumeric(equipmentRow.pending_payments),
-      completedPayments: kitchenMetrics.completedPayments + 
-        parseNumeric(storageRow.completed_payments) + 
-        parseNumeric(equipmentRow.completed_payments),
-      averageBookingValue: totalRevenue > 0 
-        ? Math.round(totalRevenue / (kitchenMetrics.bookingCount + parseNumeric(storageRow.booking_count) + parseNumeric(equipmentRow.booking_count)))
+      totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
+      platformFee: isNaN(platformFee) ? 0 : platformFee,
+      managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
+      pendingPayments: isNaN(pendingPaymentsTotal) ? 0 : pendingPaymentsTotal,
+      completedPayments: isNaN(completedPaymentsTotal) ? 0 : completedPaymentsTotal,
+      averageBookingValue: totalRevenue > 0 && totalBookingCount > 0
+        ? (isNaN(Math.round(totalRevenue / totalBookingCount)) ? 0 : Math.round(totalRevenue / totalBookingCount))
         : 0,
-      bookingCount: kitchenMetrics.bookingCount + 
-        parseNumeric(storageRow.booking_count) + 
-        parseNumeric(equipmentRow.booking_count),
-      paidBookingCount: kitchenMetrics.paidBookingCount + 
-        parseNumeric(storageRow.paid_count) + 
-        parseNumeric(equipmentRow.paid_count),
-      cancelledBookingCount: kitchenMetrics.cancelledBookingCount,
-      refundedAmount: kitchenMetrics.refundedAmount,
+      bookingCount: isNaN(totalBookingCount) ? 0 : totalBookingCount,
+      paidBookingCount: isNaN(totalPaidCount) ? 0 : totalPaidCount,
+      cancelledBookingCount: isNaN(kitchenMetrics.cancelledBookingCount) ? 0 : kitchenMetrics.cancelledBookingCount,
+      refundedAmount: isNaN(kitchenMetrics.refundedAmount) ? 0 : kitchenMetrics.refundedAmount,
     };
     
     console.log('[Revenue Service] Final complete metrics:', finalMetrics);

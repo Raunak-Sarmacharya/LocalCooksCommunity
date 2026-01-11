@@ -3812,23 +3812,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Handle different event types
+      // Store event.id for use in handlers
+      const webhookEventId = event.id;
+      
       switch (event.type) {
         case 'payment_intent.succeeded':
-          await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+          await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent, webhookEventId);
           break;
         case 'payment_intent.payment_failed':
-          await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+          await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent, webhookEventId);
           break;
         case 'payment_intent.canceled':
-          await handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent);
+          await handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent, webhookEventId);
           break;
         case 'charge.refunded':
-          await handleChargeRefunded(event.data.object as Stripe.Charge);
+          await handleChargeRefunded(event.data.object as Stripe.Charge, webhookEventId);
           break;
         default:
           // Handle charge.partially_refunded and other charge events
           if (event.type.startsWith('charge.')) {
-            await handleChargeRefunded(event.data.object as Stripe.Charge);
+            await handleChargeRefunded(event.data.object as Stripe.Charge, webhookEventId);
           } else {
             console.log(`Unhandled event type: ${event.type}`);
           }
@@ -3842,15 +3845,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Webhook event handlers
-  async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+  async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent, webhookEventId: string) {
     if (!pool) {
       console.error('Database pool not available for webhook');
       return;
     }
 
     try {
+      const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
+      
+      // Update payment_transactions table
+      const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
+      if (transaction) {
+        await updatePaymentTransaction(transaction.id, {
+          status: 'succeeded',
+          stripeStatus: paymentIntent.status,
+          chargeId: typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id,
+          paidAt: new Date(),
+          lastSyncedAt: new Date(),
+          webhookEventId: webhookEventId,
+        }, pool);
+        console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+      }
+
+      // Also update booking tables for backward compatibility
       await pool.query(`
         UPDATE kitchen_bookings
+        SET 
+          payment_status = 'paid',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status != 'paid'
+      `, [paymentIntent.id]);
+
+      // Update storage_bookings
+      await pool.query(`
+        UPDATE storage_bookings
+        SET 
+          payment_status = 'paid',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status != 'paid'
+      `, [paymentIntent.id]);
+
+      // Update equipment_bookings
+      await pool.query(`
+        UPDATE equipment_bookings
         SET 
           payment_status = 'paid',
           updated_at = NOW()
@@ -3864,15 +3904,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+  async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent, webhookEventId: string) {
     if (!pool) {
       console.error('Database pool not available for webhook');
       return;
     }
 
     try {
+      const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
+      
+      // Update payment_transactions table
+      const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
+      if (transaction) {
+        await updatePaymentTransaction(transaction.id, {
+          status: 'failed',
+          stripeStatus: paymentIntent.status,
+          failureReason: paymentIntent.last_payment_error?.message || 'Payment failed',
+          lastSyncedAt: new Date(),
+          webhookEventId: webhookEventId,
+        }, pool);
+        console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+      }
+
+      // Also update booking tables for backward compatibility
       await pool.query(`
         UPDATE kitchen_bookings
+        SET 
+          payment_status = 'failed',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
+      `, [paymentIntent.id]);
+
+      await pool.query(`
+        UPDATE storage_bookings
+        SET 
+          payment_status = 'failed',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
+      `, [paymentIntent.id]);
+
+      await pool.query(`
+        UPDATE equipment_bookings
         SET 
           payment_status = 'failed',
           updated_at = NOW()
@@ -3886,15 +3960,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) {
+  async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent, webhookEventId: string) {
     if (!pool) {
       console.error('Database pool not available for webhook');
       return;
     }
 
     try {
+      const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
+      
+      // Update payment_transactions table
+      const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
+      if (transaction) {
+        await updatePaymentTransaction(transaction.id, {
+          status: 'canceled',
+          stripeStatus: paymentIntent.status,
+          lastSyncedAt: new Date(),
+          webhookEventId: webhookEventId,
+        }, pool);
+        console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+      }
+
+      // Also update booking tables for backward compatibility
       await pool.query(`
         UPDATE kitchen_bookings
+        SET 
+          payment_status = 'canceled',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
+      `, [paymentIntent.id]);
+
+      await pool.query(`
+        UPDATE storage_bookings
+        SET 
+          payment_status = 'canceled',
+          updated_at = NOW()
+        WHERE payment_intent_id = $1
+          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
+      `, [paymentIntent.id]);
+
+      await pool.query(`
+        UPDATE equipment_bookings
         SET 
           payment_status = 'canceled',
           updated_at = NOW()
@@ -3908,13 +4015,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
-  async function handleChargeRefunded(charge: Stripe.Charge) {
+  async function handleChargeRefunded(charge: Stripe.Charge, webhookEventId: string) {
     if (!pool) {
       console.error('Database pool not available for webhook');
       return;
     }
 
     try {
+      const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
+      
       // Find booking by payment intent ID from charge
       const paymentIntentId = typeof charge.payment_intent === 'string' 
         ? charge.payment_intent 
@@ -3928,9 +4037,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if it's a full or partial refund
       const isPartial = charge.amount_refunded < charge.amount;
       const refundStatus = isPartial ? 'partially_refunded' : 'refunded';
+      const refundAmountCents = charge.amount_refunded;
 
+      // Update payment_transactions table
+      const transaction = await findPaymentTransactionByIntentId(paymentIntentId, pool);
+      if (transaction) {
+        await updatePaymentTransaction(transaction.id, {
+          status: refundStatus,
+          refundAmount: refundAmountCents,
+          refundId: charge.refunds?.data?.[0]?.id,
+          refundedAt: new Date(),
+          lastSyncedAt: new Date(),
+          webhookEventId: webhookEventId,
+        }, pool);
+        console.log(`[Webhook] Updated payment_transactions for refund on PaymentIntent ${paymentIntentId}`);
+      }
+
+      // Also update booking tables for backward compatibility
       await pool.query(`
         UPDATE kitchen_bookings
+        SET 
+          payment_status = $1,
+          updated_at = NOW()
+        WHERE payment_intent_id = $2
+          AND payment_status = 'paid'
+      `, [refundStatus, paymentIntentId]);
+
+      await pool.query(`
+        UPDATE storage_bookings
+        SET 
+          payment_status = $1,
+          updated_at = NOW()
+        WHERE payment_intent_id = $2
+          AND payment_status = 'paid'
+      `, [refundStatus, paymentIntentId]);
+
+      await pool.query(`
+        UPDATE equipment_bookings
         SET 
           payment_status = $1,
           updated_at = NOW()
@@ -3980,6 +4123,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         locationId ? parseInt(locationId as string) : undefined
       );
 
+      // Validate metrics are not null/undefined
+      if (!metrics) {
+        console.error(`[Revenue] getCompleteRevenueMetrics returned null/undefined for manager ${managerId}`);
+        return res.status(500).json({ error: "Failed to calculate revenue metrics" });
+      }
+
+      // Log metrics for debugging
+      console.log(`[Revenue] Metrics for manager ${managerId}:`, {
+        totalRevenue: metrics.totalRevenue,
+        managerRevenue: metrics.managerRevenue,
+        bookingCount: metrics.bookingCount,
+        completedPayments: metrics.completedPayments,
+        pendingPayments: metrics.pendingPayments,
+      });
+
       // Convert cents to dollars for response
       res.json({
         totalRevenue: metrics.totalRevenue / 100,
@@ -4015,14 +4173,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: "Database connection not available" });
       }
 
-      const { getRevenueByLocation } = await import('./services/revenue-service');
-      
-      const revenueByLocation = await getRevenueByLocation(
-        managerId,
-        pool,
-        startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
-      );
+      // Try to use payment_transactions first, fallback to legacy method
+      let revenueByLocation;
+      try {
+        const { getRevenueByLocationFromTransactions } = await import('./services/revenue-service-v2');
+        revenueByLocation = await getRevenueByLocationFromTransactions(
+          managerId,
+          pool,
+          startDate ? new Date(startDate as string) : undefined,
+          endDate ? new Date(endDate as string) : undefined
+        );
+      } catch (error) {
+        console.warn('[Revenue] Falling back to legacy getRevenueByLocation:', error);
+        const { getRevenueByLocation } = await import('./services/revenue-service');
+        revenueByLocation = await getRevenueByLocation(
+          managerId,
+          pool,
+          startDate ? new Date(startDate as string) : undefined,
+          endDate ? new Date(endDate as string) : undefined
+        );
+      }
 
       // Convert cents to dollars for response
       res.json(revenueByLocation.map(loc => ({
@@ -4182,14 +4352,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return d;
       })();
 
-      const { getRevenueByDate } = await import('./services/revenue-service');
-      
-      const revenueByDate = await getRevenueByDate(
-        managerId,
-        pool,
-        start,
-        end
-      );
+      // Try to use payment_transactions first, fallback to legacy method
+      let revenueByDate;
+      try {
+        const { getRevenueByDateFromTransactions } = await import('./services/revenue-service-v2');
+        revenueByDate = await getRevenueByDateFromTransactions(
+          managerId,
+          pool,
+          start,
+          end
+        );
+      } catch (error) {
+        console.warn('[Revenue] Falling back to legacy getRevenueByDate:', error);
+        const { getRevenueByDate } = await import('./services/revenue-service');
+        revenueByDate = await getRevenueByDate(
+          managerId,
+          pool,
+          start,
+          end
+        );
+      }
 
       // Convert cents to dollars and format for charts
       res.json({
@@ -4223,22 +4405,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: "Database connection not available" });
       }
 
-      const { getTransactionHistory } = await import('./services/revenue-service');
-      
-      let transactions = await getTransactionHistory(
-        managerId,
-        pool,
-        startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined,
-        locationId ? parseInt(locationId as string) : undefined,
-        parseInt(limit as string),
-        parseInt(offset as string)
-      );
+      // Try to use payment_transactions first, fallback to legacy method
+      let transactions: any[] = [];
+      try {
+        const { getManagerPaymentTransactions } = await import('./services/payment-transactions-service');
+        const result = await getManagerPaymentTransactions(managerId, pool, {
+          startDate: startDate ? new Date(startDate as string) : undefined,
+          endDate: endDate ? new Date(endDate as string) : undefined,
+          limit: parseInt(limit as string),
+          offset: parseInt(offset as string),
+        });
+        
+        // Convert payment_transactions to transaction history format
+        transactions = result.transactions.map(pt => {
+          // Get booking details for kitchen_name, location_name, chef_name
+          return {
+            id: pt.booking_id,
+            bookingType: pt.booking_type,
+            totalPrice: parseInt(pt.amount),
+            serviceFee: parseInt(pt.service_fee),
+            managerRevenue: parseInt(pt.manager_revenue),
+            paymentStatus: pt.status === 'succeeded' ? 'paid' : pt.status === 'pending' ? 'pending' : pt.status === 'failed' ? 'failed' : pt.status,
+            paymentIntentId: pt.payment_intent_id,
+            currency: pt.currency,
+            createdAt: pt.created_at,
+            paidAt: pt.paid_at,
+          };
+        });
+        
+        // Fetch booking details for display
+        if (transactions.length > 0) {
+          const bookingIds = transactions.map(t => t.id);
+          const bookingDetails = await pool.query(`
+            SELECT 
+              kb.id,
+              kb.booking_date,
+              kb.start_time,
+              kb.end_time,
+              kb.status,
+              k.name as kitchen_name,
+              l.id as location_id,
+              l.name as location_name,
+              u.username as chef_name,
+              u.email as chef_email
+            FROM kitchen_bookings kb
+            JOIN kitchens k ON kb.kitchen_id = k.id
+            JOIN locations l ON k.location_id = l.id
+            LEFT JOIN users u ON kb.chef_id = u.id
+            WHERE kb.id = ANY($1)
+          `, [bookingIds]);
+          
+          const detailsMap = new Map(bookingDetails.rows.map(b => [b.id, b]));
+          transactions = transactions.map(t => ({
+            ...t,
+            bookingDate: detailsMap.get(t.id)?.booking_date,
+            startTime: detailsMap.get(t.id)?.start_time,
+            endTime: detailsMap.get(t.id)?.end_time,
+            status: detailsMap.get(t.id)?.status,
+            kitchenName: detailsMap.get(t.id)?.kitchen_name,
+            locationId: detailsMap.get(t.id)?.location_id,
+            locationName: detailsMap.get(t.id)?.location_name,
+            chefName: detailsMap.get(t.id)?.chef_name || 'Guest',
+            chefEmail: detailsMap.get(t.id)?.chef_email,
+          }));
+        }
+        
+        console.log(`[Revenue] Using payment_transactions for transaction history: ${transactions.length} transactions`);
+      } catch (error) {
+        console.warn('[Revenue] Falling back to legacy getTransactionHistory:', error);
+        const { getTransactionHistory } = await import('./services/revenue-service');
+        transactions = await getTransactionHistory(
+          managerId,
+          pool,
+          startDate ? new Date(startDate as string) : undefined,
+          endDate ? new Date(endDate as string) : undefined,
+          locationId ? parseInt(locationId as string) : undefined,
+          parseInt(limit as string),
+          parseInt(offset as string)
+        );
+      }
 
       // Filter by payment status if provided
       if (paymentStatus) {
         transactions = transactions.filter(t => t.paymentStatus === paymentStatus);
       }
+
+      // Log transaction count for debugging
+      console.log(`[Revenue] Transaction history for manager ${managerId}: ${transactions.length} transactions`);
 
       // Convert cents to dollars for response
       res.json({

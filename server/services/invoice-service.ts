@@ -33,11 +33,20 @@ export async function generateInvoicePDF(
       let hourlyRate = 0;
       
       // First, try to use stored total_price
+      // Note: total_price includes service_fee, so we need to subtract service_fee to get base price
       if (booking.total_price || booking.totalPrice) {
         const totalPriceCents = booking.total_price 
           ? parseFloat(String(booking.total_price)) 
           : parseFloat(String(booking.totalPrice));
-        kitchenAmount = totalPriceCents / 100;
+        
+        // Get service_fee if available
+        const serviceFeeCents = (booking.service_fee || booking.serviceFee) 
+          ? parseFloat(String(booking.service_fee || booking.serviceFee))
+          : 0;
+        
+        // Base kitchen price = total_price - service_fee (total_price already includes service_fee)
+        const basePriceCents = totalPriceCents - serviceFeeCents;
+        kitchenAmount = basePriceCents / 100;
         
         // Get duration and rate from stored values if available
         if (booking.duration_hours || booking.durationHours) {
@@ -100,19 +109,43 @@ export async function generateInvoicePDF(
   }
 
   // Storage bookings
-  if (storageBookings && storageBookings.length > 0 && dbPool) {
+  // Use stored total_price if available (subtract service_fee to get base price)
+  // Otherwise calculate from listing base_price
+  if (storageBookings && storageBookings.length > 0) {
     for (const storageBooking of storageBookings) {
       try {
-        const result = await dbPool.query(
-          'SELECT base_price FROM storage_listings WHERE id = $1',
-          [storageBooking.storageListingId || storageBooking.storage_listing_id]
-        );
-        if (result.rows.length > 0) {
-          const basePrice = parseFloat(String(result.rows[0].base_price)) / 100; // Convert cents to dollars
+        let storageAmount = 0;
+        let basePrice = 0;
+        let days = 0;
+        
+        // Use stored total_price if available
+        if (storageBooking.total_price || storageBooking.totalPrice) {
+          const totalPriceCents = parseFloat(String(storageBooking.total_price || storageBooking.totalPrice));
+          const serviceFeeCents = parseFloat(String(storageBooking.service_fee || storageBooking.serviceFee || 0));
+          // Base price = total_price - service_fee (total_price includes service_fee)
+          const basePriceCents = totalPriceCents - serviceFeeCents;
+          storageAmount = basePriceCents / 100;
+          
           const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
           const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
-          const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-          const storageAmount = basePrice * days;
+          days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+          basePrice = storageAmount / days;
+        } else if (dbPool) {
+          // Fall back to calculating from listing
+          const result = await dbPool.query(
+            'SELECT base_price FROM storage_listings WHERE id = $1',
+            [storageBooking.storageListingId || storageBooking.storage_listing_id]
+          );
+          if (result.rows.length > 0) {
+            basePrice = parseFloat(String(result.rows[0].base_price)) / 100; // Convert cents to dollars
+            const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
+            const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
+            days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+            storageAmount = basePrice * days;
+          }
+        }
+        
+        if (storageAmount > 0) {
           totalAmount += storageAmount;
           
           items.push({
@@ -129,15 +162,32 @@ export async function generateInvoicePDF(
   }
 
   // Equipment bookings
-  if (equipmentBookings && equipmentBookings.length > 0 && dbPool) {
+  // Use stored total_price if available (subtract service_fee to get base price)
+  // Otherwise calculate from listing session_rate
+  if (equipmentBookings && equipmentBookings.length > 0) {
     for (const equipmentBooking of equipmentBookings) {
       try {
-        const result = await dbPool.query(
-          'SELECT session_rate FROM equipment_listings WHERE id = $1',
-          [equipmentBooking.equipmentListingId || equipmentBooking.equipment_listing_id]
-        );
-        if (result.rows.length > 0) {
-          const sessionRate = parseFloat(String(result.rows[0].session_rate)) / 100; // Convert cents to dollars
+        let sessionRate = 0;
+        
+        // Use stored total_price if available
+        if (equipmentBooking.total_price || equipmentBooking.totalPrice) {
+          const totalPriceCents = parseFloat(String(equipmentBooking.total_price || equipmentBooking.totalPrice));
+          const serviceFeeCents = parseFloat(String(equipmentBooking.service_fee || equipmentBooking.serviceFee || 0));
+          // Base price = total_price - service_fee (total_price includes service_fee)
+          const basePriceCents = totalPriceCents - serviceFeeCents;
+          sessionRate = basePriceCents / 100;
+        } else if (dbPool) {
+          // Fall back to calculating from listing
+          const result = await dbPool.query(
+            'SELECT session_rate FROM equipment_listings WHERE id = $1',
+            [equipmentBooking.equipmentListingId || equipmentBooking.equipment_listing_id]
+          );
+          if (result.rows.length > 0) {
+            sessionRate = parseFloat(String(result.rows[0].session_rate)) / 100; // Convert cents to dollars
+          }
+        }
+        
+        if (sessionRate > 0) {
           totalAmount += sessionRate;
           
           items.push({
@@ -153,11 +203,13 @@ export async function generateInvoicePDF(
     }
   }
 
-  // Service fee - get dynamically from platform_settings
-  // Note: This is for display purposes in the invoice PDF
-  // The actual service fee is already calculated and stored in the booking
-  // We'll use 5% as default for invoice display if we can't get the rate
+  // Service fee - calculate once on subtotal (not per item)
+  // This matches how Stripe charges: one service fee on the total transaction
+  // All items above show base prices only (service fee already subtracted)
+  let serviceFee = 0;
   let serviceFeeRate = 0.05; // Default
+  
+  // Get service fee rate from platform settings
   if (dbPool) {
     try {
       const { getServiceFeeRate } = await import('./pricing-service');
@@ -167,7 +219,13 @@ export async function generateInvoicePDF(
       // Use default 5%
     }
   }
-  const serviceFee = totalAmount * serviceFeeRate;
+  
+  // Calculate service fee once on the subtotal (sum of all base prices)
+  // This matches the Stripe transaction: one service fee on the total amount
+  if (totalAmount > 0) {
+    serviceFee = totalAmount * serviceFeeRate;
+  }
+  
   const grandTotal = totalAmount + serviceFee;
 
   // Now generate PDF
@@ -315,8 +373,9 @@ export async function generateInvoicePDF(
       doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
-      // Service Fee
-      doc.text('Service Fee (5%):', 380, currentY, { align: 'right', width: 110 });
+      // Service Fee - calculate percentage for display
+      const serviceFeePercentage = totalAmount > 0 ? (serviceFee / totalAmount * 100).toFixed(1) : '5.0';
+      doc.text(`Service Fee (${serviceFeePercentage}%):`, 380, currentY, { align: 'right', width: 110 });
       doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       

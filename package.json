@@ -28,6 +28,7 @@
     "deploy:safe": "npm run test:firebase && npm run deploy:production",
     "sessions:stats": "node scripts/cleanup-sessions.js --dry-run",
     "sessions:cleanup": "node scripts/cleanup-sessions.js",
+    "backfill:payments": "node scripts/backfill-payment-transactions.js",
     "sessions:cleanup-old": "node scripts/cleanup-sessions.js --days 30",
     "sessions:cleanup-aggressive": "node scripts/cleanup-sessions.js --days 7",
     "start": "NODE_ENV=production node dist/index.js",
