@@ -4694,10 +4694,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied to this booking" });
       }
       
-      // Only allow invoice download for paid bookings
-      if (booking.payment_status !== 'paid') {
-        return res.status(400).json({ error: "Invoice can only be downloaded for paid bookings" });
+      // Allow invoice download for all bookings (managers should be able to download invoices for their bookings)
+      // Only block cancelled bookings that have no payment information at all
+      if (booking.status === 'cancelled' && !booking.payment_intent_id && !booking.total_price) {
+        return res.status(400).json({ error: "Invoice cannot be downloaded for cancelled bookings without payment information" });
       }
+      
+      // Allow all other bookings - invoice service will handle missing payment info gracefully
 
       // Get chef info
       let chef = null;
