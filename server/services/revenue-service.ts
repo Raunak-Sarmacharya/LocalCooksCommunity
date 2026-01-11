@@ -84,6 +84,10 @@ export async function getRevenueMetrics(
 ): Promise<RevenueMetrics> {
   try {
     // Build WHERE clause
+    // IMPORTANT: For revenue metrics, we want to show ALL bookings (past, present, and future)
+    // Future bookings with pre-authorized payments should be included in stats
+    // Date filters are optional and only apply to completed payments for breakdown purposes
+    // But ALL pending/processing payments (including future bookings) should always be counted
     let whereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
@@ -91,19 +95,10 @@ export async function getRevenueMetrics(
     const params: any[] = [managerId];
     let paramIndex = 2;
 
-    if (startDate) {
-      const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
-      params.push(start);
-      paramIndex++;
-    }
-
-    if (endDate) {
-      const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
-      params.push(end);
-      paramIndex++;
-    }
+    // For the main query, we'll include ALL bookings regardless of date
+    // Date filters will only be applied to completed payments for breakdown
+    // This ensures future bookings with pending payments are always shown
+    // Note: We don't apply date filters here to include all bookings
 
     if (locationId) {
       whereClause += ` AND l.id = $${paramIndex}`;
@@ -121,7 +116,12 @@ export async function getRevenueMetrics(
         COUNT(*) as total_bookings,
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
         COUNT(CASE WHEN kb.total_price IS NULL THEN 1 END) as bookings_without_price,
-        COUNT(CASE WHEN kb.status = 'cancelled' THEN 1 END) as cancelled_count
+        COUNT(CASE WHEN kb.status = 'cancelled' THEN 1 END) as cancelled_count,
+        COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END) as pending_count,
+        COUNT(CASE WHEN kb.payment_status = 'processing' THEN 1 END) as processing_count,
+        COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END) as paid_count,
+        COUNT(CASE WHEN kb.payment_intent_id IS NOT NULL THEN 1 END) as with_payment_intent,
+        COUNT(CASE WHEN kb.payment_status IS NULL THEN 1 END) as null_payment_status
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
@@ -132,10 +132,13 @@ export async function getRevenueMetrics(
       managerId,
       debug: debugQuery.rows[0],
       whereClause,
-      params
+      params,
+      startDate,
+      endDate
     });
 
-    // Query completed/paid payments with date filter
+    // Query ALL bookings (past, present, and future) for total counts and revenue
+    // This ensures future bookings are included in all metrics
     // Calculate effective total_price: use total_price if available, otherwise calculate from hourly_rate * duration_hours
     // Also handle numeric type properly by casting to numeric first, then to bigint
     const result = await dbPool.query(`
@@ -203,7 +206,8 @@ export async function getRevenueMetrics(
     // This ensures future bookings with pre-authorized payments are included
     // Include bookings with payment_status='pending' OR 'processing' (pre-authorized but not yet captured)
     // OR bookings with payment_intent_id but payment_status is NULL or not paid
-    // (some older bookings might not have payment_status set but have a payment intent)
+    // OR bookings with total_price but no payment_status set (assume pending if not paid)
+    // (some older bookings might not have payment_status set but have a payment intent or total_price)
     let pendingWhereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
@@ -211,6 +215,7 @@ export async function getRevenueMetrics(
           kb.payment_status = 'pending' 
           OR kb.payment_status = 'processing'
           OR (kb.payment_intent_id IS NOT NULL AND (kb.payment_status IS NULL OR kb.payment_status NOT IN ('paid', 'refunded', 'partially_refunded')))
+          OR (kb.total_price IS NOT NULL AND kb.total_price > 0 AND (kb.payment_status IS NULL OR kb.payment_status NOT IN ('paid', 'refunded', 'partially_refunded')))
         )
     `;
     const pendingParams: any[] = [managerId];
@@ -651,22 +656,26 @@ export async function getTransactionHistory(
 ): Promise<any[]> {
   try {
     // Build WHERE clause
+    // Include all bookings for the manager, with optional date filtering
+    // Use created_at for date filtering to include recent bookings regardless of booking_date
     let whereClause = `
       WHERE l.manager_id = $1
+        AND kb.status != 'cancelled'
     `;
     const params: any[] = [managerId];
     let paramIndex = 2;
 
+    // Date filters apply to either booking_date OR created_at to catch all recent bookings
     if (startDate) {
       const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(kb.booking_date) >= $${paramIndex}::date`;
+      whereClause += ` AND (DATE(kb.booking_date) >= $${paramIndex}::date OR DATE(kb.created_at) >= $${paramIndex}::date)`;
       params.push(start);
       paramIndex++;
     }
 
     if (endDate) {
       const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(kb.booking_date) <= $${paramIndex}::date`;
+      whereClause += ` AND (DATE(kb.booking_date) <= $${paramIndex}::date OR DATE(kb.created_at) <= $${paramIndex}::date)`;
       params.push(end);
       paramIndex++;
     }
