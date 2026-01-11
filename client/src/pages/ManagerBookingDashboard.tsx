@@ -891,6 +891,7 @@ export default function ManagerBookingDashboard() {
                     <ManagerRevenueDashboard 
                       selectedLocation={selectedLocation}
                       locations={locations}
+                      onNavigate={(view) => setActiveView(view as ViewType)}
                     />
                   )}
                   
