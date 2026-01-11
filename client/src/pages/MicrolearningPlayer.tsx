@@ -81,10 +81,10 @@ export default function MicrolearningPlayer() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
-      <main className="flex-grow pt-20 md:pt-24 pb-12">
+      <main className="flex-grow pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-12">
         {/* Breadcrumb Navigation */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <nav className="flex items-center space-x-2 text-sm text-gray-600">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+          <nav className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-gray-600 flex-wrap gap-1 sm:gap-0">
             <Link href="/dashboard" className="flex items-center hover:text-gray-900 transition-colors">
               <Home className="h-4 w-4 mr-1" />
               Dashboard

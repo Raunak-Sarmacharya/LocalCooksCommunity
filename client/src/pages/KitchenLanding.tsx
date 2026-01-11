@@ -395,7 +395,7 @@ export default function KitchenLanding() {
             }} />
           </div>
 
-          <div className="container mx-auto max-w-7xl px-4 pt-28 pb-16 relative z-10">
+          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 md:pt-28 pb-12 sm:pb-14 md:pb-16 relative z-10">
             {/* Mobile-only Badge */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -497,7 +497,7 @@ export default function KitchenLanding() {
                   <Button
                     onClick={handleListKitchen}
                     size="lg"
-                    className="group relative bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white font-bold py-4 px-4 md:py-7 md:px-12 text-xs md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/40 hover:-translate-y-1 overflow-hidden flex-1"
+                    className="group relative bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white font-bold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-12 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 shadow-xl hover:shadow-2xl hover:shadow-[#F51042]/40 hover:-translate-y-1 overflow-hidden flex-1 min-h-[44px] sm:min-h-[48px]"
                   >
                     <span className="relative z-10 flex items-center justify-center">
                       List Your Kitchen Now
@@ -507,7 +507,7 @@ export default function KitchenLanding() {
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-rose-50 font-semibold py-4 px-4 md:py-7 md:px-10 text-xs md:text-lg rounded-full transition-all duration-300 flex-1"
+                    className="border-2 border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] hover:bg-rose-50 font-semibold py-3 sm:py-4 md:py-7 px-4 sm:px-6 md:px-10 text-xs sm:text-sm md:text-lg rounded-full transition-all duration-300 flex-1 min-h-[44px] sm:min-h-[48px]"
                     onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
                   >
                     See How It Works
@@ -1555,7 +1555,7 @@ export default function KitchenLanding() {
         {/* ═══════════════════════════════════════════════════════════════════════
             FAQ SECTION
         ═══════════════════════════════════════════════════════════════════════ */}
-        <section id="faq" className="py-20 md:py-28 px-4 bg-gray-50">
+        <section id="faq" className="py-12 sm:py-16 md:py-20 lg:py-28 px-4 sm:px-6 bg-gray-50">
           <div className="container mx-auto max-w-3xl">
             <FadeInSection>
               <div className="text-center mb-12">

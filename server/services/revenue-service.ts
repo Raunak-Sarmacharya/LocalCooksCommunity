@@ -135,7 +135,7 @@ export async function getRevenueMetrics(
       params
     });
 
-    // Query revenue data
+    // Query completed/paid payments with date filter
     // Note: We filter out bookings with NULL total_price to only count bookings with pricing
     // Also handle numeric type properly by casting to numeric first, then to bigint
     const result = await dbPool.query(`
@@ -157,6 +157,33 @@ export async function getRevenueMetrics(
       ${whereClause}
         AND kb.total_price IS NOT NULL
     `, params);
+
+    // Query ALL pending payments (pre-authorized) regardless of booking date
+    // This ensures future bookings with pre-authorized payments are included
+    let pendingWhereClause = `
+      WHERE l.manager_id = $1
+        AND kb.status != 'cancelled'
+        AND kb.payment_status = 'pending'
+        AND kb.total_price IS NOT NULL
+    `;
+    const pendingParams: any[] = [managerId];
+    let pendingParamIndex = 2;
+
+    if (locationId) {
+      pendingWhereClause += ` AND l.id = $${pendingParamIndex}`;
+      pendingParams.push(locationId);
+      pendingParamIndex++;
+    }
+
+    const pendingResult = await dbPool.query(`
+      SELECT 
+        COALESCE(SUM(COALESCE(kb.total_price, 0)::numeric), 0)::bigint as pending_payments_all,
+        COUNT(*)::int as pending_count_all
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      ${pendingWhereClause}
+    `, pendingParams);
 
     if (result.rows.length === 0) {
       // Return zero metrics if no bookings
@@ -194,21 +221,36 @@ export async function getRevenueMetrics(
       ? parseInt(row.platform_fee)
       : (row.platform_fee ? parseInt(String(row.platform_fee)) : 0);
     
-    // Calculate manager revenue dynamically
+    // Get completed payments from date range
+    const completedPayments = typeof row.completed_payments === 'string'
+      ? parseInt(row.completed_payments) || 0
+      : (row.completed_payments ? parseInt(String(row.completed_payments)) : 0);
+    
+    // Get ALL pending payments (pre-authorized) regardless of date
+    const pendingRow = pendingResult.rows[0] || {};
+    const allPendingPayments = typeof pendingRow.pending_payments_all === 'string'
+      ? parseInt(pendingRow.pending_payments_all) || 0
+      : (pendingRow.pending_payments_all ? parseInt(String(pendingRow.pending_payments_all)) : 0);
+    
+    // Total revenue should include both completed payments (within date range) and all pending payments
+    // This gives managers visibility into committed revenue from pre-authorized payments
+    // Note: We use completedPayments instead of totalRevenue to avoid double-counting pending payments
+    const totalRevenueWithPending = completedPayments + allPendingPayments;
+    
+    // Calculate manager revenue dynamically based on total revenue including pending
     // If service_fee_rate = 0, manager gets 100%
     // If service_fee_rate = 0.20, manager gets 80%
-    const managerRevenue = calculateManagerRevenue(totalRevenue, serviceFeeRate);
+    const managerRevenue = calculateManagerRevenue(totalRevenueWithPending, serviceFeeRate);
+    
+    // Platform fee should also be calculated on total including pending
+    const totalPlatformFee = Math.round(totalRevenueWithPending * serviceFeeRate);
 
     return {
-      totalRevenue: totalRevenue || 0,
-      platformFee: platformFee || 0,
+      totalRevenue: totalRevenueWithPending || 0,
+      platformFee: totalPlatformFee || 0,
       managerRevenue,
-      pendingPayments: typeof row.pending_payments === 'string' 
-        ? parseInt(row.pending_payments) || 0
-        : (row.pending_payments ? parseInt(String(row.pending_payments)) : 0),
-      completedPayments: typeof row.completed_payments === 'string'
-        ? parseInt(row.completed_payments) || 0
-        : (row.completed_payments ? parseInt(String(row.completed_payments)) : 0),
+      pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
+      completedPayments: completedPayments,
       averageBookingValue: row.avg_booking_value 
         ? Math.round(parseFloat(String(row.avg_booking_value))) 
         : 0,

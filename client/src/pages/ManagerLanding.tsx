@@ -73,7 +73,7 @@ export default function ManagerLanding() {
         <GradientHero variant="cool" className="min-h-screen">
         {/* Header */}
         <header className="bg-white/10 backdrop-blur-sm border-b border-white/20">
-          <div className="container mx-auto px-4 py-4">
+          <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <Logo className="h-10 w-auto" />
@@ -87,7 +87,7 @@ export default function ManagerLanding() {
         </header>
 
         {/* Hero Section */}
-        <div className="container mx-auto px-4 py-16">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-14 md:py-16">
           <FadeInSection>
             <div className="max-w-4xl mx-auto text-center mb-16">
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full mb-8 backdrop-blur-sm">
@@ -101,7 +101,7 @@ export default function ManagerLanding() {
             </p>
               <Button
                 size="lg"
-                className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-8 py-6 h-auto btn-glow"
+                className="w-full sm:w-auto bg-white text-blue-600 hover:bg-blue-50 text-base sm:text-lg px-6 sm:px-8 py-4 sm:py-5 md:py-6 h-auto btn-glow min-h-[48px] sm:min-h-[56px]"
                 onClick={() => setLocation("/manager/login")}
               >
                 <Lock className="mr-2 h-5 w-5" />

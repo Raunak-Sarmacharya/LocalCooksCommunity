@@ -86,14 +86,14 @@ function FormStep() {
 
   return (
     <>
-      <div className="container mx-auto px-4 mb-8">
+      <div className="container mx-auto px-4 sm:px-6 mb-6 sm:mb-8">
         <ProgressIndicator step={currentStep} />
       </div>
 
-      <div className="container mx-auto px-3 sm:px-4">
+      <div className="container mx-auto px-4 sm:px-6">
         <FadeInSection>
           <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center px-2">
               Delivery Partner Application
             </h1>
 

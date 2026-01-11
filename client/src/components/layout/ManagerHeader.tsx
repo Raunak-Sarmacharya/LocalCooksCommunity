@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, HelpCircle } from "lucide-react";
+import { LogOut, HelpCircle, Menu, X } from "lucide-react";
 import { Link } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -10,6 +10,7 @@ import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
 
 export default function ManagerHeader() {
   const [showHelpCenter, setShowHelpCenter] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Use Firebase auth for managers (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
   
@@ -132,10 +133,10 @@ export default function ManagerHeader() {
           </div>
         </Link>
 
-        <nav className="flex items-center space-x-4">
+        <nav className="hidden md:flex items-center space-x-4">
           <Link 
             href="/"
-            className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
+            className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
           >
             Homepage
           </Link>
@@ -144,14 +145,14 @@ export default function ManagerHeader() {
             <>
               <Link 
                 href="/manager/booking-dashboard"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
+                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
               >
                 Booking Dashboard
               </Link>
               
               <Link 
                 href="/manager/profile"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50"
+                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
               >
                 Profile
               </Link>
@@ -160,7 +161,7 @@ export default function ManagerHeader() {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowHelpCenter(true)}
-                className="gap-2"
+                className="gap-2 text-sm sm:text-base"
               >
                 <HelpCircle className="h-4 w-4" />
                 Help
@@ -170,7 +171,7 @@ export default function ManagerHeader() {
                 variant="outline"
                 size="sm"
                 onClick={handleLogout}
-                className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 text-sm sm:text-base"
               >
                 <LogOut className="h-4 w-4" />
                 Logout
@@ -178,7 +179,87 @@ export default function ManagerHeader() {
             </>
           )}
         </nav>
+
+        {/* Mobile menu button */}
+        <div className="md:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="mobile-touch-target mobile-no-tap-highlight p-3"
+          >
+            {isMenuOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
+          </Button>
+        </div>
       </div>
+
+      {/* Mobile menu */}
+      {isMenuOpen && (
+        <div className="md:hidden border-t border-gray-200 shadow-xl mobile-momentum-scroll bg-white">
+          <div className="container mx-auto px-4 sm:px-6 py-5">
+            <nav className="space-y-3">
+              <Link 
+                href="/"
+                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Homepage
+              </Link>
+              
+              {user && (
+                <>
+                  <Link 
+                    href="/manager/booking-dashboard"
+                    className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Booking Dashboard
+                  </Link>
+                  
+                  <Link 
+                    href="/manager/profile"
+                    className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Profile
+                  </Link>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowHelpCenter(true);
+                      setIsMenuOpen(false);
+                    }}
+                    className="w-full gap-2 justify-start text-base min-h-[44px]"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                    Help
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      handleLogout();
+                      setIsMenuOpen(false);
+                    }}
+                    className="w-full gap-2 justify-start border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 text-base min-h-[44px]"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </Button>
+                </>
+              )}
+            </nav>
+          </div>
+        </div>
+      )}
+
       <ManagerHelpCenter isOpen={showHelpCenter} onClose={() => setShowHelpCenter(false)} />
     </header>
   );

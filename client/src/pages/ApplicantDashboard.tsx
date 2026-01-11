@@ -1225,7 +1225,7 @@ export default function ApplicantDashboard() {
       <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       {/* Vendor Portal Popup for Fully Verified Users */}
       <Dialog open={showVendorPortalPopup} onOpenChange={handleCloseVendorPopup}>
-        <DialogContent className="sm:max-w-lg w-full mx-4 sm:mx-auto">
+        <DialogContent className="w-[95vw] sm:max-w-lg max-w-md mx-4 sm:mx-auto p-4 sm:p-6">
           <DialogHeader className="pr-8">
             <DialogTitle className="text-center text-xl font-bold text-gray-900 mb-2 pr-2">
               🎉 Congratulations! You're Fully Verified
@@ -1428,7 +1428,7 @@ export default function ApplicantDashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="bg-white rounded-3xl p-8 md:p-10 shadow-xl border border-gray-100 hover:shadow-2xl hover:border-gray-200 transition-all duration-300 mb-6 backdrop-blur-sm group relative overflow-hidden"
+            className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 lg:p-10 shadow-xl border border-gray-100 hover:shadow-2xl hover:border-gray-200 transition-all duration-300 mb-4 sm:mb-6 backdrop-blur-sm group relative overflow-hidden"
           >
             <div className="flex items-center gap-4 mb-6">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
@@ -1516,11 +1516,11 @@ export default function ApplicantDashboard() {
                         </p>
 
                         {/* Comprehensive Application Details Card */}
-                        <div className="p-6 md:p-8 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 space-y-4 shadow-md hover:shadow-lg transition-all duration-300">
-                          <h5 className="font-medium text-gray-900 mb-4">Complete Application Details</h5>
+                        <div className="p-4 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 space-y-3 sm:space-y-4 shadow-md hover:shadow-lg transition-all duration-300">
+                          <h5 className="font-medium text-base sm:text-lg text-gray-900 mb-3 sm:mb-4">Complete Application Details</h5>
                           
                           {/* Personal Information */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                             <div className="space-y-3">
                               <h6 className="font-medium text-gray-800 text-sm">Personal Information</h6>
                               <div className="space-y-2 text-sm">
@@ -1617,17 +1617,17 @@ export default function ApplicantDashboard() {
                         </div>
                         
                         {defaultApp.feedback && (
-                          <div className="p-4 md:p-6 bg-gradient-to-br from-red-50 to-red-100/50 rounded-2xl border border-red-200 shadow-md">
-                            <p className="text-sm text-red-800 font-medium">Feedback:</p>
-                            <p className="text-sm text-red-700 mt-1">{defaultApp.feedback}</p>
+                          <div className="p-3 sm:p-4 md:p-6 bg-gradient-to-br from-red-50 to-red-100/50 rounded-xl sm:rounded-2xl border border-red-200 shadow-md">
+                            <p className="text-xs sm:text-sm text-red-800 font-medium">Feedback:</p>
+                            <p className="text-xs sm:text-sm text-red-700 mt-1">{defaultApp.feedback}</p>
                           </div>
                         )}
                         
                         {/* Action Buttons */}
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
                           {hasActiveApplication ? (
                             <>
-                              <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed">
+                              <Button disabled className="flex-1 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed min-h-[44px] text-sm sm:text-base">
                                 <FileText className="mr-2 h-4 w-4" />
                                 Application Submitted
                               </Button>
@@ -1635,7 +1635,7 @@ export default function ApplicantDashboard() {
                               {defaultApp.status !== 'approved' && (
                                 <Button 
                                   variant="outline" 
-                                  className="rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                                  className="rounded-xl border-red-200 text-red-600 hover:bg-red-50 min-h-[44px] text-sm sm:text-base"
                                   onClick={() => handleCancelApplication(
                                     isChefApplication(defaultApp) ? 'chef' : 'delivery',
                                     defaultApp.id
@@ -1648,7 +1648,7 @@ export default function ApplicantDashboard() {
                               )}
                             </>
                           ) : (
-                            <Button asChild className="flex-1 rounded-xl">
+                            <Button asChild className="flex-1 rounded-xl min-h-[44px] text-sm sm:text-base">
                               <Link href={userDisplayInfo.applicationFormUrl}>
                                 <userDisplayInfo.icon className="mr-2 h-4 w-4" />
                                 Apply Again
@@ -1775,9 +1775,9 @@ export default function ApplicantDashboard() {
                          {/* Document Cards - Expanded to fill space */}
                          <div className="space-y-4 flex-1">
                            {/* Food Safety License - Enhanced */}
-                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
-                             <div className="flex items-center justify-between mb-3">
-                               <h4 className="font-medium text-gray-900">Food Safety License</h4>
+                           <div className="p-3 sm:p-4 md:p-6 rounded-xl sm:rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
+                             <div className="flex items-center justify-between mb-2 sm:mb-3">
+                               <h4 className="font-medium text-sm sm:text-base text-gray-900">Food Safety License</h4>
                                {chefApp.foodSafetyLicenseStatus && (
                                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                                    chefApp.foodSafetyLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
@@ -1806,9 +1806,9 @@ export default function ApplicantDashboard() {
                            </div>
                            
                            {/* Food Establishment Certificate - Enhanced */}
-                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
-                             <div className="flex items-center justify-between mb-3">
-                               <h4 className="font-medium text-gray-900">Establishment Certificate</h4>
+                           <div className="p-3 sm:p-4 md:p-6 rounded-xl sm:rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
+                             <div className="flex items-center justify-between mb-2 sm:mb-3">
+                               <h4 className="font-medium text-sm sm:text-base text-gray-900">Establishment Certificate</h4>
                                {chefApp.foodEstablishmentCertStatus && (
                                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                                    chefApp.foodEstablishmentCertStatus === 'approved' ? 'bg-green-100 text-green-800' :
@@ -2196,15 +2196,15 @@ export default function ApplicantDashboard() {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                  <Button asChild className="rounded-xl bg-green-600 hover:bg-green-700 px-8">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
+                  <Button asChild className="w-full sm:w-auto rounded-xl bg-green-600 hover:bg-green-700 px-6 sm:px-8 min-h-[44px] text-sm sm:text-base">
                     <a href="https://localcook.shop/app/shop/index.php?redirect=https%3A%2F%2Flocalcook.shop%2Fapp%2Fshop%2Fvendor_onboarding.php" target="_blank" rel="noopener noreferrer">
                       <Shield className="mr-2 h-4 w-4" />
                       Manage Stripe Setup
                     </a>
                   </Button>
                   
-                  <Button asChild variant="outline" className="rounded-xl border-green-300 text-green-700 hover:bg-green-50 px-8">
+                  <Button asChild variant="outline" className="w-full sm:w-auto rounded-xl border-green-300 text-green-700 hover:bg-green-50 px-6 sm:px-8 min-h-[44px] text-sm sm:text-base">
                     <a href="https://localcook.shop/app/shop/index.php" target="_blank" rel="noopener noreferrer">
                       <ChefHat className="mr-2 h-4 w-4" />
                       Access Vendor Portal
@@ -2319,7 +2319,7 @@ export default function ApplicantDashboard() {
 
                   {/* CTA Button */}
                   <div className="w-full md:w-auto">
-                    <Button asChild className="w-full md:w-auto rounded-xl bg-blue-600 hover:bg-blue-700 px-8 py-6 text-lg shadow-lg hover:shadow-xl transition-all">
+                    <Button asChild className="w-full md:w-auto rounded-xl bg-blue-600 hover:bg-blue-700 px-6 sm:px-8 py-4 sm:py-5 md:py-6 text-base sm:text-lg shadow-lg hover:shadow-xl transition-all min-h-[48px] sm:min-h-[56px]">
                       <Link href="/compare-kitchens">
                         <Clock className="mr-2 h-5 w-5" />
                         View Kitchen Timings & Book

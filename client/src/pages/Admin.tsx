@@ -68,6 +68,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
+import ResponsiveTable from "@/components/ui/responsive-table";
 import {
     AlertCircle,
     AlertTriangle,
@@ -3296,13 +3297,13 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4">
         <div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Manager Revenues</h3>
-          <p className="text-gray-600">View revenue metrics for all managers</p>
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-1 sm:mb-2">Manager Revenues</h3>
+          <p className="text-sm sm:text-base text-gray-600">View revenue metrics for all managers</p>
         </div>
         <Select value={dateRange} onValueChange={(value) => setDateRange(value as 'week' | 'month' | 'all')}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-full sm:w-[140px] min-h-[44px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -3320,13 +3321,13 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
       ) : managersRevenue && managersRevenue.managers ? (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">Total Managers</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                    <p className="text-xs sm:text-sm text-gray-500">Total Managers</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
                       {managersRevenue.managers.length}
                     </p>
                   </div>
@@ -3340,8 +3341,8 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">Total Revenue</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                    <p className="text-xs sm:text-sm text-gray-500">Total Revenue</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
                       {formatCurrency(
                         managersRevenue.managers.reduce((sum: number, m: any) => sum + (m.totalRevenue || 0), 0)
                       )}
@@ -3357,8 +3358,8 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">Platform Fees</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">
+                    <p className="text-xs sm:text-sm text-gray-500">Platform Fees</p>
+                    <p className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">
                       {formatCurrency(
                         managersRevenue.managers.reduce((sum: number, m: any) => sum + (m.platformFee || 0), 0)
                       )}
@@ -3374,56 +3375,72 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
 
           {/* Managers Table */}
           <Card>
-            <CardContent className="p-6">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Manager</th>
-                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total Revenue</th>
-                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Platform Fee</th>
-                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Manager Earnings</th>
-                      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Bookings</th>
-                      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {managersRevenue.managers.map((manager: any) => (
-                      <tr key={manager.managerId} className="hover:bg-gray-50 transition-colors">
-                        <td className="py-3 px-4">
-                          <div>
-                            <p className="font-medium text-gray-900">{manager.managerName || `Manager #${manager.managerId}`}</p>
-                            <p className="text-sm text-gray-500">{manager.managerEmail}</p>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-right font-medium text-gray-900">
-                          {formatCurrency(manager.totalRevenue || 0)}
-                        </td>
-                        <td className="py-3 px-4 text-right text-gray-600">
-                          {formatCurrency(manager.platformFee || 0)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-semibold text-emerald-600">
-                          {formatCurrency(manager.managerRevenue || 0)}
-                        </td>
-                        <td className="py-3 px-4 text-center text-gray-600">
-                          {manager.bookingCount || 0}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedManager(selectedManager === manager.managerId ? 'all' : manager.managerId)}
-                            className="h-8"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            {selectedManager === manager.managerId ? 'Hide' : 'View'}
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <CardContent className="p-4 sm:p-6">
+              <ResponsiveTable
+                columns={[
+                  {
+                    key: 'manager',
+                    label: 'Manager',
+                    render: (_, row: any) => (
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm sm:text-base">{row.managerName || `Manager #${row.managerId}`}</p>
+                        <p className="text-xs sm:text-sm text-gray-500">{row.managerEmail}</p>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'totalRevenue',
+                    label: 'Total Revenue',
+                    className: 'text-right',
+                    render: (_, row: any) => (
+                      <span className="font-medium text-gray-900 text-sm sm:text-base">{formatCurrency(row.totalRevenue || 0)}</span>
+                    ),
+                  },
+                  {
+                    key: 'platformFee',
+                    label: 'Platform Fee',
+                    className: 'text-right',
+                    render: (_, row: any) => (
+                      <span className="text-gray-600 text-sm sm:text-base">{formatCurrency(row.platformFee || 0)}</span>
+                    ),
+                  },
+                  {
+                    key: 'managerRevenue',
+                    label: 'Manager Earnings',
+                    className: 'text-right',
+                    render: (_, row: any) => (
+                      <span className="font-semibold text-emerald-600 text-sm sm:text-base">{formatCurrency(row.managerRevenue || 0)}</span>
+                    ),
+                  },
+                  {
+                    key: 'bookingCount',
+                    label: 'Bookings',
+                    className: 'text-center',
+                    render: (_, row: any) => (
+                      <span className="text-gray-600 text-sm sm:text-base">{row.bookingCount || 0}</span>
+                    ),
+                  },
+                  {
+                    key: 'actions',
+                    label: 'Actions',
+                    className: 'text-center',
+                    render: (_, row: any) => (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedManager(selectedManager === row.managerId ? 'all' : row.managerId)}
+                        className="min-h-[36px] sm:min-h-[40px] text-xs sm:text-sm"
+                      >
+                        <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        {selectedManager === row.managerId ? 'Hide' : 'View'}
+                      </Button>
+                    ),
+                  },
+                ]}
+                data={managersRevenue.managers.map((m: any) => ({ ...m, id: m.managerId }))}
+                keyField="managerId"
+                mobileBreakpoint="md"
+              />
             </CardContent>
           </Card>
 

@@ -417,15 +417,15 @@ export default function MicrolearningOverview() {
             <div className="absolute inset-0 bg-black/20"></div>
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/10"></div>
             
-            <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
+            <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-24">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2, duration: 0.8 }}
-                className="text-center space-y-8"
+                className="text-center space-y-6 sm:space-y-8"
               >
-                <div className="inline-flex items-center gap-3 px-6 py-3 bg-white/20 backdrop-blur-sm rounded-full text-white font-medium border border-white/30">
-                  <Shield className="h-5 w-5 flex-shrink-0" />
+                <div className="inline-flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2 sm:py-3 bg-white/20 backdrop-blur-sm rounded-full text-white font-medium border border-white/30 text-xs sm:text-sm">
+                  <Shield className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
                   <span>Food Safety Training Modules</span>
                   {isCompleted && (
                     <>
@@ -438,33 +438,33 @@ export default function MicrolearningOverview() {
                   )}
                 </div>
                 
-                <div className="space-y-6">
-                  <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight">
+                <div className="space-y-4 sm:space-y-6">
+                  <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight px-2">
                     Food Safety Training
                     <span className="block bg-gradient-to-r from-yellow-300 to-emerald-300 bg-clip-text text-transparent">
                       Video Learning Modules
                     </span>
                   </h1>
                   
-                  <p className="text-lg sm:text-xl text-blue-100 max-w-3xl mx-auto leading-relaxed">
+                  <p className="text-base sm:text-lg md:text-xl text-blue-100 max-w-3xl mx-auto leading-relaxed px-4">
                     Master food safety fundamentals with our comprehensive HACCP-based training program. 
                     Industry-standard curriculum featuring Unilever Food Solutions content.
                   </p>
                 </div>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mt-12">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-                    <div className="text-3xl font-bold text-white mb-2">22</div>
-                    <div className="text-blue-100">Training Videos</div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 max-w-4xl mx-auto mt-8 sm:mt-12">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-white/20">
+                    <div className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">22</div>
+                    <div className="text-xs sm:text-sm text-blue-100">Training Videos</div>
                   </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-                    <div className="text-3xl font-bold text-white mb-2">2</div>
-                    <div className="text-blue-100">Training Modules</div>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-white/20">
+                    <div className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">2</div>
+                    <div className="text-xs sm:text-sm text-blue-100">Training Modules</div>
                   </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-                    <div className="text-3xl font-bold text-white mb-2">100%</div>
-                    <div className="text-blue-100">HACCP Certified</div>
+                  <div className="bg-white/10 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-white/20">
+                    <div className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">100%</div>
+                    <div className="text-xs sm:text-sm text-blue-100">HACCP Certified</div>
                   </div>
                 </div>
               </motion.div>
@@ -472,19 +472,19 @@ export default function MicrolearningOverview() {
           </div>
 
           {/* Content Section */}
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6 sm:space-y-8">
             
             {/* Training Modules Overview - Dynamic with responsive design */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="bg-white rounded-3xl p-6 md:p-8 shadow-xl border border-slate-200"
+              className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 shadow-xl border border-slate-200"
             >
-              <div className="text-center space-y-6">
-                <h2 className="text-xl md:text-2xl font-bold text-slate-900">Training Modules Overview</h2>
+              <div className="text-center space-y-4 sm:space-y-6">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-900">Training Modules Overview</h2>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-4xl mx-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 md:gap-8 max-w-4xl mx-auto">
                   <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <h3 className="text-sm md:text-base font-semibold text-slate-800">Food Safety Basics</h3>

@@ -632,14 +632,14 @@ export default function AdminManageLocations() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      <main className="flex-1 pt-24 pb-8">
-        <div className="container mx-auto px-4 py-8">
+      <main className="flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Manage Locations & Kitchens</h1>
             <p className="text-gray-600 mt-2">Create, edit, and manage commercial kitchen locations, kitchens, and managers</p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
             {/* Locations Section */}
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex items-center justify-between mb-4">
@@ -650,7 +650,7 @@ export default function AdminManageLocations() {
                     setLocationForm({ name: "", address: "", managerId: "" });
                     setShowLocationForm(true);
                   }}
-                  className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
                 >
                   <Plus className="h-4 w-4" />
                   Add Location
@@ -711,7 +711,7 @@ export default function AdminManageLocations() {
                     setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true });
                     setShowKitchenForm(true);
                   }}
-                  className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
                   disabled={locations.length === 0}
                 >
                   <Plus className="h-4 w-4" />
@@ -798,7 +798,7 @@ export default function AdminManageLocations() {
                     setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
                     setShowManagerForm(true);
                   }}
-                  className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
                 >
                   <Plus className="h-4 w-4" />
                   Add Manager
@@ -872,10 +872,10 @@ export default function AdminManageLocations() {
 
           {/* Location Form Modal */}
           {showLocationForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-bold">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
+              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <h2 className="text-xl sm:text-2xl font-bold">
                     {editingLocation ? "Edit Location" : "Create New Location"}
                   </h2>
                   <button
@@ -884,7 +884,7 @@ export default function AdminManageLocations() {
                       setEditingLocation(null);
                       setLocationForm({ name: "", address: "", managerId: "" });
                     }}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -898,7 +898,7 @@ export default function AdminManageLocations() {
                       type="text"
                       value={locationForm.name}
                       onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                       required
                     />
                   </div>
@@ -910,7 +910,7 @@ export default function AdminManageLocations() {
                       type="text"
                       value={locationForm.address}
                       onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                       required
                     />
                   </div>
@@ -921,7 +921,7 @@ export default function AdminManageLocations() {
                     <select
                       value={locationForm.managerId || ""}
                       onChange={(e) => setLocationForm({ ...locationForm, managerId: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                     >
                       <option value="">No Manager</option>
                       {managers.map((manager) => (
@@ -931,11 +931,11 @@ export default function AdminManageLocations() {
                       ))}
                     </select>
                   </div>
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <button
                       type="submit"
                       disabled={loading}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+                      className="flex-1 px-4 py-2.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
                     >
                       {loading ? "Saving..." : editingLocation ? "Update Location" : "Create Location"}
                     </button>
@@ -946,7 +946,7 @@ export default function AdminManageLocations() {
                         setEditingLocation(null);
                         setLocationForm({ name: "", address: "", managerId: "" });
                       }}
-                      className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                      className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
                     >
                       Cancel
                     </button>
@@ -958,10 +958,10 @@ export default function AdminManageLocations() {
 
           {/* Kitchen Form Modal */}
           {showKitchenForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-bold">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
+              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <h2 className="text-xl sm:text-2xl font-bold">
                     {editingKitchen ? "Edit Kitchen" : "Create New Kitchen"}
                   </h2>
                   <button
@@ -970,7 +970,7 @@ export default function AdminManageLocations() {
                       setEditingKitchen(null);
                       setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
                     }}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -985,7 +985,7 @@ export default function AdminManageLocations() {
                       onChange={(e) => {
                         setKitchenForm({ ...kitchenForm, locationId: e.target.value });
                       }}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                       required
                     >
                       <option value="">Select a location</option>
@@ -1004,7 +1004,7 @@ export default function AdminManageLocations() {
                       type="text"
                       value={kitchenForm.name}
                       onChange={(e) => setKitchenForm({ ...kitchenForm, name: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                       required
                     />
                   </div>
@@ -1015,7 +1015,7 @@ export default function AdminManageLocations() {
                     <textarea
                       value={kitchenForm.description}
                       onChange={(e) => setKitchenForm({ ...kitchenForm, description: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                       rows={3}
                     />
                   </div>
@@ -1032,11 +1032,11 @@ export default function AdminManageLocations() {
                       </label>
                     </div>
                   )}
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <button
                       type="submit"
                       disabled={loading}
-                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
+                      className="flex-1 px-4 py-2.5 sm:py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
                     >
                       {loading ? "Saving..." : editingKitchen ? "Update Kitchen" : "Create Kitchen"}
                     </button>
@@ -1047,7 +1047,7 @@ export default function AdminManageLocations() {
                         setEditingKitchen(null);
                         setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
                       }}
-                      className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                      className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
                     >
                       Cancel
                     </button>
@@ -1059,10 +1059,10 @@ export default function AdminManageLocations() {
 
           {/* Manager Form Modal */}
           {showManagerForm && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-bold">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
+              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <h2 className="text-xl sm:text-2xl font-bold">
                     {editingManager ? "Edit Manager" : "Create Manager Account"}
                   </h2>
                   <button
@@ -1071,7 +1071,7 @@ export default function AdminManageLocations() {
                       setEditingManager(null);
                       setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
                     }}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -1087,7 +1087,7 @@ export default function AdminManageLocations() {
                           type="text"
                           value={managerForm.name}
                           onChange={(e) => setManagerForm({ ...managerForm, name: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                           required={!editingManager}
                         />
                       </div>
@@ -1099,7 +1099,7 @@ export default function AdminManageLocations() {
                           type="email"
                           value={managerForm.email}
                           onChange={(e) => setManagerForm({ ...managerForm, email: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                           required={!editingManager}
                         />
                       </div>
@@ -1111,7 +1111,7 @@ export default function AdminManageLocations() {
                           type="password"
                           value={managerForm.password}
                           onChange={(e) => setManagerForm({ ...managerForm, password: e.target.value })}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                           required={!editingManager}
                         />
                       </div>
@@ -1125,7 +1125,7 @@ export default function AdminManageLocations() {
                       type="text"
                       value={managerForm.username}
                       onChange={(e) => setManagerForm({ ...managerForm, username: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
                       required
                     />
                   </div>
@@ -1218,11 +1218,11 @@ export default function AdminManageLocations() {
                       })()}
                     </div>
                   )}
-                  <div className="flex gap-3">
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <button
                       type="submit"
                       disabled={loading}
-                      className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400"
+                      className="flex-1 px-4 py-2.5 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
                     >
                       {loading ? "Saving..." : editingManager ? "Update Manager" : "Create Manager"}
                     </button>
@@ -1233,7 +1233,7 @@ export default function AdminManageLocations() {
                         setEditingManager(null);
                         setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
                       }}
-                      className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                      className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
                     >
                       Cancel
                     </button>
@@ -1245,28 +1245,28 @@ export default function AdminManageLocations() {
 
           {/* Delete Confirmation Modal */}
           {deletingItem && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                <h2 className="text-2xl font-bold mb-4 text-red-600">Confirm Delete</h2>
-                <p className="text-gray-700 mb-6">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
+              <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-md w-full">
+                <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-red-600">Confirm Delete</h2>
+                <p className="text-sm sm:text-base text-gray-700 mb-4 sm:mb-6">
                   Are you sure you want to delete <strong>{deletingItem.name}</strong>? This action cannot be undone.
                 </p>
                 {deletingItem.type === 'location' && (
-                  <p className="text-sm text-yellow-600 mb-4">
+                  <p className="text-xs sm:text-sm text-yellow-600 mb-3 sm:mb-4">
                     ⚠️ Warning: This location must not have any kitchens assigned to it. Please delete or reassign all kitchens first.
                   </p>
                 )}
                 {deletingItem.type === 'kitchen' && (
-                  <p className="text-sm text-yellow-600 mb-4">
+                  <p className="text-xs sm:text-sm text-yellow-600 mb-3 sm:mb-4">
                     ⚠️ Warning: This kitchen must not have any bookings. Please cancel all bookings first.
                   </p>
                 )}
                 {deletingItem.type === 'manager' && (
-                  <p className="text-sm text-yellow-600 mb-4">
+                  <p className="text-xs sm:text-sm text-yellow-600 mb-3 sm:mb-4">
                     ⚠️ Warning: All locations managed by this manager will have their manager assignment removed.
                   </p>
                 )}
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <button
                     onClick={() => {
                       if (deletingItem.type === 'location') {
@@ -1278,14 +1278,14 @@ export default function AdminManageLocations() {
                       }
                     }}
                     disabled={loading}
-                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400"
+                    className="flex-1 px-4 py-2.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 min-h-[44px] text-sm sm:text-base"
                   >
                     {loading ? "Deleting..." : "Delete"}
                   </button>
                   <button
                     onClick={() => setDeletingItem(null)}
                     disabled={loading}
-                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+                    className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
                   >
                     Cancel
                   </button>

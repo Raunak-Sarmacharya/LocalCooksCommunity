@@ -144,11 +144,11 @@ export default function BenefitsSection() {
   const mainBenefits = getBenefits();
   
   return (
-    <section id="benefits" className="py-12 md:py-16 px-4 bg-gradient-to-b from-[var(--color-cream)]/30 to-white scroll-mt-24">
+    <section id="benefits" className="py-10 sm:py-12 md:py-16 px-4 sm:px-6 bg-gradient-to-b from-[var(--color-cream)]/30 to-white scroll-mt-24">
       <div className="container mx-auto max-w-6xl">
-        <div className="text-center mb-10">
+        <div className="text-center mb-8 sm:mb-10">
           <motion.span 
-            className="inline-block text-[var(--color-primary)] font-medium mb-2 font-mono text-xs uppercase tracking-wider"
+            className="inline-block text-[var(--color-primary)] font-medium mb-2 font-mono text-[10px] sm:text-xs uppercase tracking-wider"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -157,7 +157,7 @@ export default function BenefitsSection() {
             Why Join Us
           </motion.span>
           <motion.h2 
-            className="text-3xl md:text-5xl font-display text-[var(--color-primary)] mb-4"
+            className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-display text-[var(--color-primary)] mb-3 sm:mb-4 px-2"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -166,7 +166,7 @@ export default function BenefitsSection() {
             {getTitle()}
           </motion.h2>
           <motion.p 
-            className="max-w-2xl mx-auto text-[var(--color-text-primary)] font-sans"
+            className="max-w-2xl mx-auto text-sm sm:text-base md:text-lg text-[var(--color-text-primary)] font-sans px-4"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -176,7 +176,7 @@ export default function BenefitsSection() {
           </motion.p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 mb-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 md:gap-8 mb-8 sm:mb-10">
           {mainBenefits.map((benefit, index) => (
             <motion.div 
               key={index}
@@ -191,11 +191,11 @@ export default function BenefitsSection() {
               <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               
               <div className="relative z-10">
-                <div className="mb-4 md:mb-6 bg-gradient-to-br from-gray-50 to-gray-100 w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:scale-110 transition-all duration-300">
+                <div className="mb-3 sm:mb-4 md:mb-6 bg-gradient-to-br from-gray-50 to-gray-100 w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:scale-110 transition-all duration-300">
                   {benefit.icon}
                 </div>
-                <h3 className="text-lg md:text-xl font-bold mb-2 md:mb-3 text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300">{benefit.title}</h3>
-                <p className="text-sm md:text-base text-[var(--color-text-primary)]/80 font-sans leading-relaxed">{benefit.description}</p>
+                <h3 className="text-base sm:text-lg md:text-xl font-bold mb-2 sm:mb-3 text-[var(--color-text-primary)] group-hover:text-[var(--color-primary)] transition-colors duration-300">{benefit.title}</h3>
+                <p className="text-xs sm:text-sm md:text-base text-[var(--color-text-primary)]/80 font-sans leading-relaxed">{benefit.description}</p>
               </div>
             </motion.div>
           ))}
@@ -215,23 +215,23 @@ export default function BenefitsSection() {
             </svg>
           </div>
           
-          <div className="p-6 md:p-10 lg:p-14 flex flex-col md:flex-row items-center relative z-10">
-            <div className="md:w-1/2 mb-6 md:mb-0 relative group">
+          <div className="p-4 sm:p-6 md:p-10 lg:p-14 flex flex-col md:flex-row items-center relative z-10">
+            <div className="md:w-1/2 mb-6 md:mb-0 relative group w-full">
               <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/20 to-transparent rounded-xl md:rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               <img 
                 src={foodDeliveryImage} 
                 alt="Chef delivering food to customer at doorstep" 
-                className="rounded-xl md:rounded-2xl w-full h-48 sm:h-60 md:h-72 object-cover shadow-[0_10px_30px_rgba(0,0,0,0.3)] md:shadow-[0_15px_40px_rgba(0,0,0,0.4)] group-hover:scale-105 transition-transform duration-500"
+                className="rounded-xl md:rounded-2xl w-full h-40 sm:h-48 md:h-60 lg:h-72 object-cover shadow-[0_10px_30px_rgba(0,0,0,0.3)] md:shadow-[0_15px_40px_rgba(0,0,0,0.4)] group-hover:scale-105 transition-transform duration-500"
               />
             </div>
             
-            <div className="md:w-1/2 md:pl-8 lg:pl-10 text-white">
-              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-5 md:mb-6 text-shadow-lg leading-tight">Early Bird Advantages</h2>
-              <p className="text-lg md:text-xl mb-6 md:mb-8 opacity-95 text-shadow-md leading-relaxed">
+            <div className="md:w-1/2 md:pl-6 lg:pl-8 xl:pl-10 text-white w-full">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-5 md:mb-6 text-shadow-lg leading-tight">Early Bird Advantages</h2>
+              <p className="text-base sm:text-lg md:text-xl mb-4 sm:mb-6 md:mb-8 opacity-95 text-shadow-md leading-relaxed">
                 Join during our trial phase and get exclusive benefits that won't be available later.
               </p>
               
-              <ul className="space-y-3 md:space-y-5 mb-6 md:mb-8">
+              <ul className="space-y-3 sm:space-y-4 md:space-y-5 mb-4 sm:mb-6 md:mb-8">
                 {pilotBenefits.map((benefit, index) => (
                   <motion.li 
                     key={index} 
@@ -242,12 +242,12 @@ export default function BenefitsSection() {
                     transition={{ delay: index * 0.1 + 0.4, type: "spring", stiffness: 100 }}
                     whileHover={{ x: 4 }}
                   >
-                    <div className="bg-white/95 rounded-full p-2 mr-4 flex-shrink-0 mt-0.5 shadow-lg group-hover/item:scale-110 group-hover/item:shadow-xl transition-all duration-300">
+                    <div className="bg-white/95 rounded-full p-1.5 sm:p-2 mr-3 sm:mr-4 flex-shrink-0 mt-0.5 shadow-lg group-hover/item:scale-110 group-hover/item:shadow-xl transition-all duration-300">
                       {benefit.icon}
                     </div>
                     <div>
-                      <div className="font-semibold text-lg md:text-xl text-shadow-sm mb-1">{benefit.text}</div>
-                      <div className="text-sm md:text-base opacity-90 text-shadow-xs leading-relaxed">{benefit.description}</div>
+                      <div className="font-semibold text-base sm:text-lg md:text-xl text-shadow-sm mb-0.5 sm:mb-1">{benefit.text}</div>
+                      <div className="text-xs sm:text-sm md:text-base opacity-90 text-shadow-xs leading-relaxed">{benefit.description}</div>
                     </div>
                   </motion.li>
                 ))}
