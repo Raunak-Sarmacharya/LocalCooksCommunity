@@ -129,10 +129,14 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     };
 
     // Statement descriptor handling:
-    // - Cards: Must use statement_descriptor_suffix (not statement_descriptor)
-    // - ACSS: Can use statement_descriptor in payment_method_options
-    // - If only ACSS is enabled, we can use top-level statement_descriptor
-    if (!enableCards && enableACSS) {
+    // - Cards: Must use statement_descriptor_suffix at top level (not statement_descriptor)
+    // - ACSS: Can use statement_descriptor at top level when only ACSS is enabled
+    // - When both are enabled, use statement_descriptor_suffix for cards (ACSS won't have descriptor)
+    if (enableCards) {
+      // Cards require statement_descriptor_suffix at top level (max 22 chars, appears after merchant name)
+      // Note: statement_descriptor_suffix_kana is only for Japanese characters
+      paymentIntentParams.statement_descriptor_suffix = cleanDescriptor.substring(0, 22);
+    } else if (enableACSS) {
       // Only ACSS enabled - can use top-level statement_descriptor
       paymentIntentParams.statement_descriptor = cleanDescriptor;
     }
@@ -147,8 +151,6 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     if (enableCards) {
       paymentIntentParams.payment_method_options.card = {
         capture_method: 'manual',
-        // Cards require statement_descriptor_suffix (max 22 chars, appears after merchant name)
-        statement_descriptor_suffix: cleanDescriptor.substring(0, 22),
       };
     }
 
