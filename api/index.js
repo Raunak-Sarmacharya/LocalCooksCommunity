@@ -13968,14 +13968,65 @@ app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireMan
 // Get single invoice download
 app.get("/api/manager/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
+    const managerId = req.neonUser.id;
     const bookingId = parseInt(req.params.bookingId);
-    const { generateInvoicePDF } = await import('../server/services/invoice-service.js');
     
     if (!pool) {
       return res.status(500).json({ error: "Database connection not available" });
     }
     
-    const pdfBuffer = await generateInvoicePDF(bookingId, pool);
+    // Verify manager has access to this booking
+    const bookingResult = await pool.query(`
+      SELECT kb.*, k.name as kitchen_name, l.name as location_name, l.manager_id
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      WHERE kb.id = $1
+    `, [bookingId]);
+    
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    
+    const booking = bookingResult.rows[0];
+    if (booking.manager_id !== managerId) {
+      return res.status(403).json({ error: "Access denied to this booking" });
+    }
+    
+    // Get chef info
+    let chef = null;
+    if (booking.chef_id) {
+      const chefResult = await pool.query('SELECT id, username, email FROM users WHERE id = $1', [booking.chef_id]);
+      chef = chefResult.rows[0] || null;
+    }
+    
+    // Get storage and equipment bookings
+    const storageResult = await pool.query(`
+      SELECT sb.*, sl.name as storage_name
+      FROM storage_bookings sb
+      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+      WHERE sb.kitchen_booking_id = $1
+    `, [bookingId]);
+    
+    const equipmentResult = await pool.query(`
+      SELECT eb.*, el.equipment_type, el.brand, el.model
+      FROM equipment_bookings eb
+      JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+      WHERE eb.kitchen_booking_id = $1
+    `, [bookingId]);
+    
+    // Generate invoice PDF
+    const { generateInvoicePDF } = await import('../server/services/invoice-service.js');
+    const pdfBuffer = await generateInvoicePDF(
+      booking,
+      chef,
+      { name: booking.kitchen_name },
+      { name: booking.location_name },
+      storageResult.rows,
+      equipmentResult.rows,
+      booking.payment_intent_id,
+      pool
+    );
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="invoice-${bookingId}.pdf"`);
@@ -19380,12 +19431,22 @@ app.get("/api/bookings/:id/invoice", requireChef, async (req, res) => {
       id: booking.id,
       chefId: booking.chef_id,
       kitchenId: booking.kitchen_id,
+      kitchen_id: booking.kitchen_id, // Include both formats for compatibility
       bookingDate: booking.booking_date,
       startTime: booking.start_time,
+      start_time: booking.start_time, // Include both formats
       endTime: booking.end_time,
+      end_time: booking.end_time, // Include both formats
       status: booking.status,
       specialNotes: booking.special_notes,
       paymentIntentId: booking.payment_intent_id,
+      // Include pricing fields so invoice can use stored values
+      total_price: booking.total_price,
+      totalPrice: booking.total_price ? parseFloat(String(booking.total_price)) / 100 : null,
+      hourly_rate: booking.hourly_rate,
+      hourlyRate: booking.hourly_rate ? parseFloat(String(booking.hourly_rate)) : null,
+      duration_hours: booking.duration_hours,
+      durationHours: booking.duration_hours ? parseFloat(String(booking.duration_hours)) : null,
     };
     
     // Generate invoice PDF

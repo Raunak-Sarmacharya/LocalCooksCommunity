@@ -21,24 +21,74 @@ export async function generateInvoicePDF(
   const items: Array<{ description: string; quantity: number; rate: number; amount: number }> = [];
 
   // Kitchen booking price
-  if (dbPool && booking.kitchenId) {
+  // Use stored price data if available, otherwise calculate
+  const kitchenId = booking.kitchenId || booking.kitchen_id;
+  const startTime = booking.startTime || booking.start_time;
+  const endTime = booking.endTime || booking.end_time;
+  
+  if (kitchenId) {
     try {
-      const { calculateKitchenBookingPrice } = await import('./pricing-service');
-      const kitchenPricing = await calculateKitchenBookingPrice(
-        booking.kitchenId,
-        booking.startTime || booking.start_time,
-        booking.endTime || booking.end_time,
-        dbPool
-      );
+      let kitchenAmount = 0;
+      let durationHours = 0;
+      let hourlyRate = 0;
       
-      if (kitchenPricing.totalPriceCents > 0) {
-        const durationHours = kitchenPricing.durationHours;
-        const hourlyRate = kitchenPricing.hourlyRateCents / 100;
-        const kitchenAmount = kitchenPricing.totalPriceCents / 100;
+      // First, try to use stored total_price
+      if (booking.total_price || booking.totalPrice) {
+        const totalPriceCents = booking.total_price 
+          ? parseFloat(String(booking.total_price)) 
+          : parseFloat(String(booking.totalPrice));
+        kitchenAmount = totalPriceCents / 100;
+        
+        // Get duration and rate from stored values if available
+        if (booking.duration_hours || booking.durationHours) {
+          durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
+        }
+        if (booking.hourly_rate || booking.hourlyRate) {
+          hourlyRate = parseFloat(String(booking.hourly_rate || booking.hourlyRate)) / 100;
+        }
+      }
+      // If no stored total_price, try to calculate from hourly_rate * duration_hours
+      else if ((booking.hourly_rate || booking.hourlyRate) && (booking.duration_hours || booking.durationHours)) {
+        const hourlyRateCents = parseFloat(String(booking.hourly_rate || booking.hourlyRate));
+        durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
+        hourlyRate = hourlyRateCents / 100;
+        kitchenAmount = (hourlyRateCents * durationHours) / 100;
+      }
+      // Fall back to recalculating from pricing service
+      else if (dbPool && startTime && endTime) {
+        const { calculateKitchenBookingPrice } = await import('./pricing-service');
+        const kitchenPricing = await calculateKitchenBookingPrice(
+          kitchenId,
+          startTime,
+          endTime,
+          dbPool
+        );
+        
+        if (kitchenPricing.totalPriceCents > 0) {
+          durationHours = kitchenPricing.durationHours;
+          hourlyRate = kitchenPricing.hourlyRateCents / 100;
+          kitchenAmount = kitchenPricing.totalPriceCents / 100;
+        }
+      }
+      
+      // If we have a kitchen amount, add it to the invoice
+      if (kitchenAmount > 0) {
+        // If we don't have duration or rate, calculate from times
+        if (!durationHours && startTime && endTime) {
+          const start = startTime.split(':').map(Number);
+          const end = endTime.split(':').map(Number);
+          const startMinutes = start[0] * 60 + start[1];
+          const endMinutes = end[0] * 60 + end[1];
+          durationHours = Math.max(1, (endMinutes - startMinutes) / 60);
+        }
+        if (!hourlyRate && durationHours > 0) {
+          hourlyRate = kitchenAmount / durationHours;
+        }
+        
         totalAmount += kitchenAmount;
         
         items.push({
-          description: `Kitchen Booking (${durationHours} hour${durationHours !== 1 ? 's' : ''})`,
+          description: `Kitchen Booking (${durationHours.toFixed(1)} hour${durationHours !== 1 ? 's' : ''})`,
           quantity: durationHours,
           rate: hourlyRate,
           amount: kitchenAmount,
