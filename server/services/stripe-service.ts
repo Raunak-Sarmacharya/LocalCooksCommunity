@@ -117,8 +117,11 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       payment_method_types: paymentMethodTypes,
       // Don't auto-confirm - we'll confirm after collecting payment method
       confirm: false,
-      // Default to automatic capture (ACSS requires this, cards will override to manual)
-      capture_method: 'automatic',
+      // Set capture_method based on payment methods:
+      // - If only cards: use 'manual' for pre-authorization
+      // - If only ACSS: use 'automatic' (required for ACSS)
+      // - If both: use 'automatic' at top level, override cards in payment_method_options
+      capture_method: enableACSS && !enableCards ? 'automatic' : 'manual',
       metadata: {
         booking_type: 'kitchen',
         kitchen_id: kitchenId.toString(),
@@ -147,7 +150,8 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     // Configure card payments with manual capture (pre-authorization)
     // Manual capture: place authorization hold, capture after cancellation period expires
     // This allows chefs to cancel within the cancellation window without being charged
-    // NOTE: If you specify payment_method_options[card][capture_method], it MUST be 'manual'
+    // When both ACSS and cards are enabled, explicitly set card capture_method to manual
+    // to override the top-level automatic setting
     if (enableCards) {
       paymentIntentParams.payment_method_options.card = {
         capture_method: 'manual',
