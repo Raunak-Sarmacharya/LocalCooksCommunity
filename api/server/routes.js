@@ -3500,20 +3500,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/manager/locations", async (req: Request, res: Response) => {
+  // Firebase Auth Middleware (for routes that need it)
+  // Note: These are simplified versions - full versions are in api/index.js
+  async function requireFirebaseAuthWithUser(req: Request, res: Response, next: () => void) {
     try {
-      // Check authentication - managers use session-based auth
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-
-      if (!sessionUser && !isFirebaseAuth) {
-        return res.status(401).json({ error: "Not authenticated" });
+      const authHeader = req.headers?.authorization;
+      if (!authHeader || typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized', message: 'No auth token provided' });
       }
-
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "manager") {
-        return res.status(403).json({ error: "Manager access required" });
+      const token = authHeader.substring(7)?.trim();
+      if (!token) {
+        return res.status(401).json({ error: 'Unauthorized', message: 'Invalid auth token format' });
       }
+      const decodedToken = await verifyFirebaseToken(token);
+      if (!decodedToken) {
+        return res.status(401).json({ error: 'Unauthorized', message: 'Invalid token' });
+      }
+      req.firebaseUser = { uid: decodedToken.uid };
+      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [decodedToken.uid]);
+      const neonUser = result?.rows?.[0];
+      if (!neonUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      req.neonUser = {
+        id: neonUser.id,
+        username: neonUser.username || '',
+        role: neonUser.role || null,
+        firebaseUid: neonUser.firebase_uid || undefined,
+      };
+      next();
+    } catch (error: any) {
+      console.error('Firebase auth error:', error);
+      return res.status(401).json({ error: 'Unauthorized', message: error.message });
+    }
+  }
+
+  function requireManager(req: Request, res: Response, next: () => void) {
+    if (!req.neonUser) {
+      return res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
+    }
+    if (req.neonUser.role !== 'manager') {
+      return res.status(403).json({ error: 'Forbidden', message: 'Manager access required' });
+    }
+    next();
+  }
+
+  app.get("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser;
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
 
