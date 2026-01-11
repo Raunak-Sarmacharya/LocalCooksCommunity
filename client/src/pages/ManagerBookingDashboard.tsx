@@ -144,11 +144,8 @@ export default function ManagerBookingDashboard() {
       const viewportHeight = window.innerHeight;
       const sidebarAvailableHeight = viewportHeight - measuredHeaderHeight;
       
-      // Sidebar sticky positioning: 
-      // The main element has paddingTop, so content starts below the header.
-      // Sticky positioning is relative to the viewport when the document scrolls.
-      // We need top: headerHeight so the sidebar sticks below the fixed header.
-      const sidebarTop = `${measuredHeaderHeight}px`;
+      // Sidebar sticky positioning is now handled directly in the JSX
+      // No need to update sidebarStyle for top position
       
       if (footer) {
         const footerRect = footer.getBoundingClientRect();
@@ -162,54 +159,9 @@ export default function ManagerBookingDashboard() {
           const spaceAboveFooter = footerTop - measuredHeaderHeight;
           
           // When footer is visible and would overlap sidebar, limit height to allow scrolling
-          if (spaceAboveFooter > 0 && spaceAboveFooter < sidebarAvailableHeight) {
-            // Footer is conflicting - limit sidebar height so it can scroll
-            setSidebarStyle({
-              position: 'sticky',
-              top: sidebarTop,
-              left: 0,
-              maxHeight: `${spaceAboveFooter}px`,
-              alignSelf: 'flex-start',
-            });
-          } else if (spaceAboveFooter <= 0) {
-            // Footer has passed sidebar top - allow full scrolling
-            setSidebarStyle({
-              position: 'sticky',
-              top: sidebarTop,
-              left: 0,
-              maxHeight: `${sidebarAvailableHeight}px`,
-              alignSelf: 'flex-start',
-            });
-          } else {
-            // Footer is approaching but not yet conflicting
-            setSidebarStyle({
-              position: 'sticky',
-              top: sidebarTop,
-              left: 0,
-              maxHeight: `${sidebarAvailableHeight}px`,
-              alignSelf: 'flex-start',
-            });
-          }
-        } else {
-          // Footer is below viewport - sidebar stays sticky (appears fixed)
-          setSidebarStyle({
-            position: 'sticky',
-            top: sidebarTop,
-            left: 0,
-            maxHeight: `${sidebarAvailableHeight}px`,
-            alignSelf: 'flex-start',
-          });
+          // Note: maxHeight is now handled in the JSX, but we can update it here if needed
+          // For now, the JSX handles the height constraint
         }
-      } else {
-        // No footer found, use sticky positioning (appears fixed)
-        setSidebarStyle({
-          position: 'sticky',
-          top: sidebarTop,
-          left: 0,
-          maxHeight: `${sidebarAvailableHeight}px`,
-          alignSelf: 'flex-start',
-        });
-      }
     };
 
     // Measure header on mount and resize
@@ -455,23 +407,28 @@ export default function ManagerBookingDashboard() {
         <ManagerHeader />
       </div>
       <ManagerOnboardingWizard />
-      <main 
-        className="flex-1 pb-8 relative z-10 flex min-h-0"
+      <div 
         style={{
-          paddingTop: `${headerHeight}px`,
+          marginTop: `${headerHeight}px`,
         }}
       >
+        <main 
+          className="flex-1 pb-8 relative z-10 flex min-h-0"
+        >
           {/* Animated Sidebar - scroll-aware height */}
           <div 
             className="hidden lg:block z-20 flex-shrink-0" 
             style={{ 
-              ...sidebarStyle,
-              top: `${headerHeight}px`, // Always use current headerHeight to stick below fixed header
-              width: isSidebarCollapsed ? '80px' : '280px', // Match sidebar width
-              transition: 'max-height 0.2s ease-out, top 0.2s ease-out, position 0s, width 0.3s ease-out',
+              position: 'sticky',
+              top: `${headerHeight}px`, // Stick below fixed header (viewport-relative)
+              left: 0,
+              alignSelf: 'flex-start',
+              width: isSidebarCollapsed ? '80px' : '280px',
+              transition: 'max-height 0.2s ease-out, top 0.2s ease-out, width 0.3s ease-out',
               overflowY: 'auto',
               overflowX: 'hidden',
-              height: `calc(100vh - ${headerHeight}px)`, // Ensure sidebar doesn't exceed viewport minus header
+              height: `calc(100vh - ${headerHeight}px)`,
+              maxHeight: `calc(100vh - ${headerHeight}px)`,
             }}
           >
           <AnimatedManagerSidebar
@@ -1023,7 +980,8 @@ export default function ManagerBookingDashboard() {
           </div>
           </div>
         </div>
-      </main>
+        </main>
+      </div>
       <Footer ref={footerRef} />
     </div>
   );
