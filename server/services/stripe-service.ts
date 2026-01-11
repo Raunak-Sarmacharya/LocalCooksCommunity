@@ -33,6 +33,7 @@ export interface PaymentIntentResult {
   id: string;
   clientSecret: string;
   status: string;
+  amount: number;
 }
 
 /**
@@ -119,6 +120,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       id: paymentIntent.id,
       clientSecret: paymentIntent.client_secret!,
       status: paymentIntent.status,
+      amount: paymentIntent.amount,
     };
   } catch (error: any) {
     console.error('Error creating PaymentIntent:', error);
@@ -146,6 +148,7 @@ export async function confirmPaymentIntent(
       id: paymentIntent.id,
       clientSecret: paymentIntent.client_secret || '',
       status: paymentIntent.status,
+      amount: paymentIntent.amount,
     };
   } catch (error: any) {
     console.error('Error confirming PaymentIntent:', error);
@@ -168,6 +171,7 @@ export async function getPaymentIntent(paymentIntentId: string): Promise<Payment
       id: paymentIntent.id,
       clientSecret: paymentIntent.client_secret || '',
       status: paymentIntent.status,
+      amount: paymentIntent.amount,
     };
   } catch (error: any) {
     if (error.code === 'resource_missing') {
