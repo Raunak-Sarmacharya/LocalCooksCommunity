@@ -124,7 +124,7 @@ export default function ManagerBookingDashboard() {
   const [headerHeight, setHeaderHeight] = useState(96); // Default header height
   const [sidebarStyle, setSidebarStyle] = useState<React.CSSProperties>({
     position: 'sticky',
-    top: '0px', // Will be updated to account for header height
+    top: '96px', // Start with default header height, will be updated when measured
     left: 0,
     alignSelf: 'flex-start',
   });
@@ -144,8 +144,11 @@ export default function ManagerBookingDashboard() {
       const viewportHeight = window.innerHeight;
       const sidebarAvailableHeight = viewportHeight - measuredHeaderHeight;
       
-      // Update sidebar top to account for header (sticky positioning relative to viewport)
-      const sidebarTop = '0px'; // Sticky to top of main container (which has padding-top)
+      // Sidebar sticky positioning: 
+      // The main element has paddingTop, so content starts below the header.
+      // Sticky positioning is relative to the viewport when the document scrolls.
+      // We need top: headerHeight so the sidebar sticks below the fixed header.
+      const sidebarTop = `${measuredHeaderHeight}px`;
       
       if (footer) {
         const footerRect = footer.getBoundingClientRect();
@@ -215,20 +218,26 @@ export default function ManagerBookingDashboard() {
       if (header) {
         const headerRect = header.getBoundingClientRect();
         const measuredHeaderHeight = headerRect.height;
-        setHeaderHeight(measuredHeaderHeight);
+        // Only update if the height actually changed to avoid unnecessary re-renders
+        if (Math.abs(measuredHeaderHeight - headerHeight) > 1) {
+          setHeaderHeight(measuredHeaderHeight);
+        }
         handleScroll();
       }
     };
 
+    // Measure immediately
+    measureHeader();
+    
     window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('resize', measureHeader);
     
-    // Initial measurement - use requestAnimationFrame to ensure DOM is ready
+    // Also measure after DOM is ready
     requestAnimationFrame(() => {
       measureHeader();
     });
     
-    // Also measure after a short delay to catch any dynamic header changes
+    // Measure after a short delay to catch any dynamic header changes
     const timeoutId = setTimeout(() => {
       measureHeader();
     }, 100);
@@ -238,7 +247,7 @@ export default function ManagerBookingDashboard() {
       window.removeEventListener('resize', measureHeader);
       clearTimeout(timeoutId);
     };
-  }, []);
+  }, [headerHeight]);
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
@@ -452,19 +461,19 @@ export default function ManagerBookingDashboard() {
           paddingTop: `${headerHeight}px`,
         }}
       >
-        {/* Animated Sidebar - scroll-aware height */}
-        <div 
-          className="hidden lg:block z-20 flex-shrink-0" 
-          style={{ 
-            ...sidebarStyle,
-            width: isSidebarCollapsed ? '80px' : '280px', // Match sidebar width
-            transition: 'max-height 0.2s ease-out, top 0.2s ease-out, position 0s, width 0.3s ease-out',
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            height: `calc(100vh - ${headerHeight}px)`, // Ensure sidebar doesn't exceed viewport minus header
-            marginTop: '0px', // Ensure sidebar starts at top of main content area
-          }}
-        >
+          {/* Animated Sidebar - scroll-aware height */}
+          <div 
+            className="hidden lg:block z-20 flex-shrink-0" 
+            style={{ 
+              ...sidebarStyle,
+              top: `${headerHeight}px`, // Always use current headerHeight to stick below fixed header
+              width: isSidebarCollapsed ? '80px' : '280px', // Match sidebar width
+              transition: 'max-height 0.2s ease-out, top 0.2s ease-out, position 0s, width 0.3s ease-out',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              height: `calc(100vh - ${headerHeight}px)`, // Ensure sidebar doesn't exceed viewport minus header
+            }}
+          >
           <AnimatedManagerSidebar
             navItems={navItems}
             activeView={activeView}
