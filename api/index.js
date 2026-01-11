@@ -14237,11 +14237,13 @@ app.get("/api/manager/revenue/invoices", requireFirebaseAuthWithUser, requireMan
     }
 
     // Get bookings with invoice data
-    // Show all bookings for the manager, with optional date filtering
+    // Only show paid bookings (invoices should only be for completed payments)
     // Use both booking_date and created_at for date filtering to catch all recent bookings
     let whereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
+        AND kb.payment_status = 'paid'
+        AND (kb.total_price IS NOT NULL OR kb.payment_intent_id IS NOT NULL)
     `;
     const params = [managerId];
     let paramIndex = 2;
@@ -14347,10 +14349,15 @@ app.get("/api/manager/revenue/invoices/:bookingId", requireFirebaseAuthWithUser,
       return res.status(403).json({ error: "Access denied to this booking" });
     }
     
+    // Only allow invoice download for paid bookings
+    if (booking.payment_status !== 'paid') {
+      return res.status(400).json({ error: "Invoice can only be downloaded for paid bookings" });
+    }
+    
     // Get chef info
     let chef = null;
     if (booking.chef_id) {
-      const chefResult = await pool.query('SELECT id, username, email FROM users WHERE id = $1', [booking.chef_id]);
+      const chefResult = await pool.query('SELECT id, username FROM users WHERE id = $1', [booking.chef_id]);
       chef = chefResult.rows[0] || null;
     }
     

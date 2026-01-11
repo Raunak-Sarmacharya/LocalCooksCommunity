@@ -144,6 +144,8 @@ export default function ManagerRevenueDashboard({
         break;
       case 'month':
         startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
       case 'custom':
         if (customStartDate && customEndDate) {

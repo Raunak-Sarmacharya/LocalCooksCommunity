@@ -164,7 +164,7 @@ export default function KitchenDashboardOverview({
 
   // Fetch revenue metrics for this month
   const { data: revenueMetrics, isLoading: isLoadingRevenue } = useQuery({
-    queryKey: ['/api/manager/revenue/overview', 'this-month'],
+    queryKey: ['/api/manager/revenue/overview', 'this-month', selectedLocation?.id],
     queryFn: async () => {
       if (!firebaseUser) {
         throw new Error('Not authenticated');
@@ -185,6 +185,11 @@ export default function KitchenDashboardOverview({
         startDate: startDate.toISOString().split('T')[0],
         endDate: endDate.toISOString().split('T')[0],
       });
+      
+      // Add location filter if a specific location is selected
+      if (selectedLocation && selectedLocation.id) {
+        params.append('locationId', selectedLocation.id.toString());
+      }
       
       const response = await fetch(`/api/manager/revenue/overview?${params}`, {
         headers: {
