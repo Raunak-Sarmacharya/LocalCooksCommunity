@@ -124,7 +124,7 @@ export default function ManagerBookingDashboard() {
   const [headerHeight, setHeaderHeight] = useState(96); // Default header height
   const [sidebarStyle, setSidebarStyle] = useState<React.CSSProperties>({
     position: 'sticky',
-    top: '96px', // Initial header height
+    top: '0px', // Top of the main container (which has padding-top for header)
     left: 0,
     alignSelf: 'flex-start',
   });
@@ -160,7 +160,7 @@ export default function ManagerBookingDashboard() {
             // Footer is conflicting - limit sidebar height so it can scroll
             setSidebarStyle({
               position: 'sticky',
-              top: `${measuredHeaderHeight}px`,
+              top: '0px', // Top of the main container (which has padding-top for header)
               left: 0,
               maxHeight: `${spaceAboveFooter}px`,
               alignSelf: 'flex-start',
@@ -169,7 +169,7 @@ export default function ManagerBookingDashboard() {
             // Footer has passed sidebar top - allow full scrolling
             setSidebarStyle({
               position: 'sticky',
-              top: `${measuredHeaderHeight}px`,
+              top: '0px', // Top of the main container (which has padding-top for header)
               left: 0,
               maxHeight: `${sidebarAvailableHeight}px`,
               alignSelf: 'flex-start',
@@ -178,7 +178,7 @@ export default function ManagerBookingDashboard() {
             // Footer is approaching but not yet conflicting
             setSidebarStyle({
               position: 'sticky',
-              top: `${measuredHeaderHeight}px`,
+              top: '0px', // Top of the main container (which has padding-top for header)
               left: 0,
               maxHeight: `${sidebarAvailableHeight}px`,
               alignSelf: 'flex-start',
@@ -188,7 +188,7 @@ export default function ManagerBookingDashboard() {
           // Footer is below viewport - sidebar stays sticky (appears fixed)
           setSidebarStyle({
             position: 'sticky',
-            top: `${measuredHeaderHeight}px`,
+            top: '0px', // Top of the main container (which has padding-top for header)
             left: 0,
             maxHeight: `${sidebarAvailableHeight}px`,
             alignSelf: 'flex-start',
@@ -198,7 +198,7 @@ export default function ManagerBookingDashboard() {
         // No footer found, use sticky positioning (appears fixed)
         setSidebarStyle({
           position: 'sticky',
-          top: `${measuredHeaderHeight}px`,
+          top: '0px', // Top of the main container (which has padding-top for header)
           left: 0,
           maxHeight: `${sidebarAvailableHeight}px`,
           alignSelf: 'flex-start',
@@ -433,13 +433,19 @@ export default function ManagerBookingDashboard() {
         <ManagerHeader />
       </div>
       <ManagerOnboardingWizard />
-      <main className="flex-1 pb-8 relative z-10 flex min-h-0">
+      <main 
+        className="flex-1 pb-8 relative z-10 flex min-h-0"
+        style={{
+          paddingTop: `${headerHeight}px`,
+        }}
+      >
         {/* Animated Sidebar - scroll-aware height */}
         <div 
-          className="hidden lg:block z-20" 
+          className="hidden lg:block z-20 flex-shrink-0" 
           style={{ 
             ...sidebarStyle,
-            transition: 'max-height 0.2s ease-out, top 0.2s ease-out, position 0s',
+            width: isSidebarCollapsed ? '80px' : '280px', // Match sidebar width
+            transition: 'max-height 0.2s ease-out, top 0.2s ease-out, position 0s, width 0.3s ease-out',
             overflowY: 'auto',
             overflowX: 'hidden',
           }}
@@ -504,7 +510,12 @@ export default function ManagerBookingDashboard() {
         </Sheet>
         
         {/* Mobile Menu Button */}
-        <div className="lg:hidden fixed top-20 sm:top-24 left-3 sm:left-4 z-30">
+        <div 
+          className="lg:hidden fixed left-3 sm:left-4 z-30"
+          style={{
+            top: `${headerHeight + 8}px`, // Position below header with small gap
+          }}
+        >
           <Button
             variant="outline"
             size="icon"
@@ -516,13 +527,7 @@ export default function ManagerBookingDashboard() {
         </div>
 
         <div 
-          className={cn(
-            "flex-1 transition-all duration-300",
-            isSidebarCollapsed ? "lg:pl-20" : "lg:pl-[280px]" // Dynamic padding based on sidebar state
-          )}
-          style={{
-            paddingTop: `${headerHeight}px`,
-          }}
+          className="flex-1 transition-all duration-300 min-w-0"
         >
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl">
           {/* Onboarding Reminder Banner */}
