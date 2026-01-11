@@ -4299,8 +4299,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           kb.booking_date,
           kb.start_time,
           kb.end_time,
-          kb.total_price::bigint as total_price,
-          kb.service_fee::bigint as service_fee,
+          COALESCE(
+            kb.total_price,
+            CASE 
+              WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+              THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+              ELSE 0
+            END
+          )::bigint as total_price,
+          COALESCE(kb.service_fee, 0)::bigint as service_fee,
           kb.payment_status,
           kb.payment_intent_id,
           kb.currency,
@@ -4319,22 +4326,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       `, [...params, parseInt(limit as string), parseInt(offset as string)]);
 
       res.json({
-        invoices: result.rows.map((row: any) => ({
-          bookingId: row.id,
-          bookingDate: row.booking_date,
-          startTime: row.start_time,
-          endTime: row.end_time,
-          totalPrice: (parseInt(row.total_price) || 0) / 100,
-          serviceFee: (parseInt(row.service_fee) || 0) / 100,
-          paymentStatus: row.payment_status,
-          paymentIntentId: row.payment_intent_id,
-          currency: row.currency || 'CAD',
-          kitchenName: row.kitchen_name,
-          locationName: row.location_name,
-          chefName: row.chef_name || 'Guest',
-          chefEmail: row.chef_email,
-          createdAt: row.created_at,
-        })),
+        invoices: result.rows.map((row: any) => {
+          // Handle null/undefined total_price gracefully
+          const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
+          const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
+          
+          return {
+            bookingId: row.id,
+            bookingDate: row.booking_date,
+            startTime: row.start_time,
+            endTime: row.end_time,
+            totalPrice: totalPriceCents / 100,
+            serviceFee: serviceFeeCents / 100,
+            paymentStatus: row.payment_status,
+            paymentIntentId: row.payment_intent_id,
+            currency: row.currency || 'CAD',
+            kitchenName: row.kitchen_name,
+            locationName: row.location_name,
+            chefName: row.chef_name || 'Guest',
+            chefEmail: row.chef_email,
+            createdAt: row.created_at,
+          };
+        }),
         total: result.rows.length
       });
     } catch (error: any) {
@@ -8419,10 +8432,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         paramIndex++;
       }
 
-      // Get service fee rate
+      // Get service fee rate (for reference, but we use direct subtraction now)
       const { getServiceFeeRate } = await import('./services/pricing-service');
       const serviceFeeRate = await getServiceFeeRate(pool);
-      const { calculateManagerRevenue } = await import('./services/revenue-service');
 
       const result = await pool.query(`
         SELECT 
@@ -8468,7 +8480,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       result.rows.forEach((row: any) => {
         const managerId = parseInt(row.manager_id);
         const totalRevenue = parseInt(row.total_revenue) || 0;
-        const managerRevenue = calculateManagerRevenue(totalRevenue, serviceFeeRate);
+        const platformFee = parseInt(row.platform_fee) || 0;
+        // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+        const managerRevenue = totalRevenue - platformFee;
 
         if (!managerMap.has(managerId)) {
           managerMap.set(managerId, {
