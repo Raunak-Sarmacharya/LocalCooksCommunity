@@ -14146,7 +14146,7 @@ app.get("/api/manager/revenue/transactions", requireFirebaseAuthWithUser, requir
                 l.id as location_id,
                 l.name as location_name,
                 u.username as chef_name,
-                u.email as chef_email
+                u.username as chef_email
               FROM kitchen_bookings kb
               JOIN kitchens k ON kb.kitchen_id = k.id
               JOIN locations l ON k.location_id = l.id
