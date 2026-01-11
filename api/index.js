@@ -15539,6 +15539,128 @@ app.delete("/api/manager/equipment-listings/:listingId", requireFirebaseAuthWith
 });
 
 // Get all bookings for manager
+
+// Manager: Get manager profile
+app.get("/api/manager/profile", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const user = req.neonUser;
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get manager profile data from JSONB field or return defaults
+    const result = await pool.query(
+      `SELECT 
+        COALESCE((manager_profile_data->>'profileImageUrl')::text, NULL) as "profileImageUrl",
+        COALESCE((manager_profile_data->>'phone')::text, NULL) as phone,
+        COALESCE((manager_profile_data->>'displayName')::text, NULL) as "displayName"
+      FROM users 
+      WHERE id = $1`,
+      [user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Manager profile not found" });
+    }
+
+    const profile = result.rows[0];
+    res.json({
+      profileImageUrl: profile.profileImageUrl,
+      phone: profile.phone,
+      displayName: profile.displayName,
+    });
+  } catch (error) {
+    console.error("Error getting manager profile:", error);
+    // If column doesn't exist, return empty profile
+    if (error.message?.includes('does not exist') || error.message?.includes('column')) {
+      return res.json({ profileImageUrl: null, phone: null, displayName: null });
+    }
+    res.status(500).json({ error: error.message || "Failed to get profile" });
+  }
+});
+
+// Manager: Update manager profile
+app.put("/api/manager/profile", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    const user = req.neonUser;
+    
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    const { username, displayName, phone, profileImageUrl } = req.body;
+
+    // First, ensure the manager_profile_data column exists (create if not)
+    try {
+      await pool.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'users' AND column_name = 'manager_profile_data'
+          ) THEN
+            ALTER TABLE users ADD COLUMN manager_profile_data JSONB DEFAULT '{}'::jsonb;
+          END IF;
+        END $$;
+      `);
+    } catch (alterError) {
+      // Column might already exist, continue
+      console.log('Column check result:', alterError.message);
+    }
+
+    // Build update object
+    const profileUpdates = {};
+    if (displayName !== undefined) profileUpdates.displayName = displayName;
+    if (phone !== undefined) profileUpdates.phone = phone;
+    if (profileImageUrl !== undefined) profileUpdates.profileImageUrl = profileImageUrl;
+
+    // Update username if provided
+    if (username !== undefined && username !== user.username) {
+      // Check if username is already taken
+      const existingUserResult = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
+      if (existingUserResult.rows.length > 0 && existingUserResult.rows[0].id !== user.id) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+      
+      // Update username
+      await pool.query('UPDATE users SET username = $1 WHERE id = $2', [username, user.id]);
+    }
+
+    // Update profile data
+    if (Object.keys(profileUpdates).length > 0) {
+      await pool.query(
+        `UPDATE users 
+         SET manager_profile_data = COALESCE(manager_profile_data, '{}'::jsonb) || $1::jsonb,
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING manager_profile_data`,
+        [JSON.stringify(profileUpdates), user.id]
+      );
+    }
+
+    // Return updated profile
+    const result = await pool.query(
+      `SELECT 
+        COALESCE((manager_profile_data->>'profileImageUrl')::text, NULL) as "profileImageUrl",
+        COALESCE((manager_profile_data->>'phone')::text, NULL) as phone,
+        COALESCE((manager_profile_data->>'displayName')::text, NULL) as "displayName"
+      FROM users 
+      WHERE id = $1`,
+      [user.id]
+    );
+
+    res.json({
+      profileImageUrl: result.rows[0]?.profileImageUrl || null,
+      phone: result.rows[0]?.phone || null,
+      displayName: result.rows[0]?.displayName || null,
+    });
+  } catch (error) {
+    console.error("Error updating manager profile:", error);
+    res.status(500).json({ error: error.message || "Failed to update profile" });
+  }
+});
+
 // Manager: Get chef profiles for locations managed by this manager
 app.get("/api/manager/chef-profiles", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
