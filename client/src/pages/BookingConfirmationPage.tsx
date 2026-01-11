@@ -286,6 +286,14 @@ export default function BookingConfirmationPage() {
     return `${y}-${m}-${day}`;
   };
 
+  // Format date string from URL (YYYY-MM-DD) to display format
+  const formatDateFromString = (dateStr: string | null) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   // Create payment intent
   const createPaymentIntent = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
@@ -301,7 +309,8 @@ export default function BookingConfirmationPage() {
       const endMins = endTotalMins % 60;
       const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 
-      const bookingDateStr = toLocalDateString(selectedDate);
+      // Use dateStr directly from URL to avoid timezone issues
+      const bookingDateStr = dateStr || toLocalDateString(selectedDate);
       const [year, month, day] = bookingDateStr.split('-').map(Number);
       const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
@@ -386,7 +395,8 @@ export default function BookingConfirmationPage() {
     const endMins = endTotalMins % 60;
     const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 
-    const bookingDateStr = toLocalDateString(selectedDate);
+    // Use dateStr directly from URL to avoid timezone issues
+    const bookingDateStr = dateStr || toLocalDateString(selectedDate);
     const [year, month, day] = bookingDateStr.split('-').map(Number);
     const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
@@ -454,7 +464,8 @@ export default function BookingConfirmationPage() {
     const endMins = endTotalMins % 60;
     const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
 
-    const bookingDateStr = toLocalDateString(selectedDate);
+    // Use dateStr directly from URL to avoid timezone issues
+    const bookingDateStr = dateStr || toLocalDateString(selectedDate);
     const [year, month, day] = bookingDateStr.split('-').map(Number);
     const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
@@ -585,7 +596,7 @@ export default function BookingConfirmationPage() {
                 <div className="p-3 bg-gray-50 rounded-lg">
                   <p className="text-xs text-gray-600 mb-1">Date</p>
                   <p className="font-medium text-gray-900">
-                    {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {formatDateFromString(dateStr)}
                   </p>
                 </div>
                 <div className="p-3 bg-gray-50 rounded-lg">
