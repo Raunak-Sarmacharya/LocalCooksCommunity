@@ -879,9 +879,9 @@ async function uploadToR2(file, userId, folder = 'documents') {
     await client.send(command);
 
     // Construct public URL
-    // If USE_R2_PROXY is enabled, return proxy URL instead of direct R2 URL
-    // This ensures files are accessible even if the bucket is private
-    const useProxy = process.env.USE_R2_PROXY === 'true';
+    // Use proxy URL by default to ensure files are accessible even if the bucket is private
+    // Only use direct R2 URL if explicitly disabled via USE_R2_PROXY=false
+    const useProxy = process.env.USE_R2_PROXY !== 'false';
     
     let publicUrl;
     if (useProxy) {
@@ -4383,8 +4383,8 @@ app.get("/api/files/r2-proxy", async (req, res) => {
                    (process.env.CLOUDFLARE_R2_PUBLIC_URL && fileUrl.includes(process.env.CLOUDFLARE_R2_PUBLIC_URL)) ||
                    (process.env.CLOUDFLARE_R2_BUCKET_NAME && fileUrl.includes(process.env.CLOUDFLARE_R2_BUCKET_NAME));
 
-    // Only process R2 URLs in production
-    if (isProduction && isR2Configured() && isR2Url) {
+    // Process R2 URLs in production (or if R2 is configured)
+    if ((isProduction || isR2Configured()) && isR2Configured() && isR2Url) {
       try {
         // Extract key from R2 URL
         const urlObj = new URL(fileUrl);
@@ -18185,6 +18185,251 @@ app.get("/api/admin/locations", requireFirebaseAuthWithUser, requireAdmin, async
     res.status(500).json({ error: "Failed to fetch locations" });
   }
 });
+
+// ===================================
+// ADMIN REVENUE ENDPOINTS
+// ===================================
+
+// Get all managers revenue (admin)
+app.get("/api/admin/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
+    const { startDate, endDate } = req.query;
+
+    // Get all managers with their revenue
+    let whereClause = `WHERE kb.status != 'cancelled'`;
+    const params = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+      params.push(startDate);
+      paramIndex++;
+    }
+
+    if (endDate) {
+      whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+      params.push(endDate);
+      paramIndex++;
+    }
+
+    // Get service fee rate (for reference, but we use direct subtraction now)
+    const { getServiceFeeRate } = await import('../server/services/pricing-service.js');
+    const serviceFeeRate = await getServiceFeeRate(pool);
+
+    const result = await pool.query(`
+      SELECT 
+        u.id as manager_id,
+        u.username as manager_name,
+        u.email as manager_email,
+        l.id as location_id,
+        l.name as location_name,
+        COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
+        COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
+        COUNT(*)::int as booking_count,
+        COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      JOIN users u ON l.manager_id = u.id
+      ${whereClause}
+      GROUP BY u.id, u.username, u.email, l.id, l.name
+      ORDER BY total_revenue DESC
+    `, params);
+
+    // Group by manager (managers can have multiple locations)
+    const managerMap = new Map();
+
+    result.rows.forEach((row) => {
+      const managerId = parseInt(row.manager_id);
+      const totalRevenue = parseInt(row.total_revenue) || 0;
+      const platformFee = parseInt(row.platform_fee) || 0;
+      // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+      const managerRevenue = totalRevenue - platformFee;
+
+      if (!managerMap.has(managerId)) {
+        managerMap.set(managerId, {
+          managerId,
+          managerName: row.manager_name,
+          managerEmail: row.manager_email,
+          totalRevenue: 0,
+          platformFee: 0,
+          managerRevenue: 0,
+          bookingCount: 0,
+          paidBookingCount: 0,
+          locations: [],
+        });
+      }
+
+      const manager = managerMap.get(managerId);
+      manager.totalRevenue += totalRevenue;
+      manager.platformFee += parseInt(row.platform_fee) || 0;
+      manager.managerRevenue += managerRevenue;
+      manager.bookingCount += parseInt(row.booking_count) || 0;
+      manager.paidBookingCount += parseInt(row.paid_count) || 0;
+
+      manager.locations.push({
+        locationId: parseInt(row.location_id),
+        locationName: row.location_name,
+        totalRevenue,
+        platformFee: parseInt(row.platform_fee) || 0,
+        managerRevenue,
+        bookingCount: parseInt(row.booking_count) || 0,
+        paidBookingCount: parseInt(row.paid_count) || 0,
+      });
+    });
+
+    // Convert to array and format for response
+    const managers = Array.from(managerMap.values()).map(m => ({
+      ...m,
+      totalRevenue: m.totalRevenue / 100,
+      platformFee: m.platformFee / 100,
+      managerRevenue: m.managerRevenue / 100,
+      locations: m.locations.map(loc => ({
+        ...loc,
+        totalRevenue: loc.totalRevenue / 100,
+        platformFee: loc.platformFee / 100,
+        managerRevenue: loc.managerRevenue / 100,
+      })),
+      _raw: {
+        totalRevenue: m.totalRevenue,
+        platformFee: m.platformFee,
+        managerRevenue: m.managerRevenue,
+      }
+    }));
+
+    res.json({ managers, total: managers.length });
+  } catch (error) {
+    console.error('Error getting all managers revenue:', error);
+    res.status(500).json({ error: error.message || 'Failed to get all managers revenue' });
+  }
+});
+
+// Get platform-wide revenue overview (admin)
+app.get("/api/admin/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
+    const { startDate, endDate } = req.query;
+
+    let whereClause = `WHERE kb.status != 'cancelled'`;
+    const params = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+      params.push(startDate);
+      paramIndex++;
+    }
+
+    if (endDate) {
+      whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+      params.push(endDate);
+      paramIndex++;
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
+        COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
+        COUNT(DISTINCT l.manager_id)::int as manager_count,
+        COUNT(*)::int as booking_count,
+        COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
+        COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END)::int as pending_count
+      FROM kitchen_bookings kb
+      JOIN kitchens k ON kb.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      ${whereClause}
+    `, params);
+
+    const row = result.rows[0];
+
+    res.json({
+      totalPlatformRevenue: (parseInt(row.total_revenue) || 0) / 100,
+      totalPlatformFees: (parseInt(row.platform_fee) || 0) / 100,
+      activeManagers: parseInt(row.manager_count) || 0,
+      totalBookings: parseInt(row.booking_count) || 0,
+      paidBookingCount: parseInt(row.paid_count) || 0,
+      pendingBookingCount: parseInt(row.pending_count) || 0,
+      _raw: {
+        totalRevenue: parseInt(row.total_revenue) || 0,
+        platformFee: parseInt(row.platform_fee) || 0,
+      }
+    });
+  } catch (error) {
+    console.error('Error getting platform overview:', error);
+    res.status(500).json({ error: error.message || 'Failed to get platform overview' });
+  }
+});
+
+// Get specific manager revenue details (admin)
+app.get("/api/admin/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+  try {
+    const managerId = parseInt(req.params.managerId);
+    if (isNaN(managerId) || managerId <= 0) {
+      return res.status(400).json({ error: "Invalid manager ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
+    const { startDate, endDate } = req.query;
+    const { getCompleteRevenueMetrics, getRevenueByLocation } = await import('../server/services/revenue-service.js');
+
+    const metrics = await getCompleteRevenueMetrics(
+      managerId,
+      pool,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined
+    );
+
+    const revenueByLocation = await getRevenueByLocation(
+      managerId,
+      pool,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined
+    );
+
+    // Get manager info
+    const managerResult = await pool.query(
+      'SELECT id, username, email FROM users WHERE id = $1',
+      [managerId]
+    );
+
+    res.json({
+      manager: managerResult.rows[0] || null,
+      metrics: {
+        ...metrics,
+        totalRevenue: metrics.totalRevenue / 100,
+        platformFee: metrics.platformFee / 100,
+        managerRevenue: metrics.managerRevenue / 100,
+        pendingPayments: metrics.pendingPayments / 100,
+        completedPayments: metrics.completedPayments / 100,
+        averageBookingValue: metrics.averageBookingValue / 100,
+        refundedAmount: metrics.refundedAmount / 100,
+      },
+      revenueByLocation: revenueByLocation.map(loc => ({
+        ...loc,
+        totalRevenue: loc.totalRevenue / 100,
+        platformFee: loc.platformFee / 100,
+        managerRevenue: loc.managerRevenue / 100,
+      })),
+    });
+  } catch (error) {
+    console.error('Error getting manager revenue details:', error);
+    res.status(500).json({ error: error.message || 'Failed to get manager revenue details' });
+  }
+});
+
+// ===================================
+// END ADMIN REVENUE ENDPOINTS
+// ===================================
 
 // Create location (admin)
 app.post("/api/admin/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
