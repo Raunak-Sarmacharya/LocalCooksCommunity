@@ -3758,13 +3758,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const accountStatus = await getAccountStatus(accountId);
       const ready = await isAccountReady(accountId);
 
+      // Consider account complete if details are submitted and at least charges are enabled
+      // (payouts might be enabled later, but account is functional)
+      const isComplete = ready || (accountStatus.detailsSubmitted && accountStatus.chargesEnabled);
+
       // Update database if status changed
-      if (ready && userResult.rows[0].stripe_connect_onboarding_status !== 'complete') {
+      if (isComplete && userResult.rows[0].stripe_connect_onboarding_status !== 'complete') {
         await pool.query(
           'UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2',
           ['complete', managerId]
         );
-      } else if (!ready && userResult.rows[0].stripe_connect_onboarding_status === 'complete') {
+      } else if (!isComplete && userResult.rows[0].stripe_connect_onboarding_status === 'complete') {
         // Account might have been disabled - update status
         await pool.query(
           'UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2',
@@ -3775,7 +3779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         hasAccount: true,
         accountId,
-        status: ready ? 'complete' : 'in_progress',
+        status: isComplete ? 'complete' : 'in_progress',
         details: accountStatus,
       });
     } catch (error: any) {
