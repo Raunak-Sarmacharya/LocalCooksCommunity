@@ -545,15 +545,19 @@ export default function ManagerKitchenApplications({
                       <div className="flex items-center gap-2">
                         {selectedApplication.foodSafetyLicenseUrl && (
                           <a
-                            href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || selectedApplication.foodSafetyLicenseUrl}
+                            href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || 
+                              (selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') 
+                                ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodSafetyLicenseUrl)}`
+                                : selectedApplication.foodSafetyLicenseUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:underline text-xs flex items-center"
                             onClick={async (e) => {
-                              if (!presignedUrls[selectedApplication.foodSafetyLicenseUrl]) {
+                              const url = selectedApplication.foodSafetyLicenseUrl;
+                              if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                                 e.preventDefault();
-                                const url = await getPresignedUrl(selectedApplication.foodSafetyLicenseUrl);
-                                window.open(url, '_blank');
+                                const presignedUrl = await getPresignedUrl(url);
+                                window.open(presignedUrl, '_blank');
                               }
                             }}
                           >

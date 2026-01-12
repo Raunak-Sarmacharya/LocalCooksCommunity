@@ -4245,6 +4245,107 @@ app.get("/api/files/kitchen-license/:locationId", requireFirebaseAuthWithUser, r
   }
 });
 
+// Manager endpoint to view their own location's kitchen license
+app.get("/api/files/kitchen-license/manager/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
+    const locationId = parseInt(req.params.locationId);
+    
+    if (isNaN(locationId)) {
+      return res.status(400).json({ message: "Invalid location ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ message: "Database not available" });
+    }
+
+    // Verify the manager owns this location
+    const locationCheck = await pool.query(
+      'SELECT kitchen_license_url, manager_id FROM locations WHERE id = $1',
+      [locationId]
+    );
+
+    if (locationCheck.rows.length === 0) {
+      return res.status(404).json({ message: "Location not found" });
+    }
+
+    const location = locationCheck.rows[0];
+    
+    // Verify manager owns this location
+    if (location.manager_id !== user.id) {
+      return res.status(403).json({ message: "Access denied: You don't own this location" });
+    }
+
+    if (!location.kitchen_license_url) {
+      return res.status(404).json({ message: "Kitchen license not found for this location" });
+    }
+
+    const licenseUrl = location.kitchen_license_url;
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    // Check if this is an R2 URL
+    const isR2Url = licenseUrl.includes('r2.cloudflarestorage.com') || 
+                   (process.env.CLOUDFLARE_R2_PUBLIC_URL && licenseUrl.includes(process.env.CLOUDFLARE_R2_PUBLIC_URL)) ||
+                   (process.env.CLOUDFLARE_R2_BUCKET_NAME && licenseUrl.includes(process.env.CLOUDFLARE_R2_BUCKET_NAME));
+
+    // If it's an R2 URL, generate presigned URL and redirect
+    if ((isProduction || isR2Configured()) && isR2Configured() && isR2Url) {
+      try {
+        // Extract key from R2 URL
+        const urlObj = new URL(licenseUrl);
+        let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+        const pathParts = pathname.split('/').filter(p => p);
+        
+        const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+        const bucketIndex = pathParts.indexOf(bucketName);
+        
+        let key;
+        if (bucketIndex >= 0) {
+          key = pathParts.slice(bucketIndex + 1).join('/');
+        } else {
+          const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
+          const firstPart = pathParts[0];
+          if (knownFolders.includes(firstPart)) {
+            key = pathname;
+          } else {
+            key = pathname;
+          }
+        }
+        
+        key = key.replace(/^\/+|\/+$/g, '');
+        
+        if (!key || key.length === 0) {
+          throw new Error(`Invalid key extracted from URL: ${licenseUrl}`);
+        }
+
+        // Generate presigned URL
+        const client = getR2Client();
+        const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+        const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+        
+        const command = new GetObjectCommand({
+          Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+          Key: key,
+        });
+
+        const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
+        return res.redirect(presignedUrl);
+      } catch (r2Error) {
+        console.error('Error generating presigned URL for manager:', r2Error);
+        // Fallback: redirect to proxy endpoint
+        return res.redirect(`/api/files/r2-proxy?url=${encodeURIComponent(licenseUrl)}`);
+      }
+    } else {
+      // For local files or non-R2 URLs, redirect to the URL
+      return res.redirect(licenseUrl);
+    }
+  } catch (error) {
+    console.error("Error serving kitchen license file for manager:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 // Proxy endpoint to generate presigned URLs for R2 files (available to all authenticated Firebase users)
 app.get("/api/files/r2-presigned", requireFirebaseAuthWithUser, async (req, res) => {
   try {
@@ -4354,13 +4455,26 @@ app.get("/api/files/r2-presigned", requireFirebaseAuthWithUser, async (req, res)
 // Public proxy endpoint for R2 files - redirects direct R2 URLs to presigned URLs
 // This allows direct access to R2 files without authentication
 // Security: Only allows access to files in known folders (documents, images, profiles, kitchen-applications)
+// NOTE: This endpoint is PUBLIC and does NOT require authentication - it's intentionally placed before any auth middleware
+// IMPORTANT: This endpoint must be defined BEFORE any global auth middleware to ensure it's accessible
 app.get("/api/files/r2-proxy", async (req, res) => {
+  // This is a PUBLIC endpoint - no authentication required
+  // The error "No auth token provided" should NOT occur here
   try {
+    console.log('🔓 R2 Proxy: Public endpoint accessed (no auth required)', {
+      url: req.query.url ? req.query.url.substring(0, 100) + '...' : 'missing',
+      method: req.method,
+      path: req.path,
+      hasAuthHeader: !!req.headers.authorization
+    });
+    
     const fileUrl = req.query.url;
     if (!fileUrl || typeof fileUrl !== 'string') {
+      console.error('❌ R2 Proxy: Missing file URL parameter');
       return res.status(400).json({ error: "File URL is required" });
     }
 
+    console.log('🔍 R2 Proxy: Processing URL:', fileUrl.substring(0, 100) + '...');
     const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
     // Check if this is an R2 URL
@@ -4371,8 +4485,26 @@ app.get("/api/files/r2-proxy", async (req, res) => {
     // Process R2 URLs in production (or if R2 is configured)
     if ((isProduction || isR2Configured()) && isR2Configured() && isR2Url) {
       try {
+        // Validate R2 configuration
+        if (!isR2Configured()) {
+          console.error('❌ R2 Proxy: R2 is not configured');
+          return res.status(500).json({ 
+            error: "R2 not configured",
+            message: "Cloudflare R2 is not properly configured. Please check environment variables."
+          });
+        }
+        
         // Extract key from R2 URL
-        const urlObj = new URL(fileUrl);
+        let urlObj;
+        try {
+          urlObj = new URL(fileUrl);
+        } catch (urlError) {
+          console.error('❌ R2 Proxy: Invalid URL format:', fileUrl);
+          return res.status(400).json({ 
+            error: "Invalid URL format",
+            message: "The provided file URL is not a valid URL format."
+          });
+        }
         let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
         const pathParts = pathname.split('/').filter(p => p);
         
@@ -4414,7 +4546,17 @@ app.get("/api/files/r2-proxy", async (req, res) => {
         }
 
         // Generate presigned URL
-        const client = getR2Client();
+        let client;
+        try {
+          client = getR2Client();
+        } catch (clientError) {
+          console.error('❌ R2 Proxy: Failed to get R2 client:', clientError.message);
+          return res.status(500).json({ 
+            error: "R2 configuration error",
+            message: "Failed to initialize R2 client. Please check R2 configuration."
+          });
+        }
+        
         const { GetObjectCommand } = await import('@aws-sdk/client-s3');
         const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
         
@@ -4426,14 +4568,25 @@ app.get("/api/files/r2-proxy", async (req, res) => {
         // Generate presigned URL (valid for 1 hour)
         const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
         console.log('✅ Generated presigned URL via public proxy for:', key);
+        console.log('🔗 Redirecting to presigned URL (length:', presignedUrl.length, ')');
         
         // Redirect to presigned URL
         return res.redirect(presignedUrl);
       } catch (error) {
         console.error('❌ Error generating presigned URL via proxy:', {
           error: error.message,
-          fileUrl
+          fileUrl,
+          stack: error.stack
         });
+        
+        // If R2 client creation failed, it might be a configuration issue
+        if (error.message && error.message.includes('credentials')) {
+          return res.status(500).json({ 
+            error: "R2 configuration error",
+            message: "Cloudflare R2 is not properly configured. Please check environment variables."
+          });
+        }
+        
         return res.status(500).json({ 
           error: "Failed to generate presigned URL",
           message: error.message 
@@ -4441,11 +4594,16 @@ app.get("/api/files/r2-proxy", async (req, res) => {
       }
     } else {
       // For non-R2 URLs or development, redirect to original URL
+      console.log('🔗 R2 Proxy: Non-R2 URL or dev mode, redirecting to:', fileUrl);
       return res.redirect(fileUrl);
     }
   } catch (error) {
-    console.error("Error in R2 proxy endpoint:", error);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("❌ Error in R2 proxy endpoint:", error);
+    console.error("Error stack:", error.stack);
+    return res.status(500).json({ 
+      error: "Internal server error",
+      message: error.message || "Unknown error occurred"
+    });
   }
 });
 
@@ -24556,6 +24714,16 @@ app.get('/api/firebase/chef/kitchen-access-status/:locationId', requireFirebaseA
 // ============================================
 // End Chef Kitchen Applications Routes
 // ============================================
+
+// Test endpoint to verify r2-proxy is accessible (for debugging)
+app.get("/api/files/r2-proxy/test", async (req, res) => {
+  res.json({ 
+    message: "R2 Proxy endpoint is accessible",
+    public: true,
+    requiresAuth: false,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Process-level error handlers to catch unhandled errors
 process.on('unhandledRejection', (reason, promise) => {
