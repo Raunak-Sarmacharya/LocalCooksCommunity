@@ -8,7 +8,11 @@ import { auth } from "@/lib/firebase";
 import { useState } from "react";
 import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
 
-export default function ManagerHeader() {
+interface ManagerHeaderProps {
+  sidebarWidth?: number;
+}
+
+export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps) {
   const [showHelpCenter, setShowHelpCenter] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Use Firebase auth for managers (session auth removed)
@@ -120,18 +124,49 @@ export default function ManagerHeader() {
 
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
-      <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
-          <Logo variant="brand" className="h-9 sm:h-11 md:h-12 lg:h-12 w-auto transition-transform duration-300 group-hover:scale-110" />
-          <div className="flex flex-col justify-center">
-            <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-2xl leading-none text-[#F51042] tracking-tight font-normal">
-              LocalCooks
-            </span>
-            <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
-              for kitchens
-            </span>
-          </div>
-        </Link>
+      <div 
+        className="flex items-center w-full"
+        style={{
+          paddingLeft: `${sidebarWidth}px`,
+          transition: 'padding-left 0.3s ease-out',
+        }}
+      >
+        {/* Logo centered above sidebar */}
+        <div 
+          className="hidden lg:flex absolute left-0 items-center justify-center"
+          style={{
+            width: `${sidebarWidth}px`,
+            transition: 'width 0.3s ease-out',
+            height: '100%',
+          }}
+        >
+          <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
+            <Logo variant="brand" className="h-9 sm:h-11 md:h-12 lg:h-12 w-auto transition-transform duration-300 group-hover:scale-110" />
+            <div className="flex flex-col justify-center">
+              <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-2xl leading-none text-[#F51042] tracking-tight font-normal">
+                LocalCooks
+              </span>
+              <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
+                for kitchens
+              </span>
+            </div>
+          </Link>
+        </div>
+
+        {/* Main Header Content - Right aligned */}
+        <div className="flex-1 container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
+          {/* Mobile Logo */}
+          <Link href="/" className="lg:hidden flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
+            <Logo variant="brand" className="h-9 sm:h-11 md:h-12 lg:h-12 w-auto transition-transform duration-300 group-hover:scale-110" />
+            <div className="flex flex-col justify-center">
+              <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-2xl leading-none text-[#F51042] tracking-tight font-normal">
+                LocalCooks
+              </span>
+              <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
+                for kitchens
+              </span>
+            </div>
+          </Link>
 
         <nav className="hidden md:flex items-center space-x-4 ml-auto">
           <Link 

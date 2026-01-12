@@ -443,7 +443,7 @@ export default function ManagerBookingDashboard() {
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
       <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       <div ref={headerRef as React.RefObject<HTMLDivElement>}>
-        <ManagerHeader />
+        <ManagerHeader sidebarWidth={isSidebarCollapsed ? 64 : 256} />
       </div>
       <ManagerOnboardingWizard />
 
