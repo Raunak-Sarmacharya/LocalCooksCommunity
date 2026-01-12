@@ -242,50 +242,50 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                 </DropdownMenuTrigger>
                 <DropdownMenuContent 
                   align="end" 
-                  className="w-72 bg-gray-900 border-gray-800 text-white shadow-xl"
+                  className="w-72 bg-white border-gray-200 shadow-xl"
                 >
                   {/* User Info Section */}
-                  <div className="px-4 py-5 text-center border-b border-gray-800">
+                  <div className="px-4 py-5 text-center border-b border-gray-200">
                     <div className="flex justify-center mb-3">
-                      <Avatar className="h-16 w-16 border-2 border-gray-700">
+                      <Avatar className="h-16 w-16 border-2 border-gray-200">
                         <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
                         <AvatarFallback className="bg-gradient-to-br from-[#F51042]/90 to-[#F51042]/70 text-white font-semibold text-lg">
                           {userInitials}
                         </AvatarFallback>
                       </Avatar>
                     </div>
-                    <p className="text-base font-semibold text-white mb-1">
+                    <p className="text-base font-semibold text-gray-900 mb-1">
                       {userDisplayName || "Manager"}
                     </p>
-                    <p className="text-xs text-gray-400 break-all px-2">
+                    <p className="text-xs text-gray-500 break-all px-2">
                       {userEmail || ""}
                     </p>
                   </div>
 
                   {/* Manager Portal Options */}
                   <div className="py-1">
-                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
                       <Link href="/manager/booking-dashboard" className="flex items-center w-full">
                         <LayoutDashboard className="mr-3 h-4 w-4" />
                         <span>Dashboard</span>
                       </Link>
                     </DropdownMenuItem>
                     
-                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
                       <Link href="/manager/booking-dashboard?view=revenue" className="flex items-center w-full">
                         <DollarSign className="mr-3 h-4 w-4" />
                         <span>Revenue</span>
                       </Link>
                     </DropdownMenuItem>
                     
-                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
                       <Link href="/manager/booking-dashboard?view=bookings" className="flex items-center w-full">
                         <BookOpen className="mr-3 h-4 w-4" />
                         <span>Bookings</span>
                       </Link>
                     </DropdownMenuItem>
                     
-                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
                       <Link href="/manager/booking-dashboard?view=locations" className="flex items-center w-full">
                         <Building2 className="mr-3 h-4 w-4" />
                         <span>Locations</span>
@@ -293,18 +293,18 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                     </DropdownMenuItem>
                   </div>
 
-                  <DropdownMenuSeparator className="bg-gray-800" />
+                  <DropdownMenuSeparator className="bg-gray-200" />
 
                   {/* Account Options */}
                   <div className="py-1">
-                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
                       <Link href="/manager/profile" className="flex items-center w-full">
                         <User className="mr-3 h-4 w-4" />
                         <span>Profile</span>
                       </Link>
                     </DropdownMenuItem>
                     
-                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
                       <Link href="/manager/profile" className="flex items-center w-full">
                         <Settings className="mr-3 h-4 w-4" />
                         <span>Settings</span>
@@ -312,13 +312,13 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                     </DropdownMenuItem>
                   </div>
 
-                  <DropdownMenuSeparator className="bg-gray-800" />
+                  <DropdownMenuSeparator className="bg-gray-200" />
 
                   {/* Logout */}
                   <div className="py-1">
                     <DropdownMenuItem
                       onClick={handleLogout}
-                      className="text-gray-300 hover:text-white hover:bg-red-900/20 focus:bg-red-900/20 focus:text-white cursor-pointer"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 focus:bg-red-50 focus:text-red-700 cursor-pointer"
                     >
                       <LogOut className="mr-3 h-4 w-4" />
                       <span>Log out</span>
@@ -394,18 +394,18 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                   
                   {/* Mobile Profile Section */}
                   <div className="pt-2 border-t border-gray-200">
-                    <div className="flex items-center gap-3 px-2 py-4 bg-gray-900 rounded-lg mb-2">
-                      <Avatar className="h-12 w-12 border-2 border-gray-700">
+                    <div className="flex items-center gap-3 px-2 py-4 bg-gray-50 rounded-lg mb-2">
+                      <Avatar className="h-12 w-12 border-2 border-gray-200">
                         <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
                         <AvatarFallback className="bg-gradient-to-br from-[#F51042]/90 to-[#F51042]/70 text-white font-semibold">
                           {userInitials}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white mb-1">
+                        <p className="text-sm font-semibold text-gray-900 mb-1">
                           {userDisplayName || "Manager"}
                         </p>
-                        <p className="text-xs text-gray-400 break-all">
+                        <p className="text-xs text-gray-500 break-all">
                           {userEmail || ""}
                         </p>
                       </div>
