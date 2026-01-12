@@ -7,14 +7,8 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useState } from "react";
 import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
-import { AnimatePresence, motion } from "framer-motion";
 
-interface ManagerHeaderProps {
-  hideLogo?: boolean;
-  sidebarWidth?: number;
-}
-
-export default function ManagerHeader({ hideLogo = false, sidebarWidth = 0 }: ManagerHeaderProps) {
+export default function ManagerHeader() {
   const [showHelpCenter, setShowHelpCenter] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Use Firebase auth for managers (session auth removed)
@@ -126,61 +120,20 @@ export default function ManagerHeader({ hideLogo = false, sidebarWidth = 0 }: Ma
 
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
-      <div className="flex items-center w-full">
-        {/* Unified Logo Area - Only when sidebar is visible */}
-        {hideLogo && sidebarWidth > 0 && (
-          <div 
-            className="hidden lg:flex items-center gap-2.5 px-4 py-2 sm:py-3 bg-white border-r border-gray-200 flex-shrink-0"
-            style={{
-              width: `${sidebarWidth}px`,
-              transition: 'width 0.3s ease-out',
-              minHeight: '100%',
-            }}
-          >
-            <Link href="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-80 flex-shrink-0">
-              <Logo variant="brand" className="h-6 w-auto flex-shrink-0" />
-              <AnimatePresence mode="wait">
-                {sidebarWidth >= 256 && (
-                  <motion.div
-                    key="expanded-logo-text"
-                    initial={{ opacity: 0, width: 0, marginLeft: -8 }}
-                    animate={{ opacity: 1, width: 'auto', marginLeft: 0 }}
-                    exit={{ opacity: 0, width: 0, marginLeft: -8 }}
-                    transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                    className="flex flex-col overflow-hidden"
-                  >
-                    <span className="font-logo text-base leading-none text-[#F51042] tracking-tight font-normal whitespace-nowrap">
-                      LocalCooks
-                    </span>
-                    <span className="text-[9px] font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none whitespace-nowrap">
-                      FOR KITCHENS
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </Link>
+      <div className="container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
+        <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
+          <Logo variant="brand" className="h-9 sm:h-11 md:h-12 lg:h-12 w-auto transition-transform duration-300 group-hover:scale-110" />
+          <div className="flex flex-col justify-center">
+            <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-2xl leading-none text-[#F51042] tracking-tight font-normal">
+              LocalCooks
+            </span>
+            <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
+              for kitchens
+            </span>
           </div>
-        )}
-        
-        {/* Main Header Content */}
-        <div 
-          className="flex-1 container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center"
-        >
-          {!hideLogo && (
-            <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
-              <Logo variant="brand" className="h-10 sm:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110" />
-              <div className="flex flex-col justify-center">
-                <span className="font-logo text-xl sm:text-2xl lg:text-3xl leading-none text-[#F51042] tracking-tight font-normal">
-                  LocalCooks
-                </span>
-                <span className="text-[10px] sm:text-xs font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none">
-                  for kitchens
-                </span>
-              </div>
-            </Link>
-          )}
+        </Link>
 
-        <nav className="hidden md:flex items-center space-x-4">
+        <nav className="hidden md:flex items-center space-x-4 ml-auto">
           <Link 
             href="/"
             className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
@@ -227,21 +180,20 @@ export default function ManagerHeader({ hideLogo = false, sidebarWidth = 0 }: Ma
           )}
         </nav>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="mobile-touch-target mobile-no-tap-highlight p-3"
-            >
-              {isMenuOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
+        {/* Mobile menu button */}
+        <div className="md:hidden ml-auto">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="mobile-touch-target mobile-no-tap-highlight p-3"
+          >
+            {isMenuOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
+          </Button>
         </div>
       </div>
 
