@@ -505,7 +505,10 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                 </div>
                 <div className="flex items-center gap-2">
                   {getStatusBadge(verification.foodSafetyLicenseStatus)}
-                  <a href={verification.foodSafetyLicenseUrl!} target="_blank" rel="noopener noreferrer" 
+                  <a href={verification.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') 
+                    ? `/api/files/r2-proxy?url=${encodeURIComponent(verification.foodSafetyLicenseUrl!)}`
+                    : verification.foodSafetyLicenseUrl!} 
+                    target="_blank" rel="noopener noreferrer" 
                      className="text-green-600 hover:text-green-800">
                     <FileText className="h-4 w-4" />
                   </a>
@@ -525,8 +528,11 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                   </div>
                   <div className="flex items-center gap-2">
                     {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
-                    <a href={verification.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer" 
-                       className="text-green-600 hover:text-green-800">
+                    <a href={verification.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') 
+                      ? `/api/files/r2-proxy?url=${encodeURIComponent(verification.foodEstablishmentCertUrl)}`
+                      : verification.foodEstablishmentCertUrl} 
+                      target="_blank" rel="noopener noreferrer"
+                     className="text-green-600 hover:text-green-800">
                       <FileText className="h-4 w-4" />
                     </a>
                   </div>
@@ -688,7 +694,10 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
               <div className="flex items-center gap-2">
                 {verification?.foodEstablishmentCertUrl && (
                   <Button variant="ghost" size="sm" asChild>
-                    <a href={verification.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer">
+                    <a href={verification.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') 
+                      ? `/api/files/r2-proxy?url=${encodeURIComponent(verification.foodEstablishmentCertUrl)}`
+                      : verification.foodEstablishmentCertUrl} 
+                      target="_blank" rel="noopener noreferrer">
                       <FileText className="h-4 w-4" />
                     </a>
                   </Button>

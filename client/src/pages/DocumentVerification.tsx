@@ -596,7 +596,10 @@ export default function DocumentVerification() {
                          </div>
                          <div className="space-y-2">
                            {latestDeliveryApp.insuranceUrl ? (
-                             <a href={latestDeliveryApp.insuranceUrl} target="_blank" rel="noopener noreferrer" 
+                             <a href={latestDeliveryApp.insuranceUrl?.includes('r2.cloudflarestorage.com') 
+                               ? `/api/files/r2-proxy?url=${encodeURIComponent(latestDeliveryApp.insuranceUrl)}`
+                               : latestDeliveryApp.insuranceUrl} 
+                               target="_blank" rel="noopener noreferrer" 
                                 className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
                                <FileText className="h-4 w-4" />
                                View Document
