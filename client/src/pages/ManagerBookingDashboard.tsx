@@ -460,7 +460,7 @@ export default function ManagerBookingDashboard() {
             className="hidden lg:block z-20 flex-shrink-0" 
             style={{ 
               position: 'sticky',
-              top: '0px', // Stick at top of scrollable area (which is already below navbar due to marginTop)
+              top: `${headerHeight}px`, // Stick below the fixed navbar
               left: 0,
               alignSelf: 'flex-start',
               width: isSidebarCollapsed ? '64px' : '256px',
