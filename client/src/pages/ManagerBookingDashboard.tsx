@@ -462,7 +462,7 @@ export default function ManagerBookingDashboard() {
               top: `${headerHeight}px`, // Stick below fixed header (viewport-relative)
               left: 0,
               alignSelf: 'flex-start',
-              width: isSidebarCollapsed ? '80px' : '280px',
+              width: isSidebarCollapsed ? '64px' : '256px',
               transition: 'max-height 0.2s ease-out, top 0.2s ease-out, width 0.3s ease-out',
               overflowY: 'auto',
               overflowX: 'hidden',
@@ -498,7 +498,7 @@ export default function ManagerBookingDashboard() {
         
         {/* Mobile Sidebar - Sheet/Drawer */}
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetContent side="left" className="w-[280px] p-0">
+          <SheetContent side="left" className="w-[256px] p-0">
             <AnimatedManagerSidebar
               navItems={navItems}
               activeView={activeView}
