@@ -100,7 +100,7 @@ export default function AnimatedManagerSidebar({
         {!isMobile && (
           <button
             onClick={handleToggle}
-            className="absolute top-3 right-3 z-[100] flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-300 shadow-lg hover:shadow-xl transition-all hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F51042]/30 focus:ring-offset-1"
+            className="absolute top-2 right-2 z-[100] flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-300 shadow-lg hover:shadow-xl transition-all hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F51042]/30 focus:ring-offset-1"
             style={{
               zIndex: 100,
             }}
@@ -116,9 +116,9 @@ export default function AnimatedManagerSidebar({
         )}
 
         {/* Sidebar Content Container - Scrollable, starts from top */}
-        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden">
+        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ paddingTop: 0, marginTop: 0 }}>
           {/* Location Selection - Always visible at top */}
-          <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200 bg-white">
+          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white" style={{ marginTop: 0, paddingTop: '1rem' }}>
           <AnimatePresence mode="wait">
             {isContentVisible ? (
               <motion.div
