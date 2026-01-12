@@ -125,12 +125,11 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
       <div className="flex items-center w-full relative" style={{ minHeight: '100%' }}>
-        {/* Logo centered above sidebar - width changes with sidebar */}
+        {/* Logo centered above sidebar - FIXED width, does NOT change with sidebar */}
         <div 
           className="hidden lg:flex absolute left-0 items-center justify-center pointer-events-none"
           style={{
-            width: `${sidebarWidth}px`,
-            transition: 'width 0.3s ease-out',
+            width: '256px', // Fixed at expanded sidebar width - does NOT change when sidebar collapses
             height: '100%',
             zIndex: 10,
             top: 0,
