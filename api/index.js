@@ -3919,16 +3919,11 @@ app.get('/api/init-db', async (req, res) => {
 // ===============================
 
 // Serve uploaded document files - Works with R2 URLs and local files
-app.get("/api/files/documents/:filename", async (req, res) => {
+// Available to all authenticated Firebase users (admin, manager, chef)
+app.get("/api/files/documents/:filename", requireFirebaseAuthWithUser, async (req, res) => {
   try {
-    // Check if user is authenticated (supports both Firebase Bearer token and session/x-user-id)
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ 
-        error: "Not authenticated",
-        message: "Authentication required. Please provide a valid Firebase token or session." 
-      });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be set
+    const user = req.neonUser;
 
     const filename = req.params.filename;
     const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
@@ -4001,8 +3996,62 @@ app.get("/api/files/documents/:filename", async (req, res) => {
           }
 
           if (fileUrl) {
-            // Redirect to R2 URL (public URL)
-            return res.redirect(fileUrl);
+            // Generate presigned URL for R2 access (bucket is private)
+            const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
+                           (process.env.CLOUDFLARE_R2_PUBLIC_URL && fileUrl.includes(process.env.CLOUDFLARE_R2_PUBLIC_URL)) ||
+                           (process.env.CLOUDFLARE_R2_BUCKET_NAME && fileUrl.includes(process.env.CLOUDFLARE_R2_BUCKET_NAME));
+            
+            if (isProduction && isR2Configured() && isR2Url) {
+              try {
+                // Extract key from R2 URL
+                const urlObj = new URL(fileUrl);
+                let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+                const pathParts = pathname.split('/').filter(p => p);
+                
+                const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+                const bucketIndex = pathParts.indexOf(bucketName);
+                
+                let key;
+                if (bucketIndex >= 0) {
+                  key = pathParts.slice(bucketIndex + 1).join('/');
+                } else {
+                  const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
+                  const firstPart = pathParts[0];
+                  if (knownFolders.includes(firstPart)) {
+                    key = pathname;
+                  } else {
+                    key = pathname;
+                  }
+                }
+                
+                key = key.replace(/^\/+|\/+$/g, '');
+                
+                if (!key || key.length === 0) {
+                  throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
+                }
+                
+                // Generate presigned URL
+                const client = getR2Client();
+                const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+                const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+                
+                const command = new GetObjectCommand({
+                  Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+                  Key: key,
+                });
+                
+                const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
+                console.log('✅ Generated presigned URL for document:', key);
+                return res.redirect(presignedUrl);
+              } catch (error) {
+                console.error('❌ Error generating presigned URL for document:', error);
+                // Fallback to direct URL
+                return res.redirect(fileUrl);
+              }
+            } else {
+              // Not R2 URL or not in production, redirect directly
+              return res.redirect(fileUrl);
+            }
           }
         }
       }
@@ -4016,14 +4065,52 @@ app.get("/api/files/documents/:filename", async (req, res) => {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Construct R2 URL if we have the bucket configured
+      // Construct R2 URL and generate presigned URL if we have the bucket configured
       if (isR2Configured()) {
-        const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
-          `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.CLOUDFLARE_R2_BUCKET_NAME}`;
-        const fileUrl = R2_PUBLIC_URL.endsWith('/') 
-          ? `${R2_PUBLIC_URL}documents/${filename}`
-          : `${R2_PUBLIC_URL}/documents/${filename}`;
-        return res.redirect(fileUrl);
+        try {
+          const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
+            `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.CLOUDFLARE_R2_BUCKET_NAME}`;
+          const fileUrl = R2_PUBLIC_URL.endsWith('/') 
+            ? `${R2_PUBLIC_URL}documents/${filename}`
+            : `${R2_PUBLIC_URL}/documents/${filename}`;
+          
+          // Generate presigned URL for private R2 bucket access
+          const client = getR2Client();
+          const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+          const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+          
+          const key = `documents/${filename}`;
+          
+          const command = new GetObjectCommand({
+            Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+            Key: key,
+          });
+          
+          try {
+            // Generate presigned URL (valid for 1 hour)
+            const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
+            console.log('✅ Generated presigned URL for document:', key);
+            
+            // Redirect to presigned URL
+            return res.redirect(presignedUrl);
+          } catch (presignError) {
+            console.error('❌ Presigned URL generation failed, trying direct URL:', {
+              error: presignError.message,
+              key
+            });
+            // Fallback: redirect to direct URL (might work if bucket is public)
+            return res.redirect(fileUrl);
+          }
+        } catch (error) {
+          console.error('❌ Error generating presigned URL for document:', error);
+          // Fallback: construct and redirect to direct URL
+          const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
+            `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.CLOUDFLARE_R2_BUCKET_NAME}`;
+          const fileUrl = R2_PUBLIC_URL.endsWith('/') 
+            ? `${R2_PUBLIC_URL}documents/${filename}`
+            : `${R2_PUBLIC_URL}/documents/${filename}`;
+          return res.redirect(fileUrl);
+        }
       }
 
       return res.status(404).json({ message: "File not found" });
@@ -4238,25 +4325,14 @@ app.get("/api/files/kitchen-license/:locationId", async (req, res) => {
   }
 });
 
-// Proxy endpoint to generate presigned URLs for R2 files (for managers and admins)
-app.get("/api/files/r2-presigned", async (req, res) => {
+// Proxy endpoint to generate presigned URLs for R2 files (available to all authenticated Firebase users)
+app.get("/api/files/r2-presigned", requireFirebaseAuthWithUser, async (req, res) => {
   try {
-    // Check if user is authenticated (supports both Firebase Bearer token and session/x-user-id)
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ 
-        error: "Not authenticated",
-        message: "Authentication required. Please provide a valid Firebase token or session." 
-      });
-    }
-
-    // Only managers and admins can access files
-    if (user.role !== 'admin' && user.role !== 'manager') {
-      return res.status(403).json({ 
-        error: "Access denied",
-        message: "Manager or admin access required" 
-      });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be set
+    const user = req.neonUser;
+    
+    // Available to all authenticated users (admin, manager, chef, delivery_partner)
+    // No role restrictions - any authenticated user can access their files
 
     const fileUrl = req.query.url;
     if (!fileUrl || typeof fileUrl !== 'string') {
