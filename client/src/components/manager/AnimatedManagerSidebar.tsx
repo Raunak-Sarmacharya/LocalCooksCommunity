@@ -106,8 +106,8 @@ export default function AnimatedManagerSidebar({
             <div 
               className="flex-shrink-0 bg-transparent relative"
               style={{ 
-                height: `${headerHeight + 40}px`, // Increased to 40px extra padding to ensure no overlap
-                minHeight: `${headerHeight + 40}px`,
+                height: `${headerHeight + 60}px`, // Increased to 40px extra padding to ensure no overlap
+                minHeight: `${headerHeight + 60}px`,
                 width: '100%',
                 pointerEvents: 'none' // Allow clicks to pass through
               }}
