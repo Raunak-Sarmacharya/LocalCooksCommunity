@@ -99,38 +99,37 @@ export default function AnimatedManagerSidebar({
           minHeight: '100%',
         }}
       >
-        {/* Collapse Toggle Button - Absolutely positioned at top right, always visible */}
-        {!isMobile && (
-          <button
-            onClick={handleToggle}
-            className="absolute top-2 right-2 z-[100] flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-300 shadow-lg hover:shadow-xl transition-all hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F51042]/30 focus:ring-offset-1"
-            style={{
-              zIndex: 100,
-            }}
-            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!isCollapsed}
-          >
-            {isCollapsed ? (
-              <ChevronRight className="w-4 h-4 text-gray-700" />
-            ) : (
-              <ChevronLeft className="w-4 h-4 text-gray-700" />
-            )}
-          </button>
-        )}
-
         {/* Sidebar Content Container - Scrollable, starts from top */}
         <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
           {/* Spacer to prevent navbar overlap - MORE than navbar height to ensure no overlap */}
           {!isMobile && (
             <div 
-              className="flex-shrink-0 bg-transparent"
+              className="flex-shrink-0 bg-transparent relative"
               style={{ 
-                height: `${headerHeight + 24}px`, // Add extra 24px padding to ensure no overlap - MORE than navbar height
-                minHeight: `${headerHeight + 24}px`,
+                height: `${headerHeight + 40}px`, // Increased to 40px extra padding to ensure no overlap
+                minHeight: `${headerHeight + 40}px`,
                 width: '100%',
                 pointerEvents: 'none' // Allow clicks to pass through
               }}
-            />
+            >
+              {/* Collapse Toggle Button - Positioned at top of visible content area, below navbar */}
+              <button
+                onClick={handleToggle}
+                className="absolute bottom-2 right-2 z-[100] flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-300 shadow-lg hover:shadow-xl transition-all hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F51042]/30 focus:ring-offset-1"
+                style={{
+                  zIndex: 100,
+                  pointerEvents: 'auto', // Re-enable clicks for button
+                }}
+                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-expanded={!isCollapsed}
+              >
+                {isCollapsed ? (
+                  <ChevronRight className="w-4 h-4 text-gray-700" />
+                ) : (
+                  <ChevronLeft className="w-4 h-4 text-gray-700" />
+                )}
+              </button>
+            </div>
           )}
           
           {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR SPACER */}
