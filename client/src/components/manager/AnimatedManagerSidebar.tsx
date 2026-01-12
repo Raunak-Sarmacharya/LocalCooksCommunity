@@ -116,11 +116,11 @@ export default function AnimatedManagerSidebar({
           
           {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR SPACER */}
           <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white relative" style={{ marginTop: 0, paddingTop: '1rem', zIndex: 1 }}>
-            {/* Collapse Toggle Button - Positioned adjacent to Location label, slightly lower */}
+            {/* Collapse Toggle Button - Positioned at edge, half inside half outside, minimal design */}
             {!isMobile && (
               <button
                 onClick={handleToggle}
-                className="absolute top-6 right-3 z-[100] flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-300 shadow-lg hover:shadow-xl transition-all hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F51042]/30 focus:ring-offset-1"
+                className="absolute top-6 -right-3 z-[100] flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#F51042]/20"
                 style={{
                   zIndex: 100,
                 }}
@@ -128,9 +128,9 @@ export default function AnimatedManagerSidebar({
                 aria-expanded={!isCollapsed}
               >
                 {isCollapsed ? (
-                  <ChevronRight className="w-4 h-4 text-gray-700" />
+                  <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
                 ) : (
-                  <ChevronLeft className="w-4 h-4 text-gray-700" />
+                  <ChevronLeft className="w-3.5 h-3.5 text-gray-600" />
                 )}
               </button>
             )}
