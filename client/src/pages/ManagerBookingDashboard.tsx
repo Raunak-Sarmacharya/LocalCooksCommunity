@@ -455,12 +455,12 @@ export default function ManagerBookingDashboard() {
         <main 
           className="flex-1 pb-8 relative z-10 flex min-h-0"
         >
-          {/* Animated Sidebar - positioned below navbar */}
+          {/* Animated Sidebar - positioned below navbar, starts from top of visible area */}
           <div 
             className="hidden lg:block z-20 flex-shrink-0" 
             style={{ 
               position: 'sticky',
-              top: `${headerHeight}px`, // Stick below fixed header
+              top: '0px', // Stick at top of scrollable area (which is already below navbar due to marginTop)
               left: 0,
               alignSelf: 'flex-start',
               width: isSidebarCollapsed ? '64px' : '256px',
