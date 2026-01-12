@@ -5,6 +5,7 @@ import { Upload, X, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
+import { getR2ProxyUrl } from '@/utils/r2-url-helper';
 
 interface ImageWithReplaceProps {
   imageUrl: string | null | undefined;
@@ -84,82 +85,22 @@ export function ImageWithReplace({
 
       // Check if it's already a full URL (R2 public URL or other CDN)
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-        // First, set the URL directly as a fallback
-        setImageSrc(imageUrl);
-        setIsLoading(true);
-        setError(null);
+        // Check if it's an R2 URL - use the public proxy endpoint
+        const isR2Url = imageUrl.includes('r2.cloudflarestorage.com') || 
+                       imageUrl.includes('cloudflare') ||
+                       (imageUrl.startsWith('http') && !imageUrl.startsWith('/api/files/'));
         
-        // Check if we're in development - skip presigned URL in dev
-        const isDevelopment = window.location.hostname === 'localhost' || 
-                              window.location.hostname === '127.0.0.1' ||
-                              window.location.hostname.includes('localhost');
-        
-        // In development, just use the direct URL (no presigned URL needed)
-        if (isDevelopment) {
+        if (isR2Url) {
+          // Use the public r2-proxy endpoint (no auth required)
+          const proxyUrl = getR2ProxyUrl(imageUrl);
+          setImageSrc(proxyUrl);
           setIsLoading(false);
           return;
         }
         
-        // Then try to get presigned URL for better security/performance (production only)
-        // But don't wait for it - show the image immediately
-        const fetchPresignedUrl = async () => {
-          try {
-            // All users use Firebase auth - get Firebase token
-            const currentUser = auth.currentUser;
-            if (!currentUser) {
-              console.warn('⚠️ No Firebase user found, cannot get presigned URL');
-              setIsLoading(false);
-              return;
-            }
-            
-            const headers: HeadersInit = {
-              'Content-Type': 'application/json',
-            };
-            
-            try {
-              const token = await currentUser.getIdToken();
-              headers['Authorization'] = `Bearer ${token}`;
-              console.log('✅ Using Firebase token for presigned URL');
-            } catch (tokenError) {
-              console.error('❌ Could not get Firebase token:', tokenError);
-              setIsLoading(false);
-              return; // Cannot proceed without token
-            }
-            
-            const response = await fetch('/api/images/presigned-url', {
-              method: 'POST',
-              headers,
-              credentials: 'include',
-              body: JSON.stringify({ imageUrl }),
-            });
-            
-            if (response.ok) {
-              const data = await response.json();
-              if (data && data.url) {
-                setImageSrc(data.url);
-              } else {
-                // If no URL in response, keep using direct URL
-                console.warn('Presigned URL response missing URL, using direct URL');
-              }
-            } else {
-              // If presigned URL fails, try using the direct URL
-              // This will work if R2 bucket is public
-              const errorData = await response.json().catch(() => ({}));
-              console.warn('Presigned URL fetch failed, using direct URL:', {
-                status: response.status,
-                error: errorData.error || 'Unknown error'
-              });
-              // Keep the direct URL that was already set
-            }
-          } catch (err) {
-            console.error('Error fetching presigned URL (using direct URL):', err);
-            // Keep using the direct URL that was already set
-          } finally {
-            setIsLoading(false);
-          }
-        };
-        
-        fetchPresignedUrl();
+        // For non-R2 URLs, use directly
+        setImageSrc(imageUrl);
+        setIsLoading(false);
         return;
       }
 
