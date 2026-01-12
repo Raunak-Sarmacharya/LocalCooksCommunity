@@ -97,7 +97,7 @@ export default function AnimatedManagerSidebar({
       >
         {/* Collapse Toggle Button - Positioned at top right, always visible */}
         {!isMobile && (
-          <div className="flex-shrink-0 flex justify-end px-3 py-3 border-b border-gray-200">
+          <div className="flex-shrink-0 flex justify-end px-3 py-3 border-b border-gray-200 bg-white z-10">
             <button
               onClick={handleToggle}
               className="flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-200 shadow-md hover:shadow-lg transition-all hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#F51042]/20"
@@ -113,22 +113,21 @@ export default function AnimatedManagerSidebar({
           </div>
         )}
 
-        <div className="flex flex-col h-full overflow-hidden">
-          {/* Location Selection - Always visible at top */}
-          <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200">
-            <AnimatePresence mode="wait">
-              {isContentVisible ? (
-                <motion.div
-                  key="expanded-location"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="space-y-2"
-                >
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                    Location
-                  </label>
+        {/* Location Selection - Always visible at top */}
+        <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200 bg-white">
+          <AnimatePresence mode="wait">
+            {isContentVisible ? (
+              <motion.div
+                key="expanded-location"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-2"
+              >
+                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                  Location
+                </label>
                   {isLoadingLocations ? (
                     <div className="text-xs text-gray-400 py-2">Loading...</div>
                   ) : locations.length === 0 ? (
@@ -206,8 +205,8 @@ export default function AnimatedManagerSidebar({
             </AnimatePresence>
           </div>
 
-          {/* Navigation Items - No scrolling, fits all items */}
-          <nav className="flex-1 px-2 py-3 space-y-1 overflow-hidden">
+        {/* Navigation Items - Scrollable if needed */}
+        <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto overflow-x-hidden min-h-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeView === item.id;
@@ -366,7 +365,6 @@ export default function AnimatedManagerSidebar({
               </AnimatePresence>
             </div>
           )}
-        </div>
       </motion.aside>
     </TooltipProvider>
   );

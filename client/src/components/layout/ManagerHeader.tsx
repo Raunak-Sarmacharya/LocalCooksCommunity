@@ -230,6 +230,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             )}
           </Button>
         </div>
+        </div>
       </div>
 
       {/* Mobile menu */}
