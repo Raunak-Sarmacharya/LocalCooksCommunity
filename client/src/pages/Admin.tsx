@@ -116,6 +116,64 @@ function AdminDashboard() {
   });
   const [activeCategory, setActiveCategory] = useState<string>("applications");
   const [activeTab, setActiveTab] = useState<string>("applications");
+  const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
+  const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+  
+  // Function to get presigned URL for R2 files
+  const getPresignedUrl = async (fileUrl: string): Promise<string> => {
+    // Check if we already have a presigned URL cached
+    if (presignedUrls[fileUrl]) {
+      return presignedUrls[fileUrl];
+    }
+
+    // Check if URL is already being loaded
+    if (loadingUrls.has(fileUrl)) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return getPresignedUrl(fileUrl);
+    }
+
+    // Check if it's an R2 URL (needs presigning)
+    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
+                    fileUrl.includes('cloudflare') ||
+                    (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+
+    if (!isR2Url) {
+      return fileUrl;
+    }
+
+    try {
+      setLoadingUrls(prev => new Set(prev).add(fileUrl));
+      
+      const token = await getFirebaseToken();
+      const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get presigned URL: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const presignedUrl = data.url || fileUrl;
+
+      setPresignedUrls(prev => ({ ...prev, [fileUrl]: presignedUrl }));
+      return presignedUrl;
+    } catch (error) {
+      console.error('Error getting presigned URL:', error);
+      return fileUrl;
+    } finally {
+      setLoadingUrls(prev => {
+        const next = new Set(prev);
+        next.delete(fileUrl);
+        return next;
+      });
+    }
+  };
 
   // Update active tab when category changes
   useEffect(() => {
@@ -1829,27 +1887,51 @@ function AdminDashboard() {
                           <div className="flex gap-1">
                             {app.foodSafetyLicenseUrl && (
                               <a 
-                                href={app.foodSafetyLicenseUrl} 
+                                href={presignedUrls[app.foodSafetyLicenseUrl] || app.foodSafetyLicenseUrl || '#'} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                                 title="View Food Safety License Document"
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const url = app.foodSafetyLicenseUrl;
+                                  if (url && !presignedUrls[url]) {
+                                    e.preventDefault();
+                                    const presignedUrl = await getPresignedUrl(url);
+                                    window.open(presignedUrl, '_blank');
+                                  }
+                                }}
                               >
-                                <ExternalLink className="h-3 w-3" />
+                                {loadingUrls.has(app.foodSafetyLicenseUrl) ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ExternalLink className="h-3 w-3" />
+                                )}
                                 FSL
                               </a>
                             )}
                             {app.foodEstablishmentCertUrl && (
                               <a 
-                                href={app.foodEstablishmentCertUrl} 
+                                href={presignedUrls[app.foodEstablishmentCertUrl] || app.foodEstablishmentCertUrl || '#'} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
                                 title="View Food Establishment Certificate Document"
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const url = app.foodEstablishmentCertUrl;
+                                  if (url && !presignedUrls[url]) {
+                                    e.preventDefault();
+                                    const presignedUrl = await getPresignedUrl(url);
+                                    window.open(presignedUrl, '_blank');
+                                  }
+                                }}
                               >
-                                <ExternalLink className="h-3 w-3" />
+                                {loadingUrls.has(app.foodEstablishmentCertUrl) ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ExternalLink className="h-3 w-3" />
+                                )}
                                 FEC
                               </a>
                             )}
