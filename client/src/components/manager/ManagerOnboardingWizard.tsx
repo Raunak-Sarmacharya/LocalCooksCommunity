@@ -605,16 +605,17 @@ export default function ManagerOnboardingWizard() {
 
         <div className="px-6 py-6">
           {/* Progress Indicator */}
-          <div className="flex items-center justify-between mb-8 relative">
-            {steps.map((step, index) => (
-              <div key={step.id} className="flex items-center flex-1 relative z-10">
-                <div className="flex flex-col items-center flex-1">
+          <div className="flex items-start justify-between mb-8 relative">
+            {/* Icon row - all icons on same horizontal line */}
+            <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-0" style={{ height: '3.5rem' }}>
+              {steps.map((step, index) => (
+                <div key={`icon-${step.id}`} className="flex-1 flex items-center justify-center relative">
                   <div
                     className={`relative w-14 h-14 rounded-full flex items-center justify-center border-3 transition-all duration-300 ${
                       currentStep > step.id || completedSteps[`step_${step.id}`]
-                        ? "bg-gradient-to-br from-green-500 to-emerald-600 border-green-500 text-white shadow-lg shadow-green-500/30 scale-110"
+                        ? "bg-gradient-to-br from-green-500 to-emerald-600 border-green-500 text-white shadow-lg shadow-green-500/30"
                         : currentStep === step.id
-                        ? "bg-gradient-to-br from-[#F51042] to-rose-500 border-[#F51042] text-white shadow-lg shadow-[#F51042]/40 scale-110 ring-4 ring-rose-200"
+                        ? "bg-gradient-to-br from-[#F51042] to-rose-500 border-[#F51042] text-white shadow-lg shadow-[#F51042]/40 ring-4 ring-rose-200"
                         : "bg-white border-gray-300 text-gray-400 shadow-sm"
                     }`}
                     style={{ borderWidth: '3px' }}
@@ -622,7 +623,7 @@ export default function ManagerOnboardingWizard() {
                     {currentStep > step.id || completedSteps[`step_${step.id}`] ? (
                       <CheckCircle className="h-7 w-7" />
                     ) : (
-                      <div className={`${currentStep === step.id ? 'scale-110' : ''} transition-transform duration-300`}>
+                      <div className="transition-transform duration-300">
                         {step.icon}
                       </div>
                     )}
@@ -630,33 +631,68 @@ export default function ManagerOnboardingWizard() {
                       <div className="absolute -inset-1 bg-rose-400 rounded-full animate-ping opacity-20"></div>
                     )}
                   </div>
-                  <div className="mt-3 text-center max-w-[100px]">
-                    <p
-                      className={`text-xs font-semibold leading-tight ${
-                        currentStep >= step.id ? "text-gray-900" : "text-gray-400"
-                      }`}
-                    >
-                      {step.title}
-                    </p>
-                  </div>
+                  {index < steps.length - 1 && (
+                    <div className="absolute left-1/2 right-0 h-1" style={{ top: '50%', transform: 'translateY(-50%)', marginLeft: '1.75rem' }}>
+                      <div className={`absolute inset-0 rounded-full transition-all duration-500 ${
+                        currentStep > step.id || completedSteps[`step_${step.id}`] 
+                          ? "bg-gradient-to-r from-green-500 to-green-400" 
+                          : "bg-gray-200"
+                      }`}></div>
+                      {currentStep > step.id || completedSteps[`step_${step.id}`] ? (
+                        <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-300 rounded-full animate-pulse"></div>
+                      ) : null}
+                      {currentStep === step.id && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-[#F51042] to-rose-500 rounded-full animate-pulse opacity-50"></div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {index < steps.length - 1 && (
-                  <div className="flex-1 h-1 mx-3 relative -mt-7">
-                    <div className={`absolute inset-0 rounded-full transition-all duration-500 ${
-                      currentStep > step.id || completedSteps[`step_${step.id}`] 
-                        ? "bg-gradient-to-r from-green-500 to-green-400" 
-                        : "bg-gray-200"
-                    }`}></div>
-                    {currentStep > step.id || completedSteps[`step_${step.id}`] ? (
-                      <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-300 rounded-full animate-pulse"></div>
-                    ) : null}
-                    {currentStep === step.id && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-[#F51042] to-rose-500 rounded-full animate-pulse opacity-50"></div>
+              ))}
+            </div>
+            
+            {/* Label row - positioned below icons */}
+            <div className="flex items-start justify-between w-full mt-20">
+              {steps.map((step) => (
+                <div key={`label-${step.id}`} className="flex-1 flex flex-col items-center justify-center px-1">
+                  <div
+                    className={`text-xs font-semibold leading-tight text-center ${
+                      currentStep >= step.id ? "text-gray-900" : "text-gray-400"
+                    }`}
+                    style={{ 
+                      maxWidth: '100px',
+                      width: '100%',
+                    }}
+                  >
+                    {step.title.includes(' & ') ? (
+                      // Handle "Location & Contact" - split at " & "
+                      (() => {
+                        const parts = step.title.split(' & ');
+                        return (
+                          <>
+                            <div className="block text-center">{parts[0]}</div>
+                            <div className="block text-center">& {parts[1]}</div>
+                          </>
+                        );
+                      })()
+                    ) : step.title.split(' ').length === 2 ? (
+                      // Handle two-word titles like "Kitchen License", "Create Kitchen", etc.
+                      (() => {
+                        const words = step.title.split(' ');
+                        return (
+                          <>
+                            <div className="block text-center">{words[0]}</div>
+                            <div className="block text-center">{words[1]}</div>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      // Single word titles like "Welcome"
+                      <div className="block text-center">{step.title}</div>
                     )}
                   </div>
-                )}
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
           </div>
 
         {/* Step Content */}
@@ -963,10 +999,10 @@ export default function ManagerOnboardingWizard() {
                             }}
                             className="hidden"
                           />
-                          <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium">
+                          <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium mb-2">
                             Click to upload new license
                           </span>
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-xs text-gray-500">
                             PDF, JPG, or PNG (max 10MB)
                           </p>
                         </label>
@@ -1007,7 +1043,7 @@ export default function ManagerOnboardingWizard() {
                           }}
                           className="hidden"
                         />
-                        <span className="text-base text-[#F51042] hover:text-rose-600 font-semibold block mb-2">
+                        <span className="text-base text-[#F51042] hover:text-rose-600 font-semibold block mb-3">
                           Click to upload license
                         </span>
                         <p className="text-sm text-gray-500">
@@ -1402,7 +1438,7 @@ export default function ManagerOnboardingWizard() {
                           />
                           <label
                             htmlFor="storage-photos"
-                            className="cursor-pointer flex flex-col items-center gap-2"
+                            className="cursor-pointer flex flex-col items-center gap-3"
                           >
                             {storageUploadHook.isUploading ? (
                               <>
@@ -1412,7 +1448,7 @@ export default function ManagerOnboardingWizard() {
                             ) : (
                               <>
                                 <Upload className="h-8 w-8 text-gray-400" />
-                                <span className="text-sm font-medium text-[#F51042]">Click to upload photos</span>
+                                <span className="text-sm font-medium text-[#F51042] mb-1">Click to upload photos</span>
                                 <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB each)</span>
                               </>
                             )}
@@ -1780,7 +1816,7 @@ export default function ManagerOnboardingWizard() {
                           />
                           <label
                             htmlFor="equipment-photos"
-                            className="cursor-pointer flex flex-col items-center gap-2"
+                            className="cursor-pointer flex flex-col items-center gap-3"
                           >
                             {equipmentUploadHook.isUploading ? (
                               <>
@@ -1790,7 +1826,7 @@ export default function ManagerOnboardingWizard() {
                             ) : (
                               <>
                                 <Upload className="h-8 w-8 text-gray-400" />
-                                <span className="text-sm font-medium text-[#F51042]">Click to upload photos</span>
+                                <span className="text-sm font-medium text-[#F51042] mb-1">Click to upload photos</span>
                                 <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB each)</span>
                               </>
                             )}

@@ -10,6 +10,7 @@ import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useLocation } from "wouter";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+import { useQuery } from "@tanstack/react-query";
 
 // Component for equipment image with presigned URL
 function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
@@ -247,6 +248,26 @@ export default function KitchenBookingCalendar() {
   // Calculate storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
 
+  // Fetch service fee rate (public endpoint - no auth required)
+  const { data: serviceFeeRateData } = useQuery({
+    queryKey: ['/api/platform-settings/service-fee-rate'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('/api/platform-settings/service-fee-rate');
+        if (response.ok) {
+          return response.json();
+        }
+      } catch (error) {
+        console.error('Error fetching service fee rate:', error);
+      }
+      // Default to 5% if unable to fetch
+      return { rate: 0.05, percentage: '5.00' };
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
+
   // Calculate equipment pricing (base prices only, no service fees)
   const equipmentPricing = useMemo(() => {
     if (!selectedEquipmentIds.length || !equipmentListings.rental.length) {
@@ -288,12 +309,12 @@ export default function KitchenBookingCalendar() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee on combined subtotal (5% + $0.30 Stripe processing fee)
+  // Calculate service fee on combined subtotal (dynamic rate + $0.30 Stripe processing fee)
   const serviceFee = useMemo(() => {
-    const percentageFee = Math.round(combinedSubtotal * 0.05 * 100) / 100; // 5% service fee
+    const percentageFee = Math.round(combinedSubtotal * serviceFeeRate * 100) / 100; // Dynamic service fee
     const stripeProcessingFee = 0.30; // $0.30 per transaction
     return percentageFee + stripeProcessingFee;
-  }, [combinedSubtotal]);
+  }, [combinedSubtotal, serviceFeeRate]);
 
   // Calculate grand total (subtotal + service fee)
   const grandTotal = useMemo(() => {
@@ -662,7 +683,7 @@ export default function KitchenBookingCalendar() {
       }
       
       const basePrice = hourlyRateDollars * durationHours;
-      const serviceFee = basePrice * 0.05; // 5% commission
+      const serviceFee = basePrice * serviceFeeRate; // Dynamic service fee
       const totalPrice = basePrice + serviceFee;
       
       console.log('💰 Price calculated:', { 
@@ -690,7 +711,7 @@ export default function KitchenBookingCalendar() {
         durationHours,
       });
     }
-  }, [selectedSlots, selectedKitchen, kitchenPricing]);
+  }, [selectedSlots, selectedKitchen, kitchenPricing, serviceFeeRate]);
 
   const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
     // Don't allow selecting fully booked slots

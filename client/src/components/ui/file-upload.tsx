@@ -138,13 +138,13 @@ export function FileUpload({
             className="hidden"
           />
           <Label htmlFor={fieldName} className="cursor-pointer">
-            <div className="flex flex-col items-center space-y-2">
+            <div className="flex flex-col items-center space-y-3">
               <Upload className="h-8 w-8 text-gray-400" />
               <div className="text-sm text-gray-600">
                 <span className="font-medium text-primary">Click to upload</span> or drag and drop
               </div>
-              <p className="text-xs text-gray-500">
-                {description} (max 4.5MB)
+              <p className="text-xs text-gray-500 mt-1">
+                {description} (max {maxSize}MB)
               </p>
             </div>
           </Label>

@@ -380,35 +380,51 @@ export default function ManagerRevenueDashboard({
   }, [revenueByLocation]);
 
   // Prepare data for payment status pie chart
+  // Show amounts (in dollars) instead of counts for better financial visibility
   const paymentStatusData = useMemo(() => {
     if (!transactionsData?.transactions) return [];
+    const statusAmounts: Record<string, number> = {};
     const statusCounts: Record<string, number> = {};
+    
     transactionsData.transactions.forEach((t: any) => {
+      // Use paymentStatus from transaction, default to 'pending' if not set
       const status = t.paymentStatus || 'pending';
+      const amount = t.totalPrice || 0; // Already in dollars from API
+      
+      statusAmounts[status] = (statusAmounts[status] || 0) + amount;
       statusCounts[status] = (statusCounts[status] || 0) + 1;
     });
     
     const statusLabels: Record<string, string> = {
-      paid: 'Paid',
-      pending: 'Pre-Authorized',
+      paid: 'Paid (In Your Account)',
+      pending: 'Pre-Authorized (On Hold)',
+      processing: 'Processing',
       failed: 'Failed',
       refunded: 'Refunded',
       partially_refunded: 'Partially Refunded',
+      canceled: 'Canceled',
     };
     
-    return Object.entries(statusCounts).map(([status, count]) => ({
-      name: statusLabels[status] || status.charAt(0).toUpperCase() + status.slice(1),
-      value: count,
-      status,
-    }));
+    // Return data with amounts, filtering out zero amounts
+    return Object.entries(statusAmounts)
+      .filter(([_, amount]) => amount > 0)
+      .map(([status, amount]) => ({
+        name: statusLabels[status] || status.charAt(0).toUpperCase() + status.slice(1),
+        value: Math.round(amount * 100) / 100, // Round to 2 decimal places
+        status,
+        count: statusCounts[status] || 0,
+      }))
+      .sort((a, b) => b.value - a.value); // Sort by amount descending
   }, [transactionsData]);
 
   const COLORS = {
     paid: '#10b981',
     pending: '#f59e0b',
+    processing: '#3b82f6',
     failed: '#ef4444',
     refunded: '#6b7280',
     partially_refunded: '#9ca3af',
+    canceled: '#9ca3af',
   };
 
   const getPaymentStatusColor = (status: string) => {
@@ -417,16 +433,28 @@ export default function ManagerRevenueDashboard({
 
   const getPaymentStatusBadge = (status: string) => {
     const colors: Record<string, { bg: string; text: string; label: string; tooltip?: string }> = {
-      paid: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Paid' },
+      paid: { 
+        bg: 'bg-emerald-100', 
+        text: 'text-emerald-700', 
+        label: 'Paid',
+        tooltip: 'Payment has been processed and is in your Stripe Connect account or ready for payout'
+      },
       pending: { 
         bg: 'bg-amber-100', 
         text: 'text-amber-700', 
         label: 'Pre-Authorized',
-        tooltip: 'Payment is pre-authorized via Stripe and will be processed on the booking date'
+        tooltip: 'Payment is on hold via Stripe and will be automatically processed after the cancellation period expires. Not yet in your account.'
+      },
+      processing: {
+        bg: 'bg-blue-100',
+        text: 'text-blue-700',
+        label: 'Processing',
+        tooltip: 'Payment is being processed. This usually happens automatically after the cancellation period expires.'
       },
       failed: { bg: 'bg-red-100', text: 'text-red-700', label: 'Failed' },
       refunded: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Refunded' },
       partially_refunded: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Partially Refunded' },
+      canceled: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Canceled' },
     };
     const color = colors[status] || colors.pending;
     const badge = (
@@ -439,7 +467,7 @@ export default function ManagerRevenueDashboard({
       return (
         <div className="group relative inline-block">
           {badge}
-          <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+          <div className="absolute left-0 bottom-full mb-2 w-72 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
             {color.tooltip}
           </div>
         </div>
@@ -600,14 +628,16 @@ export default function ManagerRevenueDashboard({
       ) : (
         <div className="space-y-4">
           {/* Payment System Info Banner */}
-          <Card className="border border-amber-200 bg-amber-50/50">
+          <Card className="border border-blue-200 bg-blue-50/50">
             <CardContent className="p-3">
               <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                <div className="text-xs text-amber-800">
-                  <p className="font-medium mb-1">Pre-Authorized Payment System</p>
-                  <p className="text-amber-700">
-                    All payments are pre-authorized via Stripe when bookings are made. "Pre-Authorized Payments" represent committed revenue that will be automatically processed on the booking date. "Completed Payments" are payments that have already been processed.
+                <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-blue-800">
+                  <p className="font-medium mb-1">Understanding Your Revenue</p>
+                  <p className="text-blue-700">
+                    <strong>Pre-Authorized Payments (On Hold):</strong> Money held by Stripe that will be automatically processed after the cancellation period expires. This is committed revenue but not yet in your account.
+                    <br />
+                    <strong>Completed Payments (In Your Account):</strong> Money that has been successfully processed and is available in your Stripe Connect account or ready for payout.
                   </p>
                 </div>
               </div>
@@ -666,14 +696,14 @@ export default function ManagerRevenueDashboard({
                       <p className={`text-[10px] font-medium uppercase tracking-wider ${
                         revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
                       }`}>
-                        Pre-Authorized Payments
+                        Pre-Authorized (On Hold)
                       </p>
                       <div className="group relative">
                         <Info className={`h-3 w-3 ${
                           revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-400'
                         } cursor-help`} />
-                        <div className="absolute left-0 bottom-full mb-2 w-64 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                          Payments are pre-authorized via Stripe and will be automatically processed on the booking date. These are committed revenue.
+                        <div className="absolute left-0 bottom-full mb-2 w-72 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                          Money held by Stripe that will be automatically processed after the cancellation period expires. This is committed revenue but not yet in your bank account.
                         </div>
                       </div>
                     </div>
@@ -683,7 +713,7 @@ export default function ManagerRevenueDashboard({
                     <p className={`text-xs mt-1 ${
                       revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
                     }`}>
-                      Will process on booking date
+                      Not yet in your account
                     </p>
                   </div>
                   <div className={`p-1.5 rounded-lg ${
@@ -744,16 +774,24 @@ export default function ManagerRevenueDashboard({
             </Card>
 
             {/* Completed Payments */}
-            <Card className="border border-gray-200 shadow-sm bg-white hover:shadow-md transition-shadow duration-300">
+            <Card className="border border-emerald-200 shadow-sm bg-emerald-50/30 hover:shadow-md transition-shadow duration-300">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-500 text-xs font-medium">Processed</p>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-gray-700 text-xs font-medium">Completed (In Your Account)</p>
+                      <div className="group relative">
+                        <Info className="h-3 w-3 text-gray-400 cursor-help" />
+                        <div className="absolute left-0 bottom-full mb-2 w-72 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                          Money that has been successfully processed and is available in your Stripe Connect account or ready for payout to your bank.
+                        </div>
+                      </div>
+                    </div>
                     <p className="text-xl font-bold text-emerald-600 mt-1">
                       {revenueMetrics ? formatCurrency(revenueMetrics.completedPayments) : '$0.00'}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {revenueMetrics?.paidBookingCount || 0} bookings processed
+                    <p className="text-xs text-gray-600 mt-1">
+                      {revenueMetrics?.paidBookingCount || 0} {revenueMetrics?.paidBookingCount === 1 ? 'booking' : 'bookings'} processed
                     </p>
                   </div>
                   <div className="p-2 bg-emerald-100 rounded-lg">
@@ -965,15 +1003,19 @@ export default function ManagerRevenueDashboard({
                               fontSize: '12px',
                               backgroundColor: 'white'
                             }}
+                            formatter={(value: any) => formatCurrency(value)}
                           />
                         </RechartsPieChart>
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <div className="text-3xl font-bold" style={{ color: getPaymentStatusColor(paymentStatusData[0].status) }}>
-                          100%
+                        <div className="text-2xl font-bold" style={{ color: getPaymentStatusColor(paymentStatusData[0].status) }}>
+                          {formatCurrency(paymentStatusData[0].value)}
                         </div>
-                        <div className="text-sm text-gray-600 mt-1">
+                        <div className="text-xs text-gray-600 mt-1">
                           {paymentStatusData[0].name}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          {paymentStatusData[0].count} {paymentStatusData[0].count === 1 ? 'booking' : 'bookings'}
                         </div>
                       </div>
                     </div>
@@ -1005,18 +1047,23 @@ export default function ManagerRevenueDashboard({
                             fontSize: '12px',
                             backgroundColor: 'white'
                           }}
-                          formatter={(value: any, name: any) => [
-                            `${value} (${((value / paymentStatusData.reduce((sum: number, item: any) => sum + item.value, 0)) * 100).toFixed(1)}%)`,
-                            name
-                          ]}
+                          formatter={(value: any, name: any, props: any) => {
+                            const total = paymentStatusData.reduce((sum: number, item: any) => sum + item.value, 0);
+                            const percent = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+                            const count = props.payload?.count || 0;
+                            return [
+                              `${formatCurrency(value)} (${percent}%) - ${count} ${count === 1 ? 'booking' : 'bookings'}`,
+                              name
+                            ];
+                          }}
                         />
                         <Legend 
                           wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
                           iconType="circle"
                           formatter={(value, entry: any) => {
                             const total = paymentStatusData.reduce((sum: number, item: any) => sum + item.value, 0);
-                            const percent = ((entry.payload.value / total) * 100).toFixed(1);
-                            return `${value} (${percent}%)`;
+                            const percent = total > 0 ? ((entry.payload.value / total) * 100).toFixed(1) : '0';
+                            return `${value}: ${formatCurrency(entry.payload.value)} (${percent}%)`;
                           }}
                         />
                       </RechartsPieChart>
@@ -1057,8 +1104,9 @@ export default function ManagerRevenueDashboard({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="pending">Pre-Authorized (Pending)</SelectItem>
+                  <SelectItem value="paid">Paid (In Account)</SelectItem>
+                  <SelectItem value="pending">Pre-Authorized (On Hold)</SelectItem>
+                  <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
                   <SelectItem value="refunded">Refunded</SelectItem>
                 </SelectContent>

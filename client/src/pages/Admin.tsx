@@ -3235,7 +3235,7 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
   }, [dateRange]);
 
   // Fetch all managers revenue
-  const { data: managersRevenue, isLoading } = useQuery({
+  const { data: managersRevenue, isLoading, error } = useQuery({
     queryKey: ['/api/admin/revenue/all-managers', dateRangeParams.startDate, dateRangeParams.endDate],
     queryFn: async () => {
       const token = await getFirebaseToken();
@@ -3253,7 +3253,8 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch managers revenue');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch managers revenue');
       }
       return response.json();
     },
@@ -3318,6 +3319,14 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
         </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="h-12 w-12 text-red-300 mx-auto mb-3" />
+            <p className="text-red-600 font-medium">Error loading revenue data</p>
+            <p className="text-sm text-gray-500 mt-2">{error instanceof Error ? error.message : 'Unknown error'}</p>
+          </CardContent>
+        </Card>
       ) : managersRevenue && managersRevenue.managers ? (
         <>
           {/* Summary Cards */}
@@ -3512,7 +3521,7 @@ function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () =
     };
   }, [dateRange]);
 
-  const { data: platformOverview, isLoading } = useQuery({
+  const { data: platformOverview, isLoading, error } = useQuery({
     queryKey: ['/api/admin/revenue/platform-overview', dateRangeParams.startDate, dateRangeParams.endDate],
     queryFn: async () => {
       const token = await getFirebaseToken();
@@ -3530,7 +3539,8 @@ function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () =
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch platform overview');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch platform overview');
       }
       return response.json();
     },
@@ -3568,6 +3578,14 @@ function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () =
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
         </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="h-12 w-12 text-red-300 mx-auto mb-3" />
+            <p className="text-red-600 font-medium">Error loading platform data</p>
+            <p className="text-sm text-gray-500 mt-2">{error instanceof Error ? error.message : 'Unknown error'}</p>
+          </CardContent>
+        </Card>
       ) : platformOverview ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>

@@ -9068,10 +9068,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const row = result.rows[0];
 
       res.json({
-        totalRevenue: (parseInt(row.total_revenue) || 0) / 100,
-        platformFee: (parseInt(row.platform_fee) || 0) / 100,
-        managerCount: parseInt(row.manager_count) || 0,
-        bookingCount: parseInt(row.booking_count) || 0,
+        totalPlatformRevenue: (parseInt(row.total_revenue) || 0) / 100,
+        totalPlatformFees: (parseInt(row.platform_fee) || 0) / 100,
+        activeManagers: parseInt(row.manager_count) || 0,
+        totalBookings: parseInt(row.booking_count) || 0,
         paidBookingCount: parseInt(row.paid_count) || 0,
         pendingBookingCount: parseInt(row.pending_count) || 0,
         _raw: {

@@ -295,7 +295,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         AND payment_status != 'paid'
     `, [paymentIntent.id]);
 
-    console.log(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`);
+    console.log(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id} - Payments are now processed and in manager's account`);
   } catch (error) {
     console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
   }
