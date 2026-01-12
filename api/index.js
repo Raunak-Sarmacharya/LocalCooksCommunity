@@ -879,11 +879,38 @@ async function uploadToR2(file, userId, folder = 'documents') {
     await client.send(command);
 
     // Construct public URL
-    const publicUrl = R2_PUBLIC_URL.endsWith('/') 
-      ? `${R2_PUBLIC_URL}${key}`
-      : `${R2_PUBLIC_URL}/${key}`;
+    // If USE_R2_PROXY is enabled, return proxy URL instead of direct R2 URL
+    // This ensures files are accessible even if the bucket is private
+    const useProxy = process.env.USE_R2_PROXY === 'true';
+    
+    let publicUrl;
+    if (useProxy) {
+      // Use proxy URL that will generate presigned URLs on access
+      // Determine base URL from environment variables
+      let baseUrl;
+      if (process.env.BASE_URL) {
+        baseUrl = process.env.BASE_URL;
+      } else if (process.env.VERCEL_URL) {
+        baseUrl = `https://${process.env.VERCEL_URL}`;
+      } else if (process.env.NEXT_PUBLIC_API_URL) {
+        baseUrl = process.env.NEXT_PUBLIC_API_URL;
+      } else {
+        // Fallback for development
+        baseUrl = 'http://localhost:3000';
+      }
+      
+      const directR2Url = R2_PUBLIC_URL.endsWith('/') 
+        ? `${R2_PUBLIC_URL}${key}`
+        : `${R2_PUBLIC_URL}/${key}`;
+      publicUrl = `${baseUrl}/api/files/r2-proxy?url=${encodeURIComponent(directR2Url)}`;
+    } else {
+      // Use direct R2 URL (requires bucket to be configured for public access)
+      publicUrl = R2_PUBLIC_URL.endsWith('/') 
+        ? `${R2_PUBLIC_URL}${key}`
+        : `${R2_PUBLIC_URL}/${key}`;
+    }
 
-    console.log(`✅ File uploaded to R2: ${key} -> ${publicUrl}`);
+    console.log(`✅ File uploaded to R2: ${key} -> ${publicUrl}${useProxy ? ' (via proxy)' : ''}`);
     return publicUrl;
   } catch (error) {
     console.error('❌ Error uploading to R2:', error);
@@ -3996,62 +4023,8 @@ app.get("/api/files/documents/:filename", requireFirebaseAuthWithUser, async (re
           }
 
           if (fileUrl) {
-            // Generate presigned URL for R2 access (bucket is private)
-            const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
-                           (process.env.CLOUDFLARE_R2_PUBLIC_URL && fileUrl.includes(process.env.CLOUDFLARE_R2_PUBLIC_URL)) ||
-                           (process.env.CLOUDFLARE_R2_BUCKET_NAME && fileUrl.includes(process.env.CLOUDFLARE_R2_BUCKET_NAME));
-            
-            if (isProduction && isR2Configured() && isR2Url) {
-              try {
-                // Extract key from R2 URL
-                const urlObj = new URL(fileUrl);
-                let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
-                const pathParts = pathname.split('/').filter(p => p);
-                
-                const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
-                const bucketIndex = pathParts.indexOf(bucketName);
-                
-                let key;
-                if (bucketIndex >= 0) {
-                  key = pathParts.slice(bucketIndex + 1).join('/');
-                } else {
-                  const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
-                  const firstPart = pathParts[0];
-                  if (knownFolders.includes(firstPart)) {
-                    key = pathname;
-                  } else {
-                    key = pathname;
-                  }
-                }
-                
-                key = key.replace(/^\/+|\/+$/g, '');
-                
-                if (!key || key.length === 0) {
-                  throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
-                }
-                
-                // Generate presigned URL
-                const client = getR2Client();
-                const { GetObjectCommand } = await import('@aws-sdk/client-s3');
-                const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
-                
-                const command = new GetObjectCommand({
-                  Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
-                  Key: key,
-                });
-                
-                const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
-                console.log('✅ Generated presigned URL for document:', key);
-                return res.redirect(presignedUrl);
-              } catch (error) {
-                console.error('❌ Error generating presigned URL for document:', error);
-                // Fallback to direct URL
-                return res.redirect(fileUrl);
-              }
-            } else {
-              // Not R2 URL or not in production, redirect directly
-              return res.redirect(fileUrl);
-            }
+            // Redirect to R2 URL (public URL - bucket should be configured for public access)
+            return res.redirect(fileUrl);
           }
         }
       }
@@ -4065,52 +4038,14 @@ app.get("/api/files/documents/:filename", requireFirebaseAuthWithUser, async (re
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Construct R2 URL and generate presigned URL if we have the bucket configured
+      // Construct R2 URL if we have the bucket configured
       if (isR2Configured()) {
-        try {
-          const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
-            `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.CLOUDFLARE_R2_BUCKET_NAME}`;
-          const fileUrl = R2_PUBLIC_URL.endsWith('/') 
-            ? `${R2_PUBLIC_URL}documents/${filename}`
-            : `${R2_PUBLIC_URL}/documents/${filename}`;
-          
-          // Generate presigned URL for private R2 bucket access
-          const client = getR2Client();
-          const { GetObjectCommand } = await import('@aws-sdk/client-s3');
-          const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
-          
-          const key = `documents/${filename}`;
-          
-          const command = new GetObjectCommand({
-            Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
-            Key: key,
-          });
-          
-          try {
-            // Generate presigned URL (valid for 1 hour)
-            const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
-            console.log('✅ Generated presigned URL for document:', key);
-            
-            // Redirect to presigned URL
-            return res.redirect(presignedUrl);
-          } catch (presignError) {
-            console.error('❌ Presigned URL generation failed, trying direct URL:', {
-              error: presignError.message,
-              key
-            });
-            // Fallback: redirect to direct URL (might work if bucket is public)
-            return res.redirect(fileUrl);
-          }
-        } catch (error) {
-          console.error('❌ Error generating presigned URL for document:', error);
-          // Fallback: construct and redirect to direct URL
-          const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
-            `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.CLOUDFLARE_R2_BUCKET_NAME}`;
-          const fileUrl = R2_PUBLIC_URL.endsWith('/') 
-            ? `${R2_PUBLIC_URL}documents/${filename}`
-            : `${R2_PUBLIC_URL}/documents/${filename}`;
-          return res.redirect(fileUrl);
-        }
+        const R2_PUBLIC_URL = process.env.CLOUDFLARE_R2_PUBLIC_URL || 
+          `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com/${process.env.CLOUDFLARE_R2_BUCKET_NAME}`;
+        const fileUrl = R2_PUBLIC_URL.endsWith('/') 
+          ? `${R2_PUBLIC_URL}documents/${filename}`
+          : `${R2_PUBLIC_URL}/documents/${filename}`;
+        return res.redirect(fileUrl);
       }
 
       return res.status(404).json({ message: "File not found" });
@@ -4428,6 +4363,104 @@ app.get("/api/files/r2-presigned", requireFirebaseAuthWithUser, async (req, res)
   } catch (error) {
     console.error("Error generating presigned URL:", error);
     return res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// Public proxy endpoint for R2 files - redirects direct R2 URLs to presigned URLs
+// This allows direct access to R2 files without authentication
+// Security: Only allows access to files in known folders (documents, images, profiles, kitchen-applications)
+app.get("/api/files/r2-proxy", async (req, res) => {
+  try {
+    const fileUrl = req.query.url;
+    if (!fileUrl || typeof fileUrl !== 'string') {
+      return res.status(400).json({ error: "File URL is required" });
+    }
+
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    // Check if this is an R2 URL
+    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
+                   (process.env.CLOUDFLARE_R2_PUBLIC_URL && fileUrl.includes(process.env.CLOUDFLARE_R2_PUBLIC_URL)) ||
+                   (process.env.CLOUDFLARE_R2_BUCKET_NAME && fileUrl.includes(process.env.CLOUDFLARE_R2_BUCKET_NAME));
+
+    // Only process R2 URLs in production
+    if (isProduction && isR2Configured() && isR2Url) {
+      try {
+        // Extract key from R2 URL
+        const urlObj = new URL(fileUrl);
+        let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+        const pathParts = pathname.split('/').filter(p => p);
+        
+        // Find the bucket name index
+        const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+        const bucketIndex = pathParts.indexOf(bucketName);
+        
+        let key;
+        if (bucketIndex >= 0) {
+          // Bucket name is in the path, key is everything after it
+          key = pathParts.slice(bucketIndex + 1).join('/');
+        } else {
+          // Bucket name not in path (custom domain or different URL format)
+          const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
+          const firstPart = pathParts[0];
+          
+          if (knownFolders.includes(firstPart)) {
+            // Custom domain with folder structure, use entire pathname
+            key = pathname;
+          } else {
+            // Unknown format, try using entire pathname
+            key = pathname;
+          }
+        }
+        
+        // Remove leading/trailing slashes
+        key = key.replace(/^\/+|\/+$/g, '');
+        
+        // Security: Only allow access to files in known folders
+        const allowedFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
+        const keyFolder = key.split('/')[0];
+        if (!allowedFolders.includes(keyFolder)) {
+          return res.status(403).json({ error: "Access denied: Invalid folder" });
+        }
+        
+        // Final validation: key should not be empty
+        if (!key || key.length === 0) {
+          throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
+        }
+
+        // Generate presigned URL
+        const client = getR2Client();
+        const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+        const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+        
+        const command = new GetObjectCommand({
+          Bucket: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+          Key: key,
+        });
+
+        // Generate presigned URL (valid for 1 hour)
+        const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
+        console.log('✅ Generated presigned URL via public proxy for:', key);
+        
+        // Redirect to presigned URL
+        return res.redirect(presignedUrl);
+      } catch (error) {
+        console.error('❌ Error generating presigned URL via proxy:', {
+          error: error.message,
+          fileUrl
+        });
+        return res.status(500).json({ 
+          error: "Failed to generate presigned URL",
+          message: error.message 
+        });
+      }
+    } else {
+      // For non-R2 URLs or development, redirect to original URL
+      return res.redirect(fileUrl);
+    }
+  } catch (error) {
+    console.error("Error in R2 proxy endpoint:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
