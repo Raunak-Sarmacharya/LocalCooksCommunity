@@ -455,20 +455,19 @@ export default function ManagerBookingDashboard() {
         <main 
           className="flex-1 pb-8 relative z-10 flex min-h-0"
         >
-          {/* Animated Sidebar - scroll-aware height */}
+          {/* Animated Sidebar - positioned below navbar */}
           <div 
             className="hidden lg:block z-20 flex-shrink-0" 
             style={{ 
               position: 'sticky',
-              top: `${headerHeight}px`, // Stick below fixed header (viewport-relative)
+              top: `${headerHeight}px`, // Stick below fixed header
               left: 0,
               alignSelf: 'flex-start',
               width: isSidebarCollapsed ? '64px' : '256px',
-              transition: 'max-height 0.2s ease-out, top 0.2s ease-out, width 0.3s ease-out',
-              overflowY: 'auto',
-              overflowX: 'visible',
+              transition: 'width 0.3s ease-out',
               height: `calc(100vh - ${headerHeight}px)`,
               maxHeight: `calc(100vh - ${headerHeight}px)`,
+              overflow: 'visible', // Allow collapse button to be visible
             }}
           >
           <AnimatedManagerSidebar

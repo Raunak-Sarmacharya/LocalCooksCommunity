@@ -93,29 +93,32 @@ export default function AnimatedManagerSidebar({
         className="relative flex flex-col h-full bg-white border-r border-gray-200"
         style={{ 
           overflow: 'visible',
+          height: '100%',
         }}
       >
         {/* Collapse Toggle Button - Absolutely positioned at top right, always visible */}
         {!isMobile && (
           <button
             onClick={handleToggle}
-            className="absolute top-3 right-3 z-50 flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-200 shadow-md hover:shadow-lg transition-all hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#F51042]/20"
+            className="absolute top-2 right-2 z-[100] flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-300 shadow-lg hover:shadow-xl transition-all hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F51042]/30 focus:ring-offset-1"
             style={{
-              zIndex: 50,
+              zIndex: 100,
             }}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!isCollapsed}
           >
             {isCollapsed ? (
-              <ChevronRight className="w-4 h-4 text-gray-600" />
+              <ChevronRight className="w-4 h-4 text-gray-700" />
             ) : (
-              <ChevronLeft className="w-4 h-4 text-gray-600" />
+              <ChevronLeft className="w-4 h-4 text-gray-700" />
             )}
           </button>
         )}
 
-        {/* Location Selection - Always visible at top */}
-        <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200 bg-white pt-4">
+        {/* Sidebar Content Container - Scrollable */}
+        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ paddingTop: '0' }}>
+          {/* Location Selection - Always visible at top */}
+          <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200 bg-white">
           <AnimatePresence mode="wait">
             {isContentVisible ? (
               <motion.div
@@ -366,6 +369,7 @@ export default function AnimatedManagerSidebar({
               </AnimatePresence>
             </div>
           )}
+        </div>
       </motion.aside>
     </TooltipProvider>
   );
