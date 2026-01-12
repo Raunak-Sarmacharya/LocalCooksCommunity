@@ -4190,8 +4190,11 @@ app.get("/api/files/kitchen-license/:locationId", requireFirebaseAuthWithUser, r
           const presignedUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
           console.log('✅ Generated presigned URL for R2 file');
           
-          // Redirect to presigned URL
-          return res.redirect(presignedUrl);
+          // Redirect to r2-proxy instead of directly to presigned URL
+          // This ensures consistent access pattern and better error handling
+          const proxyUrl = `/api/files/r2-proxy?url=${encodeURIComponent(licenseUrl)}`;
+          console.log('🔗 Redirecting to r2-proxy for admin kitchen license');
+          return res.redirect(proxyUrl);
         } catch (presignError) {
           console.error('❌ Presigned URL generation failed:', {
             error: presignError.message,
@@ -4226,17 +4229,30 @@ app.get("/api/files/kitchen-license/:locationId", requireFirebaseAuthWithUser, r
             }
           } catch (directError) {
             console.error('❌ Direct R2 access also failed:', directError);
-            // Final fallback: redirect to original URL
-            return res.redirect(licenseUrl);
+            // Final fallback: redirect to r2-proxy which will handle it
+            const proxyUrl = `/api/files/r2-proxy?url=${encodeURIComponent(licenseUrl)}`;
+            return res.redirect(proxyUrl);
           }
         }
       } catch (r2Error) {
         console.error('Error fetching file from R2:', r2Error);
-        // Fallback: redirect to the URL (in case it's publicly accessible)
-        return res.redirect(licenseUrl);
+        // Fallback: redirect to r2-proxy which will handle it
+        const proxyUrl = `/api/files/r2-proxy?url=${encodeURIComponent(licenseUrl)}`;
+        return res.redirect(proxyUrl);
       }
     } else {
-      // For local files or if R2 is not configured, redirect to the URL
+      // For local files or if R2 is not configured, check if it's an R2 URL and use proxy
+      const isR2Url = licenseUrl.includes('r2.cloudflarestorage.com') || 
+                     (process.env.CLOUDFLARE_R2_PUBLIC_URL && licenseUrl.includes(process.env.CLOUDFLARE_R2_PUBLIC_URL)) ||
+                     (process.env.CLOUDFLARE_R2_BUCKET_NAME && licenseUrl.includes(process.env.CLOUDFLARE_R2_BUCKET_NAME));
+      
+      if (isR2Url) {
+        // Use r2-proxy for R2 URLs even if not in production
+        const proxyUrl = `/api/files/r2-proxy?url=${encodeURIComponent(licenseUrl)}`;
+        return res.redirect(proxyUrl);
+      }
+      
+      // For non-R2 URLs, redirect directly
       return res.redirect(licenseUrl);
     }
   } catch (error) {
