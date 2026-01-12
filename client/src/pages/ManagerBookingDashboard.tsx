@@ -489,6 +489,7 @@ export default function ManagerBookingDashboard() {
             onCreateLocation={() => setShowCreateLocation(true)}
             isLoadingLocations={isLoadingLocations}
             onCollapseChange={setIsSidebarCollapsed}
+            headerHeight={headerHeight}
           />
         </div>
         

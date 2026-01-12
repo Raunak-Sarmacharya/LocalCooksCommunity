@@ -31,6 +31,7 @@ interface AnimatedManagerSidebarProps {
   isLoadingLocations?: boolean;
   isMobile?: boolean;
   onCollapseChange?: (isCollapsed: boolean) => void;
+  headerHeight?: number;
 }
 
 export default function AnimatedManagerSidebar({
@@ -44,6 +45,7 @@ export default function AnimatedManagerSidebar({
   isLoadingLocations = false,
   isMobile = false,
   onCollapseChange,
+  headerHeight = 96,
 }: AnimatedManagerSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [logoLoadError, setLogoLoadError] = useState(false);
@@ -118,7 +120,17 @@ export default function AnimatedManagerSidebar({
 
         {/* Sidebar Content Container - Scrollable, starts from top */}
         <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
-          {/* Location Selection - Always visible at top - NO TOP PADDING/MARGIN TO PREVENT CLIPPING */}
+          {/* Spacer to prevent navbar overlap - matches navbar height */}
+          {!isMobile && (
+            <div 
+              style={{ 
+                height: `${headerHeight}px`,
+                flexShrink: 0 
+              }}
+            />
+          )}
+          
+          {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR */}
           <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white" style={{ marginTop: 0, paddingTop: '1rem' }}>
           <AnimatePresence mode="wait">
             {isContentVisible ? (
