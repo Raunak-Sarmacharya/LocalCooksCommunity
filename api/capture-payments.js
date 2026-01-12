@@ -58,10 +58,14 @@ module.exports = async (req, res) => {
         kb.status,
         kb.payment_status,
         l.cancellation_policy_hours,
-        kb.total_price
+        kb.total_price,
+        l.manager_id,
+        u.stripe_connect_account_id,
+        u.stripe_connect_onboarding_status
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
+      LEFT JOIN users u ON l.manager_id = u.id
       WHERE kb.payment_intent_id IS NOT NULL
         AND kb.status != 'cancelled'
         AND kb.payment_status = 'pending'
@@ -106,14 +110,81 @@ module.exports = async (req, res) => {
           continue;
         }
 
+        // Retrieve the full payment intent BEFORE capture to check for transfer_data
+        const stripePaymentIntentBefore = await stripe.paymentIntents.retrieve(booking.payment_intent_id);
+        const hasTransferData = !!stripePaymentIntentBefore.transfer_data?.destination;
+        const managerAccountId = stripePaymentIntentBefore.transfer_data?.destination || 
+                                  stripePaymentIntentBefore.metadata?.manager_connect_account_id;
+        const applicationFeeAmount = stripePaymentIntentBefore.application_fee_amount;
+
+        // Log manager Connect account info from database for comparison
+        const dbManagerAccountId = booking.stripe_connect_account_id;
+        const dbManagerOnboardingStatus = booking.stripe_connect_onboarding_status;
+        
+        if (hasTransferData) {
+          console.log(`[Capture Payments] PaymentIntent ${booking.payment_intent_id} has transfer_data configured:`, {
+            destination: managerAccountId,
+            applicationFeeAmount: applicationFeeAmount,
+            transferAmount: stripePaymentIntentBefore.amount - (applicationFeeAmount || 0),
+            dbManagerAccountId: dbManagerAccountId,
+            dbManagerOnboardingStatus: dbManagerOnboardingStatus
+          });
+        } else if (dbManagerAccountId && dbManagerOnboardingStatus === 'complete') {
+          // Manager has Connect account but PaymentIntent wasn't created with transfer_data
+          // This could happen if Connect account was set up after booking was created
+          console.warn(`[Capture Payments] ⚠️ Manager has Connect account but PaymentIntent ${booking.payment_intent_id} was not created with transfer_data:`, {
+            bookingId: booking.booking_id,
+            managerId: booking.manager_id,
+            dbManagerAccountId: dbManagerAccountId,
+            paymentIntentHasTransfer: hasTransferData
+          });
+        }
+
         // Capture the payment
         const captured = await capturePaymentIntent(booking.payment_intent_id);
 
-        // Retrieve the full payment intent to get charge ID after capture
-        const stripePaymentIntent = await stripe.paymentIntents.retrieve(booking.payment_intent_id);
+        // Retrieve the full payment intent to get charge ID and verify transfer after capture
+        const stripePaymentIntent = await stripe.paymentIntents.retrieve(booking.payment_intent_id, {
+          expand: ['charges.data.transfer', 'charges.data.destination']
+        });
         const chargeId = typeof stripePaymentIntent.latest_charge === 'string' 
           ? stripePaymentIntent.latest_charge 
           : stripePaymentIntent.latest_charge?.id;
+
+        // Verify transfer was created if transfer_data was configured
+        if (hasTransferData && chargeId) {
+          try {
+            const charge = await stripe.charges.retrieve(chargeId, {
+              expand: ['transfer', 'destination']
+            });
+            
+            if (charge.transfer) {
+              const transferId = typeof charge.transfer === 'string' ? charge.transfer : charge.transfer.id;
+              const transfer = await stripe.transfers.retrieve(transferId);
+              
+              console.log(`[Capture Payments] ✅ Transfer verified for booking ${booking.booking_id}:`, {
+                transferId: transfer.id,
+                amount: transfer.amount,
+                destination: transfer.destination,
+                status: transfer.reversed ? 'reversed' : transfer.status || 'pending',
+                managerAccountId: managerAccountId
+              });
+
+              // Log warning if transfer destination doesn't match expected manager account
+              if (transfer.destination !== managerAccountId) {
+                console.warn(`[Capture Payments] ⚠️ Transfer destination mismatch for booking ${booking.booking_id}:`, {
+                  expected: managerAccountId,
+                  actual: transfer.destination
+                });
+              }
+            } else {
+              console.warn(`[Capture Payments] ⚠️ No transfer found on charge ${chargeId} for booking ${booking.booking_id} - transfer may be delayed or failed`);
+            }
+          } catch (transferError) {
+            console.error(`[Capture Payments] Error verifying transfer for booking ${booking.booking_id}:`, transferError);
+            // Don't fail the capture if transfer verification fails - the transfer might still be processing
+          }
+        }
 
         // Update booking payment status
         const updateResult = await pool.query(`

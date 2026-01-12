@@ -14611,6 +14611,20 @@ app.put("/api/manager/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, r
 
     const { imageUrl } = req.body;
     
+    // If removing image, delete from R2
+    if (!imageUrl && kitchen.image_url) {
+      try {
+        const isProduction = process.env.NODE_ENV === 'production';
+        if (isProduction && isR2Configured()) {
+          await deleteFromR2(kitchen.image_url);
+          console.log(`🗑️ Deleted kitchen image from R2: ${kitchen.image_url}`);
+        }
+      } catch (error) {
+        console.error('Error deleting image from R2:', error);
+        // Continue with database update even if R2 deletion fails
+      }
+    }
+    
     // Update the kitchen image
     const updateResult = await pool.query(`
       UPDATE kitchens 
@@ -14625,6 +14639,121 @@ app.put("/api/manager/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, r
   } catch (error) {
     console.error("Error updating kitchen image:", error);
     res.status(500).json({ error: error.message || "Failed to update kitchen image" });
+  }
+});
+
+// Update kitchen gallery images (manager)
+app.put("/api/manager/kitchens/:kitchenId/gallery", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
+
+    const kitchenId = parseInt(req.params.kitchenId);
+    if (isNaN(kitchenId) || kitchenId <= 0) {
+      return res.status(400).json({ error: "Invalid kitchen ID" });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database not available" });
+    }
+
+    // Get the kitchen to verify manager has access to its location
+    const kitchenResult = await pool.query(`
+      SELECT k.*, l.manager_id 
+      FROM kitchens k 
+      JOIN locations l ON k.location_id = l.id 
+      WHERE k.id = $1
+    `, [kitchenId]);
+    
+    if (kitchenResult.rows.length === 0) {
+      return res.status(404).json({ error: "Kitchen not found" });
+    }
+
+    const kitchen = kitchenResult.rows[0];
+    
+    // Verify the manager has access to this kitchen's location
+    if (kitchen.manager_id !== user.id) {
+      return res.status(403).json({ error: "Access denied to this kitchen" });
+    }
+
+    const { galleryImages } = req.body;
+    
+    // Validate galleryImages is an array
+    if (galleryImages !== undefined && !Array.isArray(galleryImages)) {
+      return res.status(400).json({ error: "galleryImages must be an array" });
+    }
+    
+    // If removing images, delete from R2
+    if (galleryImages && Array.isArray(galleryImages) && kitchen.gallery_images && Array.isArray(kitchen.gallery_images)) {
+      const removedImages = kitchen.gallery_images.filter((img) => !galleryImages.includes(img));
+      if (removedImages.length > 0) {
+        try {
+          const isProduction = process.env.NODE_ENV === 'production';
+          if (isProduction && isR2Configured()) {
+            for (const imageUrl of removedImages) {
+              await deleteFromR2(imageUrl);
+              console.log(`🗑️ Deleted gallery image from R2: ${imageUrl}`);
+            }
+          }
+        } catch (error) {
+          console.error('Error deleting gallery images from R2:', error);
+          // Continue with database update even if R2 deletion fails
+        }
+      }
+    }
+    
+    // Update the kitchen gallery images
+    const updateResult = await pool.query(`
+      UPDATE kitchens 
+      SET gallery_images = $1, updated_at = NOW() 
+      WHERE id = $2 
+      RETURNING *
+    `, [JSON.stringify(galleryImages || []), kitchenId]);
+    
+    console.log(`✅ Kitchen ${kitchenId} gallery images updated by manager ${user.id}`);
+    
+    res.json(updateResult.rows[0]);
+  } catch (error) {
+    console.error("Error updating kitchen gallery images:", error);
+    res.status(500).json({ error: error.message || "Failed to update kitchen gallery images" });
+  }
+});
+
+// Delete file from R2 (manager)
+app.delete("/api/manager/files", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+  try {
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+    const user = req.neonUser;
+
+    const { fileUrl } = req.body;
+    
+    if (!fileUrl || typeof fileUrl !== 'string') {
+      return res.status(400).json({ error: "fileUrl is required and must be a string" });
+    }
+
+    try {
+      const isProduction = process.env.NODE_ENV === 'production';
+      
+      if (isProduction && isR2Configured()) {
+        const deleted = await deleteFromR2(fileUrl);
+        if (deleted) {
+          console.log(`✅ File deleted from R2 by manager ${user.id}: ${fileUrl}`);
+          return res.json({ success: true, message: "File deleted successfully" });
+        } else {
+          return res.status(500).json({ error: "Failed to delete file from R2" });
+        }
+      } else {
+        // In development, just return success
+        console.log(`💻 Development mode: File deletion skipped for ${fileUrl}`);
+        return res.json({ success: true, message: "File deletion skipped (development mode)" });
+      }
+    } catch (error) {
+      console.error('Error deleting file from R2:', error);
+      return res.status(500).json({ error: error.message || "Failed to delete file" });
+    }
+  } catch (error) {
+    console.error("Error in delete file endpoint:", error);
+    res.status(500).json({ error: error.message || "Failed to delete file" });
   }
 });
 

@@ -42,7 +42,7 @@ import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
-import { requireFirebaseAuthWithUser, requireManager } from "./firebase-auth-middleware";
+import { requireFirebaseAuthWithUser, requireManager, optionalFirebaseAuth } from "./firebase-auth-middleware";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
 import Stripe from "stripe";
@@ -1089,9 +1089,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================
   
   // Get presigned URL for an image stored in R2 bucket
-  app.post("/api/images/presigned-url", async (req: Request, res: Response) => {
+  app.post("/api/images/presigned-url", optionalFirebaseAuth, async (req: Request, res: Response) => {
     try {
-      // Check if user is authenticated
+      // Check if user is authenticated (supports both Firebase and session auth)
       const user = await getAuthenticatedUser(req);
       if (!user) {
         return res.status(401).json({ error: "Not authenticated" });
@@ -1103,23 +1103,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "imageUrl is required" });
       }
 
-      // Check if R2 is configured
+      // Check if R2 is configured and we're in production
       const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      const isDevelopment = process.env.NODE_ENV === 'development' || (!isProduction && !process.env.VERCEL_ENV);
       
+      // In development, always return the original URL (no presigned URLs needed)
+      if (isDevelopment) {
+        console.log('💻 Development mode: Returning original URL without presigned URL');
+        return res.json({ url: imageUrl });
+      }
+      
+      // In production, try to generate presigned URL
       if (isProduction) {
         try {
-          const { getPresignedUrl } = await import('./r2-storage');
+          const { getPresignedUrl, isR2Configured } = await import('./r2-storage');
+          
+          if (!isR2Configured()) {
+            console.warn('R2 not configured, returning original URL');
+            return res.json({ url: imageUrl });
+          }
+          
           const presignedUrl = await getPresignedUrl(imageUrl, 3600); // 1 hour expiry
           return res.json({ url: presignedUrl });
         } catch (error) {
-          console.error('Error generating presigned URL:', error);
+          console.error('Error generating presigned URL, falling back to original URL:', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            imageUrl
+          });
           // Fallback to public URL if presigned URL generation fails
+          // This will work if R2 bucket has public access enabled
           return res.json({ url: imageUrl });
         }
-      } else {
-        // In development, return the URL as-is (local file serving)
-        return res.json({ url: imageUrl });
       }
+      
+      // Default: return original URL
+      return res.json({ url: imageUrl });
     } catch (error) {
       console.error('Error in presigned URL endpoint:', error);
       return res.status(500).json({ 
@@ -5142,6 +5160,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { imageUrl } = req.body;
       
+      // If removing image, delete from R2
+      if (!imageUrl && kitchen.imageUrl) {
+        try {
+          const { deleteFromR2 } = await import('./r2-storage');
+          const { isR2Configured } = await import('./r2-storage');
+          const isProduction = process.env.NODE_ENV === 'production';
+          
+          if (isProduction && isR2Configured()) {
+            await deleteFromR2(kitchen.imageUrl);
+            console.log(`🗑️ Deleted kitchen image from R2: ${kitchen.imageUrl}`);
+          }
+        } catch (error) {
+          console.error('Error deleting image from R2:', error);
+          // Continue with database update even if R2 deletion fails
+        }
+      }
+      
       const updated = await firebaseStorage.updateKitchen(kitchenId, { imageUrl: imageUrl || null });
       
       console.log(`✅ Kitchen ${kitchenId} image updated by manager ${user.id}`);
@@ -5150,6 +5185,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error updating kitchen image:", error);
       res.status(500).json({ error: error.message || "Failed to update kitchen image" });
+    }
+  });
+
+  // Update kitchen gallery images (manager)
+  app.put("/api/manager/kitchens/:kitchenId/gallery", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
+
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get the kitchen to verify manager has access to its location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      // Verify the manager has access to this kitchen's location
+      const locations = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "Access denied to this kitchen" });
+      }
+
+      const { galleryImages } = req.body;
+      
+      // Validate galleryImages is an array
+      if (galleryImages !== undefined && !Array.isArray(galleryImages)) {
+        return res.status(400).json({ error: "galleryImages must be an array" });
+      }
+      
+      // If removing images, delete from R2
+      if (galleryImages && Array.isArray(galleryImages) && kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) {
+        const removedImages = kitchen.galleryImages.filter((img: string) => !galleryImages.includes(img));
+        if (removedImages.length > 0) {
+          try {
+            const { deleteFromR2 } = await import('./r2-storage');
+            const { isR2Configured } = await import('./r2-storage');
+            const isProduction = process.env.NODE_ENV === 'production';
+            
+            if (isProduction && isR2Configured()) {
+              for (const imageUrl of removedImages) {
+                await deleteFromR2(imageUrl);
+                console.log(`🗑️ Deleted gallery image from R2: ${imageUrl}`);
+              }
+            }
+          } catch (error) {
+            console.error('Error deleting gallery images from R2:', error);
+            // Continue with database update even if R2 deletion fails
+          }
+        }
+      }
+      
+      const updated = await firebaseStorage.updateKitchen(kitchenId, { galleryImages: galleryImages || [] });
+      
+      console.log(`✅ Kitchen ${kitchenId} gallery images updated by manager ${user.id}`);
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating kitchen gallery images:", error);
+      res.status(500).json({ error: error.message || "Failed to update kitchen gallery images" });
+    }
+  });
+
+  // Delete file from R2 (manager)
+  app.delete("/api/manager/files", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
+
+      const { fileUrl } = req.body;
+      
+      if (!fileUrl || typeof fileUrl !== 'string') {
+        return res.status(400).json({ error: "fileUrl is required and must be a string" });
+      }
+
+      try {
+        const { deleteFromR2, isR2Configured } = await import('./r2-storage');
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        if (isProduction && isR2Configured()) {
+          const deleted = await deleteFromR2(fileUrl);
+          if (deleted) {
+            console.log(`✅ File deleted from R2 by manager ${user.id}: ${fileUrl}`);
+            return res.json({ success: true, message: "File deleted successfully" });
+          } else {
+            return res.status(500).json({ error: "Failed to delete file from R2" });
+          }
+        } else {
+          // In development, just return success
+          console.log(`💻 Development mode: File deletion skipped for ${fileUrl}`);
+          return res.json({ success: true, message: "File deletion skipped (development mode)" });
+        }
+      } catch (error: any) {
+        console.error('Error deleting file from R2:', error);
+        return res.status(500).json({ error: error.message || "Failed to delete file" });
+      }
+    } catch (error: any) {
+      console.error("Error in delete file endpoint:", error);
+      res.status(500).json({ error: error.message || "Failed to delete file" });
     }
   });
 

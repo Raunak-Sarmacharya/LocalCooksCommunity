@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, X, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { cn } from '@/lib/utils';
+import { auth } from '@/lib/firebase';
 
 interface ImageWithReplaceProps {
   imageUrl: string | null | undefined;
@@ -63,49 +64,102 @@ export function ImageWithReplace({
     const fetchImageUrl = async () => {
       if (!imageUrl) {
         setImageSrc(null);
+        setIsLoading(false);
         return;
       }
 
       // If it's already a data URL or absolute URL that doesn't need presigning
       if (imageUrl.startsWith('data:') || imageUrl.startsWith('blob:')) {
         setImageSrc(imageUrl);
+        setIsLoading(false);
         return;
       }
 
       // Check if it's a local development URL
       if (imageUrl.startsWith('/api/files/') || imageUrl.startsWith('/uploads/')) {
         setImageSrc(imageUrl);
+        setIsLoading(false);
         return;
       }
 
-      // For R2 bucket URLs, get presigned URL
-      setIsLoading(true);
-      setError(null);
-      
-      try {
-        const response = await fetch('/api/images/presigned-url', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({ imageUrl }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch image URL');
-        }
-
-        const data = await response.json();
-        setImageSrc(data.url);
-      } catch (err) {
-        console.error('Error fetching presigned URL:', err);
-        // Fallback to original URL
+      // Check if it's already a full URL (R2 public URL or other CDN)
+      if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+        // First, set the URL directly as a fallback
         setImageSrc(imageUrl);
-        setError('Failed to load image');
-      } finally {
-        setIsLoading(false);
+        setIsLoading(true);
+        setError(null);
+        
+        // Check if we're in development - skip presigned URL in dev
+        const isDevelopment = window.location.hostname === 'localhost' || 
+                              window.location.hostname === '127.0.0.1' ||
+                              window.location.hostname.includes('localhost');
+        
+        // In development, just use the direct URL (no presigned URL needed)
+        if (isDevelopment) {
+          setIsLoading(false);
+          return;
+        }
+        
+        // Then try to get presigned URL for better security/performance (production only)
+        // But don't wait for it - show the image immediately
+        const fetchPresignedUrl = async () => {
+          try {
+            // Get Firebase auth token if available
+            const currentUser = auth.currentUser;
+            const headers: HeadersInit = {
+              'Content-Type': 'application/json',
+            };
+            
+            if (currentUser) {
+              try {
+                const token = await currentUser.getIdToken();
+                headers['Authorization'] = `Bearer ${token}`;
+              } catch (tokenError) {
+                console.warn('Could not get auth token for presigned URL:', tokenError);
+                // Continue without token - might work if R2 is public
+              }
+            }
+            
+            const response = await fetch('/api/images/presigned-url', {
+              method: 'POST',
+              headers,
+              credentials: 'include',
+              body: JSON.stringify({ imageUrl }),
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data && data.url) {
+                setImageSrc(data.url);
+              } else {
+                // If no URL in response, keep using direct URL
+                console.warn('Presigned URL response missing URL, using direct URL');
+              }
+            } else {
+              // If presigned URL fails, try using the direct URL
+              // This will work if R2 bucket is public
+              const errorData = await response.json().catch(() => ({}));
+              console.warn('Presigned URL fetch failed, using direct URL:', {
+                status: response.status,
+                error: errorData.error || 'Unknown error'
+              });
+              // Keep the direct URL that was already set
+            }
+          } catch (err) {
+            console.error('Error fetching presigned URL (using direct URL):', err);
+            // Keep using the direct URL that was already set
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        
+        fetchPresignedUrl();
+        return;
       }
+
+      // For other cases, use the URL directly
+      setImageSrc(imageUrl);
+      setIsLoading(false);
     };
 
     fetchImageUrl();
@@ -133,10 +187,10 @@ export function ImageWithReplace({
 
   return (
     <div className={cn('relative', containerClassName)}>
-      {imageSrc ? (
+      {imageUrl ? (
         <div className="relative group">
           <div className={cn('relative overflow-hidden rounded-lg border border-gray-200 bg-gray-100', aspectRatioClass, className)}>
-            {isLoading ? (
+            {isLoading || !imageSrc ? (
               <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
                 <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
               </div>
@@ -146,13 +200,25 @@ export function ImageWithReplace({
                 alt={alt}
                 className={cn('w-full h-full object-cover', !aspectRatio && className)}
                 onError={(e) => {
-                  console.error('Image failed to load:', imageUrl);
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                  setError('Failed to load image');
+                  console.error('Image failed to load:', {
+                    originalUrl: imageUrl,
+                    resolvedUrl: imageSrc,
+                    error: 'Image load failed'
+                  });
+                  
+                  // If presigned URL failed, try the original URL directly
+                  if (imageSrc !== imageUrl && imageUrl) {
+                    console.log('Retrying with original URL:', imageUrl);
+                    setImageSrc(imageUrl);
+                    setError(null);
+                  } else {
+                    setError('Failed to load image');
+                    setIsLoading(false);
+                  }
                 }}
                 onLoad={() => {
                   setError(null);
+                  setIsLoading(false);
                 }}
               />
             )}
@@ -212,8 +278,8 @@ export function ImageWithReplace({
           )}
         </div>
       ) : (
-        <div className={cn('border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors bg-gray-50', aspectRatioClass, className)}>
-          <label className="cursor-pointer">
+        <div className={cn('border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-8 text-center hover:border-gray-400 transition-colors bg-gray-50 overflow-hidden', aspectRatioClass, className)}>
+          <label className="cursor-pointer block w-full">
             <input
               type="file"
               accept={allowedTypes.join(',')}
@@ -221,7 +287,7 @@ export function ImageWithReplace({
               className="hidden"
               disabled={isUploading}
             />
-            <div className="flex flex-col items-center space-y-4">
+            <div className="flex flex-col items-center justify-center space-y-3 min-h-[120px]">
               {isUploading ? (
                 <>
                   <Loader2 className="h-12 w-12 text-gray-400 animate-spin" />
@@ -231,11 +297,13 @@ export function ImageWithReplace({
                 </>
               ) : (
                 <>
-                  <Upload className="h-12 w-12 text-gray-400" />
-                  <div className="text-sm text-gray-600">
-                    <span className="font-medium">Click to upload image</span> or drag and drop
+                  <Upload className="h-10 w-10 sm:h-12 sm:w-12 text-gray-400 flex-shrink-0" />
+                  <div className="text-sm text-gray-600 px-2">
+                    <span className="font-medium block sm:inline">Click to upload</span>
+                    <span className="hidden sm:inline"> or </span>
+                    <span className="block sm:inline">drag and drop</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-gray-500 px-2 break-words">
                     {allowedTypes.map(t => t.split('/')[1]).join(', ').toUpperCase()} (max {(maxSize / 1024 / 1024).toFixed(1)}MB)
                   </p>
                 </>
