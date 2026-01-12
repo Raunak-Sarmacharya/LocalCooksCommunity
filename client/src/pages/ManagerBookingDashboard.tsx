@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
@@ -18,7 +17,6 @@ import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import Logo from "@/components/ui/logo";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
