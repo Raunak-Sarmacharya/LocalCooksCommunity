@@ -1,12 +1,22 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, HelpCircle, Menu, X } from "lucide-react";
+import { LogOut, HelpCircle, Menu, X, ChevronDown, User, Settings } from "lucide-react";
 import { Link } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useState } from "react";
 import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getUserInitials } from "@/lib/utils";
 
 interface ManagerHeaderProps {
   sidebarWidth?: number;
@@ -122,6 +132,13 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
     }
   };
 
+  // Get user initials and photo URL
+  const userDisplayName = user?.displayName || user?.fullName || null;
+  const userEmail = user?.email || firebaseUser?.email || null;
+  const userUsername = user?.username || null;
+  const userPhotoURL = firebaseUser?.photoURL || null;
+  const userInitials = getUserInitials(userDisplayName, userEmail, userUsername);
+
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
       <div className="flex items-center w-full relative" style={{ minHeight: '100%' }}>
@@ -204,15 +221,58 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                 Help
               </Button>
               
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLogout}
-                className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 text-sm sm:text-base"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </Button>
+              {/* Profile Dropdown Menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-[#F51042]/20 focus:ring-offset-2 transition-all hover:opacity-90"
+                    aria-label="User menu"
+                  >
+                    <Avatar className="h-9 w-9 border-2 border-gray-200 hover:border-[#F51042]/40 transition-colors">
+                      <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
+                      <AvatarFallback className="bg-gradient-to-br from-[#F51042] to-[#F51042]/80 text-white font-semibold text-sm">
+                        {userInitials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <ChevronDown className="h-4 w-4 text-gray-600 hidden sm:block" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">
+                        {userDisplayName || userEmail || "User"}
+                      </p>
+                      {userEmail && userDisplayName && (
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {userEmail}
+                        </p>
+                      )}
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/manager/profile" className="cursor-pointer">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/manager/profile" className="cursor-pointer">
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
         </nav>
@@ -279,18 +339,51 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                     Help
                   </Button>
                   
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      handleLogout();
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full gap-2 justify-start border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 text-base min-h-[44px]"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </Button>
+                  {/* Mobile Profile Section */}
+                  <div className="pt-2 border-t border-gray-200">
+                    <div className="flex items-center gap-3 px-2 py-3">
+                      <Avatar className="h-10 w-10 border-2 border-gray-200">
+                        <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
+                        <AvatarFallback className="bg-gradient-to-br from-[#F51042] to-[#F51042]/80 text-white font-semibold">
+                          {userInitials}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {userDisplayName || userEmail || "User"}
+                        </p>
+                        {userEmail && userDisplayName && (
+                          <p className="text-xs text-gray-500 truncate">
+                            {userEmail}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <Link
+                      href="/manager/profile"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Profile
+                    </Link>
+                    <Link
+                      href="/manager/profile"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Settings
+                    </Link>
+                    <button
+                      onClick={() => {
+                        handleLogout();
+                        setIsMenuOpen(false);
+                      }}
+                      className="w-full text-left py-3 px-2 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors mobile-touch-target mobile-no-tap-highlight text-base min-h-[44px] flex items-center gap-2"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Log out
+                    </button>
+                  </div>
                 </>
               )}
             </nav>
