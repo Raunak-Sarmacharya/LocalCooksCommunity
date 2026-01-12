@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, HelpCircle, Menu, X, ChevronDown, User, Settings } from "lucide-react";
+import { 
+  LogOut, HelpCircle, Menu, X, ChevronDown, User, Settings, 
+  BookOpen, DollarSign, Building2, LayoutDashboard
+} from "lucide-react";
 import { Link } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -237,40 +240,90 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                     <ChevronDown className="h-4 w-4 text-gray-600 hidden sm:block" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">
-                        {userDisplayName || userEmail || "User"}
-                      </p>
-                      {userEmail && userDisplayName && (
-                        <p className="text-xs leading-none text-muted-foreground">
-                          {userEmail}
-                        </p>
-                      )}
+                <DropdownMenuContent 
+                  align="end" 
+                  className="w-72 bg-gray-900 border-gray-800 text-white shadow-xl"
+                >
+                  {/* User Info Section */}
+                  <div className="px-4 py-5 text-center border-b border-gray-800">
+                    <div className="flex justify-center mb-3">
+                      <Avatar className="h-16 w-16 border-2 border-gray-700">
+                        <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
+                        <AvatarFallback className="bg-gradient-to-br from-[#F51042]/90 to-[#F51042]/70 text-white font-semibold text-lg">
+                          {userInitials}
+                        </AvatarFallback>
+                      </Avatar>
                     </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/manager/profile" className="cursor-pointer">
-                      <User className="mr-2 h-4 w-4" />
-                      <span>Profile</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/manager/profile" className="cursor-pointer">
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleLogout}
-                    className="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer"
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Log out</span>
-                  </DropdownMenuItem>
+                    <p className="text-base font-semibold text-white mb-1">
+                      {userDisplayName || "Manager"}
+                    </p>
+                    <p className="text-xs text-gray-400 break-all px-2">
+                      {userEmail || ""}
+                    </p>
+                  </div>
+
+                  {/* Manager Portal Options */}
+                  <div className="py-1">
+                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <Link href="/manager/booking-dashboard" className="flex items-center w-full">
+                        <LayoutDashboard className="mr-3 h-4 w-4" />
+                        <span>Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <Link href="/manager/booking-dashboard?view=revenue" className="flex items-center w-full">
+                        <DollarSign className="mr-3 h-4 w-4" />
+                        <span>Revenue</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <Link href="/manager/booking-dashboard?view=bookings" className="flex items-center w-full">
+                        <BookOpen className="mr-3 h-4 w-4" />
+                        <span>Bookings</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <Link href="/manager/booking-dashboard?view=locations" className="flex items-center w-full">
+                        <Building2 className="mr-3 h-4 w-4" />
+                        <span>Locations</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </div>
+
+                  <DropdownMenuSeparator className="bg-gray-800" />
+
+                  {/* Account Options */}
+                  <div className="py-1">
+                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <Link href="/manager/profile" className="flex items-center w-full">
+                        <User className="mr-3 h-4 w-4" />
+                        <span>Profile</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-gray-800 focus:bg-gray-800 focus:text-white cursor-pointer">
+                      <Link href="/manager/profile" className="flex items-center w-full">
+                        <Settings className="mr-3 h-4 w-4" />
+                        <span>Settings</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </div>
+
+                  <DropdownMenuSeparator className="bg-gray-800" />
+
+                  {/* Logout */}
+                  <div className="py-1">
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                      className="text-gray-300 hover:text-white hover:bg-red-900/20 focus:bg-red-900/20 focus:text-white cursor-pointer"
+                    >
+                      <LogOut className="mr-3 h-4 w-4" />
+                      <span>Log out</span>
+                    </DropdownMenuItem>
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
@@ -341,38 +394,72 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                   
                   {/* Mobile Profile Section */}
                   <div className="pt-2 border-t border-gray-200">
-                    <div className="flex items-center gap-3 px-2 py-3">
-                      <Avatar className="h-10 w-10 border-2 border-gray-200">
+                    <div className="flex items-center gap-3 px-2 py-4 bg-gray-900 rounded-lg mb-2">
+                      <Avatar className="h-12 w-12 border-2 border-gray-700">
                         <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
-                        <AvatarFallback className="bg-gradient-to-br from-[#F51042] to-[#F51042]/80 text-white font-semibold">
+                        <AvatarFallback className="bg-gradient-to-br from-[#F51042]/90 to-[#F51042]/70 text-white font-semibold">
                           {userInitials}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {userDisplayName || userEmail || "User"}
+                        <p className="text-sm font-semibold text-white mb-1">
+                          {userDisplayName || "Manager"}
                         </p>
-                        {userEmail && userDisplayName && (
-                          <p className="text-xs text-gray-500 truncate">
-                            {userEmail}
-                          </p>
-                        )}
+                        <p className="text-xs text-gray-400 break-all">
+                          {userEmail || ""}
+                        </p>
                       </div>
                     </div>
                     <Link
-                      href="/manager/profile"
-                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
+                      href="/manager/booking-dashboard"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base flex items-center gap-2"
                       onClick={() => setIsMenuOpen(false)}
                     >
+                      <LayoutDashboard className="h-4 w-4" />
+                      Dashboard
+                    </Link>
+                    <Link
+                      href="/manager/booking-dashboard?view=revenue"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base flex items-center gap-2"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <DollarSign className="h-4 w-4" />
+                      Revenue
+                    </Link>
+                    <Link
+                      href="/manager/booking-dashboard?view=bookings"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base flex items-center gap-2"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      Bookings
+                    </Link>
+                    <Link
+                      href="/manager/booking-dashboard?view=locations"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base flex items-center gap-2"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Locations
+                    </Link>
+                    <div className="border-t border-gray-200 my-2"></div>
+                    <Link
+                      href="/manager/profile"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base flex items-center gap-2"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <User className="h-4 w-4" />
                       Profile
                     </Link>
                     <Link
                       href="/manager/profile"
-                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
+                      className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base flex items-center gap-2"
                       onClick={() => setIsMenuOpen(false)}
                     >
+                      <Settings className="h-4 w-4" />
                       Settings
                     </Link>
+                    <div className="border-t border-gray-200 my-2"></div>
                     <button
                       onClick={() => {
                         handleLogout();
