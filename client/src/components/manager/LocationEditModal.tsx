@@ -486,7 +486,9 @@ export default function LocationEditModal({
                       : 'under review'}.
                   </p>
                   <a 
-                    href={location.kitchenLicenseUrl}
+                    href={location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') 
+                      ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
+                      : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
