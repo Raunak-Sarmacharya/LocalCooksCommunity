@@ -99,6 +99,27 @@ export default function AnimatedManagerSidebar({
           minHeight: '100%',
         }}
       >
+        {/* Collapse Toggle Button - Positioned at edge, half inside half outside, relative to aside */}
+        {!isMobile && (
+          <button
+            onClick={handleToggle}
+            className="absolute z-[100] flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#F51042]/20"
+            style={{
+              right: '-12px', // Half outside (12px = half of 24px button width)
+              top: `${headerHeight + 60 + 16 + 24}px`, // Position: navbar spacer + location padding-top (1rem) + button offset (1.5rem)
+              zIndex: 1000, // Higher z-index to ensure it appears above main content
+            }}
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!isCollapsed}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
+            ) : (
+              <ChevronLeft className="w-3.5 h-3.5 text-gray-600" />
+            )}
+          </button>
+        )}
+
         {/* Sidebar Content Container - Scrollable, starts from top */}
         <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
           {/* Spacer to prevent navbar overlap - MORE than navbar height to ensure no overlap */}
@@ -116,25 +137,6 @@ export default function AnimatedManagerSidebar({
           
           {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR SPACER */}
           <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white relative" style={{ marginTop: 0, paddingTop: '1rem', zIndex: 1 }}>
-            {/* Collapse Toggle Button - Positioned at edge, half inside half outside, minimal design */}
-            {!isMobile && (
-              <button
-                onClick={handleToggle}
-                className="absolute top-6 z-[100] flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#F51042]/20"
-                style={{
-                  right: '-12px', // Half outside (12px = half of 24px button width)
-                  zIndex: 1000, // Higher z-index to ensure it appears above main content
-                }}
-                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                aria-expanded={!isCollapsed}
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
-                ) : (
-                  <ChevronLeft className="w-3.5 h-3.5 text-gray-600" />
-                )}
-              </button>
-            )}
           <AnimatePresence mode="wait">
             {isContentVisible ? (
               <motion.div
