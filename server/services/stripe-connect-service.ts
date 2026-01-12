@@ -313,3 +313,21 @@ export async function getAccountBalance(accountId: string): Promise<Stripe.Balan
     throw new Error(`Failed to retrieve balance: ${error.message}`);
   }
 }
+
+/**
+ * Create a login link for the Stripe Express Dashboard
+ * This allows managers to access their Stripe Dashboard directly
+ */
+export async function createDashboardLoginLink(accountId: string): Promise<{ url: string }> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    const loginLink = await stripe.accounts.createLoginLink(accountId);
+    return { url: loginLink.url };
+  } catch (error: any) {
+    console.error('Error creating dashboard login link:', error);
+    throw new Error(`Failed to create dashboard login link: ${error.message}`);
+  }
+}

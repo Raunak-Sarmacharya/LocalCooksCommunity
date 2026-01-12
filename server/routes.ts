@@ -3784,6 +3784,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get Stripe Dashboard login link for completed accounts
+  app.get("/api/manager/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const managerId = req.neonUser!.id;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      // Get Connect account ID
+      const userResult = await pool.query(
+        'SELECT stripe_connect_account_id FROM users WHERE id = $1',
+        [managerId]
+      );
+
+      if (!userResult.rows[0]?.stripe_connect_account_id) {
+        return res.status(400).json({ error: 'Stripe Connect account not found.' });
+      }
+
+      const accountId = userResult.rows[0].stripe_connect_account_id;
+      
+      // Create dashboard login link
+      const { createDashboardLoginLink } = await import('./services/stripe-connect-service');
+      const { url } = await createDashboardLoginLink(accountId);
+
+      res.json({ url });
+    } catch (error: any) {
+      console.error('Error creating dashboard login link:', error);
+      res.status(500).json({ error: error.message || 'Failed to create dashboard login link' });
+    }
+  });
+
   // ===================================
   // END STRIPE CONNECT ENDPOINTS
   // ===================================
@@ -7252,9 +7284,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Calculate service fee dynamically from platform_settings
+      // Calculate service fee dynamically from platform_settings (5% + $0.30 Stripe processing fee)
       const serviceFeeCents = await calculatePlatformFeeDynamic(totalPriceCents, pool);
-      const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, serviceFeeCents, 0);
+      const stripeProcessingFeeCents = 30; // $0.30 per transaction
+      const totalServiceFeeCents = serviceFeeCents + stripeProcessingFeeCents;
+      const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, totalServiceFeeCents, 0);
 
       // Get manager's Stripe Connect account ID if available
       let managerConnectAccountId: string | undefined;
@@ -7345,7 +7379,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         chefId,
         kitchenId,
         managerConnectAccountId: managerConnectAccountId,
-        applicationFeeAmount: managerConnectAccountId ? serviceFeeCents : undefined,
+        applicationFeeAmount: managerConnectAccountId ? totalServiceFeeCents : undefined,
         enableACSS: false, // Disable ACSS - only use card payments with pre-authorization
         enableCards: true, // Enable card payments only
         metadata: {

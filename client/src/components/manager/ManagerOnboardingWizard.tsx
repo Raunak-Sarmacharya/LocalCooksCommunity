@@ -556,13 +556,21 @@ export default function ManagerOnboardingWizard() {
   };
 
   const handleSkip = async () => {
-    if (
-      window.confirm(
-        "Are you sure you want to skip onboarding? You can complete it later, but bookings will be disabled until your license is approved."
-      )
-    ) {
-      await completeOnboardingMutation.mutateAsync(true);
+    // If on the final step, complete onboarding with skipped flag
+    if (currentStep === 6) {
+      if (
+        window.confirm(
+          "Are you sure you want to skip onboarding? You can complete it later, but bookings will be disabled until your license is approved."
+        )
+      ) {
+        await completeOnboardingMutation.mutateAsync(true);
+      }
+      return;
     }
+
+    // For all other steps, just mark current step as completed and move to next
+    await trackStepCompletion(currentStep);
+    setCurrentStep(currentStep + 1);
   };
 
   const handleBack = () => {
@@ -741,7 +749,7 @@ export default function ManagerOnboardingWizard() {
                         <ul className="space-y-2">
                           <li className="flex items-start gap-2">
                             <span className="text-[#F51042] font-bold mt-0.5">•</span>
-                            <span><strong className="text-gray-900">Location</strong> - Your business address (e.g., "The Lantern")</span>
+                            <span><strong className="text-gray-900">Location</strong> - Your business address (e.g., "Downtown Kitchen")</span>
                           </li>
                           <li className="flex items-start gap-2">
                             <span className="text-[#F51042] font-bold mt-0.5">•</span>
@@ -791,7 +799,7 @@ export default function ManagerOnboardingWizard() {
                     type="text"
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
-                    placeholder="e.g., The Lantern Kitchen"
+                    placeholder="e.g., Main Street Kitchen"
                     className="mt-1"
                   />
                   <p className="text-xs text-gray-500 mt-1">The name of your kitchen business or location</p>
@@ -1034,7 +1042,7 @@ export default function ManagerOnboardingWizard() {
                     <HelpCircle className="h-5 w-5 text-[#F51042] flex-shrink-0" />
                   </div>
                   <div className="text-sm text-gray-700">
-                    <p className="font-bold mb-2 text-gray-900">Why do I need a Kitchen?</p>
+                    <p className="font-bold mb-2 text-gray-900">How do Kitchens work?</p>
                     <p>Each kitchen space can have its own storage and equipment listings. If you have multiple kitchen spaces at your location, create separate kitchens for each one.</p>
                   </div>
                 </div>

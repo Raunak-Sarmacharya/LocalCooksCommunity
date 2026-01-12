@@ -107,8 +107,8 @@ export default function StripeConnectSetup() {
       return data.url;
     },
     onSuccess: (url: string) => {
-      // Redirect to Stripe's onboarding page
-      window.location.href = url;
+      // Open Stripe's onboarding page in a new tab to avoid logging out the user
+      window.open(url, '_blank');
     },
     onError: (error: Error) => {
       toast({
@@ -125,6 +125,41 @@ export default function StripeConnectSetup() {
 
   const handleStartOnboarding = () => {
     startOnboardingMutation.mutate();
+  };
+
+  // Get dashboard login link mutation (for completed accounts)
+  const getDashboardLinkMutation = useMutation({
+    mutationFn: async () => {
+      if (!firebaseUser) throw new Error('Not authenticated');
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/manager/stripe-connect/dashboard-link', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to get dashboard link');
+      }
+      const data = await response.json();
+      return data.url;
+    },
+    onSuccess: (url: string) => {
+      // Open Stripe Dashboard in a new tab
+      window.open(url, '_blank');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleAccessDashboard = () => {
+    getDashboardLinkMutation.mutate();
   };
 
   const handleReturnFromOnboarding = () => {
@@ -166,7 +201,7 @@ export default function StripeConnectSetup() {
           </CardTitle>
           <CardDescription>
             Connect your Stripe account to start receiving payments directly for kitchen bookings.
-            The platform service fee (5%) will be automatically deducted.
+            The platform service fee (5% + $0.30 per transaction) will be automatically deducted.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -174,8 +209,8 @@ export default function StripeConnectSetup() {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                You'll be redirected to Stripe's secure onboarding page to complete the setup.
-                This process takes about 5 minutes.
+                Stripe's secure onboarding page will open in a new tab to complete the setup.
+                This process takes about 5 minutes. You can continue using this page while setting up.
               </AlertDescription>
             </Alert>
             <Button 
@@ -220,6 +255,7 @@ export default function StripeConnectSetup() {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 Your Stripe account is being set up. Complete the onboarding process to enable payments.
+                The setup page will open in a new tab.
               </AlertDescription>
             </Alert>
             <Button 
@@ -264,7 +300,7 @@ export default function StripeConnectSetup() {
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">
                 ✅ You'll receive payments automatically after each booking.
-                The platform service fee (5%) will be deducted automatically, and the remaining amount
+                The platform service fee (5% + $0.30 per transaction) will be deducted automatically, and the remaining amount
                 will be transferred to your bank account within 2-7 business days.
               </AlertDescription>
             </Alert>
@@ -278,12 +314,22 @@ export default function StripeConnectSetup() {
               )}
             </div>
             <Button 
-              onClick={handleStartOnboarding}
+              onClick={handleAccessDashboard}
               variant="outline"
               className="w-full"
+              disabled={getDashboardLinkMutation.isPending}
             >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Update Account Details
+              {getDashboardLinkMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Access your Stripe Dashboard
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
