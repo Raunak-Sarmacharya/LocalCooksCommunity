@@ -124,7 +124,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
 
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
-      <div className="flex items-center w-full">
+      <div className="flex items-center w-full relative" style={{ minHeight: '100%' }}>
         {/* Logo centered above sidebar - width changes with sidebar */}
         <div 
           className="hidden lg:flex absolute left-0 items-center justify-center pointer-events-none"
@@ -133,6 +133,8 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             transition: 'width 0.3s ease-out',
             height: '100%',
             zIndex: 10,
+            top: 0,
+            bottom: 0,
           }}
         >
           <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group pointer-events-auto">
@@ -150,9 +152,10 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
 
         {/* Main Header Content - Right aligned, FIXED position - does NOT slide with sidebar */}
         <div 
-          className="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 sm:px-4 py-2 sm:py-3"
+          className="flex-1 flex items-center justify-end px-3 sm:px-4 py-2 sm:py-3"
           style={{
-            left: '256px', // Fixed at expanded sidebar width - does NOT change when sidebar collapses
+            marginLeft: '256px', // Fixed margin - does NOT change when sidebar collapses
+            minHeight: '100%',
           }}
         >
           {/* Mobile Logo */}
@@ -168,7 +171,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             </div>
           </Link>
 
-        <nav className="hidden md:flex items-center space-x-4">
+        <nav className="hidden md:flex items-center space-x-4 ml-auto">
           <Link 
             href="/"
             className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"

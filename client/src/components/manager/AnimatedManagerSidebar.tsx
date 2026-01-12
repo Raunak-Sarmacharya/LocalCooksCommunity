@@ -94,13 +94,13 @@ export default function AnimatedManagerSidebar({
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
         className="relative flex flex-col bg-white border-r border-gray-200"
         style={{ 
-          overflow: 'visible',
+          overflow: 'visible', // Allow button to extend outside
           height: '100%',
           minHeight: '100%',
         }}
       >
         {/* Sidebar Content Container - Scrollable, starts from top */}
-        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
+        <div className="flex flex-col h-full overflow-y-auto" style={{ minHeight: 0, overflowX: 'visible' }}>
           {/* Spacer to prevent navbar overlap - MORE than navbar height to ensure no overlap */}
           {!isMobile && (
             <div 
@@ -115,13 +115,14 @@ export default function AnimatedManagerSidebar({
           )}
           
           {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR SPACER */}
-          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white relative" style={{ marginTop: 0, paddingTop: '1rem', zIndex: 1 }}>
+          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white relative" style={{ marginTop: 0, paddingTop: '1rem', zIndex: 1, overflow: 'visible' }}>
             {/* Collapse Toggle Button - Positioned at edge, half inside half outside, minimal design */}
             {!isMobile && (
               <button
                 onClick={handleToggle}
-                className="absolute top-6 -right-3 z-[100] flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#F51042]/20"
+                className="absolute top-6 z-[100] flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#F51042]/20"
                 style={{
+                  right: '-12px', // Half outside (12px = half of 24px button width)
                   zIndex: 100,
                 }}
                 aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
