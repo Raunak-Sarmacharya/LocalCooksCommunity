@@ -205,24 +205,65 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
   try {
     const client = getS3Client();
     
-    // Extract key from URL
+    // Extract key from URL using robust logic
     const urlObj = new URL(fileUrl);
-    const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
-    const keyParts = key.split('/');
-    const bucketIndex = keyParts.indexOf(R2_BUCKET_NAME!);
-    const actualKey = bucketIndex >= 0 
-      ? keyParts.slice(bucketIndex + 1).join('/')
-      : key;
+    let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const pathParts = pathname.split('/').filter(p => p);
+    
+    // Find the bucket name index
+    const bucketIndex = pathParts.indexOf(R2_BUCKET_NAME!);
+    
+    let key: string;
+    if (bucketIndex >= 0) {
+      // Bucket name is in the path, key is everything after it
+      // e.g., [bucket_name, images, filename] -> images/filename
+      key = pathParts.slice(bucketIndex + 1).join('/');
+    } else {
+      // Bucket name not in path (custom domain or different URL format)
+      // Try to detect if it's a custom domain by checking if pathname starts with known folders
+      const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
+      const firstPart = pathParts[0];
+      
+      if (knownFolders.includes(firstPart)) {
+        // Custom domain with folder structure, use entire pathname
+        key = pathname;
+      } else {
+        // Unknown format, try using entire pathname
+        key = pathname;
+      }
+    }
+    
+    // Remove leading/trailing slashes
+    key = key.replace(/^\/+|\/+$/g, '');
+    
+    // Final validation: key should not be empty
+    if (!key || key.length === 0) {
+      throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
+    }
+
+    console.log('🔍 R2 Presigned URL Debug:', {
+      fileUrl,
+      extractedKey: key,
+      bucketName: R2_BUCKET_NAME,
+      pathname: urlObj.pathname,
+      pathParts,
+      bucketIndex
+    });
 
     const command = new GetObjectCommand({
       Bucket: R2_BUCKET_NAME!,
-      Key: actualKey,
+      Key: key,
     });
 
     const presignedUrl = await getSignedUrl(client, command, { expiresIn });
+    console.log('✅ Generated presigned URL for R2 file:', key);
     return presignedUrl;
   } catch (error) {
-    console.error('❌ Error generating presigned URL:', error);
+    console.error('❌ Error generating presigned URL:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      fileUrl,
+      stack: error instanceof Error ? error.stack : undefined
+    });
     throw new Error(`Failed to generate presigned URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

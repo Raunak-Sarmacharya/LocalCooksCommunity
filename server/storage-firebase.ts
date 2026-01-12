@@ -800,7 +800,7 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; galleryImages?: string[]; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
     try {
       // Convert hourlyRate to string for numeric type if provided
       const dbUpdates: any = { ...updates, updatedAt: new Date() };

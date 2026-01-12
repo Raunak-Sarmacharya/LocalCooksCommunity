@@ -5,6 +5,7 @@ import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
+import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -100,10 +101,54 @@ function StoragePhotoUpload({ photos, onPhotosChange }: { photos: string[]; onPh
     }
   };
 
-  const updatePhoto = (index: number, newUrl: string | null) => {
+  const updatePhoto = async (index: number, newUrl: string | null) => {
     if (newUrl === null) {
+      // Remove photo - delete from R2
+      const photoToRemove = photos[index];
+      if (photoToRemove) {
+        try {
+          const currentFirebaseUser = auth.currentUser;
+          if (currentFirebaseUser) {
+            const token = await currentFirebaseUser.getIdToken();
+            await fetch('/api/manager/files', {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+              body: JSON.stringify({ fileUrl: photoToRemove }),
+            });
+          }
+        } catch (error) {
+          console.error('Error deleting file from R2:', error);
+          // Continue even if R2 deletion fails
+        }
+      }
       onPhotosChange(photos.filter((_, i) => i !== index));
     } else {
+      // Replace photo - delete old one from R2
+      const oldPhoto = photos[index];
+      if (oldPhoto && oldPhoto !== newUrl) {
+        try {
+          const currentFirebaseUser = auth.currentUser;
+          if (currentFirebaseUser) {
+            const token = await currentFirebaseUser.getIdToken();
+            await fetch('/api/manager/files', {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+              body: JSON.stringify({ fileUrl: oldPhoto }),
+            });
+          }
+        } catch (error) {
+          console.error('Error deleting old file from R2:', error);
+          // Continue even if R2 deletion fails
+        }
+      }
       const updated = [...photos];
       updated[index] = newUrl;
       onPhotosChange(updated);

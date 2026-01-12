@@ -6,6 +6,7 @@ import {
   ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
+import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
@@ -1418,6 +1419,206 @@ interface SettingsViewProps {
   isUpdating: boolean;
 }
 
+// Component for managing kitchen gallery images
+function KitchenGalleryImages({ 
+  kitchenId, 
+  galleryImages, 
+  locationId 
+}: { 
+  kitchenId: number; 
+  galleryImages: string[]; 
+  locationId: number;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [currentGalleryImages, setCurrentGalleryImages] = useState<string[]>(galleryImages || []);
+  
+  const { uploadFile, isUploading, uploadProgress } = useSessionFileUpload({
+    maxSize: 4.5 * 1024 * 1024,
+    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+    onSuccess: async (response) => {
+      const newGalleryImages = [...currentGalleryImages, response.url];
+      await updateGalleryImages(newGalleryImages);
+    },
+    onError: (error) => {
+      toast({
+        title: "Upload failed",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
+
+  useEffect(() => {
+    setCurrentGalleryImages(galleryImages || []);
+  }, [galleryImages]);
+
+  const updateGalleryImages = async (newGalleryImages: string[]) => {
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}/gallery`, {
+        method: 'PUT',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ galleryImages: newGalleryImages }),
+      });
+      
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update gallery images');
+      }
+      
+      setCurrentGalleryImages(newGalleryImages);
+      queryClient.invalidateQueries({ queryKey: ['managerKitchens', locationId] });
+      
+      toast({
+        title: "Success",
+        description: "Gallery images updated successfully",
+      });
+    } catch (error: any) {
+      console.error('Gallery images update error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update gallery images",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRemoveImage = async (imageUrl: string) => {
+    const newGalleryImages = currentGalleryImages.filter(img => img !== imageUrl);
+    await updateGalleryImages(newGalleryImages);
+    
+    // Delete from R2
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        return;
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      await fetch('/api/manager/files', {
+        method: 'DELETE',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ fileUrl: imageUrl }),
+      });
+    } catch (error) {
+      console.error('Error deleting file from R2:', error);
+      // Continue even if R2 deletion fails
+    }
+  };
+
+  const handleReplaceImage = async (oldUrl: string, newUrl: string) => {
+    const newGalleryImages = currentGalleryImages.map(img => img === oldUrl ? newUrl : img);
+    await updateGalleryImages(newGalleryImages);
+    
+    // Delete old image from R2
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        return;
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      await fetch('/api/manager/files', {
+        method: 'DELETE',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ fileUrl: oldUrl }),
+      });
+    } catch (error) {
+      console.error('Error deleting old file from R2:', error);
+      // Continue even if R2 deletion fails
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Existing Gallery Images */}
+      {currentGalleryImages.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          {currentGalleryImages.map((imageUrl, index) => (
+            <ImageWithReplace
+              key={index}
+              imageUrl={imageUrl}
+              onImageChange={(newUrl) => {
+                if (newUrl) {
+                  handleReplaceImage(imageUrl, newUrl);
+                } else {
+                  handleRemoveImage(imageUrl);
+                }
+              }}
+              onRemove={() => handleRemoveImage(imageUrl)}
+              alt={`Gallery image ${index + 1}`}
+              className="h-32"
+              containerClassName="w-full"
+              aspectRatio="1/1"
+              showReplaceButton={true}
+              showRemoveButton={true}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Upload Area */}
+      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-gray-400 transition-colors">
+        <input
+          type="file"
+          accept="image/jpeg,image/jpg,image/png,image/webp"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              uploadFile(file);
+              e.target.value = ''; // Reset input
+            }
+          }}
+          className="hidden"
+          id={`gallery-upload-${kitchenId}`}
+          disabled={isUploading}
+        />
+        <label
+          htmlFor={`gallery-upload-${kitchenId}`}
+          className={`flex flex-col items-center justify-center cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {isUploading ? (
+            <>
+              <Loader2 className="h-8 w-8 text-gray-400 animate-spin mb-2" />
+              <span className="text-sm text-gray-600">Uploading... {Math.round(uploadProgress)}%</span>
+            </>
+          ) : (
+            <>
+              <Upload className="h-8 w-8 text-gray-400 mb-2" />
+              <span className="text-sm font-medium text-gray-700 mb-1">Click to add gallery image</span>
+              <span className="text-xs text-gray-500">JPG, PNG, WebP (max 4.5MB)</span>
+            </>
+          )}
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -2263,6 +2464,9 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           </div>
                         </div>
                         <div className="w-48">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Main Image
+                          </label>
                           <ImageWithReplace
                             imageUrl={(kitchen as any).imageUrl || undefined}
                             onImageChange={async (newUrl) => {
@@ -2361,6 +2565,18 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                             allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
                           />
                         </div>
+                      </div>
+                      
+                      {/* Gallery Images Section */}
+                      <div className="mt-4 pt-4 border-t border-amber-200">
+                        <label className="block text-sm font-medium text-gray-700 mb-3">
+                          Gallery Images
+                        </label>
+                        <KitchenGalleryImages 
+                          kitchenId={kitchen.id}
+                          galleryImages={(kitchen as any).galleryImages || []}
+                          locationId={location.id}
+                        />
                       </div>
                     </div>
                   ))}
