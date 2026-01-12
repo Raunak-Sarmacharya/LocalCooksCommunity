@@ -90,10 +90,11 @@ export default function AnimatedManagerSidebar({
         initial={false}
         animate={{ width: sidebarWidth }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-        className="relative flex flex-col h-full bg-white border-r border-gray-200"
+        className="relative flex flex-col bg-white border-r border-gray-200"
         style={{ 
           overflow: 'visible',
           height: '100%',
+          minHeight: '100%',
         }}
       >
         {/* Collapse Toggle Button - Absolutely positioned at top right, always visible */}
@@ -116,9 +117,9 @@ export default function AnimatedManagerSidebar({
         )}
 
         {/* Sidebar Content Container - Scrollable, starts from top */}
-        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden">
-          {/* Location Selection - Always visible at top */}
-          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white">
+        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
+          {/* Location Selection - Always visible at top - NO TOP PADDING/MARGIN TO PREVENT CLIPPING */}
+          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white" style={{ marginTop: 0, paddingTop: '1rem' }}>
           <AnimatePresence mode="wait">
             {isContentVisible ? (
               <motion.div

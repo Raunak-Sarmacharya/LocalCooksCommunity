@@ -447,25 +447,26 @@ export default function ManagerBookingDashboard() {
       </div>
       <ManagerOnboardingWizard />
 
-      <div style={{ marginTop: `${headerHeight}px` }}>
-        <main 
-          className="flex-1 pb-8 relative z-10 flex min-h-0"
+      {/* Content area - no marginTop, sidebar will handle positioning */}
+      <main 
+        className="flex-1 pb-8 relative z-10 flex min-h-0"
+        style={{ marginTop: `${headerHeight}px` }}
+      >
+        {/* Animated Sidebar - positioned below navbar, starts from top of visible area */}
+        <div 
+          className="hidden lg:block z-20 flex-shrink-0" 
+          style={{ 
+            position: 'sticky',
+            top: `${headerHeight}px`, // Stick below the fixed navbar - CRITICAL: must match navbar height
+            left: 0,
+            alignSelf: 'flex-start',
+            width: isSidebarCollapsed ? '64px' : '256px',
+            transition: 'width 0.3s ease-out',
+            height: `calc(100vh - ${headerHeight}px)`,
+            maxHeight: `calc(100vh - ${headerHeight}px)`,
+            overflow: 'visible', // Allow collapse button to be visible
+          }}
         >
-          {/* Animated Sidebar - positioned below navbar, starts from top of visible area */}
-          <div 
-            className="hidden lg:block z-20 flex-shrink-0" 
-            style={{ 
-              position: 'sticky',
-              top: `${headerHeight}px`, // Stick below the fixed navbar - CRITICAL: must match navbar height
-              left: 0,
-              alignSelf: 'flex-start',
-              width: isSidebarCollapsed ? '64px' : '256px',
-              transition: 'width 0.3s ease-out',
-              height: `calc(100vh - ${headerHeight}px)`,
-              maxHeight: `calc(100vh - ${headerHeight}px)`,
-              overflow: 'visible', // Allow collapse button to be visible
-            }}
-          >
           <AnimatedManagerSidebar
             navItems={navItems}
             activeView={activeView}
@@ -1018,8 +1019,7 @@ export default function ManagerBookingDashboard() {
           </div>
           </div>
         </div>
-        </main>
-      </div>
+      </main>
     </div>
   );
 }
