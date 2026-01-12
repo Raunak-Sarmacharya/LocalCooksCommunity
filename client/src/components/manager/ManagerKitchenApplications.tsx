@@ -693,14 +693,18 @@ export default function ManagerKitchenApplications({
                   </div>
                   <div className="flex gap-2">
                     <a
-                      href={presignedUrls[documentsApplication.foodSafetyLicenseUrl] || documentsApplication.foodSafetyLicenseUrl}
+                      href={presignedUrls[documentsApplication.foodSafetyLicenseUrl] || 
+                        (documentsApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') 
+                          ? `/api/files/r2-proxy?url=${encodeURIComponent(documentsApplication.foodSafetyLicenseUrl)}`
+                          : documentsApplication.foodSafetyLicenseUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={async (e) => {
-                        if (!presignedUrls[documentsApplication.foodSafetyLicenseUrl]) {
+                        const url = documentsApplication.foodSafetyLicenseUrl;
+                        if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                           e.preventDefault();
-                          const url = await getPresignedUrl(documentsApplication.foodSafetyLicenseUrl);
-                          window.open(url, '_blank');
+                          const presignedUrl = await getPresignedUrl(url);
+                          window.open(presignedUrl, '_blank');
                         }
                       }}
                     >
@@ -714,7 +718,10 @@ export default function ManagerKitchenApplications({
                       </Button>
                     </a>
                     <a
-                      href={presignedUrls[documentsApplication.foodSafetyLicenseUrl] || documentsApplication.foodSafetyLicenseUrl}
+                      href={presignedUrls[documentsApplication.foodSafetyLicenseUrl] || 
+                        (documentsApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') 
+                          ? `/api/files/r2-proxy?url=${encodeURIComponent(documentsApplication.foodSafetyLicenseUrl)}`
+                          : documentsApplication.foodSafetyLicenseUrl)}
                       download
                       onClick={async (e) => {
                         if (!presignedUrls[documentsApplication.foodSafetyLicenseUrl]) {
@@ -752,14 +759,18 @@ export default function ManagerKitchenApplications({
                   </div>
                   <div className="flex gap-2">
                     <a
-                      href={presignedUrls[documentsApplication.foodEstablishmentCertUrl] || documentsApplication.foodEstablishmentCertUrl}
+                      href={presignedUrls[documentsApplication.foodEstablishmentCertUrl] || 
+                        (documentsApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') 
+                          ? `/api/files/r2-proxy?url=${encodeURIComponent(documentsApplication.foodEstablishmentCertUrl)}`
+                          : documentsApplication.foodEstablishmentCertUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={async (e) => {
-                        if (!presignedUrls[documentsApplication.foodEstablishmentCertUrl]) {
+                        const url = documentsApplication.foodEstablishmentCertUrl;
+                        if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                           e.preventDefault();
-                          const url = await getPresignedUrl(documentsApplication.foodEstablishmentCertUrl);
-                          window.open(url, '_blank');
+                          const presignedUrl = await getPresignedUrl(url);
+                          window.open(presignedUrl, '_blank');
                         }
                       }}
                     >
@@ -773,14 +784,18 @@ export default function ManagerKitchenApplications({
                       </Button>
                     </a>
                     <a
-                      href={presignedUrls[documentsApplication.foodEstablishmentCertUrl] || documentsApplication.foodEstablishmentCertUrl}
+                      href={presignedUrls[documentsApplication.foodEstablishmentCertUrl] || 
+                        (documentsApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') 
+                          ? `/api/files/r2-proxy?url=${encodeURIComponent(documentsApplication.foodEstablishmentCertUrl)}`
+                          : documentsApplication.foodEstablishmentCertUrl)}
                       download
                       onClick={async (e) => {
-                        if (!presignedUrls[documentsApplication.foodEstablishmentCertUrl]) {
+                        const url = documentsApplication.foodEstablishmentCertUrl;
+                        if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                           e.preventDefault();
-                          const url = await getPresignedUrl(documentsApplication.foodEstablishmentCertUrl);
+                          const presignedUrl = await getPresignedUrl(url);
                           const a = document.createElement('a');
-                          a.href = url;
+                          a.href = presignedUrl;
                           a.download = '';
                           a.click();
                         }
