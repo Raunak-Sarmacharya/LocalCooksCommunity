@@ -120,18 +120,21 @@ export default function AnimatedManagerSidebar({
 
         {/* Sidebar Content Container - Scrollable, starts from top */}
         <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
-          {/* Spacer to prevent navbar overlap - matches navbar height */}
+          {/* Spacer to prevent navbar overlap - MORE than navbar height to ensure no overlap */}
           {!isMobile && (
             <div 
+              className="flex-shrink-0 bg-transparent"
               style={{ 
-                height: `${headerHeight}px`,
-                flexShrink: 0 
+                height: `${headerHeight + 24}px`, // Add extra 24px padding to ensure no overlap - MORE than navbar height
+                minHeight: `${headerHeight + 24}px`,
+                width: '100%',
+                pointerEvents: 'none' // Allow clicks to pass through
               }}
             />
           )}
           
-          {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR */}
-          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white" style={{ marginTop: 0, paddingTop: '1rem' }}>
+          {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR SPACER */}
+          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white" style={{ marginTop: 0, paddingTop: '1rem', position: 'relative', zIndex: 1 }}>
           <AnimatePresence mode="wait">
             {isContentVisible ? (
               <motion.div
