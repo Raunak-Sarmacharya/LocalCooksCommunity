@@ -464,7 +464,8 @@ export default function ManagerBookingDashboard() {
             transition: 'width 0.3s ease-out',
             height: `calc(100vh - ${headerHeight}px)`,
             maxHeight: `calc(100vh - ${headerHeight}px)`,
-            overflow: 'visible', // Allow collapse button to be visible
+            overflow: 'visible', // Allow collapse button to extend outside
+            clipPath: 'none', // Ensure no clipping
           }}
         >
           <AnimatedManagerSidebar
