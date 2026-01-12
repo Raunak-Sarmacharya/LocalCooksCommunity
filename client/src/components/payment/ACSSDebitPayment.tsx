@@ -226,8 +226,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
         <PaymentElement
           options={{
             layout: 'tabs',
-            // Restrict to card payments only (pre-authorized)
-            paymentMethodTypes: ['card'],
+            // Payment methods are controlled by PaymentIntent's payment_method_types
+            // The PaymentElement will automatically show available payment methods
             defaultValues: {
               billingDetails: {
                 address: {
