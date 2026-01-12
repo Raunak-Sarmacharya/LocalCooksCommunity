@@ -60,14 +60,28 @@ export default function StripeConnectSetup() {
       });
       if (!response.ok) {
         const error = await response.json();
+        // If account already exists, return the error with accountId so we can handle it
+        if (error.error === 'Stripe Connect account already exists' && error.accountId) {
+          return { accountId: error.accountId, alreadyExists: true };
+        }
         throw new Error(error.error || 'Failed to create account');
       }
       return response.json();
     },
-    onSuccess: async () => {
-      // Refresh user profile to get the new account ID
+    onSuccess: async (data) => {
+      // Refresh user profile to get the account ID (whether new or existing)
       handleAccountCreated();
-      // After creating account, get onboarding link
+      
+      // If account already existed, don't try to start onboarding
+      if (data.alreadyExists) {
+        toast({
+          title: 'Account Already Connected',
+          description: 'Your Stripe account is already connected. You can access your dashboard below.',
+        });
+        return;
+      }
+      
+      // After creating new account, get onboarding link
       await startOnboardingMutation.mutateAsync();
     },
     onError: (error: Error) => {
@@ -134,16 +148,31 @@ export default function StripeConnectSetup() {
         throw new Error(error.error || 'Failed to get dashboard link');
       }
       const data = await response.json();
+      if (!data.url) {
+        throw new Error('Dashboard link URL not provided');
+      }
       return data.url;
     },
     onSuccess: (url: string) => {
       // Open Stripe Dashboard in a new tab
-      window.open(url, '_blank');
+      const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!newWindow) {
+        toast({
+          title: 'Popup Blocked',
+          description: 'Please allow popups for this site to open your Stripe Dashboard, or click the button again.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Opening Dashboard',
+          description: 'Your Stripe Connected Account Dashboard is opening in a new tab.',
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
-        title: 'Error',
-        description: error.message,
+        title: 'Error Opening Dashboard',
+        description: error.message || 'Failed to open your Stripe Dashboard. Please try again.',
         variant: 'destructive',
       });
     },
@@ -241,22 +270,24 @@ export default function StripeConnectSetup() {
             )}
             <Button 
               onClick={handleAccessDashboard}
-              variant="outline"
-              className="w-full"
+              className="w-full bg-[#635BFF] hover:bg-[#5851E6] text-white"
               disabled={getDashboardLinkMutation.isPending}
             >
               {getDashboardLinkMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading...
+                  Opening Dashboard...
                 </>
               ) : (
                 <>
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  Access your Stripe Dashboard
+                  Access Your Stripe Connected Account Dashboard
                 </>
               )}
             </Button>
+            <p className="text-xs text-gray-500 text-center">
+              Click to open your Stripe Express Dashboard in a new tab where you can view payments, payouts, and manage your account settings.
+            </p>
           </div>
         </CardContent>
       </Card>
