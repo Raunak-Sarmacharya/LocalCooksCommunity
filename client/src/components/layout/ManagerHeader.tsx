@@ -225,7 +225,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
               </Button>
               
               {/* Profile Dropdown Menu */}
-              <DropdownMenu>
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <button
                     className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-[#F51042]/20 focus:ring-offset-2 transition-all hover:opacity-90"

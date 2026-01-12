@@ -566,6 +566,7 @@ img {
 
 html {
   scroll-behavior: smooth;
+  scrollbar-gutter: stable; /* Prevent layout shift when scrollbar appears/disappears */
 }
 
 /* Custom animations */
