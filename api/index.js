@@ -16389,8 +16389,53 @@ app.put("/api/manager/profile", requireFirebaseAuthWithUser, requireManager, asy
     if (phone !== undefined) {
       // Normalize phone number if provided
       if (phone && phone.trim() !== '') {
-        const { normalizePhoneForStorage } = await import('./phone-utils');
-        const normalized = normalizePhoneForStorage(phone);
+        // Phone normalization function (matches shared/phone-validation.ts)
+        const normalizePhoneNumber = (phone) => {
+          if (!phone) return null;
+          const trimmed = phone.trim();
+          if (!trimmed) return null;
+          
+          // Remove all non-digit characters except +
+          const cleaned = trimmed.replace(/[^\d+]/g, '');
+          
+          // If it already starts with +, validate and return
+          if (cleaned.startsWith('+')) {
+            const digitsAfterPlus = cleaned.substring(1);
+            if (digitsAfterPlus.length >= 1 && digitsAfterPlus.length <= 15 && /^\d+$/.test(digitsAfterPlus)) {
+              if (digitsAfterPlus.startsWith('1') && digitsAfterPlus.length === 11) {
+                return cleaned; // Already in correct format: +1NXXNXXXXXX
+              }
+              if (digitsAfterPlus.length === 10) {
+                return `+1${digitsAfterPlus}`;
+              }
+              return cleaned;
+            }
+            return null;
+          }
+          
+          // Remove all non-digit characters
+          const digitsOnly = cleaned.replace(/\D/g, '');
+          
+          // If it starts with 1 and has 11 digits
+          if (digitsOnly.length === 11 && digitsOnly.startsWith('1')) {
+            return `+${digitsOnly}`;
+          }
+          
+          // If it has 10 digits, assume North American number
+          if (digitsOnly.length === 10) {
+            const firstDigit = parseInt(digitsOnly[0]);
+            const fourthDigit = parseInt(digitsOnly[3]);
+            
+            if (firstDigit >= 2 && firstDigit <= 9 && fourthDigit >= 2 && fourthDigit <= 9) {
+              return `+1${digitsOnly}`;
+            }
+            return null;
+          }
+          
+          return null;
+        };
+        
+        const normalized = normalizePhoneNumber(phone);
         if (!normalized) {
           return res.status(400).json({
             error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
@@ -16420,8 +16465,7 @@ app.put("/api/manager/profile", requireFirebaseAuthWithUser, requireManager, asy
     if (Object.keys(profileUpdates).length > 0) {
       await pool.query(
         `UPDATE users 
-         SET manager_profile_data = COALESCE(manager_profile_data, '{}'::jsonb) || $1::jsonb,
-             updated_at = NOW()
+         SET manager_profile_data = COALESCE(manager_profile_data, '{}'::jsonb) || $1::jsonb
          WHERE id = $2
          RETURNING manager_profile_data`,
         [JSON.stringify(profileUpdates), user.id]

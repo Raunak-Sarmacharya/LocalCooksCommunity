@@ -5896,8 +5896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (Object.keys(profileUpdates).length > 0) {
         await pool.query(
           `UPDATE users 
-           SET manager_profile_data = COALESCE(manager_profile_data, '{}'::jsonb) || $1::jsonb,
-               updated_at = NOW()
+           SET manager_profile_data = COALESCE(manager_profile_data, '{}'::jsonb) || $1::jsonb
            WHERE id = $2
            RETURNING manager_profile_data`,
           [JSON.stringify(profileUpdates), user.id]
