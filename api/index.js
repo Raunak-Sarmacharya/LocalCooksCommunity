@@ -16386,7 +16386,22 @@ app.put("/api/manager/profile", requireFirebaseAuthWithUser, requireManager, asy
     // Build update object
     const profileUpdates = {};
     if (displayName !== undefined) profileUpdates.displayName = displayName;
-    if (phone !== undefined) profileUpdates.phone = phone;
+    if (phone !== undefined) {
+      // Normalize phone number if provided
+      if (phone && phone.trim() !== '') {
+        const { normalizePhoneForStorage } = await import('./phone-utils');
+        const normalized = normalizePhoneForStorage(phone);
+        if (!normalized) {
+          return res.status(400).json({
+            error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+          });
+        }
+        profileUpdates.phone = normalized;
+      } else {
+        // Set to null if empty string
+        profileUpdates.phone = null;
+      }
+    }
     if (profileImageUrl !== undefined) profileUpdates.profileImageUrl = profileImageUrl;
 
     // Update username if provided
