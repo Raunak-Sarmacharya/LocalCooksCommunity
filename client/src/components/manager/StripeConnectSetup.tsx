@@ -41,6 +41,26 @@ export default function StripeConnectSetup() {
 
   const hasStripeAccount = !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id;
 
+  // Fetch service fee rate (public endpoint - no auth required)
+  const { data: serviceFeeRateData } = useQuery({
+    queryKey: ['/api/platform-settings/service-fee-rate'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('/api/platform-settings/service-fee-rate');
+        if (response.ok) {
+          return response.json();
+        }
+      } catch (error) {
+        console.error('Error fetching service fee rate:', error);
+      }
+      // Default to 5% if unable to fetch
+      return { rate: 0.05, percentage: '5.00' };
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  const serviceFeePercentage = serviceFeeRateData?.percentage ?? '5.00';
+
   // Invalidate user profile query after creating account to refresh the UI
   const handleAccountCreated = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
@@ -205,7 +225,7 @@ export default function StripeConnectSetup() {
           </CardTitle>
           <CardDescription>
             Connect your Stripe account to start receiving payments directly for kitchen bookings.
-            The platform service fee (5% + $0.30 per transaction) will be automatically deducted.
+            The platform service fee ({serviceFeePercentage}% + $0.30 per transaction) will be automatically deducted.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -259,7 +279,7 @@ export default function StripeConnectSetup() {
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">
                 ✅ You'll receive payments automatically after each booking.
-                The platform service fee (5% + $0.30 per transaction) will be deducted automatically, and the remaining amount
+                The platform service fee ({serviceFeePercentage}% + $0.30 per transaction) will be deducted automatically, and the remaining amount
                 will be transferred to your bank account within 2-7 business days.
               </AlertDescription>
             </Alert>

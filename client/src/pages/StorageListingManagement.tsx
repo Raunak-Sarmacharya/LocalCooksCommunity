@@ -152,9 +152,9 @@ function StoragePhotoUpload({ photos, onPhotosChange }: { photos: string[]; onPh
             </>
           ) : (
             <>
-              <Upload className="h-8 w-8 text-gray-400 mb-2" />
-              <span className="text-sm font-medium text-gray-700">Click to upload photos</span>
-              <span className="text-xs text-gray-500 mt-1">JPG, PNG, WebP (max 4.5MB)</span>
+              <Upload className="h-8 w-8 text-gray-400 mb-3" />
+              <span className="text-sm font-medium text-gray-700 mb-2">Click to upload photos</span>
+              <span className="text-xs text-gray-500">JPG, PNG, WebP (max 4.5MB)</span>
             </>
           )}
         </label>

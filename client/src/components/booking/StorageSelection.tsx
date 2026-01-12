@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Package, X, Calendar as CalendarIcon, AlertCircle, Check, Info } from "lucide-react";
 import { DateRange, SelectRangeEventHandler } from "react-day-picker";
 import { format, differenceInDays, isBefore, startOfToday } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,27 @@ export function StorageSelection({
   const [dateRanges, setDateRanges] = useState<Record<number, DateRange | undefined>>({});
   const [validationErrors, setValidationErrors] = useState<Record<number, string>>({});
 
+  // Fetch service fee rate (public endpoint - no auth required)
+  const { data: serviceFeeRateData } = useQuery({
+    queryKey: ['/api/platform-settings/service-fee-rate'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('/api/platform-settings/service-fee-rate');
+        if (response.ok) {
+          return response.json();
+        }
+      } catch (error) {
+        console.error('Error fetching service fee rate:', error);
+      }
+      // Default to 5% if unable to fetch
+      return { rate: 0.05, percentage: '5.00' };
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
+  const serviceFeePercentage = serviceFeeRateData?.percentage ?? '5.00';
+
   // Filter to only active storage listings
   const activeStorageListings = useMemo(() => {
     return storageListings.filter(listing => listing.isActive !== false);
@@ -69,7 +91,7 @@ export function StorageSelection({
     const minDays = listing.minimumBookingDuration || 1;
     const effectiveDays = Math.max(days, minDays);
     const basePrice = listing.basePrice * effectiveDays;
-    const serviceFee = basePrice * 0.05; // 5% service fee
+    const serviceFee = basePrice * serviceFeeRate; // Dynamic service fee
     const total = basePrice + serviceFee;
 
     return { days: effectiveDays, basePrice, serviceFee, total };
@@ -413,7 +435,7 @@ export function StorageSelection({
                               <span className="font-medium">${pricePreview.basePrice.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-gray-600">Service Fee (5%)</span>
+                              <span className="text-gray-600">Service Fee ({serviceFeePercentage}%)</span>
                               <span className="font-medium">${pricePreview.serviceFee.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between pt-2 border-t border-gray-200 font-semibold">

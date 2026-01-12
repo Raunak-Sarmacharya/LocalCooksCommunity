@@ -736,7 +736,7 @@ export default function ManagerBookingDashboard() {
                           </button>
                         </div>
                       ) : (
-                        <label className="cursor-pointer flex flex-col items-center gap-2">
+                        <label className="cursor-pointer flex flex-col items-center gap-3">
                           <input
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png"
@@ -757,7 +757,7 @@ export default function ManagerBookingDashboard() {
                             className="hidden"
                           />
                           <Upload className="h-8 w-8 text-gray-400" />
-                          <span className="text-sm font-medium text-[#F51042]">Click to upload license</span>
+                          <span className="text-sm font-medium text-[#F51042] mb-1">Click to upload license</span>
                           <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
                         </label>
                       )}
@@ -1527,6 +1527,19 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     onUpdateSettings.mutate(payload);
   };
 
+  const handleSaveDailyBookingLimit = () => {
+    if (!location.id) return;
+    
+    const payload = {
+      locationId: location.id,
+      defaultDailyBookingLimit: dailyBookingLimit,
+    };
+    
+    console.log('🚀 Saving daily booking limit only:', payload);
+    
+    onUpdateSettings.mutate(payload);
+  };
+
 
   // Handle kitchen description update
   const handleKitchenDescriptionUpdate = async (kitchenId: number, description: string) => {
@@ -1579,11 +1592,22 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const handleKitchenImageUpload = async (kitchenId: number, file: File) => {
     setUploadingKitchenId(kitchenId);
     try {
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      
       const formData = new FormData();
       formData.append('file', file);
       
       const uploadResponse = await fetch('/api/upload-file', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         credentials: 'include',
         body: formData,
       });
@@ -1642,15 +1666,26 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     }
   };
 
-  // Handle logo file upload for session-based auth (managers)
+  // Handle logo file upload with Firebase auth
   const handleLogoUpload = async (file: File) => {
     setIsUploadingLogo(true);
     try {
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      
       const formData = new FormData();
       formData.append('file', file);
       
       const response = await fetch('/api/upload-file', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         credentials: 'include',
         body: formData,
       });
@@ -1680,11 +1715,22 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const handleLicenseUpload = async (file: File) => {
     setIsUploadingLicense(true);
     try {
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      
       const formData = new FormData();
       formData.append('file', file);
       
       const response = await fetch('/api/upload-file', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
         credentials: 'include',
         body: formData,
       });
@@ -1950,7 +1996,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 />
                 <label
                   htmlFor="license-upload"
-                  className={`cursor-pointer flex flex-col items-center gap-2 ${isUploadingLicense ? 'opacity-50' : ''}`}
+                  className={`cursor-pointer flex flex-col items-center gap-3 ${isUploadingLicense ? 'opacity-50' : ''}`}
                 >
                   {isUploadingLicense ? (
                     <>
@@ -1960,7 +2006,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   ) : (
                     <>
                       <Upload className="h-8 w-8 text-gray-400" />
-                      <span className="text-sm font-medium text-orange-600">
+                      <span className="text-sm font-medium text-orange-600 mb-1">
                         {location.kitchenLicenseStatus === "rejected" 
                           ? "Click to upload new license" 
                           : "Click to upload license"}
@@ -1975,53 +2021,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     <span>{licenseFile.name}</span>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
-
-          {/* Booking Portal Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <Building2 className="h-5 w-5 text-indigo-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Public Booking Portal</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Share this link with third parties to allow them to book kitchens directly. They can submit booking requests without needing an account.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Booking Portal URL
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={`${window.location.origin}/portal/${location.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '')}`}
-                    className="flex-1 border border-gray-300 rounded-lg px-4 py-2 bg-white text-gray-900 font-mono text-sm"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      const locationSlug = location.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
-                      const url = `${window.location.origin}/portal/${locationSlug}`;
-                      navigator.clipboard.writeText(url);
-                      toast({
-                        title: "Copied!",
-                        description: "Booking portal URL copied to clipboard",
-                      });
-                    }}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-                  >
-                    Copy Link
-                  </Button>
-                </div>
-                <p className="text-xs text-gray-600 mt-2">
-                  Share this link with third-party customers. They can book kitchens without needing to create an account.
-                </p>
               </div>
             </div>
           </div>
@@ -2479,12 +2478,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => handleSave()}
+                  onClick={() => handleSaveDailyBookingLimit()}
                   disabled={isUpdating}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <Save className="h-4 w-4" />
-                  Save All Settings
+                  Save Changes
                 </button>
               </div>
             </div>

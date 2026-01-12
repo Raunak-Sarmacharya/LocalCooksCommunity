@@ -7,11 +7,33 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import ACSSDebitPayment from "@/components/payment/ACSSDebitPayment";
+import { useQuery } from "@tanstack/react-query";
 
 export default function BookingConfirmationPage() {
   const [location, setLocation] = useLocation();
   const { kitchens, createBooking } = useKitchenBookings();
   const { toast } = useToast();
+
+  // Fetch service fee rate (public endpoint - no auth required)
+  const { data: serviceFeeRateData } = useQuery({
+    queryKey: ['/api/platform-settings/service-fee-rate'],
+    queryFn: async () => {
+      try {
+        const response = await fetch('/api/platform-settings/service-fee-rate');
+        if (response.ok) {
+          return response.json();
+        }
+      } catch (error) {
+        console.error('Error fetching service fee rate:', error);
+      }
+      // Default to 5% if unable to fetch
+      return { rate: 0.05, percentage: '5.00' };
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+
+  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
+  const serviceFeePercentage = serviceFeeRateData?.percentage ?? '5.00';
   
   // Get query parameters from URL
   const searchParams = new URLSearchParams(window.location.search);
@@ -135,7 +157,7 @@ export default function BookingConfirmationPage() {
             // Calculate estimated price
             if (hourlyRate && selectedSlots.length > 0) {
               const basePrice = hourlyRate * selectedSlots.length;
-              const percentageFee = Math.round(basePrice * 0.05 * 100) / 100; // 5% service fee
+              const percentageFee = Math.round(basePrice * serviceFeeRate * 100) / 100; // Dynamic service fee
               const stripeProcessingFee = 0.30; // $0.30 per transaction
               const serviceFee = percentageFee + stripeProcessingFee;
               setEstimatedPrice({
@@ -244,12 +266,12 @@ export default function BookingConfirmationPage() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee (5% + $0.30 Stripe processing fee)
+  // Calculate service fee (dynamic rate + $0.30 Stripe processing fee)
   const serviceFee = useMemo(() => {
-    const percentageFee = Math.round(combinedSubtotal * 0.05 * 100) / 100; // 5% service fee
+    const percentageFee = Math.round(combinedSubtotal * serviceFeeRate * 100) / 100; // Dynamic service fee
     const stripeProcessingFee = 0.30; // $0.30 per transaction
     return percentageFee + stripeProcessingFee;
-  }, [combinedSubtotal]);
+  }, [combinedSubtotal, serviceFeeRate]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
@@ -792,7 +814,7 @@ export default function BookingConfirmationPage() {
                             <span className="font-bold text-gray-900">${combinedSubtotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-                            <span className="text-gray-600">Service Fee (5% + $0.30 per transaction):</span>
+                            <span className="text-gray-600">Service Fee ({serviceFeePercentage}% + $0.30 per transaction):</span>
                             <span className="font-medium text-gray-900">${serviceFee.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <p className="text-xs text-gray-500 mt-1 italic">

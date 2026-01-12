@@ -221,7 +221,7 @@ export function ImageWithReplace({
               className="hidden"
               disabled={isUploading}
             />
-            <div className="flex flex-col items-center space-y-3">
+            <div className="flex flex-col items-center space-y-4">
               {isUploading ? (
                 <>
                   <Loader2 className="h-12 w-12 text-gray-400 animate-spin" />
@@ -235,7 +235,7 @@ export function ImageWithReplace({
                   <div className="text-sm text-gray-600">
                     <span className="font-medium">Click to upload image</span> or drag and drop
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 mt-1">
                     {allowedTypes.map(t => t.split('/')[1]).join(', ').toUpperCase()} (max {(maxSize / 1024 / 1024).toFixed(1)}MB)
                   </p>
                 </>

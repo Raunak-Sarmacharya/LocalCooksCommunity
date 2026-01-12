@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { auth } from '@/lib/firebase';
 
 interface UploadResponse {
   success: boolean;
@@ -59,7 +60,18 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
       const formData = new FormData();
       formData.append('file', file);
 
-      // Upload with progress tracking using session auth
+      // Get Firebase token first
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        const errorMsg = 'Firebase user not available';
+        setError(errorMsg);
+        onError?.(errorMsg);
+        return null;
+      }
+
+      const token = await currentFirebaseUser.getIdToken();
+
+      // Upload with progress tracking using Firebase auth
       const xhr = new XMLHttpRequest();
       
       return new Promise<UploadResponse | null>((resolve, reject) => {
@@ -106,12 +118,12 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
           resolve(null);
         });
 
-        // Use the session-authenticated upload endpoint
+        // Use Firebase-authenticated upload endpoint
         xhr.open('POST', '/api/upload-file');
-        xhr.withCredentials = true; // Include cookies and session
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.withCredentials = true; // Include cookies
         
-        console.log('Uploading file with session authentication');
-        
+        console.log('Uploading file with Firebase authentication');
         xhr.send(formData);
       });
 

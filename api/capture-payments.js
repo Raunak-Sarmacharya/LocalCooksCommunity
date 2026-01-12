@@ -116,13 +116,35 @@ module.exports = async (req, res) => {
           : stripePaymentIntent.latest_charge?.id;
 
         // Update booking payment status
-        await pool.query(`
+        const updateResult = await pool.query(`
           UPDATE kitchen_bookings
           SET 
             payment_status = 'paid',
             updated_at = NOW()
           WHERE id = $1
+          RETURNING payment_status
         `, [booking.booking_id]);
+
+        console.log(`[Capture Payments] Updated booking ${booking.booking_id} payment_status from '${booking.payment_status}' to 'paid'`);
+
+        // Also update storage_bookings and equipment_bookings if they exist with the same payment_intent_id
+        await pool.query(`
+          UPDATE storage_bookings
+          SET 
+            payment_status = 'paid',
+            updated_at = NOW()
+          WHERE payment_intent_id = $1
+            AND payment_status = 'pending'
+        `, [booking.payment_intent_id]);
+
+        await pool.query(`
+          UPDATE equipment_bookings
+          SET 
+            payment_status = 'paid',
+            updated_at = NOW()
+          WHERE payment_intent_id = $1
+            AND payment_status = 'pending'
+        `, [booking.payment_intent_id]);
 
         // Update payment_transactions if exists
         // This is critical for managers to see revenue in their dashboards
@@ -136,12 +158,12 @@ module.exports = async (req, res) => {
             paidAt: new Date(),
             lastSyncedAt: new Date(),
           }, pool);
-          console.log(`[Capture Payments] Updated payment_transaction ${transaction.id} with chargeId: ${chargeId}`);
+          console.log(`[Capture Payments] Updated payment_transaction ${transaction.id} status to 'succeeded' with chargeId: ${chargeId}`);
         } else {
           console.warn(`[Capture Payments] No payment_transaction found for PaymentIntent ${booking.payment_intent_id} - transaction may not have been created during booking`);
         }
 
-        console.log(`[Capture Payments] Successfully captured payment for booking ${booking.booking_id} (PaymentIntent: ${booking.payment_intent_id})`);
+        console.log(`[Capture Payments] Successfully captured payment for booking ${booking.booking_id} (PaymentIntent: ${booking.payment_intent_id}) - Status changed from 'pending' to 'paid'`);
         results.captured++;
         results.processed++;
       } catch (error) {
