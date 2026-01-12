@@ -447,11 +447,7 @@ export default function ManagerBookingDashboard() {
       </div>
       <ManagerOnboardingWizard />
 
-      <div 
-        style={{
-          marginTop: `${headerHeight}px`,
-        }}
-      >
+      <div style={{ marginTop: `${headerHeight}px` }}>
         <main 
           className="flex-1 pb-8 relative z-10 flex min-h-0"
         >
@@ -460,7 +456,7 @@ export default function ManagerBookingDashboard() {
             className="hidden lg:block z-20 flex-shrink-0" 
             style={{ 
               position: 'sticky',
-              top: '0px', // Stick at top of scroll container (parent already has marginTop to push below navbar)
+              top: `${headerHeight}px`, // Stick below the fixed navbar - CRITICAL: must match navbar height
               left: 0,
               alignSelf: 'flex-start',
               width: isSidebarCollapsed ? '64px' : '256px',
