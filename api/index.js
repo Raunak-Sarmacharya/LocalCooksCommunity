@@ -18224,7 +18224,7 @@ app.get("/api/admin/revenue/all-managers", requireFirebaseAuthWithUser, requireA
       SELECT 
         u.id as manager_id,
         u.username as manager_name,
-        u.email as manager_email,
+        u.username as manager_email,
         l.id as location_id,
         l.name as location_name,
         COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
@@ -18236,7 +18236,7 @@ app.get("/api/admin/revenue/all-managers", requireFirebaseAuthWithUser, requireA
       JOIN locations l ON k.location_id = l.id
       JOIN users u ON l.manager_id = u.id
       ${whereClause}
-      GROUP BY u.id, u.username, u.email, l.id, l.name
+      GROUP BY u.id, u.username, l.id, l.name
       ORDER BY total_revenue DESC
     `, params);
 
@@ -18398,7 +18398,7 @@ app.get("/api/admin/revenue/manager/:managerId", requireFirebaseAuthWithUser, re
 
     // Get manager info
     const managerResult = await pool.query(
-      'SELECT id, username, email FROM users WHERE id = $1',
+      'SELECT id, username FROM users WHERE id = $1',
       [managerId]
     );
 
