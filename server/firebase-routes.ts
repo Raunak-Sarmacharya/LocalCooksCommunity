@@ -435,6 +435,9 @@ export function registerFirebaseRoutes(app: Express) {
 
       // Fetch user's full name from applications (chef or delivery partner)
       let userFullName = null;
+      let stripeConnectAccountId = null;
+      let stripeConnectOnboardingStatus = null;
+      
       if (pool) {
         try {
           // Try chef applications first, then delivery partner applications
@@ -454,8 +457,18 @@ export function registerFirebaseRoutes(app: Express) {
               userFullName = deliveryAppResult.rows[0].full_name;
             }
           }
+          
+          // Fetch Stripe Connect account information
+          const stripeResult = await pool.query(
+            'SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1',
+            [req.neonUser!.id]
+          );
+          if (stripeResult.rows.length > 0) {
+            stripeConnectAccountId = stripeResult.rows[0].stripe_connect_account_id || null;
+            stripeConnectOnboardingStatus = stripeResult.rows[0].stripe_connect_onboarding_status || null;
+          }
         } catch (dbError) {
-          console.error('Error fetching user full name:', dbError);
+          console.error('Error fetching user data:', dbError);
         }
       }
 
@@ -470,6 +483,10 @@ export function registerFirebaseRoutes(app: Express) {
         isDeliveryPartner: (req.neonUser as any).isDeliveryPartner || false,
         displayName: userFullName || null, // User's full name from application
         fullName: userFullName || null, // Alias for compatibility
+        stripeConnectAccountId: stripeConnectAccountId, // Stripe Connect account ID
+        stripe_connect_account_id: stripeConnectAccountId, // Alias for compatibility
+        stripeConnectOnboardingStatus: stripeConnectOnboardingStatus, // Stripe Connect onboarding status
+        stripe_connect_onboarding_status: stripeConnectOnboardingStatus, // Alias for compatibility
         // Also include original structure for compatibility
         neonUser: {
           id: req.neonUser!.id,

@@ -326,24 +326,85 @@ export default function ManagerBookingDashboard() {
       }
       
       console.log('✅ Save response:', result);
-      return result;
+      return { result, payload };
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
+      const { result, payload } = data;
+      
+      // Get current location data from cache before updating
+      const currentLocation = queryClient.getQueryData<Location>(['locationDetails', variables.locationId]) || selectedLocation;
+      
+      // Determine which fields changed
+      const changedFields: string[] = [];
+      
+      if (payload.timezone !== undefined && payload.timezone !== (currentLocation?.timezone || DEFAULT_TIMEZONE)) {
+        changedFields.push('timezone');
+      }
+      if (payload.cancellationPolicyHours !== undefined && payload.cancellationPolicyHours !== (currentLocation?.cancellationPolicyHours ?? 24)) {
+        changedFields.push('cancellationPolicy');
+      }
+      if (payload.cancellationPolicyMessage !== undefined && payload.cancellationPolicyMessage !== (currentLocation?.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.")) {
+        changedFields.push('cancellationPolicy');
+      }
+      if (payload.defaultDailyBookingLimit !== undefined && payload.defaultDailyBookingLimit !== (currentLocation?.defaultDailyBookingLimit ?? 2)) {
+        changedFields.push('bookingLimits');
+      }
+      if (payload.minimumBookingWindowHours !== undefined && payload.minimumBookingWindowHours !== (currentLocation?.minimumBookingWindowHours ?? 1)) {
+        changedFields.push('bookingLimits');
+      }
+      if (payload.notificationEmail !== undefined && payload.notificationEmail !== (currentLocation?.notificationEmail || '')) {
+        changedFields.push('notifications');
+      }
+      if (payload.notificationPhone !== undefined && payload.notificationPhone !== (currentLocation?.notificationPhone || '')) {
+        changedFields.push('notifications');
+      }
+      if (payload.logoUrl !== undefined && payload.logoUrl !== (currentLocation?.logoUrl || '')) {
+        changedFields.push('logo');
+      }
+      
+      // Remove duplicates
+      const uniqueChangedFields = Array.from(new Set(changedFields));
+      
+      // Determine success message based on what changed
+      let successMessage = "Location settings updated successfully";
+      if (uniqueChangedFields.length === 1) {
+        const field = uniqueChangedFields[0];
+        switch (field) {
+          case 'timezone':
+            successMessage = "Timezone updated successfully";
+            break;
+          case 'cancellationPolicy':
+            successMessage = "Cancellation policy updated successfully";
+            break;
+          case 'bookingLimits':
+            successMessage = "Booking limits updated successfully";
+            break;
+          case 'notifications':
+            successMessage = "Notification settings updated successfully";
+            break;
+          case 'logo':
+            successMessage = "Logo updated successfully";
+            break;
+        }
+      } else if (uniqueChangedFields.length > 1) {
+        successMessage = "Settings updated successfully";
+      }
+      
       // Update the location details cache with the returned data
-      if (selectedLocation?.id && data) {
+      if (selectedLocation?.id && result) {
         queryClient.setQueryData(['locationDetails', selectedLocation.id], (oldData: Location | null) => {
           if (oldData) {
-            return { ...oldData, ...data };
+            return { ...oldData, ...result };
           }
-          return data;
+          return result;
         });
       }
       
       // Update selected location state
-      if (data) {
+      if (result) {
         setSelectedLocation((prev) => {
-          if (prev && prev.id === data.id) {
-            return { ...prev, ...data };
+          if (prev && prev.id === result.id) {
+            return { ...prev, ...result };
           }
           return prev;
         });
@@ -355,7 +416,7 @@ export default function ManagerBookingDashboard() {
       
       toast({
         title: "Success",
-        description: "Location settings updated successfully",
+        description: successMessage,
       });
     },
     onError: (error: Error) => {
@@ -1710,6 +1771,26 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <p className="text-sm text-gray-700 mb-4">
                   Use the onboarding wizard to set up your location details, upload your kitchen license, and configure notification preferences.
                 </p>
+                <a
+                  href="#license-upload"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const element = document.getElementById('license-upload');
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      // Focus the label to highlight the upload area
+                      const label = element.parentElement?.querySelector('label[for="license-upload"]');
+                      if (label) {
+                        setTimeout(() => {
+                          (label as HTMLElement).focus();
+                        }, 300);
+                      }
+                    }
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-700 underline font-medium inline-flex items-center gap-1"
+                >
+                  Upload your kitchen license →
+                </a>
               </div>
             </div>
           </div>
@@ -1767,20 +1848,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 >
                   <Save className="h-4 w-4" />
                   Save Changes
-                </button>
-                <button
-                  onClick={() => {
-                    setNotificationEmail(location.notificationEmail || '');
-                    setNotificationPhone(location.notificationPhone || '');
-                    setLogoUrl(location.logoUrl || '');
-                    setCancellationHours(location.cancellationPolicyHours || 24);
-                    setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
-                    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Reset
                 </button>
               </div>
             </div>
@@ -2372,17 +2439,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <Save className="h-4 w-4" />
                   Save Changes
                 </button>
-                <button
-                  onClick={() => {
-                    setCancellationHours(location.cancellationPolicyHours || 24);
-                    setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
-                    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Reset
-                </button>
               </div>
             </div>
           </div>
@@ -2430,18 +2486,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <Save className="h-4 w-4" />
                   Save All Settings
                 </button>
-                <button
-                  onClick={() => {
-                    setCancellationHours(location.cancellationPolicyHours || 24);
-                    setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
-                    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
-                    setLogoUrl(location.logoUrl || '');
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Reset All
-                </button>
               </div>
             </div>
           </div>
@@ -2487,14 +2531,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 >
                   <Save className="h-4 w-4" />
                   Save Changes
-                </button>
-                <button
-                  onClick={() => {
-                    setTimezone(location.timezone || DEFAULT_TIMEZONE);
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Reset
                 </button>
               </div>
             </div>
@@ -2542,19 +2578,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 >
                   <Save className="h-4 w-4" />
                   Save All Settings
-                </button>
-                <button
-                  onClick={() => {
-                    setCancellationHours(location.cancellationPolicyHours || 24);
-                    setCancellationMessage(location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.");
-                    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
-                    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
-                    setLogoUrl(location.logoUrl || '');
-                    setTimezone(location.timezone || DEFAULT_TIMEZONE);
-                  }}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Reset All
                 </button>
               </div>
             </div>

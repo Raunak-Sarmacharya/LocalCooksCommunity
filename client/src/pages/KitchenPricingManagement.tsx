@@ -482,10 +482,8 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-blue-900 mb-1">Pricing Information</h4>
                   <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
-                    <li>Prices are stored in cents internally (e.g., $50.00 = 5000 cents) to avoid floating-point precision issues</li>
                     <li>Chefs will see the calculated total price before booking</li>
                     <li>You can update pricing at any time - existing bookings will keep their original price</li>
-                    <li>Setting pricing to null/empty will make the kitchen free to book</li>
                   </ul>
                 </div>
               </div>

@@ -7743,6 +7743,11 @@ app.get('/api/user/profile', requireFirebaseAuthWithUser, async (req, res) => {
       emailVerified: req.firebaseUser.email_verified || false,
       displayName: userFullName || null, // User's full name from application
       fullName: userFullName || null, // Alias for compatibility
+      // Stripe Connect fields
+      stripeConnectAccountId: fullUserData?.stripe_connect_account_id || null,
+      stripe_connect_account_id: fullUserData?.stripe_connect_account_id || null, // Alias for compatibility
+      stripeConnectOnboardingStatus: fullUserData?.stripe_connect_onboarding_status || null,
+      stripe_connect_onboarding_status: fullUserData?.stripe_connect_onboarding_status || null, // Alias for compatibility
       // Manager onboarding fields
       manager_onboarding_completed: fullUserData?.manager_onboarding_completed || false,
       manager_onboarding_skipped: fullUserData?.manager_onboarding_skipped || false,
