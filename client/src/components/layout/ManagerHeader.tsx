@@ -133,14 +133,15 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
       >
         {/* Logo centered above sidebar */}
         <div 
-          className="hidden lg:flex absolute left-0 items-center justify-center"
+          className="hidden lg:flex absolute left-0 items-center justify-center pointer-events-none"
           style={{
             width: `${sidebarWidth}px`,
             transition: 'width 0.3s ease-out',
             height: '100%',
+            zIndex: 10,
           }}
         >
-          <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
+          <Link href="/" className="flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group pointer-events-auto">
             <Logo variant="brand" className="h-9 sm:h-11 md:h-12 lg:h-12 w-auto transition-transform duration-300 group-hover:scale-110" />
             <div className="flex flex-col justify-center">
               <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-2xl leading-none text-[#F51042] tracking-tight font-normal">
