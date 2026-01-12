@@ -6,7 +6,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Save, User, Mail, Phone, Image as ImageIcon, Loader2 } from "lucide-react";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import Footer from "@/components/layout/Footer";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 
@@ -190,7 +189,6 @@ export default function ManagerProfile() {
         <div className="pt-24 pb-12 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-orange-600" />
         </div>
-        <Footer />
       </div>
     );
   }
@@ -204,7 +202,6 @@ export default function ManagerProfile() {
             <p className="text-gray-600">Access denied. Manager access required.</p>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -373,7 +370,6 @@ export default function ManagerProfile() {
           </div>
         </div>
       </div>
-      <Footer />
     </div>
   );
 }
