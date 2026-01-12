@@ -95,59 +95,26 @@ export default function AnimatedManagerSidebar({
           overflow: 'hidden',
         }}
       >
-        {/* Collapse Toggle Button */}
+        {/* Collapse Toggle Button - Fixed positioning to prevent cut-off */}
         {!isMobile && (
           <button
             onClick={handleToggle}
-            className="absolute top-4 right-0 z-50 flex items-center justify-center w-6 h-6 -mr-3 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+            className="absolute top-4 z-50 flex items-center justify-center w-7 h-7 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50"
+            style={{
+              right: isCollapsed ? '8px' : '8px',
+            }}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!isCollapsed}
           >
             {isCollapsed ? (
-              <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
+              <ChevronRight className="w-4 h-4 text-gray-600" />
             ) : (
-              <ChevronLeft className="w-3.5 h-3.5 text-gray-600" />
+              <ChevronLeft className="w-4 h-4 text-gray-600" />
             )}
           </button>
         )}
 
         <div className="flex flex-col h-full overflow-hidden">
-          {/* Logo Section */}
-          <div className="flex-shrink-0 px-4 py-5 border-b border-gray-200">
-            <AnimatePresence mode="wait">
-              {isContentVisible ? (
-                <motion.div
-                  key="expanded-logo"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center gap-3"
-                >
-                  <Logo className="h-8 w-auto flex-shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold text-gray-900 leading-tight">
-                      Local Cooks
-                    </span>
-                    <span className="text-xs text-gray-500 leading-tight">
-                      for Kitchens
-                    </span>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="collapsed-logo"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center justify-center"
-                >
-                  <Logo className="h-8 w-auto" />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
 
           {/* Location Selection */}
           <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200">

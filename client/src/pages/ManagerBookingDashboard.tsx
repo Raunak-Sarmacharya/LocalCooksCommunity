@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
@@ -17,6 +18,7 @@ import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import ManagerHeader from "@/components/layout/ManagerHeader";
+import Logo from "@/components/ui/logo";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
@@ -443,9 +445,44 @@ export default function ManagerBookingDashboard() {
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
       <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       <div ref={headerRef as React.RefObject<HTMLDivElement>}>
-        <ManagerHeader />
+        <ManagerHeader hideLogo={true} sidebarWidth={isSidebarCollapsed ? 64 : 256} />
       </div>
       <ManagerOnboardingWizard />
+      
+      {/* Unified Logo at Navbar-Sidebar Intersection */}
+      <div 
+        className="hidden lg:flex fixed top-0 left-0 z-[60] items-center gap-2.5 px-4 bg-white border-b border-r border-gray-200"
+        style={{
+          width: isSidebarCollapsed ? '64px' : '256px',
+          transition: 'width 0.3s ease-out',
+          height: `${headerHeight}px`,
+          minHeight: `${headerHeight}px`,
+        }}
+      >
+        <Link href="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-80 flex-shrink-0">
+          <Logo variant="brand" className="h-6 w-auto flex-shrink-0" />
+          <AnimatePresence mode="wait">
+            {!isSidebarCollapsed && (
+              <motion.div
+                key="expanded-logo-text"
+                initial={{ opacity: 0, width: 0, marginLeft: -8 }}
+                animate={{ opacity: 1, width: 'auto', marginLeft: 0 }}
+                exit={{ opacity: 0, width: 0, marginLeft: -8 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                className="flex flex-col overflow-hidden"
+              >
+                <span className="font-logo text-base leading-none text-[#F51042] tracking-tight font-normal whitespace-nowrap">
+                  LocalCooks
+                </span>
+                <span className="text-[9px] font-sans font-medium text-gray-500/80 uppercase tracking-wider mt-0.5 leading-none whitespace-nowrap">
+                  FOR KITCHENS
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Link>
+      </div>
+
       <div 
         style={{
           marginTop: `${headerHeight}px`,
@@ -468,7 +505,6 @@ export default function ManagerBookingDashboard() {
               overflowX: 'hidden',
               height: `calc(100vh - ${headerHeight}px)`,
               maxHeight: `calc(100vh - ${headerHeight}px)`,
-              paddingTop: '80px',
             }}
           >
           <AnimatedManagerSidebar
