@@ -124,14 +124,8 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
 
   return (
     <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
-      <div 
-        className="flex items-center w-full"
-        style={{
-          paddingLeft: `${sidebarWidth}px`,
-          transition: 'padding-left 0.3s ease-out',
-        }}
-      >
-        {/* Logo centered above sidebar */}
+      <div className="flex items-center w-full">
+        {/* Logo centered above sidebar - width changes with sidebar */}
         <div 
           className="hidden lg:flex absolute left-0 items-center justify-center pointer-events-none"
           style={{
@@ -154,10 +148,15 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
           </Link>
         </div>
 
-        {/* Main Header Content - Right aligned */}
-        <div className="flex-1 container mx-auto px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center">
+        {/* Main Header Content - Right aligned, FIXED position - does NOT slide with sidebar */}
+        <div 
+          className="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 sm:px-4 py-2 sm:py-3"
+          style={{
+            left: '256px', // Fixed at expanded sidebar width - does NOT change when sidebar collapses
+          }}
+        >
           {/* Mobile Logo */}
-          <Link href="/" className="lg:hidden flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group">
+          <Link href="/" className="lg:hidden flex items-center gap-3 sm:gap-4 transition-all duration-300 hover:scale-[1.02] group mr-auto">
             <Logo variant="brand" className="h-9 sm:h-11 md:h-12 lg:h-12 w-auto transition-transform duration-300 group-hover:scale-110" />
             <div className="flex flex-col justify-center">
               <span className="font-logo text-lg sm:text-xl md:text-2xl lg:text-2xl leading-none text-[#F51042] tracking-tight font-normal">
@@ -169,7 +168,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             </div>
           </Link>
 
-        <nav className="hidden md:flex items-center space-x-4 ml-auto">
+        <nav className="hidden md:flex items-center space-x-4">
           <Link 
             href="/"
             className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
