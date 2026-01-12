@@ -135,7 +135,9 @@ export default function BookingConfirmationPage() {
             // Calculate estimated price
             if (hourlyRate && selectedSlots.length > 0) {
               const basePrice = hourlyRate * selectedSlots.length;
-              const serviceFee = Math.round(basePrice * 0.05 * 100) / 100;
+              const percentageFee = Math.round(basePrice * 0.05 * 100) / 100; // 5% service fee
+              const stripeProcessingFee = 0.30; // $0.30 per transaction
+              const serviceFee = percentageFee + stripeProcessingFee;
               setEstimatedPrice({
                 basePrice,
                 serviceFee,
@@ -242,9 +244,11 @@ export default function BookingConfirmationPage() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee
+  // Calculate service fee (5% + $0.30 Stripe processing fee)
   const serviceFee = useMemo(() => {
-    return Math.round(combinedSubtotal * 0.05 * 100) / 100;
+    const percentageFee = Math.round(combinedSubtotal * 0.05 * 100) / 100; // 5% service fee
+    const stripeProcessingFee = 0.30; // $0.30 per transaction
+    return percentageFee + stripeProcessingFee;
   }, [combinedSubtotal]);
 
   // Calculate grand total
@@ -788,7 +792,7 @@ export default function BookingConfirmationPage() {
                             <span className="font-bold text-gray-900">${combinedSubtotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-                            <span className="text-gray-600">Service Fee (5% on total):</span>
+                            <span className="text-gray-600">Service Fee (5% + $0.30 per transaction):</span>
                             <span className="font-medium text-gray-900">${serviceFee.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <p className="text-xs text-gray-500 mt-1 italic">

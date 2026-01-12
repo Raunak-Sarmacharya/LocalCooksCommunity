@@ -609,7 +609,7 @@ export default function ManagerBookingDashboard() {
                       type="text"
                       value={newLocationName}
                       onChange={(e) => setNewLocationName(e.target.value)}
-                      placeholder="e.g., The Lantern Downtown"
+                      placeholder="e.g., Downtown Kitchen"
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
                     />
                   </div>
