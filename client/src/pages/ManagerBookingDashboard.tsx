@@ -549,7 +549,7 @@ export default function ManagerBookingDashboard() {
         </div>
 
         <div 
-          className="flex-1 transition-all duration-300 min-w-0"
+          className="flex-1 transition-all duration-300 min-w-0 bg-gray-50"
           style={{
             paddingTop: '80px',
           }}
