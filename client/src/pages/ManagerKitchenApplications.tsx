@@ -1,6 +1,5 @@
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -713,7 +712,6 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
           {content}
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

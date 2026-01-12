@@ -17,7 +17,6 @@ import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import Footer from "@/components/layout/Footer";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
@@ -119,7 +118,6 @@ export default function ManagerBookingDashboard() {
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const footerRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const [headerHeight, setHeaderHeight] = useState(96); // Default header height
   const [sidebarStyle, setSidebarStyle] = useState<React.CSSProperties>({
@@ -133,7 +131,6 @@ export default function ManagerBookingDashboard() {
   useEffect(() => {
     const handleScroll = () => {
       const header = headerRef.current || document.querySelector('header');
-      const footer = footerRef.current || document.querySelector('footer');
       
       if (!header) return;
       
@@ -1028,7 +1025,6 @@ export default function ManagerBookingDashboard() {
         </div>
         </main>
       </div>
-      <Footer ref={footerRef} />
     </div>
   );
 }

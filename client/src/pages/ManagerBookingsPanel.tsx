@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import Footer from "@/components/layout/Footer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -639,7 +638,6 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
     <div className="min-h-screen flex flex-col">
       <ManagerHeader />
       {content}
-      <Footer />
     </div>
   );
 }

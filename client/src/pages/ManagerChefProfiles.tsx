@@ -7,7 +7,6 @@
 import { useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import Footer from "@/components/layout/Footer";
 import { Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -87,7 +86,6 @@ export default function ManagerChefProfiles({ embedded = false }: ManagerChefPro
           {content}
         </div>
       </main>
-      <Footer />
     </div>
   );
 }

@@ -5,7 +5,6 @@ import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import Footer from "@/components/layout/Footer";
 
 interface DateAvailability {
   id: number;
@@ -1704,7 +1703,6 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
     <div className="min-h-screen flex flex-col bg-gray-50">
       <ManagerHeader />
       {content}
-      <Footer />
     </div>
   );
 }
