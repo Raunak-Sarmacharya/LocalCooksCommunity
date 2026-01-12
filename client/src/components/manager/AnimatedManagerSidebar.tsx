@@ -116,9 +116,9 @@ export default function AnimatedManagerSidebar({
         )}
 
         {/* Sidebar Content Container - Scrollable, starts from top */}
-        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ paddingTop: 0, marginTop: 0 }}>
+        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden">
           {/* Location Selection - Always visible at top */}
-          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white" style={{ marginTop: 0, paddingTop: '1rem' }}>
+          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white">
           <AnimatePresence mode="wait">
             {isContentVisible ? (
               <motion.div
