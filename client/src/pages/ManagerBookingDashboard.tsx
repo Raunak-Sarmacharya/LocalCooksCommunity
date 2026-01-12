@@ -1621,12 +1621,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       const uploadedUrl = uploadResult.url;
       
       // Update the kitchen with the new image URL
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-      
-      const token = await currentFirebaseUser.getIdToken();
+      // Reuse existing token from above
       const headers: HeadersInit = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -1744,12 +1739,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       const licenseUrl = result.url;
       
       // Update location with new license URL and reset status to pending
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-      
-      const token = await currentFirebaseUser.getIdToken();
+      // Reuse existing token from above
       const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
         method: 'PUT',
         headers: { 
