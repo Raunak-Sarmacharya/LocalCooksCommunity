@@ -4355,17 +4355,14 @@ app.get("/api/files/r2-presigned", async (req, res) => {
   }
 });
 
-// Get presigned URL for an image stored in R2 bucket (available to all authenticated users)
-app.post("/api/images/presigned-url", async (req, res) => {
+// Get presigned URL for an image stored in R2 bucket (available to all authenticated Firebase users: admin, manager, chef, delivery_partner)
+// No role restrictions - any authenticated user can access images
+app.post("/api/images/presigned-url", requireFirebaseAuthWithUser, async (req, res) => {
   try {
-    // Check if user is authenticated (supports both Firebase Bearer token and session/x-user-id)
-    const user = await getAuthenticatedUser(req);
-    if (!user) {
-      return res.status(401).json({ 
-        error: "Not authenticated",
-        message: "Authentication required. Please provide a valid Firebase token or session." 
-      });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be set
+    const user = req.neonUser;
+    
+    console.log(`✅ Presigned URL request from authenticated user: ${user.id} (${user.role || 'no role'})`);
 
     const { imageUrl } = req.body;
     
