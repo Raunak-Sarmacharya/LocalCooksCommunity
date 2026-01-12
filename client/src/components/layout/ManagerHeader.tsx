@@ -191,29 +191,8 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
           </Link>
 
         <nav className="hidden md:flex items-center space-x-4 ml-auto">
-          <Link 
-            href="/"
-            className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
-          >
-            Homepage
-          </Link>
-          
           {user && (
             <>
-              <Link 
-                href="/manager/booking-dashboard"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
-              >
-                Booking Dashboard
-              </Link>
-              
-              <Link 
-                href="/manager/profile"
-                className="text-gray-700 hover:text-primary transition-colors px-3 py-2 rounded-md hover:bg-gray-50 text-sm sm:text-base"
-              >
-                Profile
-              </Link>
-              
               <Button
                 variant="outline"
                 size="sm"
@@ -353,32 +332,8 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
         <div className="md:hidden border-t border-gray-200 shadow-xl mobile-momentum-scroll bg-white">
           <div className="container mx-auto px-4 sm:px-6 py-5">
             <nav className="space-y-3">
-              <Link 
-                href="/"
-                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Homepage
-              </Link>
-              
               {user && (
                 <>
-                  <Link 
-                    href="/manager/booking-dashboard"
-                    className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Booking Dashboard
-                  </Link>
-                  
-                  <Link 
-                    href="/manager/profile"
-                    className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight text-base"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    Profile
-                  </Link>
-                  
                   <Button
                     variant="outline"
                     size="sm"
