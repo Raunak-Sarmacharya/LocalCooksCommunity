@@ -450,7 +450,10 @@ export default function ManagerBookingDashboard() {
       {/* Content area - no marginTop, sidebar will handle positioning */}
       <main 
         className="flex-1 pb-8 relative z-10 flex min-h-0"
-        style={{ marginTop: `${headerHeight}px` }}
+        style={{ 
+          marginTop: `${headerHeight}px`,
+          overflow: 'visible', // Allow sidebar button to be visible
+        }}
       >
         {/* Animated Sidebar - positioned below navbar, starts from top of visible area */}
         <div 
