@@ -1087,15 +1087,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // IMAGE PRESIGNED URL ENDPOINT
   // ===============================
+  // Available to all authenticated Firebase users (admin, manager, chef, delivery_partner)
+  // No role restrictions - any authenticated user can access images
   
   // Get presigned URL for an image stored in R2 bucket
-  app.post("/api/images/presigned-url", optionalFirebaseAuth, async (req: Request, res: Response) => {
+  app.post("/api/images/presigned-url", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-      // Check if user is authenticated (supports both Firebase and session auth)
-      const user = await getAuthenticatedUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be set
+      const user = req.neonUser!;
+      
+      console.log(`✅ Presigned URL request from authenticated user: ${user.id} (${user.role || 'no role'})`);
 
       const { imageUrl } = req.body;
       

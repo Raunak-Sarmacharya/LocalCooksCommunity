@@ -104,20 +104,26 @@ export function ImageWithReplace({
         // But don't wait for it - show the image immediately
         const fetchPresignedUrl = async () => {
           try {
-            // Get Firebase auth token if available
+            // All users use Firebase auth - get Firebase token
             const currentUser = auth.currentUser;
+            if (!currentUser) {
+              console.warn('⚠️ No Firebase user found, cannot get presigned URL');
+              setIsLoading(false);
+              return;
+            }
+            
             const headers: HeadersInit = {
               'Content-Type': 'application/json',
             };
             
-            if (currentUser) {
-              try {
-                const token = await currentUser.getIdToken();
-                headers['Authorization'] = `Bearer ${token}`;
-              } catch (tokenError) {
-                console.warn('Could not get auth token for presigned URL:', tokenError);
-                // Continue without token - might work if R2 is public
-              }
+            try {
+              const token = await currentUser.getIdToken();
+              headers['Authorization'] = `Bearer ${token}`;
+              console.log('✅ Using Firebase token for presigned URL');
+            } catch (tokenError) {
+              console.error('❌ Could not get Firebase token:', tokenError);
+              setIsLoading(false);
+              return; // Cannot proceed without token
             }
             
             const response = await fetch('/api/images/presigned-url', {
