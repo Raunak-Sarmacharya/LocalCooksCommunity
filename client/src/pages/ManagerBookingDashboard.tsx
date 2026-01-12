@@ -443,7 +443,7 @@ export default function ManagerBookingDashboard() {
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
       <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
       <div ref={headerRef as React.RefObject<HTMLDivElement>}>
-        <ManagerHeader hideLogo={true} sidebarWidth={isSidebarCollapsed ? 64 : 256} />
+        <ManagerHeader />
       </div>
       <ManagerOnboardingWizard />
 
@@ -466,7 +466,7 @@ export default function ManagerBookingDashboard() {
               width: isSidebarCollapsed ? '64px' : '256px',
               transition: 'max-height 0.2s ease-out, top 0.2s ease-out, width 0.3s ease-out',
               overflowY: 'auto',
-              overflowX: 'hidden',
+              overflowX: 'visible',
               height: `calc(100vh - ${headerHeight}px)`,
               maxHeight: `calc(100vh - ${headerHeight}px)`,
             }}

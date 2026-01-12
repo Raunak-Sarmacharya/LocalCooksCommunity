@@ -92,27 +92,29 @@ export default function AnimatedManagerSidebar({
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
         className="relative flex flex-col h-full bg-white border-r border-gray-200"
         style={{ 
-          overflow: 'hidden',
+          overflow: 'visible',
         }}
       >
+        {/* Collapse Toggle Button - Absolutely positioned at top right, always visible */}
+        {!isMobile && (
+          <button
+            onClick={handleToggle}
+            className="absolute top-4 z-50 flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-200 shadow-md hover:shadow-lg transition-all hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#F51042]/20"
+            style={{
+              right: '8px',
+            }}
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!isCollapsed}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="w-4 h-4 text-gray-600" />
+            ) : (
+              <ChevronLeft className="w-4 h-4 text-gray-600" />
+            )}
+          </button>
+        )}
+
         <div className="flex flex-col h-full overflow-hidden">
-          {/* Collapse Toggle Button - Positioned at top right, inside sidebar */}
-          {!isMobile && (
-            <div className="flex-shrink-0 flex justify-end px-3 py-3 border-b border-gray-200">
-              <button
-                onClick={handleToggle}
-                className="flex items-center justify-center w-8 h-8 rounded-md bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#F51042]/20"
-                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                aria-expanded={!isCollapsed}
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="w-4 h-4 text-gray-600" />
-                ) : (
-                  <ChevronLeft className="w-4 h-4 text-gray-600" />
-                )}
-              </button>
-            </div>
-          )}
 
           {/* Location Selection */}
           <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200">
