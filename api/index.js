@@ -4089,24 +4089,9 @@ app.get("/api/files/documents/:filename", requireFirebaseAuthWithUser, async (re
 });
 
 // Proxy endpoint for admins to access kitchen license files from R2
-app.get("/api/files/kitchen-license/:locationId", async (req, res) => {
+app.get("/api/files/kitchen-license/:locationId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
   try {
-    // Check if user is authenticated
-    const rawUserId = req.session.userId || req.headers['x-user-id'];
-    if (!rawUserId) {
-      return res.status(401).json({ message: "Not authenticated" });
-    }
-
-    // Convert Firebase UID to integer user ID
-    const user = await getUser(rawUserId);
-    if (!user) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    // Only admins can access kitchen licenses
-    if (user.role !== 'admin') {
-      return res.status(403).json({ message: "Admin access required" });
-    }
+    // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
 
     const locationId = parseInt(req.params.locationId);
     if (isNaN(locationId)) {
