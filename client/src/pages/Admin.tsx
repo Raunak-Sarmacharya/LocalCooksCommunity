@@ -66,6 +66,7 @@ import ChangePassword from "@/components/auth/ChangePassword";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 import ResponsiveTable from "@/components/ui/responsive-table";
@@ -2083,10 +2084,18 @@ function AdminDashboard() {
                               {app.foodSafetyLicenseUrl ? (
                                 <div className="space-y-3">
                                   <a 
-                                    href={app.foodSafetyLicenseUrl} 
+                                    href={presignedUrls[app.foodSafetyLicenseUrl] || getR2ProxyUrl(app.foodSafetyLicenseUrl)} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                    onClick={async (e) => {
+                                      const url = app.foodSafetyLicenseUrl;
+                                      if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                        e.preventDefault();
+                                        const presignedUrl = await getPresignedUrl(url);
+                                        window.open(presignedUrl, '_blank');
+                                      }
+                                    }}
                                   >
                                     <ExternalLink className="h-4 w-4" />
                                     {app.foodSafetyLicenseUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
@@ -2185,10 +2194,18 @@ function AdminDashboard() {
                               {app.foodEstablishmentCertUrl ? (
                                 <div className="space-y-3">
                                   <a 
-                                    href={app.foodEstablishmentCertUrl} 
+                                    href={presignedUrls[app.foodEstablishmentCertUrl] || getR2ProxyUrl(app.foodEstablishmentCertUrl)} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                    onClick={async (e) => {
+                                      const url = app.foodEstablishmentCertUrl;
+                                      if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                        e.preventDefault();
+                                        const presignedUrl = await getPresignedUrl(url);
+                                        window.open(presignedUrl, '_blank');
+                                      }
+                                    }}
                                   >
                                     <ExternalLink className="h-4 w-4" />
                                     {app.foodEstablishmentCertUrl.startsWith('/api/files/') ? 'View Document' : 'External Link'}
@@ -2565,10 +2582,18 @@ function AdminDashboard() {
                             {app.driversLicenseUrl ? (
                               <div className="space-y-3">
                                 <a 
-                                  href={app.driversLicenseUrl} 
+                                  href={presignedUrls[app.driversLicenseUrl] || getR2ProxyUrl(app.driversLicenseUrl)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                  onClick={async (e) => {
+                                    const url = app.driversLicenseUrl;
+                                    if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                      e.preventDefault();
+                                      const presignedUrl = await getPresignedUrl(url);
+                                      window.open(presignedUrl, '_blank');
+                                    }
+                                  }}
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                   View Document
@@ -2622,10 +2647,18 @@ function AdminDashboard() {
                             {app.vehicleRegistrationUrl ? (
                               <div className="space-y-3">
                                 <a 
-                                  href={app.vehicleRegistrationUrl} 
+                                  href={presignedUrls[app.vehicleRegistrationUrl] || getR2ProxyUrl(app.vehicleRegistrationUrl)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                  onClick={async (e) => {
+                                    const url = app.vehicleRegistrationUrl;
+                                    if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                      e.preventDefault();
+                                      const presignedUrl = await getPresignedUrl(url);
+                                      window.open(presignedUrl, '_blank');
+                                    }
+                                  }}
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                   View Document
@@ -2679,10 +2712,18 @@ function AdminDashboard() {
                             {app.insuranceUrl ? (
                               <div className="space-y-3">
                                 <a 
-                                  href={app.insuranceUrl} 
+                                  href={presignedUrls[app.insuranceUrl] || getR2ProxyUrl(app.insuranceUrl)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
+                                  onClick={async (e) => {
+                                    const url = app.insuranceUrl;
+                                    if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                      e.preventDefault();
+                                      const presignedUrl = await getPresignedUrl(url);
+                                      window.open(presignedUrl, '_blank');
+                                    }
+                                  }}
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                   View Document

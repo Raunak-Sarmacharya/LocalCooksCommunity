@@ -200,7 +200,9 @@ export default function DeliveryPartnerDocumentUpload({
               <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <FileText className="h-4 w-4 text-green-600" />
                 <a 
-                  href={currentUrl} 
+                  href={currentUrl?.includes('r2.cloudflarestorage.com') 
+                    ? `/api/files/r2-proxy?url=${encodeURIComponent(currentUrl)}`
+                    : currentUrl} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-sm text-green-700 hover:text-green-800 font-medium"
