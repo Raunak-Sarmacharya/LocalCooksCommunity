@@ -16,6 +16,7 @@ interface Location {
   kitchenLicenseApprovedBy?: number;
   kitchenLicenseApprovedAt?: string;
   kitchenLicenseFeedback?: string;
+  kitchenLicenseExpiry?: string;
   // Additional location fields
   logoUrl?: string;
   brandImageUrl?: string;

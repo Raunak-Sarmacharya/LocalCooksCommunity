@@ -13568,11 +13568,27 @@ app.get("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, a
              kitchen_license_approved_by as "kitchenLicenseApprovedBy",
              kitchen_license_approved_at as "kitchenLicenseApprovedAt",
              kitchen_license_feedback as "kitchenLicenseFeedback",
+             kitchen_license_expiry as "kitchenLicenseExpiry",
              created_at, updated_at 
       FROM locations 
       WHERE manager_id = $1
       ORDER BY created_at DESC
     `, [user.id]);
+    
+    // Automatically mark licenses as expired if expiry date has passed
+    for (const location of result.rows) {
+      if (location.kitchenLicenseStatus === 'approved' && 
+          location.kitchenLicenseExpiry && 
+          new Date(location.kitchenLicenseExpiry) < new Date()) {
+        await pool.query(
+          `UPDATE locations 
+           SET kitchen_license_status = 'expired', updated_at = NOW() 
+           WHERE id = $1`,
+          [location.id]
+        );
+        location.kitchenLicenseStatus = 'expired';
+      }
+    }
     
     // Log to verify logoUrl is included in response
     console.log('[GET] /api/manager/locations - Returning locations:', 
@@ -13670,7 +13686,7 @@ app.put("/api/manager/locations/:locationId", requireFirebaseAuthWithUser, requi
       return res.status(403).json({ error: "Access denied to this location" });
     }
 
-    const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus } = req.body;
+    const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus, kitchenLicenseExpiry } = req.body;
 
     // Build update query dynamically
     const updates = [];
@@ -17227,7 +17243,7 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
       return res.status(403).json({ error: "Access denied to this location" });
     }
 
-    const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus } = req.body;
+    const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus, kitchenLicenseExpiry } = req.body;
 
     // Build update query dynamically
     const updates = [];
@@ -17263,8 +17279,27 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
       }
     }
     if (kitchenLicenseUrl !== undefined) {
+      // Require expiration date when uploading a license
+      if (kitchenLicenseUrl && !kitchenLicenseExpiry) {
+        return res.status(400).json({ 
+          error: "Expiration date is required when uploading a kitchen license" 
+        });
+      }
       updates.push(`kitchen_license_url = $${paramIndex++}`);
       values.push(kitchenLicenseUrl);
+    }
+    if (kitchenLicenseExpiry !== undefined) {
+      // Validate expiration date format
+      if (kitchenLicenseExpiry) {
+        const expiryDate = new Date(kitchenLicenseExpiry);
+        if (isNaN(expiryDate.getTime())) {
+          return res.status(400).json({ 
+            error: "Invalid expiration date format. Please use YYYY-MM-DD format." 
+          });
+        }
+      }
+      updates.push(`kitchen_license_expiry = $${paramIndex++}`);
+      values.push(kitchenLicenseExpiry || null);
     }
     if (kitchenLicenseStatus !== undefined) {
       updates.push(`kitchen_license_status = $${paramIndex++}`);
@@ -17299,9 +17334,24 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
       kitchen_license_approved_by as "kitchenLicenseApprovedBy",
       kitchen_license_approved_at as "kitchenLicenseApprovedAt",
       kitchen_license_feedback as "kitchenLicenseFeedback",
+      kitchen_license_expiry as "kitchenLicenseExpiry",
       created_at, updated_at`;
     
     const result = await pool.query(query, values);
+    
+    // Automatically mark licenses as expired if expiry date has passed
+    if (result.rows[0].kitchenLicenseStatus === 'approved' && 
+        result.rows[0].kitchenLicenseExpiry && 
+        new Date(result.rows[0].kitchenLicenseExpiry) < new Date()) {
+      await pool.query(
+        `UPDATE locations 
+         SET kitchen_license_status = 'expired', updated_at = NOW() 
+         WHERE id = $1`,
+        [locationId]
+      );
+      // Update the returned row
+      result.rows[0].kitchenLicenseStatus = 'expired';
+    }
 
     console.log(`✅ Location ${locationId} updated successfully`);
     res.json(result.rows[0]);
@@ -22158,6 +22208,7 @@ app.get("/api/admin/locations/pending-licenses", requireFirebaseAuthWithUser, re
         l.kitchen_license_status as "kitchenLicenseStatus",
         l.kitchen_license_feedback as "kitchenLicenseFeedback",
         l.kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+        l.kitchen_license_expiry as "kitchenLicenseExpiry",
         u.username as "managerUsername",
         u.id as "managerId"
       FROM locations l

@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { phoneNumberSchema, optionalPhoneNumberSchema } from './phone-validation';
@@ -16,7 +16,7 @@ export const applicationStatusEnum = pgEnum('application_status', ['inReview', '
 export const userRoleEnum = pgEnum('user_role', ['admin', 'chef', 'delivery_partner', 'manager']);
 
 // Define an enum for document verification status
-export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected']);
+export const documentVerificationStatusEnum = pgEnum('document_verification_status', ['pending', 'approved', 'rejected', 'expired']);
 
 // Define an enum for application types
 export const applicationTypeEnum = pgEnum('application_type', ['chef', 'delivery_partner']);
@@ -337,6 +337,7 @@ export const locations = pgTable("locations", {
   kitchenLicenseApprovedBy: integer("kitchen_license_approved_by").references(() => users.id), // Admin who approved/rejected
   kitchenLicenseApprovedAt: timestamp("kitchen_license_approved_at"), // When license was approved/rejected
   kitchenLicenseFeedback: text("kitchen_license_feedback"), // Admin feedback on license
+  kitchenLicenseExpiry: date("kitchen_license_expiry"), // Expiration date of the kitchen license
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
