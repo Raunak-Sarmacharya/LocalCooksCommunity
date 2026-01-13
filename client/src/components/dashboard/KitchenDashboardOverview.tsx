@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -217,7 +217,15 @@ export default function KitchenDashboardOverview({
   }, []); // Recalculate when month changes
 
   // Fetch revenue metrics for this month
-  const { data: revenueMetrics, isLoading: isLoadingRevenue, error: revenueError } = useQuery({
+  interface RevenueMetrics {
+    totalRevenue?: number;
+    managerRevenue?: number;
+    depositedManagerRevenue?: number;
+    pendingPayments?: number;
+    [key: string]: any;
+  }
+
+  const { data: revenueMetrics, isLoading: isLoadingRevenue, error: revenueError } = useQuery<RevenueMetrics>({
     queryKey: ['/api/manager/revenue/overview', thisMonthDateRange.startDate, thisMonthDateRange.endDate, selectedLocation?.id],
     queryFn: async () => {
       if (!firebaseUser) {
@@ -262,10 +270,14 @@ export default function KitchenDashboardOverview({
     refetchInterval: 30000, // Refresh every 30 seconds
     refetchOnWindowFocus: true,
     retry: 2,
-    onError: (error) => {
-      console.error('[Overview] Revenue metrics query error:', error);
-    },
   });
+
+  // Handle errors using useEffect (React Query v5 doesn't support onError)
+  useEffect(() => {
+    if (revenueError) {
+      console.error('[Overview] Revenue metrics query error:', revenueError);
+    }
+  }, [revenueError]);
 
   // Calculate dashboard metrics (using filtered bookings)
   const dashboardMetrics = useMemo(() => {
@@ -877,22 +889,22 @@ export default function KitchenDashboardOverview({
                     )}
                   </p>
                   <p className={`text-xs mt-1 ${
-                    revenueMetrics && revenueMetrics.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
+                    revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0 ? 'text-amber-100' : 'text-gray-500'
                   }`}>
                     Awaiting payment
                   </p>
                 </div>
                 <div className={`p-1.5 rounded-lg ${
-                  revenueMetrics && (revenueMetrics as any).pendingPayments > 0
+                  revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0
                     ? 'bg-white/20 backdrop-blur-sm'
                     : 'bg-amber-100'
                 }`}>
                   <Clock className={`h-4 w-4 ${
-                    revenueMetrics && (revenueMetrics as any).pendingPayments > 0 ? 'text-white' : 'text-amber-600'
+                    revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0 ? 'text-white' : 'text-amber-600'
                   }`} />
                 </div>
               </div>
-              {revenueMetrics && (revenueMetrics as any).pendingPayments > 0 && (
+              {revenueMetrics && (revenueMetrics.pendingPayments ?? 0) > 0 && (
                 <>
                   <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
                   <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-1 text-xs text-amber-100">

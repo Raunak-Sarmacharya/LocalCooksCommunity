@@ -1,11 +1,8 @@
-import { Wrench, Save, Loader2, Plus, X, ChevronRight, ChevronLeft, Info, AlertCircle, Check, Upload } from "lucide-react";
+import { Wrench, Save, Loader2, Plus, X, ChevronRight, ChevronLeft, Info, AlertCircle, Check } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useToast } from "@/hooks/use-toast";
-import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
-import { ImageWithReplace } from "@/components/ui/image-with-replace";
-import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -76,142 +73,6 @@ interface EquipmentListingManagementProps {
   embedded?: boolean;
 }
 
-// Photo Upload Component with bucket-based image fetching
-function EquipmentPhotoUpload({ photos, onPhotosChange }: { photos: string[]; onPhotosChange: (photos: string[]) => void }) {
-  const { toast } = useToast();
-  const { uploadFile, isUploading, uploadProgress } = useSessionFileUpload({
-    maxSize: 4.5 * 1024 * 1024,
-    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
-    onSuccess: (response) => {
-      onPhotosChange([...photos, response.url]);
-      toast({
-        title: "Photo uploaded",
-        description: "Photo has been added to your listing.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Upload failed",
-        description: error,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await uploadFile(file);
-      e.target.value = ''; // Reset input
-    }
-  };
-
-  const updatePhoto = async (index: number, newUrl: string | null) => {
-    if (newUrl === null) {
-      // Remove photo - delete from R2
-      const photoToRemove = photos[index];
-      if (photoToRemove) {
-        try {
-          const currentFirebaseUser = auth.currentUser;
-          if (currentFirebaseUser) {
-            const token = await currentFirebaseUser.getIdToken();
-            await fetch('/api/manager/files', {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-              credentials: 'include',
-              body: JSON.stringify({ fileUrl: photoToRemove }),
-            });
-          }
-        } catch (error) {
-          console.error('Error deleting file from R2:', error);
-          // Continue even if R2 deletion fails
-        }
-      }
-      onPhotosChange(photos.filter((_, i) => i !== index));
-    } else {
-      // Replace photo - delete old one from R2
-      const oldPhoto = photos[index];
-      if (oldPhoto && oldPhoto !== newUrl) {
-        try {
-          const currentFirebaseUser = auth.currentUser;
-          if (currentFirebaseUser) {
-            const token = await currentFirebaseUser.getIdToken();
-            await fetch('/api/manager/files', {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-              credentials: 'include',
-              body: JSON.stringify({ fileUrl: oldPhoto }),
-            });
-          }
-        } catch (error) {
-          console.error('Error deleting old file from R2:', error);
-          // Continue even if R2 deletion fails
-        }
-      }
-      const updated = [...photos];
-      updated[index] = newUrl;
-      onPhotosChange(updated);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      {/* Existing Photos with replace functionality */}
-      {photos.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          {photos.map((photo, index) => (
-            <ImageWithReplace
-              key={index}
-              imageUrl={photo}
-              onImageChange={(newUrl) => updatePhoto(index, newUrl)}
-              alt={`Equipment photo ${index + 1}`}
-              className="h-32"
-              containerClassName="w-full"
-              aspectRatio="1/1"
-              showReplaceButton={true}
-              showRemoveButton={true}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Upload Area */}
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-gray-400 transition-colors">
-        <input
-          type="file"
-          accept="image/jpeg,image/jpg,image/png,image/webp"
-          onChange={handleFileSelect}
-          className="hidden"
-          id="equipment-photo-upload"
-          disabled={isUploading}
-        />
-        <label
-          htmlFor="equipment-photo-upload"
-          className={`flex flex-col items-center justify-center cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          {isUploading ? (
-            <>
-              <Loader2 className="h-8 w-8 text-gray-400 animate-spin mb-2" />
-              <span className="text-sm text-gray-600">Uploading... {Math.round(uploadProgress)}%</span>
-            </>
-          ) : (
-            <>
-              <Upload className="h-8 w-8 text-gray-400 mb-3" />
-              <span className="text-sm font-medium text-gray-700 mb-2">Click to upload photos</span>
-              <span className="text-xs text-gray-500">JPG, PNG, WebP (max 4.5MB)</span>
-            </>
-          )}
-        </label>
-      </div>
-    </div>
-  );
-}
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {
@@ -291,7 +152,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     certifications: [],
     safetyFeatures: [],
     usageRestrictions: [],
-    photos: [],
     manuals: [],
     maintenanceLog: [],
     dimensions: {},
@@ -522,7 +382,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
         certifications: [],
         safetyFeatures: [],
         usageRestrictions: [],
-        photos: [],
         manuals: [],
         maintenanceLog: [],
         dimensions: {},
@@ -1238,15 +1097,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                     : 'Configure rental terms and conditions for this equipment.'}
                 </p>
 
-                {/* Photos Section */}
-                <div>
-                  <Label>Photos</Label>
-                  <p className="text-sm text-gray-500 mb-2">Upload images of your equipment to help chefs see what they're renting</p>
-                  <EquipmentPhotoUpload
-                    photos={formData.photos || []}
-                    onPhotosChange={(photos) => setFormData({ ...formData, photos })}
-                  />
-                </div>
 
                 <div>
                   <Label htmlFor="cleaningResponsibility">Cleaning Responsibility</Label>
