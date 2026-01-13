@@ -366,11 +366,23 @@ export async function createRefund(
 
     const refund = await stripe.refunds.create(refundParams);
 
+    if (!refund.charge || typeof refund.charge !== 'string') {
+      throw new Error('Refund created but charge ID is missing');
+    }
+
+    if (!refund.status || typeof refund.status !== 'string') {
+      throw new Error('Refund created but status is missing');
+    }
+
+    // TypeScript type narrowing: after the checks above, these are guaranteed to be strings
+    const refundChargeId = refund.charge as string;
+    const refundStatus = refund.status as string;
+
     return {
       id: refund.id,
       amount: refund.amount,
-      status: refund.status,
-      charge: refund.charge as string,
+      status: refundStatus,
+      charge: refundChargeId,
     };
   } catch (error: any) {
     console.error('Error creating refund:', error);
