@@ -904,7 +904,7 @@ export default function ManagerOnboardingWizard() {
         if (licenseUrl) {
           toast({
             title: "Location & License Saved",
-            description: "Your location information and license have been saved.",
+            description: "Your location information and license have been saved. Your license has been submitted for admin approval.",
           });
           // Reset license fields after successful upload
           setLicenseFile(null);
