@@ -2996,15 +2996,75 @@ function KitchenLicenseApprovalView() {
 
                     {/* License Document */}
                     <div className="mb-4 space-y-2">
-                      <a
-                        href={`/api/files/kitchen-license/${license.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium text-sm"
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const currentFirebaseUser = auth.currentUser;
+                            if (!currentFirebaseUser) {
+                              toast({
+                                title: "Authentication Required",
+                                description: "Please sign in to view the license document.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            
+                            const token = await currentFirebaseUser.getIdToken();
+                            
+                            // Fetch with redirect handling
+                            const response = await fetch(`/api/files/kitchen-license/${license.id}`, {
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                              },
+                              credentials: 'include',
+                              redirect: 'follow', // Follow redirects
+                            });
+                            
+                            if (!response.ok) {
+                              if (response.status === 401 || response.status === 403) {
+                                throw new Error('You do not have permission to view this document.');
+                              }
+                              throw new Error('Failed to load license document.');
+                            }
+                            
+                            // Check if the final URL is the r2-proxy or a direct file
+                            const finalUrl = response.url;
+                            
+                            // If it redirected to r2-proxy, open that URL (it's public)
+                            if (finalUrl.includes('/api/files/r2-proxy')) {
+                              window.open(finalUrl, '_blank');
+                            } else if (finalUrl.includes('r2.cloudflarestorage.com') || finalUrl.includes('presigned')) {
+                              // Direct R2 URL or presigned URL - open directly
+                              window.open(finalUrl, '_blank');
+                            } else {
+                              // Try to get as blob for other file types
+                              try {
+                                const blob = await response.blob();
+                                const blobUrl = URL.createObjectURL(blob);
+                                window.open(blobUrl, '_blank');
+                                // Clean up blob URL after a delay
+                                setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                              } catch (blobError) {
+                                // If blob fails, try opening the URL directly
+                                window.open(finalUrl, '_blank');
+                              }
+                            }
+                          } catch (error: any) {
+                            console.error('Error viewing license:', error);
+                            toast({
+                              title: "Error",
+                              description: error.message || "Failed to view license document",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        className="inline-flex items-center gap-2"
                       >
                         <ExternalLink className="h-4 w-4" />
                         View Kitchen License Document
-                      </a>
+                      </Button>
                       {license.kitchenLicenseExpiry && (
                         <div className="flex items-center gap-2 text-sm text-gray-700">
                           <Calendar className="h-4 w-4 text-gray-500" />
