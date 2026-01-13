@@ -10,6 +10,7 @@ import { useForm } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
 import { useApplicationForm } from "./ApplicationFormContext";
+import { auth } from "@/lib/firebase";
 
 import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/ui/file-upload";
@@ -78,9 +79,10 @@ export default function CertificationsForm() {
 
       // Get Firebase auth token
       let authToken: string | null = null;
-      if (user) {
+      const currentFirebaseUser = auth.currentUser;
+      if (currentFirebaseUser) {
         try {
-          authToken = await user.getIdToken();
+          authToken = await currentFirebaseUser.getIdToken();
         } catch (tokenError) {
           console.error('Failed to get Firebase token:', tokenError);
           throw new Error('Authentication failed. Please log in again.');

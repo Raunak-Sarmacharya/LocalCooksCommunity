@@ -68,10 +68,64 @@ export default function AdminManageLocations() {
         credentials: "include",
         headers,
       });
-      const data = await response.json();
+      
+      console.log('📍 Locations API response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Failed to load locations:", response.status, response.statusText, errorText);
+        toast({ 
+          title: "Error", 
+          description: `Failed to load locations: ${response.status} ${response.statusText}`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType?.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        console.warn('📍 Response was not JSON, got text:', text.substring(0, 200));
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.error('📍 Failed to parse response as JSON:', e);
+          toast({ 
+            title: "Error", 
+            description: "Invalid response format from server",
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+      
+      console.log('📍 Raw locations response:', data);
+      console.log('📍 Response is array?', Array.isArray(data));
+      console.log('📍 Response length:', data?.length);
+      
+      if (!Array.isArray(data)) {
+        console.error('📍 Response is not an array! Got:', typeof data, data);
+        toast({ 
+          title: "Error", 
+          description: "Server returned invalid data format",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      console.log(`✅ Loaded ${data.length} locations`);
       setLocations(data);
-    } catch (error) {
-      console.error("Error loading locations:", error);
+    } catch (error: any) {
+      console.error("❌ Error loading locations:", error);
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to load locations",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -84,6 +138,21 @@ export default function AdminManageLocations() {
               credentials: "include",
               headers,
             });
+            
+            console.log('👥 Managers API response status:', response.status);
+            
+            if (!response.ok) {
+              console.error("❌ Failed to load managers:", response.status, response.statusText);
+              const errorText = await response.text();
+              console.error("❌ Error response:", errorText);
+              toast({ 
+                title: "Error", 
+                description: `Failed to load managers: ${response.status} ${response.statusText}`,
+                variant: "destructive"
+              });
+              return;
+            }
+            
             if (response.ok) {
               // Check response content type
               const contentType = response.headers.get('content-type');
@@ -178,14 +247,16 @@ export default function AdminManageLocations() {
                 console.log('👥 FINAL: First manager final structure:', JSON.stringify(managersWithLocations[0], null, 2));
               }
               
+              console.log(`✅ Loaded ${managersWithLocations.length} managers`);
               setManagers(managersWithLocations);
-            } else {
-              console.error("Failed to load managers:", response.status, response.statusText);
-              const errorText = await response.text();
-              console.error("Error response:", errorText);
             }
-          } catch (error) {
-            console.error("Error loading managers:", error);
+          } catch (error: any) {
+            console.error("❌ Error loading managers:", error);
+            toast({ 
+              title: "Error", 
+              description: error.message || "Failed to load managers",
+              variant: "destructive"
+            });
           }
         };
 

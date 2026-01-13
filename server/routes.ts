@@ -42,7 +42,7 @@ import { comparePasswords, hashPassword } from "./passwordUtils";
 import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
-import { requireFirebaseAuthWithUser, requireManager, optionalFirebaseAuth } from "./firebase-auth-middleware";
+import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
 import Stripe from "stripe";
@@ -4521,7 +4521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 l.id as location_id,
                 l.name as location_name,
                 u.username as chef_name,
-                u.email as chef_email
+                u.username as chef_email
               FROM kitchen_bookings kb
               JOIN kitchens k ON kb.kitchen_id = k.id
               JOIN locations l ON k.location_id = l.id
@@ -4970,7 +4970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get manager info
       const userResult = await pool.query(
-        'SELECT id, username, email, stripe_connect_account_id FROM users WHERE id = $1',
+        'SELECT id, username, stripe_connect_account_id FROM users WHERE id = $1',
         [managerId]
       );
 
@@ -9030,34 +9030,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ADMIN REVENUE ENDPOINTS
   // ===================================
 
-  // Helper function to check admin access
-  async function requireAdminAccess(req: Request, res: Response): Promise<{ user: any; error?: string } | null> {
-    try {
-      const sessionUser = await getAuthenticatedUser(req);
-      const isFirebaseAuth = req.neonUser;
-      
-      if (!sessionUser && !isFirebaseAuth) {
-        return { user: null, error: "Not authenticated" };
-      }
-      
-      const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      if (user.role !== "admin") {
-        return { user: null, error: "Admin access required" };
-      }
-      
-      return { user };
-    } catch (error: any) {
-      return { user: null, error: error.message || "Authentication error" };
-    }
-  }
-
   // Get all managers revenue overview
-  app.get("/api/admin/revenue/all-managers", async (req: Request, res: Response) => {
+  app.get("/api/admin/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-      const authResult = await requireAdminAccess(req, res);
-      if (!authResult || authResult.error) {
-        return res.status(authResult?.error === "Admin access required" ? 403 : 401)
-          .json({ error: authResult?.error || "Not authenticated" });
+      // Check if response was already sent
+      if (res.headersSent) {
+        return;
       }
 
       if (!pool) {
@@ -9066,46 +9044,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { startDate, endDate } = req.query;
 
-      // Get all managers with their revenue
-      let whereClause = `WHERE kb.status != 'cancelled'`;
+      // Get service fee rate (for reference, but we use direct subtraction now)
+      const { getServiceFeeRate } = await import('./services/pricing-service');
+      const serviceFeeRate = await getServiceFeeRate(pool);
+
+      // Start from managers and LEFT JOIN to bookings to include all managers, even those without bookings
+      let bookingWhereClause = `AND kb.status != 'cancelled'`;
       const params: any[] = [];
       let paramIndex = 1;
 
       if (startDate) {
-        whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+        bookingWhereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
         params.push(startDate);
         paramIndex++;
       }
 
       if (endDate) {
-        whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+        bookingWhereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
         params.push(endDate);
         paramIndex++;
       }
-
-      // Get service fee rate (for reference, but we use direct subtraction now)
-      const { getServiceFeeRate } = await import('./services/pricing-service');
-      const serviceFeeRate = await getServiceFeeRate(pool);
 
       const result = await pool.query(`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
-          u.email as manager_email,
+          u.username as manager_email,
           l.id as location_id,
           l.name as location_name,
-          COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
-          COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
-          COUNT(*)::int as booking_count,
+          COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.total_price ELSE 0 END), 0)::bigint as total_revenue,
+          COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.service_fee ELSE 0 END), 0)::bigint as platform_fee,
+          COUNT(kb.id)::int as booking_count,
           COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count
-        FROM kitchen_bookings kb
-        JOIN kitchens k ON kb.kitchen_id = k.id
-        JOIN locations l ON k.location_id = l.id
-        JOIN users u ON l.manager_id = u.id
-        ${whereClause}
-        GROUP BY u.id, u.username, u.email, l.id, l.name
-        ORDER BY total_revenue DESC
-      `, params);
+        FROM users u
+        LEFT JOIN locations l ON l.manager_id = u.id
+        LEFT JOIN kitchens k ON k.location_id = l.id
+        LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id ${bookingWhereClause}
+        WHERE u.role = $${paramIndex}
+        GROUP BY u.id, u.username, l.id, l.name
+        ORDER BY u.username ASC, total_revenue DESC
+      `, [...params, 'manager']);
 
       // Group by manager (managers can have multiple locations)
       const managerMap = new Map<number, {
@@ -9156,15 +9134,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         manager.bookingCount += parseInt(row.booking_count) || 0;
         manager.paidBookingCount += parseInt(row.paid_count) || 0;
 
-        manager.locations.push({
-          locationId: parseInt(row.location_id),
-          locationName: row.location_name,
-          totalRevenue,
-          platformFee: parseInt(row.platform_fee) || 0,
-          managerRevenue,
-          bookingCount: parseInt(row.booking_count) || 0,
-          paidBookingCount: parseInt(row.paid_count) || 0,
-        });
+        // Only add location if it exists (not NULL)
+        if (row.location_id) {
+          manager.locations.push({
+            locationId: parseInt(row.location_id),
+            locationName: row.location_name || 'Unnamed Location',
+            totalRevenue,
+            platformFee: parseInt(row.platform_fee) || 0,
+            managerRevenue,
+            bookingCount: parseInt(row.booking_count) || 0,
+            paidBookingCount: parseInt(row.paid_count) || 0,
+          });
+        }
       });
 
       // Convert to array and format for response
@@ -9194,12 +9175,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get platform-wide revenue overview
-  app.get("/api/admin/revenue/platform-overview", async (req: Request, res: Response) => {
+  app.get("/api/admin/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-      const authResult = await requireAdminAccess(req, res);
-      if (!authResult || authResult.error) {
-        return res.status(authResult?.error === "Admin access required" ? 403 : 401)
-          .json({ error: authResult?.error || "Not authenticated" });
+      // Check if response was already sent
+      if (res.headersSent) {
+        return;
       }
 
       if (!pool) {
@@ -9208,18 +9188,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { startDate, endDate } = req.query;
 
-      let whereClause = `WHERE kb.status != 'cancelled'`;
+      // Get total manager count (all managers, not just those with bookings)
+      const managerCountResult = await pool.query(
+        'SELECT COUNT(*)::int as total_managers FROM users WHERE role = $1',
+        ['manager']
+      );
+      const totalManagers = parseInt(managerCountResult.rows[0]?.total_managers || '0');
+
+      // Get booking statistics with date filters
+      let bookingWhereClause = `WHERE kb.status != 'cancelled'`;
       const params: any[] = [];
       let paramIndex = 1;
 
       if (startDate) {
-        whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+        bookingWhereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
         params.push(startDate);
         paramIndex++;
       }
 
       if (endDate) {
-        whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+        bookingWhereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
         params.push(endDate);
         paramIndex++;
       }
@@ -9228,14 +9216,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
-          COUNT(DISTINCT l.manager_id)::int as manager_count,
           COUNT(*)::int as booking_count,
           COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
           COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END)::int as pending_count
         FROM kitchen_bookings kb
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
-        ${whereClause}
+        ${bookingWhereClause}
       `, params);
 
       const row = result.rows[0];
@@ -9243,7 +9230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         totalPlatformRevenue: (parseInt(row.total_revenue) || 0) / 100,
         totalPlatformFees: (parseInt(row.platform_fee) || 0) / 100,
-        activeManagers: parseInt(row.manager_count) || 0,
+        activeManagers: totalManagers, // Use total managers count, not just those with bookings
         totalBookings: parseInt(row.booking_count) || 0,
         paidBookingCount: parseInt(row.paid_count) || 0,
         pendingBookingCount: parseInt(row.pending_count) || 0,
@@ -9259,12 +9246,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get specific manager revenue details
-  app.get("/api/admin/revenue/manager/:managerId", async (req: Request, res: Response) => {
+  app.get("/api/admin/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-      const authResult = await requireAdminAccess(req, res);
-      if (!authResult || authResult.error) {
-        return res.status(authResult?.error === "Admin access required" ? 403 : 401)
-          .json({ error: authResult?.error || "Not authenticated" });
+      // Check if response was already sent
+      if (res.headersSent) {
+        return;
       }
 
       const managerId = parseInt(req.params.managerId);
@@ -9295,7 +9281,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get manager info
       const managerResult = await pool.query(
-        'SELECT id, username, email FROM users WHERE id = $1',
+        'SELECT id, username FROM users WHERE id = $1',
         [managerId]
       );
 
@@ -9798,6 +9784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         // CRITICAL: Log what we're actually sending
+        console.log(`📤 GET /api/admin/managers - Returning ${verifiedManagers.length} managers to client`);
         console.log('📤 SENDING RESPONSE - Full response array:', JSON.stringify(verifiedManagers, null, 2));
         
         return res.json(verifiedManagers);
@@ -9947,6 +9934,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const locations = await firebaseStorage.getAllLocations();
       
+      console.log(`📍 GET /api/admin/locations - Found ${locations.length} locations in database`);
+      if (locations.length > 0) {
+        console.log(`📍 First location:`, {
+          id: locations[0].id,
+          name: locations[0].name,
+          managerId: locations[0].managerId || locations[0].manager_id
+        });
+      }
+      
       // Map snake_case fields to camelCase for the frontend (consistent with manager endpoint)
       // Drizzle ORM may return snake_case depending on configuration, so we ensure camelCase
       const mappedLocations = locations.map((loc: any) => ({
@@ -9960,6 +9956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updatedAt: loc.updatedAt || loc.updated_at,
       }));
       
+      console.log(`📍 GET /api/admin/locations - Returning ${mappedLocations.length} locations to client`);
       res.json(mappedLocations);
     } catch (error) {
       console.error("Error fetching locations:", error);
