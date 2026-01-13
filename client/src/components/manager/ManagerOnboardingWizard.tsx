@@ -1365,7 +1365,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 2 && (!hasExistingLocation || !hasLicense) && (
+          {currentStep === 2 && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Kitchen License</h3>
@@ -1397,7 +1397,10 @@ export default function ManagerOnboardingWizard() {
               </div>
 
               <div className="space-y-3">
-                {selectedLocation?.kitchenLicenseUrl && selectedLocation?.kitchenLicenseStatus !== "rejected" && selectedLocation?.kitchenLicenseStatus !== "expired" ? (
+                {selectedLocation?.kitchenLicenseUrl && 
+                 selectedLocation?.kitchenLicenseStatus && 
+                 selectedLocation?.kitchenLicenseStatus !== "rejected" && 
+                 selectedLocation?.kitchenLicenseStatus !== "expired" ? (
                   (() => {
                     const isLicenseExpired = selectedLocation.kitchenLicenseExpiry 
                       ? new Date(selectedLocation.kitchenLicenseExpiry) < new Date()
