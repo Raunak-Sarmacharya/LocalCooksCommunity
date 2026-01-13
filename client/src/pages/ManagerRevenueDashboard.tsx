@@ -397,7 +397,6 @@ export default function ManagerRevenueDashboard({
     
     const statusLabels: Record<string, string> = {
       paid: 'Paid (In Your Account)',
-      pending: 'Pre-Authorized (On Hold)',
       processing: 'Processing',
       failed: 'Failed',
       refunded: 'Refunded',
@@ -438,12 +437,6 @@ export default function ManagerRevenueDashboard({
         text: 'text-emerald-700', 
         label: 'Paid',
         tooltip: 'Payment has been processed and is in your Stripe Connect account or ready for payout'
-      },
-      pending: { 
-        bg: 'bg-amber-100', 
-        text: 'text-amber-700', 
-        label: 'Pre-Authorized',
-        tooltip: 'Payment is on hold via Stripe and will be automatically processed after the cancellation period expires. Not yet in your account.'
       },
       processing: {
         bg: 'bg-blue-100',
@@ -635,16 +628,16 @@ export default function ManagerRevenueDashboard({
                 <div className="text-xs text-blue-800">
                   <p className="font-medium mb-1">Understanding Your Revenue</p>
                   <p className="text-blue-700">
-                    <strong>Pre-Authorized Payments (On Hold):</strong> Money held by Stripe that will be automatically processed after the cancellation period expires. This is committed revenue but not yet in your account.
-                    <br />
                     <strong>Completed Payments (In Your Account):</strong> Money that has been successfully processed and is available in your Stripe Connect account or ready for payout.
+                    <br />
+                    <strong>Processing Payments:</strong> Payments that are currently being processed and will be available shortly.
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          {/* Row 1: Four Revenue Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Row 1: Three Revenue Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Total Revenue */}
             <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-1">
               <CardContent className="p-4">
@@ -683,54 +676,6 @@ export default function ManagerRevenueDashboard({
               </CardContent>
             </Card>
 
-            {/* Pending Payments */}
-            <Card className={`relative overflow-hidden border-0 shadow-lg transition-all duration-300 hover:-translate-y-1 ${
-              revenueMetrics?.pendingPayments > 0
-                ? 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-amber-500/25 hover:shadow-xl hover:shadow-amber-500/30'
-                : 'bg-white border border-gray-100 text-gray-900 hover:shadow-xl'
-            }`}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className={`text-[10px] font-medium uppercase tracking-wider ${
-                        revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
-                      }`}>
-                        Pre-Authorized (On Hold)
-                      </p>
-                      <div className="group relative">
-                        <Info className={`h-3 w-3 ${
-                          revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-400'
-                        } cursor-help`} />
-                        <div className="absolute left-0 bottom-full mb-2 w-72 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                          Money held by Stripe that will be automatically processed after the cancellation period expires. This is committed revenue but not yet in your bank account.
-                        </div>
-                      </div>
-                    </div>
-                    <p className="text-2xl font-bold mt-1">
-                      {revenueMetrics ? formatCurrency(revenueMetrics.pendingPayments) : '$0.00'}
-                    </p>
-                    <p className={`text-xs mt-1 ${
-                      revenueMetrics?.pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'
-                    }`}>
-                      Not yet in your account
-                    </p>
-                  </div>
-                  <div className={`p-1.5 rounded-lg ${
-                    revenueMetrics?.pendingPayments > 0 
-                      ? 'bg-white/20 backdrop-blur-sm' 
-                      : 'bg-amber-100'
-                  }`}>
-                    <CreditCard className={`h-4 w-4 ${
-                      revenueMetrics?.pendingPayments > 0 ? 'text-white' : 'text-amber-600'
-                    }`} />
-                  </div>
-                </div>
-                {revenueMetrics?.pendingPayments > 0 && (
-                  <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
-                )}
-              </CardContent>
-            </Card>
 
             {/* Average Booking Value */}
             <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-lg shadow-purple-500/25 hover:shadow-xl hover:shadow-purple-500/30 transition-all duration-300 hover:-translate-y-1">
@@ -1105,7 +1050,6 @@ export default function ManagerRevenueDashboard({
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="paid">Paid (In Account)</SelectItem>
-                  <SelectItem value="pending">Pre-Authorized (On Hold)</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
                   <SelectItem value="refunded">Refunded</SelectItem>

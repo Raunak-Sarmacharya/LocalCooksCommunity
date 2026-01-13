@@ -85,7 +85,7 @@ export async function getRevenueMetrics(
   try {
     // Build WHERE clause
     // IMPORTANT: For revenue metrics, we want to show ALL bookings (past, present, and future)
-    // Future bookings with pre-authorized payments should be included in stats
+    // Future bookings with processing payments should be included in stats
     // Date filters are optional and only apply to completed payments for breakdown purposes
     // But ALL pending/processing payments (including future bookings) should always be counted
     let whereClause = `
@@ -117,7 +117,7 @@ export async function getRevenueMetrics(
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
         COUNT(CASE WHEN kb.total_price IS NULL THEN 1 END) as bookings_without_price,
         COUNT(CASE WHEN kb.status = 'cancelled' THEN 1 END) as cancelled_count,
-        COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END) as pending_count,
+        COUNT(CASE WHEN kb.payment_status = 'processing' THEN 1 END) as processing_count,
         COUNT(CASE WHEN kb.payment_status = 'processing' THEN 1 END) as processing_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END) as paid_count,
         COUNT(CASE WHEN kb.payment_intent_id IS NOT NULL THEN 1 END) as with_payment_intent,
@@ -156,7 +156,7 @@ export async function getRevenueMetrics(
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
-        COUNT(CASE WHEN kb.payment_status IN ('pending', 'processing') THEN 1 END)::int as pending_count,
+        COUNT(CASE WHEN kb.payment_status = 'processing' THEN 1 END)::int as processing_count,
         COUNT(CASE WHEN kb.status = 'cancelled' THEN 1 END)::int as cancelled_count,
         COUNT(CASE WHEN kb.payment_status = 'refunded' OR kb.payment_status = 'partially_refunded' THEN 1 END)::int as refunded_count,
         COALESCE(SUM(CASE WHEN kb.payment_status = 'paid' THEN 
@@ -168,7 +168,7 @@ export async function getRevenueMetrics(
               ELSE 0
             END
           )::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN kb.payment_status IN ('pending', 'processing') THEN 
+        COALESCE(SUM(CASE WHEN kb.payment_status = 'processing' THEN 
           COALESCE(
             kb.total_price,
             CASE 
@@ -202,21 +202,13 @@ export async function getRevenueMetrics(
       ${whereClause}
     `, params);
 
-    // Query ALL pending payments (pre-authorized) regardless of booking date
-    // This ensures future bookings with pre-authorized payments are included
-    // Include bookings with payment_status='pending' OR 'processing' (pre-authorized but not yet captured)
-    // OR bookings with payment_intent_id but payment_status is NULL or not paid
-    // OR bookings with total_price but no payment_status set (assume pending if not paid)
-    // (some older bookings might not have payment_status set but have a payment intent or total_price)
+    // Query processing payments (payments still being processed, not pre-authorized)
+    // With automatic capture, we only count 'processing' status (not 'pending')
+    // 'pending' status is no longer used for pre-authorization - payments are immediately captured
     let pendingWhereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
-        AND (
-          kb.payment_status = 'pending' 
-          OR kb.payment_status = 'processing'
-          OR (kb.payment_intent_id IS NOT NULL AND (kb.payment_status IS NULL OR kb.payment_status NOT IN ('paid', 'refunded', 'partially_refunded')))
-          OR (kb.total_price IS NOT NULL AND kb.total_price > 0 AND (kb.payment_status IS NULL OR kb.payment_status NOT IN ('paid', 'refunded', 'partially_refunded')))
-        )
+        AND kb.payment_status = 'processing'
     `;
     const pendingParams: any[] = [managerId];
     let pendingParamIndex = 2;
@@ -258,8 +250,7 @@ export async function getRevenueMetrics(
 
     // Query ALL completed payments regardless of booking date
     // This ensures old completed payments are always visible to managers
-    // Also include payments with status 'processing' or 'requires_capture' that have a payment_intent_id
-    // as these are pre-authorized payments that should be counted
+    // Only count 'paid' status - payments are immediately captured with automatic capture
     let completedWhereClause = `
       WHERE l.manager_id = $1
         AND kb.status != 'cancelled'
@@ -293,7 +284,7 @@ export async function getRevenueMetrics(
       ${completedWhereClause}
     `, completedParams);
 
-    // Get ALL pending payments (pre-authorized) regardless of date
+    // Get processing payments (payments still being processed)
     const pendingRow = pendingResult.rows[0] || {};
     const allPendingPayments = typeof pendingRow.pending_payments_all === 'string'
       ? parseInt(pendingRow.pending_payments_all) || 0
@@ -834,7 +825,7 @@ export async function getCompleteRevenueMetrics(
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN sb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COALESCE(SUM(CASE WHEN sb.payment_status = 'paid' THEN COALESCE(sb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN sb.payment_status IN ('pending', 'processing') THEN COALESCE(sb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments
+        COALESCE(SUM(CASE WHEN sb.payment_status = 'processing' THEN COALESCE(sb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as processing_payments
       FROM storage_bookings sb
       JOIN storage_listings sl ON sb.storage_listing_id = sl.id
       JOIN kitchens k ON sl.kitchen_id = k.id
@@ -878,7 +869,7 @@ export async function getCompleteRevenueMetrics(
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN eb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COALESCE(SUM(CASE WHEN eb.payment_status = 'paid' THEN COALESCE(eb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN eb.payment_status IN ('pending', 'processing') THEN COALESCE(eb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as pending_payments
+        COALESCE(SUM(CASE WHEN eb.payment_status = 'processing' THEN COALESCE(eb.total_price, 0)::numeric ELSE 0 END), 0)::bigint as processing_payments
       FROM equipment_bookings eb
       JOIN equipment_listings el ON eb.equipment_listing_id = el.id
       JOIN kitchens k ON el.kitchen_id = k.id
