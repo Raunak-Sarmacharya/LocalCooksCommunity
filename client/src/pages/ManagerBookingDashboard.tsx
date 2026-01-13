@@ -51,6 +51,7 @@ interface Location {
   kitchenLicenseApprovedBy?: number;
   kitchenLicenseApprovedAt?: string;
   kitchenLicenseFeedback?: string;
+  kitchenLicenseExpiry?: string;
 }
 
 interface Kitchen {
@@ -1639,7 +1640,19 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [updatingKitchenId, setUpdatingKitchenId] = useState<number | null>(null);
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [isUploadingLicense, setIsUploadingLicense] = useState(false);
+  const [licenseExpiryDate, setLicenseExpiryDate] = useState<string>(location.kitchenLicenseExpiry || '');
   const [showCreateKitchen, setShowCreateKitchen] = useState(false);
+  
+  // Check if license is expired
+  const isLicenseExpired = location.kitchenLicenseExpiry 
+    ? new Date(location.kitchenLicenseExpiry) < new Date()
+    : false;
+  
+  // Check if upload should be shown
+  const shouldShowUpload = !location.kitchenLicenseUrl || 
+    location.kitchenLicenseStatus === "rejected" || 
+    location.kitchenLicenseStatus === "expired" ||
+    (location.kitchenLicenseStatus === "approved" && isLicenseExpired);
   const [newKitchenName, setNewKitchenName] = useState('');
   const [newKitchenDescription, setNewKitchenDescription] = useState('');
   const [isCreatingKitchen, setIsCreatingKitchen] = useState(false);
@@ -1678,6 +1691,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
     setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
     setLogoUrl(location.logoUrl || '');
+    setLicenseExpiryDate(location.kitchenLicenseExpiry || '');
     // Timezone is locked to DEFAULT_TIMEZONE - no need to update state
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
@@ -1904,7 +1918,28 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   };
 
   // Handle kitchen license upload
-  const handleLicenseUpload = async (file: File) => {
+  const handleLicenseUpload = async (file: File, expiryDate: string) => {
+    // Validate expiration date is provided
+    if (!expiryDate || expiryDate.trim() === '') {
+      toast({
+        title: "Expiration Date Required",
+        description: "Please provide an expiration date for the license.",
+        variant: "destructive",
+      });
+      throw new Error("Expiration date is required");
+    }
+    
+    // Validate expiration date is in the future
+    const expiry = new Date(expiryDate);
+    if (isNaN(expiry.getTime())) {
+      toast({
+        title: "Invalid Date",
+        description: "Please provide a valid expiration date.",
+        variant: "destructive",
+      });
+      throw new Error("Invalid expiration date");
+    }
+    
     setIsUploadingLicense(true);
     try {
       // Get Firebase token for authentication
@@ -1935,7 +1970,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       const result = await response.json();
       const licenseUrl = result.url;
       
-      // Update location with new license URL and reset status to pending
+      // Update location with new license URL, expiration date, and reset status to pending
       // Reuse existing token from above
       const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
         method: 'PUT',
@@ -1947,6 +1982,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         body: JSON.stringify({
           kitchenLicenseUrl: licenseUrl,
           kitchenLicenseStatus: 'pending',
+          kitchenLicenseExpiry: expiryDate,
         }),
       });
       
@@ -1964,6 +2000,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       });
       
       setLicenseFile(null);
+      setLicenseExpiryDate('');
       return licenseUrl;
     } catch (error: any) {
       console.error('License upload error:', error);
@@ -2099,30 +2136,70 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             </div>
 
             <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
-              {location.kitchenLicenseUrl && location.kitchenLicenseStatus !== "rejected" ? (
+              {location.kitchenLicenseUrl && location.kitchenLicenseStatus !== "rejected" && location.kitchenLicenseStatus !== "expired" ? (
                 <div className={`border rounded-lg p-4 ${
-                  location.kitchenLicenseStatus === "approved" 
+                  location.kitchenLicenseStatus === "approved" && !isLicenseExpired
                     ? "bg-green-50 border-green-200" 
+                    : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                    ? "bg-red-50 border-red-200"
                     : "bg-yellow-50 border-yellow-200"
                 }`}>
                   <div className={`flex items-center gap-2 ${
-                    location.kitchenLicenseStatus === "approved" 
+                    location.kitchenLicenseStatus === "approved" && !isLicenseExpired
                       ? "text-green-800" 
+                      : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                      ? "text-red-800"
                       : "text-yellow-800"
                   }`}>
-                    <CheckCircle className="h-5 w-5" />
+                    {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? (
+                      <AlertCircle className="h-5 w-5" />
+                    ) : (
+                      <CheckCircle className="h-5 w-5" />
+                    )}
                     <span className="font-medium">License Uploaded</span>
                   </div>
                   <p className={`text-sm mt-1 ${
-                    location.kitchenLicenseStatus === "approved" 
+                    location.kitchenLicenseStatus === "approved" && !isLicenseExpired
                       ? "text-green-700" 
+                      : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                      ? "text-red-700"
                       : "text-yellow-700"
                   }`}>
-                    Status: {location.kitchenLicenseStatus || "pending"}
+                    Status: {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? "Expired" : (location.kitchenLicenseStatus || "pending")}
                   </p>
-                  {location.kitchenLicenseStatus === "approved" && (
+                  {location.kitchenLicenseExpiry && (
+                    <p className={`text-sm mt-1 ${
+                      location.kitchenLicenseStatus === "approved" && !isLicenseExpired
+                        ? "text-green-700" 
+                        : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                        ? "text-red-700"
+                        : "text-yellow-700"
+                    }`}>
+                      Expiration Date: {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}
+                      {isLicenseExpired ? (
+                        <span className="ml-2 font-semibold">
+                          (Expired {Math.floor((new Date().getTime() - new Date(location.kitchenLicenseExpiry).getTime()) / (1000 * 60 * 60 * 24))} days ago)
+                        </span>
+                      ) : location.kitchenLicenseStatus === "approved" ? (
+                        <span className="ml-2 text-green-600">
+                          (Expires in {Math.ceil((new Date(location.kitchenLicenseExpiry).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days)
+                        </span>
+                      ) : null}
+                    </p>
+                  )}
+                  {!location.kitchenLicenseExpiry && location.kitchenLicenseStatus === "approved" && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      ⚠️ Please add an expiration date for your license.
+                    </p>
+                  )}
+                  {location.kitchenLicenseStatus === "approved" && !isLicenseExpired && (
                     <p className="text-xs text-green-600 mt-1">
                       ✓ Your license has been approved! Bookings are now active.
+                    </p>
+                  )}
+                  {(location.kitchenLicenseStatus === "expired" || isLicenseExpired) && (
+                    <p className="text-xs text-red-600 mt-1">
+                      ⚠️ Your license has expired. Please upload a new license to continue bookings.
                     </p>
                   )}
                   {location.kitchenLicenseStatus === "pending" && (
@@ -2156,61 +2233,122 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     Please upload a new license document to resubmit for approval.
                   </p>
                 </div>
+              ) : location.kitchenLicenseStatus === "expired" || isLicenseExpired ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2 text-red-800 mb-2">
+                    <AlertCircle className="h-5 w-5" />
+                    <span className="font-medium">License Expired</span>
+                  </div>
+                  {location.kitchenLicenseExpiry && (
+                    <p className="text-sm text-red-700 mb-2">
+                      Expired on: {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}
+                    </p>
+                  )}
+                  <p className="text-sm text-red-700 mb-3">
+                    Please upload a new license document with an expiration date to continue bookings.
+                  </p>
+                </div>
               ) : null}
 
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (file.size > 10 * 1024 * 1024) {
-                        toast({
-                          title: "File Too Large",
-                          description: "Please upload a file smaller than 10MB",
-                          variant: "destructive",
-                        });
-                        return;
-                      }
-                      setLicenseFile(file);
-                      handleLicenseUpload(file).catch((error) => {
-                        console.error('License upload failed:', error);
-                      });
-                    }
-                  }}
-                  disabled={isUploadingLicense}
-                  className="hidden"
-                  id="license-upload"
-                />
-                <label
-                  htmlFor="license-upload"
-                  className={`cursor-pointer flex flex-col items-center gap-3 ${isUploadingLicense ? 'opacity-50' : ''}`}
-                >
-                  {isUploadingLicense ? (
-                    <>
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
-                      <span className="text-sm text-gray-600">Uploading...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-8 w-8 text-gray-400" />
-                      <span className="text-sm font-medium text-orange-600 mb-1">
-                        {location.kitchenLicenseStatus === "rejected" 
-                          ? "Click to upload new license" 
-                          : "Click to upload license"}
-                      </span>
-                      <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
-                    </>
-                  )}
-                </label>
-                {licenseFile && !isUploadingLicense && (
-                  <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-700">
-                    <FileText className="h-4 w-4" />
-                    <span>{licenseFile.name}</span>
+              {shouldShowUpload && (
+                <>
+                  {/* Expiration Date Input */}
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-2">
+                      License Expiration Date <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={licenseExpiryDate}
+                      onChange={(e) => setLicenseExpiryDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      required
+                    />
+                    <p className="text-xs text-gray-600 mt-1">
+                      Required. Enter the date when this license expires.
+                    </p>
                   </div>
-                )}
-              </div>
+
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 10 * 1024 * 1024) {
+                            toast({
+                              title: "File Too Large",
+                              description: "Please upload a file smaller than 10MB",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          if (!licenseExpiryDate) {
+                            toast({
+                              title: "Expiration Date Required",
+                              description: "Please enter an expiration date before uploading.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          setLicenseFile(file);
+                          handleLicenseUpload(file, licenseExpiryDate).catch((error) => {
+                            console.error('License upload failed:', error);
+                          });
+                        }
+                      }}
+                      disabled={isUploadingLicense || !licenseExpiryDate}
+                      className="hidden"
+                      id="license-upload"
+                    />
+                    <label
+                      htmlFor="license-upload"
+                      className={`cursor-pointer flex flex-col items-center gap-3 ${isUploadingLicense || !licenseExpiryDate ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {isUploadingLicense ? (
+                        <>
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
+                          <span className="text-sm text-gray-600">Uploading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-8 w-8 text-gray-400" />
+                          <span className="text-sm font-medium text-orange-600 mb-1">
+                            {location.kitchenLicenseStatus === "rejected" || location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                              ? "Click to upload new license" 
+                              : "Click to upload license"}
+                          </span>
+                          <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
+                          {!licenseExpiryDate && (
+                            <span className="text-xs text-red-500 mt-1">Please enter expiration date first</span>
+                          )}
+                        </>
+                      )}
+                    </label>
+                    {licenseFile && !isUploadingLicense && (
+                      <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-700">
+                        <FileText className="h-4 w-4" />
+                        <span>{licenseFile.name}</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {!shouldShowUpload && location.kitchenLicenseStatus === "approved" && !isLicenseExpired && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-700">
+                    Your license is currently active and not expired. You can upload a new license when the current one expires.
+                  </p>
+                  {location.kitchenLicenseExpiry && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      You can upload a new license starting {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
