@@ -76,6 +76,21 @@ export default function CertificationsForm() {
     mutationFn: async (data: ApplicationFormData & { files?: Record<string, File> }) => {
       console.log("🚀 Submitting application with data:", data);
 
+      // Get Firebase auth token
+      let authToken: string | null = null;
+      if (user) {
+        try {
+          authToken = await user.getIdToken();
+        } catch (tokenError) {
+          console.error('Failed to get Firebase token:', tokenError);
+          throw new Error('Authentication failed. Please log in again.');
+        }
+      }
+
+      if (!authToken) {
+        throw new Error('Authentication required. Please log in to submit your application.');
+      }
+
       // Check if we have any file uploads to handle
       const hasFileUploads = data.files && Object.keys(data.files).length > 0;
       const hasUploadedUrls = data.foodSafetyLicenseUrl || data.foodEstablishmentCertUrl;
@@ -93,7 +108,7 @@ export default function CertificationsForm() {
         
         // Add all form fields
         Object.entries(data).forEach(([key, value]) => {
-          if (key !== 'files' && value !== undefined) {
+          if (key !== 'files' && value !== undefined && value !== null) {
             formData.append(key, String(value));
           }
         });
@@ -103,47 +118,44 @@ export default function CertificationsForm() {
           formData.append(fieldName, file);
         });
         
-        const headers: Record<string, string> = {};
-        if (user?.uid) {
-          headers["X-User-ID"] = user.uid.toString();
-        }
+        const headers: Record<string, string> = {
+          "Authorization": `Bearer ${authToken}`
+        };
 
-        console.log("📤 Submitting via FormData with files");
-        const response = await fetch("/api/applications", {
+        console.log("📤 Submitting via FormData with files to Firebase endpoint");
+        const response = await fetch("/api/firebase/applications", {
           method: "POST",
           headers,
           body: formData,
-          credentials: "include",
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || response.statusText);
+          const errorData = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorData.error || errorData.message || response.statusText);
         }
 
         return response.json();
       } else {
         // Use JSON submission - for pre-uploaded file URLs or no files
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (user?.uid) {
-          headers["X-User-ID"] = user.uid.toString();
-        }
+        const headers: Record<string, string> = { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`
+        };
 
-        console.log("📤 Submitting via JSON with document URLs:", {
+        console.log("📤 Submitting via JSON with document URLs to Firebase endpoint:", {
           foodSafetyLicenseUrl: data.foodSafetyLicenseUrl || null,
           foodEstablishmentCertUrl: data.foodEstablishmentCertUrl || null
         });
 
-        const response = await fetch("/api/applications", {
+        const response = await fetch("/api/firebase/applications", {
           method: "POST",
           headers,
           body: JSON.stringify(data),
-          credentials: "include",
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || response.statusText);
+          const errorData = await response.json().catch(() => ({ error: response.statusText }));
+          throw new Error(errorData.error || errorData.message || response.statusText);
         }
 
         return response.json();
