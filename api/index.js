@@ -215,6 +215,9 @@ app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), asyn
     const webhookEventId = event.id;
     
     switch (event.type) {
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(event.data.object, webhookEventId);
+        break;
       case 'payment_intent.succeeded':
         await handlePaymentIntentSucceeded(event.data.object, webhookEventId);
         break;
@@ -241,6 +244,99 @@ app.post("/api/webhooks/stripe", express.raw({ type: 'application/json' }), asyn
 });
 
 // Webhook event handlers (defined as functions)
+async function handleCheckoutSessionCompleted(session, webhookEventId) {
+  if (!pool) {
+    console.error('Database pool not available for webhook');
+    return;
+  }
+
+  try {
+    const { updateTransactionBySessionId } = await import('../server/services/stripe-checkout-transactions-service.js');
+
+    // Retrieve full session with expanded line_items and payment_intent
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      console.error('Stripe secret key not available');
+      return;
+    }
+
+    const Stripe = (await import('stripe')).default;
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2025-12-15.clover',
+    });
+
+    const expandedSession = await stripe.checkout.sessions.retrieve(session.id, {
+      expand: ['line_items', 'payment_intent'],
+    });
+
+    // Extract payment intent and charge IDs
+    const paymentIntent = expandedSession.payment_intent;
+    let paymentIntentId;
+    let chargeId;
+
+    if (typeof paymentIntent === 'object' && paymentIntent !== null) {
+      paymentIntentId = paymentIntent.id;
+      // Get charge ID from payment intent
+      if (paymentIntent.latest_charge) {
+        chargeId = typeof paymentIntent.latest_charge === 'string'
+          ? paymentIntent.latest_charge
+          : paymentIntent.latest_charge.id;
+      }
+    } else if (typeof paymentIntent === 'string') {
+      paymentIntentId = paymentIntent;
+      // Fetch payment intent to get charge ID
+      try {
+        const pi = await stripe.paymentIntents.retrieve(paymentIntent);
+        if (pi.latest_charge) {
+          chargeId = typeof pi.latest_charge === 'string'
+            ? pi.latest_charge
+            : pi.latest_charge.id;
+        }
+      } catch (error) {
+        console.warn('Could not fetch payment intent details:', error);
+      }
+    }
+
+    // Update transaction record
+    const updateParams = {
+      status: 'completed',
+      completedAt: new Date(),
+      metadata: {
+        webhook_event_id: webhookEventId,
+        session_mode: expandedSession.mode,
+      },
+    };
+
+    if (paymentIntentId) {
+      updateParams.stripePaymentIntentId = paymentIntentId;
+    }
+
+    if (chargeId) {
+      updateParams.stripeChargeId = chargeId;
+    }
+
+    const updatedTransaction = await updateTransactionBySessionId(
+      session.id,
+      updateParams,
+      pool
+    );
+
+    if (updatedTransaction) {
+      console.log(`[Webhook] Updated transaction for Checkout session ${session.id}:`, {
+        paymentIntentId,
+        chargeId,
+        amount: `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}`,
+        managerReceives: `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}`,
+      });
+    } else {
+      console.warn(`[Webhook] Transaction not found for Checkout session ${session.id}`);
+    }
+  } catch (error) {
+    console.error(`[Webhook] Error handling checkout.session.completed:`, error);
+    // Don't throw - webhook should return 200 even if processing fails
+  }
+}
+
 async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
   if (!pool) {
     console.error('Database pool not available for webhook');
@@ -19966,6 +20062,116 @@ app.post("/api/payments/create-intent", requireChef, async (req, res) => {
     res.status(500).json({ 
       error: "Failed to create payment intent",
       message: error.message 
+    });
+  }
+});
+
+// Create Stripe Checkout session for booking
+app.post("/api/bookings/checkout", async (req, res) => {
+  try {
+    const { bookingId, managerStripeAccountId, bookingPrice, customerEmail } = req.body;
+
+    // Validate required inputs
+    if (!bookingId || !managerStripeAccountId || !bookingPrice || !customerEmail) {
+      return res.status(400).json({
+        error: "Missing required fields: bookingId, managerStripeAccountId, bookingPrice, and customerEmail are required",
+      });
+    }
+
+    // Validate bookingPrice is a positive number
+    const bookingPriceNum = parseFloat(bookingPrice);
+    if (isNaN(bookingPriceNum) || bookingPriceNum <= 0) {
+      return res.status(400).json({
+        error: "bookingPrice must be a positive number",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(customerEmail)) {
+      return res.status(400).json({
+        error: "Invalid email format",
+      });
+    }
+
+    if (!pool) {
+      return res.status(500).json({ error: "Database connection not available" });
+    }
+
+    // Verify booking exists
+    const bookingResult = await pool.query(
+      'SELECT id, kitchen_id FROM kitchen_bookings WHERE id = $1',
+      [bookingId]
+    );
+
+    if (bookingResult.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    const booking = bookingResult.rows[0];
+
+    // Calculate fees
+    const { calculateCheckoutFees } = await import('../server/services/stripe-checkout-fee-service.js');
+    const feeCalculation = calculateCheckoutFees(bookingPriceNum);
+
+    // Get base URL for success/cancel URLs
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
+    const baseUrl = `${protocol}://${host}`;
+
+    // Create Stripe Checkout session
+    const { createCheckoutSession } = await import('../server/services/stripe-checkout-service.js');
+    const checkoutSession = await createCheckoutSession({
+      bookingPriceInCents: feeCalculation.bookingPriceInCents,
+      platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
+      managerStripeAccountId,
+      customerEmail,
+      bookingId,
+      currency: 'cad',
+      successUrl: `${baseUrl}/booking-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${baseUrl}/booking-cancel?booking_id=${bookingId}`,
+      metadata: {
+        booking_id: bookingId.toString(),
+        kitchen_id: booking.kitchen_id.toString(),
+      },
+    });
+
+    // Save transaction to database
+    const { createTransaction } = await import('../server/services/stripe-checkout-transactions-service.js');
+    await createTransaction(
+      {
+        bookingId,
+        stripeSessionId: checkoutSession.sessionId,
+        customerEmail,
+        bookingAmountCents: feeCalculation.bookingPriceInCents,
+        platformFeePercentageCents: feeCalculation.percentageFeeInCents,
+        platformFeeFlatCents: feeCalculation.flatFeeInCents,
+        totalPlatformFeeCents: feeCalculation.totalPlatformFeeInCents,
+        totalCustomerChargedCents: feeCalculation.totalChargeInCents,
+        managerReceivesCents: feeCalculation.bookingPriceInCents, // Manager receives the booking amount
+        metadata: {
+          booking_id: bookingId,
+          kitchen_id: booking.kitchen_id,
+          manager_account_id: managerStripeAccountId,
+        },
+      },
+      pool
+    );
+
+    // Return response
+    res.json({
+      sessionUrl: checkoutSession.sessionUrl,
+      sessionId: checkoutSession.sessionId,
+      booking: {
+        price: bookingPriceNum,
+        platformFee: feeCalculation.totalPlatformFeeInCents / 100,
+        total: feeCalculation.totalChargeInCents / 100,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to create checkout session',
     });
   }
 });
