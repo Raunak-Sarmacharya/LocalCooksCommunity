@@ -16,9 +16,12 @@ export async function generateInvoicePDF(
   paymentIntentId: string | null,
   dbPool: Pool | null
 ): Promise<Buffer> {
-  // Get Stripe-synced platform fee from payment_transactions if available
+  // Get Stripe-synced amounts from payment_transactions if available
   let stripePlatformFee = 0; // Platform fee from Stripe (in cents)
   let stripeTotalAmount = 0; // Total amount from Stripe (in cents)
+  let stripeBaseAmount = 0; // Base amount from Stripe (in cents) - for kitchen booking
+  let stripeStorageBaseAmounts: Map<number, number> = new Map(); // Storage booking ID -> base amount
+  let stripeEquipmentBaseAmounts: Map<number, number> = new Map(); // Equipment booking ID -> base amount
   
   if (dbPool && paymentIntentId) {
     try {
@@ -27,8 +30,13 @@ export async function generateInvoicePDF(
       if (paymentTransaction) {
         // Use Stripe-synced values
         stripeTotalAmount = parseInt(paymentTransaction.amount) || 0;
-        stripePlatformFee = parseInt(paymentTransaction.service_fee) || 0; // This is the platform fee from Stripe
-        console.log(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, platformFee=${stripePlatformFee}`);
+        stripePlatformFee = parseInt(paymentTransaction.service_fee) || 0; // Platform fee from Stripe
+        stripeBaseAmount = parseInt(paymentTransaction.base_amount) || 0; // Base amount from Stripe
+        
+        // For bundle bookings, we need to get individual booking base amounts
+        // The base_amount in payment_transactions is the total base for the bundle
+        // We'll calculate proportions from the booking data
+        console.log(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
       }
     } catch (error) {
       console.warn('[Invoice] Could not fetch payment transaction, will calculate fees:', error);
@@ -50,29 +58,54 @@ export async function generateInvoicePDF(
       let durationHours = 0;
       let hourlyRate = 0;
       
-      // PRIORITY 1: Calculate from hourly_rate * duration_hours (most accurate)
-      // This avoids rounding errors from total_price - service_fee calculations
+      // PRIORITY 1: Calculate from hourly_rate * duration_hours (most accurate, original base price)
+      // This gives us the actual base price (qty * rate) without any fees or Stripe adjustments
       if ((booking.hourly_rate || booking.hourlyRate) && (booking.duration_hours || booking.durationHours)) {
         const hourlyRateCents = parseFloat(String(booking.hourly_rate || booking.hourlyRate));
         durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
         hourlyRate = hourlyRateCents / 100;
-        // Calculate base price directly from rate * duration (no rounding errors)
+        // Calculate base price directly from rate * duration (no rounding errors, no fees)
+        // This is the original base price: quantity × rate
         kitchenAmount = (hourlyRateCents * durationHours) / 100;
       }
-      // FALLBACK 1: Try to use stored total_price - service_fee
-      // Note: total_price includes service_fee, so we need to subtract service_fee to get base price
+      // PRIORITY 2: Use Stripe-synced base_amount from payment_transactions (if hourly_rate not available)
+      else if (stripeBaseAmount > 0) {
+        kitchenAmount = stripeBaseAmount / 100; // Convert cents to dollars
+        // Get duration and rate from stored values
+        if (booking.duration_hours || booking.durationHours) {
+          durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
+        }
+        if (booking.hourly_rate || booking.hourlyRate) {
+          hourlyRate = parseFloat(String(booking.hourly_rate || booking.hourlyRate)) / 100;
+        } else if (durationHours > 0) {
+          hourlyRate = kitchenAmount / durationHours;
+        }
+      }
+      // FALLBACK: Use stored total_price - service_fee
+      // If payment transaction exists (Stripe sync happened), total_price includes platform fee
+      // If no payment transaction, total_price might be base or might include fee - check service_fee field
       else if (booking.total_price || booking.totalPrice) {
         const totalPriceCents = booking.total_price 
           ? parseFloat(String(booking.total_price)) 
           : parseFloat(String(booking.totalPrice));
         
-        // Get service_fee if available
-        const serviceFeeCents = (booking.service_fee || booking.serviceFee) 
-          ? parseFloat(String(booking.service_fee || booking.serviceFee))
-          : 0;
+        // If we have a payment transaction, we know Stripe sync happened
+        // So total_price includes platform fee, and we must subtract service_fee
+        const hasPaymentTransaction = stripeBaseAmount > 0 || stripeTotalAmount > 0;
         
-        // Base kitchen price = total_price - service_fee (total_price already includes service_fee)
-        const basePriceCents = totalPriceCents - serviceFeeCents;
+        // Get service_fee - if payment transaction exists, service_fee should exist too
+        const serviceFeeCents = hasPaymentTransaction || 
+          (booking.service_fee !== undefined && booking.service_fee !== null) || 
+          (booking.serviceFee !== undefined && booking.serviceFee !== null)
+          ? parseFloat(String(booking.service_fee || booking.serviceFee || '0'))
+          : 0; // If no payment transaction and no service_fee field, assume total_price is base
+        
+        // Base kitchen price = total_price - service_fee
+        // If payment transaction exists, we MUST subtract service_fee (even if 0)
+        // If no payment transaction, only subtract if service_fee field exists
+        const basePriceCents = hasPaymentTransaction || serviceFeeCents > 0
+          ? totalPriceCents - serviceFeeCents  // Stripe-synced or has service_fee: subtract it
+          : totalPriceCents; // Not synced and no service_fee: total_price is base
         kitchenAmount = basePriceCents / 100;
         
         // Get duration and rate from stored values if available
@@ -129,8 +162,8 @@ export async function generateInvoicePDF(
   }
 
   // Storage bookings
-  // Use stored total_price if available (total_price is the BASE price in cents, service_fee is stored separately)
-  // Otherwise calculate from listing base_price
+  // Always calculate base price from listing base_price (original price, no fees)
+  // This ensures correct rates regardless of Stripe sync
   if (storageBookings && storageBookings.length > 0) {
     for (const storageBooking of storageBookings) {
       try {
@@ -138,30 +171,53 @@ export async function generateInvoicePDF(
         let basePrice = 0;
         let days = 0;
         
-        // Use stored total_price if available
-        // Note: total_price is stored as BASE price in cents (without service fee)
-        // service_fee is stored separately in cents
-        if (storageBooking.total_price || storageBooking.totalPrice) {
-          const basePriceCents = parseFloat(String(storageBooking.total_price || storageBooking.totalPrice));
-          storageAmount = basePriceCents / 100; // Convert cents to dollars
-          
-          const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
-          const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
-          days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-          basePrice = days > 0 ? storageAmount / days : 0;
-        } else if (dbPool) {
-          // Fall back to calculating from listing
-          const result = await dbPool.query(
-            'SELECT base_price FROM storage_listings WHERE id = $1',
-            [storageBooking.storageListingId || storageBooking.storage_listing_id]
-          );
-          if (result.rows.length > 0) {
-            basePrice = parseFloat(String(result.rows[0].base_price)) / 100; // Convert cents to dollars
-            const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
-            const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
-            days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-            storageAmount = basePrice * days;
+        // Calculate days first
+        const startDate = new Date(storageBooking.startDate || storageBooking.start_date);
+        const endDate = new Date(storageBooking.endDate || storageBooking.end_date);
+        days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // PRIORITY: Always calculate from listing base_price (original price, no fees)
+        // This gives us the correct base rate regardless of Stripe sync
+        if (dbPool) {
+          const storageListingId = storageBooking.storageListingId || storageBooking.storage_listing_id;
+          if (storageListingId) {
+            const result = await dbPool.query(
+              'SELECT base_price, pricing_model, minimum_booking_duration FROM storage_listings WHERE id = $1',
+              [storageListingId]
+            );
+            if (result.rows.length > 0) {
+              const listing = result.rows[0];
+              const listingBasePriceCents = parseFloat(String(listing.base_price)) || 0;
+              const pricingModel = listing.pricing_model || 'daily';
+              const minDays = listing.minimum_booking_duration || 1;
+              const effectiveDays = Math.max(days, minDays);
+              
+              // Calculate base price based on pricing model
+              if (pricingModel === 'hourly') {
+                const hours = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60));
+                const minHours = minDays * 24;
+                const effectiveHours = Math.max(hours, minHours);
+                basePrice = listingBasePriceCents / 100; // Per hour rate
+                storageAmount = (listingBasePriceCents * effectiveHours) / 100;
+              } else if (pricingModel === 'monthly-flat') {
+                basePrice = listingBasePriceCents / 100; // Flat rate
+                storageAmount = basePrice;
+              } else {
+                // Default: daily pricing
+                basePrice = listingBasePriceCents / 100; // Per day rate
+                storageAmount = (listingBasePriceCents * effectiveDays) / 100;
+              }
+            }
           }
+        }
+        
+        // FALLBACK: If we can't get from listing, calculate from stored total_price - service_fee
+        if (storageAmount === 0 && (storageBooking.total_price || storageBooking.totalPrice)) {
+          const totalPriceCents = parseFloat(String(storageBooking.total_price || storageBooking.totalPrice));
+          const serviceFeeCents = parseFloat(String(storageBooking.service_fee || storageBooking.serviceFee || '0'));
+          const basePriceCents = totalPriceCents - serviceFeeCents;
+          storageAmount = basePriceCents / 100;
+          basePrice = days > 0 ? storageAmount / days : 0;
         }
         
         if (storageAmount > 0) {
@@ -181,28 +237,35 @@ export async function generateInvoicePDF(
   }
 
   // Equipment bookings
-  // Use stored total_price if available (total_price is the BASE price in cents, service_fee is stored separately)
-  // Otherwise calculate from listing session_rate
+  // Always calculate base price from listing session_rate (original price, no fees)
+  // This ensures correct rates regardless of Stripe sync
   if (equipmentBookings && equipmentBookings.length > 0) {
     for (const equipmentBooking of equipmentBookings) {
       try {
         let sessionRate = 0;
         
-        // Use stored total_price if available
-        // Note: total_price is stored as BASE price in cents (without service fee)
-        // service_fee is stored separately in cents
-        if (equipmentBooking.total_price || equipmentBooking.totalPrice) {
-          const basePriceCents = parseFloat(String(equipmentBooking.total_price || equipmentBooking.totalPrice));
-          sessionRate = basePriceCents / 100; // Convert cents to dollars
-        } else if (dbPool) {
-          // Fall back to calculating from listing
-          const result = await dbPool.query(
-            'SELECT session_rate FROM equipment_listings WHERE id = $1',
-            [equipmentBooking.equipmentListingId || equipmentBooking.equipment_listing_id]
-          );
-          if (result.rows.length > 0) {
-            sessionRate = parseFloat(String(result.rows[0].session_rate)) / 100; // Convert cents to dollars
+        // PRIORITY: Always calculate from listing session_rate (original price, no fees)
+        // This gives us the correct base rate regardless of Stripe sync
+        if (dbPool) {
+          const equipmentListingId = equipmentBooking.equipmentListingId || equipmentBooking.equipment_listing_id;
+          if (equipmentListingId) {
+            const result = await dbPool.query(
+              'SELECT session_rate FROM equipment_listings WHERE id = $1',
+              [equipmentListingId]
+            );
+            if (result.rows.length > 0) {
+              const listingSessionRateCents = parseFloat(String(result.rows[0].session_rate)) || 0;
+              sessionRate = listingSessionRateCents / 100; // Convert cents to dollars
+            }
           }
+        }
+        
+        // FALLBACK: If we can't get from listing, calculate from stored total_price - service_fee
+        if (sessionRate === 0 && (equipmentBooking.total_price || equipmentBooking.totalPrice)) {
+          const totalPriceCents = parseFloat(String(equipmentBooking.total_price || equipmentBooking.totalPrice));
+          const serviceFeeCents = parseFloat(String(equipmentBooking.service_fee || equipmentBooking.serviceFee || '0'));
+          const basePriceCents = totalPriceCents - serviceFeeCents;
+          sessionRate = basePriceCents / 100; // Convert cents to dollars
         }
         
         if (sessionRate > 0) {

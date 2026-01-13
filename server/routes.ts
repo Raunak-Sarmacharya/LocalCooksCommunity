@@ -7665,13 +7665,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create PaymentIntent with Connect split if manager has account
       // Only enable cards for direct payments (ACSS disabled)
+      // IMPORTANT: application_fee_amount should ONLY be the platform fee, NOT the Stripe processing fee
+      // Stripe automatically deducts the processing fee separately
       const paymentIntent = await createPaymentIntent({
         amount: finalAmountCents,
         currency: kitchenPricing.currency.toLowerCase(),
         chefId,
         kitchenId,
         managerConnectAccountId: managerConnectAccountId,
-        applicationFeeAmount: managerConnectAccountId ? totalServiceFeeCents : undefined,
+        applicationFeeAmount: managerConnectAccountId ? serviceFeeCents : undefined,
         enableACSS: false, // Disable ACSS - only use card payments with automatic capture
         enableCards: true, // Enable card payments only
         metadata: {

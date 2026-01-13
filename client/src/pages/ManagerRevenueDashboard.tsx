@@ -357,6 +357,23 @@ export default function ManagerRevenueDashboard({
     );
   }, [transactionsData, searchQuery]);
 
+  // Calculate totals for transaction history table
+  const transactionTotals = useMemo(() => {
+    if (!filteredTransactions || filteredTransactions.length === 0) {
+      return { totalPrice: 0, managerRevenue: 0 };
+    }
+    
+    return filteredTransactions.reduce(
+      (acc: { totalPrice: number; managerRevenue: number }, t: any) => {
+        return {
+          totalPrice: acc.totalPrice + (t.totalPrice || 0),
+          managerRevenue: acc.managerRevenue + (t.managerRevenue || 0),
+        };
+      },
+      { totalPrice: 0, managerRevenue: 0 }
+    );
+  }, [filteredTransactions]);
+
   // Prepare chart data for revenue trend
   const revenueTrendData = useMemo(() => {
     if (!chartData?.data) return [];
@@ -1133,6 +1150,20 @@ export default function ManagerRevenueDashboard({
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
+                    <td colSpan={3} className="py-3 px-4 text-sm text-gray-900">
+                      Total ({filteredTransactions.length} {filteredTransactions.length === 1 ? 'transaction' : 'transactions'})
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right font-semibold text-gray-900">
+                      {formatCurrency(transactionTotals.totalPrice)}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-right font-semibold text-blue-600">
+                      {formatCurrency(transactionTotals.managerRevenue)}
+                    </td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
