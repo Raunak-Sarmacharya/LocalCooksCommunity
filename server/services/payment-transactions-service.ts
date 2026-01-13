@@ -676,7 +676,36 @@ export async function syncExistingPaymentTransactionsFromStripe(
   failed: number;
   errors: Array<{ paymentIntentId: string; error: string }>;
 }> {
-  const { getStripePaymentAmounts } = await import('./stripe-service');
+  // Import stripe-service dynamically
+  // Try multiple import paths to handle different build configurations
+  // The error shows it's looking for '/var/task/server/services/stripe-service' (no .js)
+  // So we try without extension first, then with extension
+  let getStripePaymentAmounts: any;
+  
+  const importPaths = [
+    './stripe-service',           // Path 1: Relative without extension (works in some builds)
+    './stripe-service.js',       // Path 2: Relative with .js extension (standard)
+    '../server/services/stripe-service.js', // Path 3: From api/ perspective
+  ];
+  
+  let lastError: Error | null = null;
+  for (const importPath of importPaths) {
+    try {
+      const mod = await import(importPath);
+      if (mod.getStripePaymentAmounts) {
+        getStripePaymentAmounts = mod.getStripePaymentAmounts;
+        break;
+      }
+    } catch (e: any) {
+      lastError = e;
+      continue; // Try next path
+    }
+  }
+  
+  if (!getStripePaymentAmounts) {
+    console.error('[Stripe Sync] Failed to import stripe-service from all paths:', importPaths);
+    throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || 'Unknown'}`);
+  }
   
   const limit = options?.limit || 1000;
   const onlyUnsynced = options?.onlyUnsynced !== false; // Default to true
