@@ -158,8 +158,7 @@ export default function BookingConfirmationPage() {
             if (hourlyRate && selectedSlots.length > 0) {
               const basePrice = hourlyRate * selectedSlots.length;
               const percentageFee = Math.round(basePrice * serviceFeeRate * 100) / 100; // Dynamic service fee
-              const stripeProcessingFee = 0.30; // $0.30 per transaction
-              const serviceFee = percentageFee + stripeProcessingFee;
+              const serviceFee = percentageFee; // No flat fee
               setEstimatedPrice({
                 basePrice,
                 serviceFee,
@@ -266,11 +265,10 @@ export default function BookingConfirmationPage() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee (dynamic rate + $0.30 Stripe processing fee)
+  // Calculate service fee (dynamic rate only, no flat fee)
   const serviceFee = useMemo(() => {
     const percentageFee = Math.round(combinedSubtotal * serviceFeeRate * 100) / 100; // Dynamic service fee
-    const stripeProcessingFee = 0.30; // $0.30 per transaction
-    return percentageFee + stripeProcessingFee;
+    return percentageFee;
   }, [combinedSubtotal, serviceFeeRate]);
 
   // Calculate grand total
@@ -814,7 +812,7 @@ export default function BookingConfirmationPage() {
                             <span className="font-bold text-gray-900">${combinedSubtotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-                            <span className="text-gray-600">Service Fee ({serviceFeePercentage}% + $0.30 per transaction):</span>
+                            <span className="text-gray-600">Service Fee ({serviceFeePercentage}%):</span>
                             <span className="font-medium text-gray-900">${serviceFee.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <p className="text-xs text-gray-500 mt-1 italic">
