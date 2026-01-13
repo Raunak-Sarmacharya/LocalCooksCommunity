@@ -14548,14 +14548,21 @@ app.get("/api/manager/revenue/transactions", requireFirebaseAuthWithUser, requir
         usePaymentTransactions = true;
         
         // Convert payment_transactions to transaction history format
+        // Use Stripe-synced values directly - don't calculate, use what's in the database
         transactions = result.transactions.map(pt => {
+          // Use Stripe-synced values directly from payment_transactions
+          // These values come from Stripe webhooks and are the source of truth
+          const totalPrice = parseInt(pt.amount) || 0; // Stripe total amount charged
+          const serviceFee = parseInt(pt.service_fee) || 0; // Stripe platform fee (from application_fee_amount)
+          const managerRevenue = parseInt(pt.manager_revenue) || 0; // Stripe net amount (what manager receives)
+          
           // Get booking details for kitchen_name, location_name, chef_name
           return {
             id: pt.booking_id,
             bookingType: pt.booking_type,
-            totalPrice: parseInt(pt.amount),
-            serviceFee: parseInt(pt.service_fee),
-            managerRevenue: parseInt(pt.manager_revenue),
+            totalPrice: totalPrice, // From Stripe
+            serviceFee: serviceFee, // Platform fee from Stripe
+            managerRevenue: managerRevenue, // Manager revenue from Stripe (net amount)
             paymentStatus: pt.status === 'succeeded' ? 'paid' : pt.status === 'processing' ? 'processing' : pt.status === 'failed' ? 'failed' : 'paid',
             paymentIntentId: pt.payment_intent_id,
             currency: pt.currency,
