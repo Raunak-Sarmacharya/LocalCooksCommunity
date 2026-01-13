@@ -744,7 +744,6 @@ export default function KitchenDashboardOverview({
                   ) : (
                     <TrendingDown className="h-3.5 w-3.5" />
                   )}
-                  <span>{Math.abs(dashboardMetrics.bookingTrend)}%</span>
                 </div>
               </div>
               <p className="text-4xl font-bold text-gray-900 mb-1">{dashboardMetrics.thisMonthBookings}</p>

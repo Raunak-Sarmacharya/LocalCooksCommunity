@@ -444,8 +444,8 @@ export default function ManagerBookingDashboard() {
   });
 
   const navItems = [
-    { id: 'my-locations' as ViewType, label: 'My Locations', icon: Building2 },
     { id: 'overview' as ViewType, label: 'Overview', icon: Calendar },
+    { id: 'my-locations' as ViewType, label: 'My Locations', icon: Building2 },
     { id: 'bookings' as ViewType, label: 'Bookings', icon: BookOpen },
     { id: 'availability' as ViewType, label: 'Availability', icon: Clock },
     { id: 'pricing' as ViewType, label: 'Pricing', icon: DollarSign },
