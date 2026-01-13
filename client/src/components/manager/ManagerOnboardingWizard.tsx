@@ -1484,26 +1484,30 @@ export default function ManagerOnboardingWizard() {
                               ⚠️ Your license has expired. Please upload a new license to continue bookings.
                             </p>
                             <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                              <label className="cursor-pointer block text-center">
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png"
-                                  onChange={(e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      if (file.size > 10 * 1024 * 1024) {
-                                        toast({
-                                          title: "File Too Large",
-                                          description: "Please upload a file smaller than 10MB",
-                                          variant: "destructive",
-                                        });
-                                        return;
-                                      }
-                                      setLicenseFile(file);
+                              <input
+                                type="file"
+                                id="expired-license-upload"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    if (file.size > 10 * 1024 * 1024) {
+                                      toast({
+                                        title: "File Too Large",
+                                        description: "Please upload a file smaller than 10MB",
+                                        variant: "destructive",
+                                      });
+                                      return;
                                     }
-                                  }}
-                                  className="hidden"
-                                />
+                                    setLicenseFile(file);
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                              <label 
+                                htmlFor="expired-license-upload" 
+                                className="cursor-pointer block text-center"
+                              >
                                 <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium">
                                   Click to upload new license
                                 </span>
@@ -1583,26 +1587,30 @@ export default function ManagerOnboardingWizard() {
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
                       <div className="text-center">
                         <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <label className="cursor-pointer">
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                if (file.size > 10 * 1024 * 1024) {
-                                  toast({
-                                    title: "File Too Large",
-                                    description: "Please upload a file smaller than 10MB",
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-                                setLicenseFile(file);
+                        <input
+                          type="file"
+                          id="rejected-license-upload"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 10 * 1024 * 1024) {
+                                toast({
+                                  title: "File Too Large",
+                                  description: "Please upload a file smaller than 10MB",
+                                  variant: "destructive",
+                                });
+                                return;
                               }
-                            }}
-                            className="hidden"
-                          />
+                              setLicenseFile(file);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                        <label 
+                          htmlFor="rejected-license-upload" 
+                          className="cursor-pointer"
+                        >
                           <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium mb-2">
                             Click to upload new license
                           </span>
@@ -1646,26 +1654,30 @@ export default function ManagerOnboardingWizard() {
                             <Upload className="h-10 w-10 text-[#F51042]" />
                           </div>
                         </div>
-                        <label className="cursor-pointer block">
-                          <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                if (file.size > 10 * 1024 * 1024) {
-                                  toast({
-                                    title: "File Too Large",
-                                    description: "Please upload a file smaller than 10MB",
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-                                setLicenseFile(file);
+                        <input
+                          type="file"
+                          id="onboarding-license-upload"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 10 * 1024 * 1024) {
+                                toast({
+                                  title: "File Too Large",
+                                  description: "Please upload a file smaller than 10MB",
+                                  variant: "destructive",
+                                });
+                                return;
                               }
-                            }}
-                            className="hidden"
-                          />
+                              setLicenseFile(file);
+                            }
+                          }}
+                          className="hidden"
+                        />
+                        <label 
+                          htmlFor="onboarding-license-upload" 
+                          className="cursor-pointer block"
+                        >
                           <span className="text-base text-[#F51042] hover:text-rose-600 font-semibold block mb-3">
                             Click to upload license
                           </span>
