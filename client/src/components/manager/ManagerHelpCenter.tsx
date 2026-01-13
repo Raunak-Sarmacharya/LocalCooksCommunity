@@ -18,7 +18,6 @@ import {
   AlertCircle,
   Upload
 } from "lucide-react";
-import ManagerOnboardingWizard from "./ManagerOnboardingWizard";
 
 interface HelpCenterProps {
   isOpen: boolean;
@@ -27,7 +26,6 @@ interface HelpCenterProps {
 
 export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) {
   const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [showSetupGuide, setShowSetupGuide] = useState(false);
 
   const helpSections = [
     {
@@ -42,7 +40,6 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
           </p>
           <Button 
             onClick={() => {
-              setShowSetupGuide(true);
               // Trigger onboarding wizard to open
               const event = new CustomEvent('open-onboarding-from-help');
               window.dispatchEvent(event);
@@ -260,10 +257,6 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
           </div>
         </DialogContent>
       </Dialog>
-
-      {showSetupGuide && (
-        <ManagerOnboardingWizard />
-      )}
     </>
   );
 }
