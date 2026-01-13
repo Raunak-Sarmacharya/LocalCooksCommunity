@@ -12,13 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +20,7 @@ import {
   Globe, Image as ImageIcon, Save, Loader2, CheckCircle,
   XCircle, AlertCircle, Upload, FileText
 } from "lucide-react";
-import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
+import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
 import type { LocationData } from "./LocationCard";
 import { cn } from "@/lib/utils";
@@ -105,14 +98,14 @@ export default function LocationEditModal({
 }: LocationEditModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const timezoneOptions = getTimezoneOptions();
   
   // Form state
   const [name, setName] = useState(location.name);
   const [address, setAddress] = useState(location.address);
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || "");
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || "");
-  const [timezone, setTimezone] = useState(location.timezone || DEFAULT_TIMEZONE);
+  // Timezone is locked to Newfoundland - always use DEFAULT_TIMEZONE
+  const timezone = DEFAULT_TIMEZONE;
   const [cancellationPolicyHours, setCancellationPolicyHours] = useState(
     location.cancellationPolicyHours?.toString() || "24"
   );
@@ -133,7 +126,7 @@ export default function LocationEditModal({
     setAddress(location.address);
     setNotificationEmail(location.notificationEmail || "");
     setNotificationPhone(location.notificationPhone || "");
-    setTimezone(location.timezone || DEFAULT_TIMEZONE);
+    // Timezone is locked to DEFAULT_TIMEZONE - no need to update state
     setCancellationPolicyHours(location.cancellationPolicyHours?.toString() || "24");
     setCancellationPolicyMessage(
       location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
@@ -371,19 +364,14 @@ export default function LocationEditModal({
           <TabsContent value="settings" className="space-y-4 mt-4">
             <div className="space-y-2">
               <Label htmlFor="timezone">Timezone</Label>
-              <Select value={timezone} onValueChange={setTimezone} disabled={viewOnly}>
-                <SelectTrigger>
-                  <Globe className="w-4 h-4 mr-2 text-gray-400" />
-                  <SelectValue placeholder="Select timezone" />
-                </SelectTrigger>
-                <SelectContent>
-                  {timezoneOptions.map((tz) => (
-                    <SelectItem key={tz.value} value={tz.value}>
-                      {tz.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-700">
+                <Globe className="w-4 h-4 text-gray-400" />
+                <span className="flex-1">Newfoundland Time (GMT-3:30)</span>
+                <Badge variant="secondary" className="text-xs">Locked</Badge>
+              </div>
+              <p className="text-xs text-gray-500">
+                The timezone is locked to Newfoundland Time for all locations.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

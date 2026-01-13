@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
-import { getTimezoneOptions, DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
+import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -1631,7 +1631,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
-  const [timezone, setTimezone] = useState(location.timezone || DEFAULT_TIMEZONE);
+  // Timezone is locked to Newfoundland - always use DEFAULT_TIMEZONE
+  const timezone = DEFAULT_TIMEZONE;
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [uploadingKitchenId, setUploadingKitchenId] = useState<number | null>(null);
   const [kitchenDescriptions, setKitchenDescriptions] = useState<Record<number, string>>({});
@@ -1642,7 +1643,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [newKitchenName, setNewKitchenName] = useState('');
   const [newKitchenDescription, setNewKitchenDescription] = useState('');
   const [isCreatingKitchen, setIsCreatingKitchen] = useState(false);
-  const timezoneOptions = getTimezoneOptions();
 
   // Fetch kitchens for this location
   const { data: kitchens = [], isLoading: isLoadingKitchens } = useQuery<Kitchen[]>({
@@ -1678,7 +1678,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
     setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
     setLogoUrl(location.logoUrl || '');
-    setTimezone(location.timezone || DEFAULT_TIMEZONE);
+    // Timezone is locked to DEFAULT_TIMEZONE - no need to update state
     // Show the actual notificationEmail from the database, not the username
     // notificationEmail should be what's saved in notification_email column
     const savedEmail = location.notificationEmail || '';
@@ -2700,7 +2700,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">Timezone Settings</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Set the timezone for this location. All booking times will be interpreted according to this timezone.
+                  The timezone for this location is locked to Newfoundland Time. All booking times will be interpreted according to this timezone.
                 </p>
               </div>
             </div>
@@ -2710,19 +2710,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Location Timezone
                 </label>
-                <select
-                  value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                >
-                  {timezoneOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 bg-gray-50 text-gray-700 flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-gray-400" />
+                  <span>Newfoundland Time (GMT-3:30)</span>
+                  <span className="ml-auto text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">Locked</span>
+                </div>
                 <p className="text-xs text-gray-600 mt-1">
-                  All booking times for this location will be interpreted in this timezone. This affects when bookings are considered "past", "upcoming", or "active".
+                  All booking times for this location will be interpreted in Newfoundland Time. This affects when bookings are considered "past", "upcoming", or "active".
                 </p>
               </div>
 

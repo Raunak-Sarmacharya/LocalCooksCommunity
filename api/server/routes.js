@@ -3415,16 +3415,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       if (timezone !== undefined) {
-        // Validate timezone format (basic validation - should be a valid IANA timezone)
-        if (timezone && typeof timezone === 'string' && timezone.trim() !== '') {
-          (updates as any).timezone = timezone.trim();
-        } else if (timezone === null || timezone === '') {
-          // Use default if empty
-          (updates as any).timezone = DEFAULT_TIMEZONE;
-        }
-        console.log('[PUT] Setting timezone:', {
+        // Timezone is locked to Newfoundland - always enforce DEFAULT_TIMEZONE
+        (updates as any).timezone = DEFAULT_TIMEZONE;
+        console.log('[PUT] Setting timezone (locked to Newfoundland):', {
           raw: timezone,
-          processed: (updates as any).timezone
+          processed: DEFAULT_TIMEZONE,
+          note: 'Timezone is locked and cannot be changed'
         });
       }
 
