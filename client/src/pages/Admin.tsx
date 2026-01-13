@@ -74,6 +74,7 @@ import {
     AlertCircle,
     AlertTriangle,
     CalendarDays,
+    Calendar,
     CheckCircle,
     ChevronDown,
     ChevronRight,
@@ -2994,7 +2995,7 @@ function KitchenLicenseApprovalView() {
                     </div>
 
                     {/* License Document */}
-                    <div className="mb-4">
+                    <div className="mb-4 space-y-2">
                       <a
                         href={`/api/files/kitchen-license/${license.id}`}
                         target="_blank"
@@ -3004,6 +3005,25 @@ function KitchenLicenseApprovalView() {
                         <ExternalLink className="h-4 w-4" />
                         View Kitchen License Document
                       </a>
+                      {license.kitchenLicenseExpiry && (
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          <Calendar className="h-4 w-4 text-gray-500" />
+                          <span className="font-medium">Expiration Date:</span>
+                          <span className={new Date(license.kitchenLicenseExpiry) < new Date() ? "text-red-600 font-semibold" : ""}>
+                            {new Date(license.kitchenLicenseExpiry).toLocaleDateString()}
+                            {new Date(license.kitchenLicenseExpiry) < new Date() && (
+                              <span className="ml-2 text-red-600">(Expired)</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {license.kitchenLicenseUploadedAt && (
+                        <div className="flex items-center gap-2 text-sm text-gray-700">
+                          <Clock className="h-4 w-4 text-gray-500" />
+                          <span className="font-medium">Uploaded:</span>
+                          <span>{new Date(license.kitchenLicenseUploadedAt).toLocaleDateString()}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Expandable Feedback Section */}

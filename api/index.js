@@ -795,14 +795,14 @@ async function getKitchensByLocation(locationId) {
 }
 
 // Create a location in the database
-async function createLocation({ name, address, managerId }) {
+async function createLocation({ name, address, managerId, kitchenLicenseUrl, kitchenLicenseStatus, kitchenLicenseExpiry, notificationEmail, notificationPhone }) {
   try {
     if (!pool) {
       console.error('createLocation: Database pool not available');
       throw new Error('Database not available');
     }
     
-    console.log('createLocation called with:', { name, address, managerId });
+    console.log('createLocation called with:', { name, address, managerId, kitchenLicenseUrl, kitchenLicenseStatus, kitchenLicenseExpiry });
     
     // Handle optional managerId - only include if it's provided and valid
     let managerIdParam = null;
@@ -813,13 +813,85 @@ async function createLocation({ name, address, managerId }) {
       }
     }
     
-    console.log('Executing SQL query with params:', { name, address, managerId: managerIdParam });
+    // Build INSERT query dynamically based on provided fields
+    const columns = ['name', 'address', 'manager_id', 'timezone'];
+    const values = [name, address, managerIdParam, DEFAULT_TIMEZONE];
+    let paramIndex = 5;
+    
+    // Add notification fields if provided
+    if (notificationEmail !== undefined) {
+      columns.push('notification_email');
+      values.push(notificationEmail || null);
+      paramIndex++;
+    }
+    if (notificationPhone !== undefined) {
+      columns.push('notification_phone');
+      values.push(notificationPhone || null);
+      paramIndex++;
+    }
+    
+    // Add license fields if provided
+    if (kitchenLicenseUrl !== undefined) {
+      // Require expiration date when uploading a license
+      if (kitchenLicenseUrl && !kitchenLicenseExpiry) {
+        throw new Error('Expiration date is required when uploading a kitchen license');
+      }
+      columns.push('kitchen_license_url');
+      values.push(kitchenLicenseUrl);
+      paramIndex++;
+      
+      // Set upload timestamp when license URL is provided
+      if (kitchenLicenseUrl) {
+        columns.push('kitchen_license_uploaded_at');
+        values.push(new Date().toISOString());
+        paramIndex++;
+      }
+      
+      // Set status to 'pending' if license URL is provided and status not explicitly set
+      const licenseStatus = kitchenLicenseStatus || (kitchenLicenseUrl ? 'pending' : null);
+      if (licenseStatus) {
+        columns.push('kitchen_license_status');
+        values.push(licenseStatus);
+        paramIndex++;
+      }
+    }
+    
+    if (kitchenLicenseExpiry !== undefined) {
+      // Validate expiration date format
+      if (kitchenLicenseExpiry) {
+        const expiryDate = new Date(kitchenLicenseExpiry);
+        if (isNaN(expiryDate.getTime())) {
+          throw new Error('Invalid expiration date format. Please use YYYY-MM-DD format.');
+        }
+      }
+      columns.push('kitchen_license_expiry');
+      values.push(kitchenLicenseExpiry || null);
+      paramIndex++;
+    }
+    
+    if (kitchenLicenseStatus !== undefined && !kitchenLicenseUrl) {
+      // Only set status if explicitly provided (and not already set above)
+      columns.push('kitchen_license_status');
+      values.push(kitchenLicenseStatus);
+      paramIndex++;
+    }
+    
+    const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+    
+    console.log('Executing SQL query with params:', { columns, values: values.map(v => v === null ? 'NULL' : (typeof v === 'string' ? v.substring(0, 50) : v)) });
     
     const result = await pool.query(`
-      INSERT INTO locations (name, address, manager_id, timezone)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, name, address, manager_id as "managerId", timezone, created_at, updated_at
-    `, [name, address, managerIdParam, DEFAULT_TIMEZONE]);
+      INSERT INTO locations (${columns.join(', ')})
+      VALUES (${placeholders})
+      RETURNING id, name, address, manager_id as "managerId", timezone,
+        notification_email as "notificationEmail",
+        notification_phone as "notificationPhone",
+        kitchen_license_url as "kitchenLicenseUrl",
+        kitchen_license_status as "kitchenLicenseStatus",
+        kitchen_license_expiry as "kitchenLicenseExpiry",
+        kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
+        created_at, updated_at
+    `, values);
     
     console.log('Location created successfully:', result.rows[0]);
     return result.rows[0];
@@ -13664,6 +13736,7 @@ app.get("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, a
              kitchen_license_approved_at as "kitchenLicenseApprovedAt",
              kitchen_license_feedback as "kitchenLicenseFeedback",
              kitchen_license_expiry as "kitchenLicenseExpiry",
+             kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
              created_at, updated_at 
       FROM locations 
       WHERE manager_id = $1
@@ -13708,7 +13781,7 @@ app.post("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, 
     // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
     const user = req.neonUser;
 
-    const { name, address, notificationEmail, notificationPhone } = req.body;
+    const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus, kitchenLicenseExpiry } = req.body;
 
     if (!name || !address) {
       return res.status(400).json({ error: "Name and address are required" });
@@ -13720,6 +13793,22 @@ app.post("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, 
 
     // Multiple locations per manager are now supported
     // Each location requires its own kitchen license approval before bookings can be accepted
+
+    // Validate license fields if provided
+    if (kitchenLicenseUrl) {
+      if (!kitchenLicenseExpiry) {
+        return res.status(400).json({ 
+          error: "Expiration date is required when uploading a kitchen license" 
+        });
+      }
+      // Validate expiration date format
+      const expiryDate = new Date(kitchenLicenseExpiry);
+      if (isNaN(expiryDate.getTime())) {
+        return res.status(400).json({ 
+          error: "Invalid expiration date format. Please use YYYY-MM-DD format." 
+        });
+      }
+    }
 
     // Normalize phone number if provided
     let normalizedNotificationPhone = null;
@@ -13734,14 +13823,27 @@ app.post("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, 
       normalizedNotificationPhone = normalized;
     }
 
-    console.log('Creating location for manager:', { managerId: user.id, name, address, notificationPhone: normalizedNotificationPhone });
+    console.log('Creating location for manager:', { 
+      managerId: user.id, 
+      name, 
+      address, 
+      notificationPhone: normalizedNotificationPhone,
+      hasLicense: !!kitchenLicenseUrl,
+      licenseStatus: kitchenLicenseStatus || (kitchenLicenseUrl ? 'pending' : null)
+    });
+    
+    // Set status to 'pending' if license URL is provided and status not explicitly set
+    const finalLicenseStatus = kitchenLicenseStatus || (kitchenLicenseUrl ? 'pending' : undefined);
     
     const location = await createLocation({ 
       name, 
       address, 
       managerId: user.id,
       notificationEmail: notificationEmail || undefined,
-      notificationPhone: normalizedNotificationPhone || undefined
+      notificationPhone: normalizedNotificationPhone || undefined,
+      kitchenLicenseUrl: kitchenLicenseUrl || undefined,
+      kitchenLicenseStatus: finalLicenseStatus,
+      kitchenLicenseExpiry: kitchenLicenseExpiry || undefined
     });
     
     res.status(201).json(location);
@@ -13867,6 +13969,7 @@ app.put("/api/manager/locations/:locationId", requireFirebaseAuthWithUser, requi
       kitchen_license_approved_at as "kitchenLicenseApprovedAt",
       kitchen_license_feedback as "kitchenLicenseFeedback",
       kitchen_license_expiry as "kitchenLicenseExpiry",
+      kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
       created_at, updated_at`;
     
     const result = await pool.query(query, values);
@@ -17401,6 +17504,7 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
     const updates = [];
     const values = [];
     let paramIndex = 1;
+    let shouldSetUploadTimestamp = false;
 
     if (name !== undefined) {
       updates.push(`name = $${paramIndex++}`);
@@ -17439,6 +17543,11 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
       }
       updates.push(`kitchen_license_url = $${paramIndex++}`);
       values.push(kitchenLicenseUrl);
+      
+      // Set upload timestamp when a new license URL is provided
+      if (kitchenLicenseUrl) {
+        shouldSetUploadTimestamp = true;
+      }
     }
     if (kitchenLicenseExpiry !== undefined) {
       // Validate expiration date format
@@ -17462,7 +17571,16 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
         updates.push(`kitchen_license_approved_by = NULL`);
         updates.push(`kitchen_license_approved_at = NULL`);
         updates.push(`kitchen_license_feedback = NULL`);
+        // Set upload timestamp if not already set by kitchenLicenseUrl update
+        if (!shouldSetUploadTimestamp) {
+          shouldSetUploadTimestamp = true;
+        }
       }
+    }
+    
+    // Set upload timestamp if needed
+    if (shouldSetUploadTimestamp) {
+      updates.push(`kitchen_license_uploaded_at = NOW()`);
     }
 
     if (updates.length === 0) {
@@ -17487,6 +17605,7 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
       kitchen_license_approved_at as "kitchenLicenseApprovedAt",
       kitchen_license_feedback as "kitchenLicenseFeedback",
       kitchen_license_expiry as "kitchenLicenseExpiry",
+      kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
       created_at, updated_at`;
     
     const result = await pool.query(query, values);
@@ -22472,6 +22591,7 @@ app.get("/api/admin/locations/pending-licenses", requireFirebaseAuthWithUser, re
         l.kitchen_license_feedback as "kitchenLicenseFeedback",
         l.kitchen_license_approved_at as "kitchenLicenseApprovedAt",
         l.kitchen_license_expiry as "kitchenLicenseExpiry",
+        l.kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
         u.username as "managerUsername",
         u.id as "managerId"
       FROM locations l

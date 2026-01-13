@@ -52,6 +52,7 @@ interface Location {
   kitchenLicenseApprovedAt?: string;
   kitchenLicenseFeedback?: string;
   kitchenLicenseExpiry?: string;
+  kitchenLicenseUploadedAt?: string;
 }
 
 interface Kitchen {
@@ -145,20 +146,52 @@ export default function ManagerBookingDashboard() {
     alignSelf: 'flex-start',
   });
 
+  // Helper function to extract filename from URL
+  const getDocumentFilename = (url?: string): string => {
+    if (!url) return 'No document';
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const filename = pathname.split('/').pop() || 'kitchen-license';
+      // Decode URL encoding
+      return decodeURIComponent(filename);
+    } catch {
+      // If URL parsing fails, try to extract from string
+      const parts = url.split('/');
+      return decodeURIComponent(parts[parts.length - 1] || 'kitchen-license');
+    }
+  };
+  
+  // Helper function to calculate days until expiry
+  const getDaysUntilExpiry = (expiryDate?: string): number | null => {
+    if (!expiryDate) return null;
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+  
+  // Helper function to check if expiry is approaching (within 30 days)
+  const isExpiryApproaching = (expiryDate?: string): boolean => {
+    const daysUntil = getDaysUntilExpiry(expiryDate);
+    return daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
+  };
+
   // Measure header height and track scroll position
   useEffect(() => {
     const handleScroll = () => {
       const header = headerRef.current || document.querySelector('header');
-      
+
       if (!header) return;
-      
+
       // Measure actual header height dynamically
       const headerRect = header.getBoundingClientRect();
       const measuredHeaderHeight = headerRect.height;
       setHeaderHeight(measuredHeaderHeight); // Store for use in content padding
       const viewportHeight = window.innerHeight;
       const sidebarAvailableHeight = viewportHeight - measuredHeaderHeight;
-      
+
       // Sidebar sticky positioning is now handled directly in the JSX
       // No need to update sidebarStyle for top position
     };
@@ -593,6 +626,39 @@ export default function ManagerBookingDashboard() {
             </div>
           )}
 
+          {/* License Expiry Warning - Show for approved licenses approaching expiry */}
+          {!needsOnboarding &&
+            selectedLocation &&
+            selectedLocation.kitchenLicenseStatus === "approved" &&
+            !isLicenseExpired &&
+            isExpiryApproaching(selectedLocation.kitchenLicenseExpiry) && (
+              <div className="mb-4 sm:mb-6 bg-orange-50 border border-orange-200 rounded-lg p-3 sm:p-4 shadow-sm">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-xs sm:text-sm font-semibold text-orange-900 mb-1">
+                      License Expiring Soon
+                    </h3>
+                    {selectedLocation.kitchenLicenseExpiry && (
+                      <p className="text-xs sm:text-sm text-orange-700 mb-2">
+                        Your kitchen license expires on {new Date(selectedLocation.kitchenLicenseExpiry).toLocaleDateString()} 
+                        ({getDaysUntilExpiry(selectedLocation.kitchenLicenseExpiry)} days remaining). 
+                        Please upload a new license before the expiration date to avoid service interruption.
+                      </p>
+                    )}
+                    <Button
+                      onClick={() => setActiveView("settings")}
+                      size="sm"
+                      variant="outline"
+                      className="border-orange-300 text-orange-700 hover:bg-orange-100 min-h-[36px] sm:min-h-[40px] text-xs sm:text-sm"
+                    >
+                      Upload New License
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           {/* License Approval Reminder */}
           {!needsOnboarding &&
             selectedLocation &&
@@ -601,13 +667,51 @@ export default function ManagerBookingDashboard() {
                 <div className="flex items-start gap-2 sm:gap-3">
                   <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-xs sm:text-sm font-semibold text-yellow-900 mb-1">
-                      {selectedLocation.kitchenLicenseStatus === "pending"
-                        ? "License Pending Approval"
-                        : selectedLocation.kitchenLicenseStatus === "rejected"
-                        ? "License Rejected"
-                        : "License Not Uploaded"}
-                    </h3>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-xs sm:text-sm font-semibold text-yellow-900">
+                        {selectedLocation.kitchenLicenseStatus === "pending"
+                          ? "License Pending Approval"
+                          : selectedLocation.kitchenLicenseStatus === "rejected"
+                          ? "License Rejected"
+                          : "License Not Uploaded"}
+                      </h3>
+                      {selectedLocation.kitchenLicenseStatus && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          selectedLocation.kitchenLicenseStatus === "pending"
+                            ? "bg-yellow-200 text-yellow-800"
+                            : selectedLocation.kitchenLicenseStatus === "rejected"
+                            ? "bg-red-200 text-red-800"
+                            : "bg-gray-200 text-gray-800"
+                        }`}>
+                          {selectedLocation.kitchenLicenseStatus.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    {selectedLocation.kitchenLicenseUrl && (
+                      <div className="text-xs text-yellow-700 mb-1">
+                        <FileText className="h-3 w-3 inline mr-1" />
+                        Document: {getDocumentFilename(selectedLocation.kitchenLicenseUrl)}
+                      </div>
+                    )}
+                    {selectedLocation.kitchenLicenseUploadedAt && (
+                      <div className="text-xs text-yellow-700 mb-1">
+                        <Clock className="h-3 w-3 inline mr-1" />
+                        Uploaded: {new Date(selectedLocation.kitchenLicenseUploadedAt).toLocaleDateString()}
+                      </div>
+                    )}
+                    {selectedLocation.kitchenLicenseExpiry && (
+                      <div className="text-xs text-yellow-700 mb-2">
+                        <Calendar className="h-3 w-3 inline mr-1" />
+                        Expires: {new Date(selectedLocation.kitchenLicenseExpiry).toLocaleDateString()}
+                        {(() => {
+                          const daysUntil = getDaysUntilExpiry(selectedLocation.kitchenLicenseExpiry);
+                          if (daysUntil !== null && daysUntil > 0) {
+                            return <span className="ml-1">({daysUntil} days remaining)</span>;
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    )}
                     <p className="text-xs sm:text-sm text-yellow-700 mb-2">
                       {selectedLocation.kitchenLicenseStatus === "pending"
                         ? "Your kitchen license is pending admin approval. Bookings will be activated once approved."
@@ -2122,51 +2226,87 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     ? "bg-green-50 border-green-200" 
                     : location.kitchenLicenseStatus === "expired" || isLicenseExpired
                     ? "bg-red-50 border-red-200"
+                    : isExpiryApproaching(location.kitchenLicenseExpiry)
+                    ? "bg-orange-50 border-orange-200"
                     : "bg-yellow-50 border-yellow-200"
                 }`}>
-                  <div className={`flex items-center gap-2 ${
-                    location.kitchenLicenseStatus === "approved" && !isLicenseExpired
-                      ? "text-green-800" 
-                      : location.kitchenLicenseStatus === "expired" || isLicenseExpired
-                      ? "text-red-800"
-                      : "text-yellow-800"
-                  }`}>
-                    {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? (
-                      <AlertCircle className="h-5 w-5" />
-                    ) : (
-                      <CheckCircle className="h-5 w-5" />
-                    )}
-                    <span className="font-medium">License Uploaded</span>
-                  </div>
-                  <p className={`text-sm mt-1 ${
-                    location.kitchenLicenseStatus === "approved" && !isLicenseExpired
-                      ? "text-green-700" 
-                      : location.kitchenLicenseStatus === "expired" || isLicenseExpired
-                      ? "text-red-700"
-                      : "text-yellow-700"
-                  }`}>
-                    Status: {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? "Expired" : (location.kitchenLicenseStatus || "pending")}
-                  </p>
-                  {location.kitchenLicenseExpiry && (
-                    <p className={`text-sm mt-1 ${
+                  <div className="flex items-start justify-between mb-3">
+                    <div className={`flex items-center gap-2 ${
                       location.kitchenLicenseStatus === "approved" && !isLicenseExpired
-                        ? "text-green-700" 
+                        ? "text-green-800" 
                         : location.kitchenLicenseStatus === "expired" || isLicenseExpired
-                        ? "text-red-700"
-                        : "text-yellow-700"
+                        ? "text-red-800"
+                        : isExpiryApproaching(location.kitchenLicenseExpiry)
+                        ? "text-orange-800"
+                        : "text-yellow-800"
                     }`}>
-                      Expiration Date: {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}
-                      {isLicenseExpired ? (
-                        <span className="ml-2 font-semibold">
-                          (Expired {Math.floor((new Date().getTime() - new Date(location.kitchenLicenseExpiry).getTime()) / (1000 * 60 * 60 * 24))} days ago)
+                      {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? (
+                        <AlertCircle className="h-5 w-5" />
+                      ) : (
+                        <CheckCircle className="h-5 w-5" />
+                      )}
+                      <span className="font-medium">Kitchen License Document</span>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      location.kitchenLicenseStatus === "approved" && !isLicenseExpired
+                        ? "bg-green-200 text-green-800"
+                        : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                        ? "bg-red-200 text-red-800"
+                        : location.kitchenLicenseStatus === "pending"
+                        ? "bg-yellow-200 text-yellow-800"
+                        : "bg-gray-200 text-gray-800"
+                    }`}>
+                      {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? "EXPIRED" : (location.kitchenLicenseStatus || "PENDING").toUpperCase()}
+                    </span>
+                  </div>
+                  
+                  {/* Document Information */}
+                  <div className="space-y-2 mb-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <FileText className="h-4 w-4 text-gray-600" />
+                      <span className="text-gray-700">Document:</span>
+                      <span className="font-medium text-gray-900">{getDocumentFilename(location.kitchenLicenseUrl)}</span>
+                    </div>
+                    {location.kitchenLicenseUploadedAt && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Clock className="h-4 w-4 text-gray-600" />
+                        <span className="text-gray-700">Uploaded:</span>
+                        <span className="text-gray-900">{new Date(location.kitchenLicenseUploadedAt).toLocaleDateString()} at {new Date(location.kitchenLicenseUploadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    )}
+                    {location.kitchenLicenseExpiry && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-4 w-4 text-gray-600" />
+                        <span className="text-gray-700">Expiration Date:</span>
+                        <span className={`font-medium ${
+                          isLicenseExpired ? "text-red-700" : isExpiryApproaching(location.kitchenLicenseExpiry) ? "text-orange-700" : "text-gray-900"
+                        }`}>
+                          {new Date(location.kitchenLicenseExpiry).toLocaleDateString()}
                         </span>
-                      ) : location.kitchenLicenseStatus === "approved" ? (
-                        <span className="ml-2 text-green-600">
-                          (Expires in {Math.ceil((new Date(location.kitchenLicenseExpiry).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days)
-                        </span>
-                      ) : null}
-                    </p>
-                  )}
+                        {(() => {
+                          const daysUntil = getDaysUntilExpiry(location.kitchenLicenseExpiry);
+                          if (daysUntil !== null) {
+                            if (daysUntil < 0) {
+                              return <span className="text-red-700 font-semibold">(Expired {Math.abs(daysUntil)} days ago)</span>;
+                            } else if (daysUntil <= 30) {
+                              return <span className="text-orange-700 font-semibold">({daysUntil} days remaining - Renewal needed soon)</span>;
+                            } else {
+                              return <span className="text-green-700">({daysUntil} days remaining)</span>;
+                            }
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    )}
+                    {location.kitchenLicenseExpiry && !isLicenseExpired && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Calendar className="h-4 w-4 text-blue-600" />
+                        <span className="text-gray-700">Next Upload Date:</span>
+                        <span className="font-medium text-blue-700">{new Date(location.kitchenLicenseExpiry).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-500">(Upload new license on or before this date)</span>
+                      </div>
+                    )}
+                  </div>
                   {!location.kitchenLicenseExpiry && location.kitchenLicenseStatus === "approved" && (
                     <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                       <p className="text-xs text-yellow-700 mb-3">
@@ -2242,20 +2382,37 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       </div>
                     </div>
                   )}
+                  {/* Status Messages */}
                   {location.kitchenLicenseStatus === "approved" && !isLicenseExpired && (
-                    <p className="text-xs text-green-600 mt-1">
-                      ✓ Your license has been approved! Bookings are now active.
-                    </p>
+                    <div className={`mt-3 p-3 rounded-lg ${
+                      isExpiryApproaching(location.kitchenLicenseExpiry)
+                        ? "bg-orange-100 border border-orange-300"
+                        : "bg-green-100 border border-green-300"
+                    }`}>
+                      {isExpiryApproaching(location.kitchenLicenseExpiry) ? (
+                        <p className="text-xs text-orange-800 font-medium">
+                          ⚠️ Your license expires soon! Please prepare to upload a new license before the expiration date.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-green-800 font-medium">
+                          ✓ Your license has been approved! Bookings are now active.
+                        </p>
+                      )}
+                    </div>
                   )}
                   {(location.kitchenLicenseStatus === "expired" || isLicenseExpired) && (
-                    <p className="text-xs text-red-600 mt-1">
-                      ⚠️ Your license has expired. Please upload a new license to continue bookings.
-                    </p>
+                    <div className="mt-3 p-3 bg-red-100 border border-red-300 rounded-lg">
+                      <p className="text-xs text-red-800 font-medium">
+                        ⚠️ Your license has expired. Please upload a new license immediately to continue bookings.
+                      </p>
+                    </div>
                   )}
                   {location.kitchenLicenseStatus === "pending" && (
-                    <p className="text-xs text-yellow-600 mt-1">
-                      ⏳ Your license is pending admin approval. Bookings will be activated once approved.
-                    </p>
+                    <div className="mt-3 p-3 bg-yellow-100 border border-yellow-300 rounded-lg">
+                      <p className="text-xs text-yellow-800 font-medium">
+                        ⏳ Your license is pending admin approval. Bookings will be activated once approved.
+                      </p>
+                    </div>
                   )}
                   <a
                     href={location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') 
