@@ -683,7 +683,21 @@ async function getKitchensByLocation(locationId) {
       return [];
     }
     const result = await pool.query(`
-      SELECT id, name, description, location_id as "locationId", is_active as "isActive"
+      SELECT 
+        id, 
+        name, 
+        description, 
+        location_id as "locationId", 
+        is_active as "isActive",
+        image_url as "imageUrl",
+        gallery_images as "galleryImages",
+        amenities,
+        hourly_rate as "hourlyRate",
+        currency,
+        minimum_booking_hours as "minimumBookingHours",
+        pricing_model as "pricingModel",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
       FROM kitchens
       WHERE location_id = $1
       ORDER BY name
