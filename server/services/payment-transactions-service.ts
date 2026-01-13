@@ -40,6 +40,11 @@ export interface UpdatePaymentTransactionParams {
   lastSyncedAt?: Date;
   webhookEventId?: string;
   metadata?: Record<string, any>;
+  // Stripe-synced amounts (optional - if provided, will override calculated amounts)
+  stripeAmount?: number; // Actual Stripe amount in cents
+  stripeNetAmount?: number; // Actual Stripe net amount after all fees in cents
+  stripeProcessingFee?: number; // Stripe's processing fee in cents
+  stripePlatformFee?: number; // Platform fee from Stripe Connect in cents
 }
 
 export interface PaymentTransactionRecord {
@@ -259,7 +264,56 @@ export async function updatePaymentTransaction(
     paramIndex++;
   }
 
-  if (params.metadata !== undefined) {
+  // Handle Stripe-synced amounts (override calculated amounts with actual Stripe amounts)
+  if (params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) {
+    // If Stripe amounts are provided, update the transaction amounts
+    // Note: We'll update amount and net_amount, but keep base_amount and service_fee as calculated
+    // The manager_revenue will be recalculated based on Stripe net amount if provided
+    
+    if (params.stripeAmount !== undefined) {
+      updates.push(`amount = $${paramIndex}`);
+      values.push(params.stripeAmount.toString());
+      paramIndex++;
+    }
+    
+    if (params.stripeNetAmount !== undefined) {
+      // Net amount is what manager actually receives after all fees
+      updates.push(`net_amount = $${paramIndex}`);
+      values.push(params.stripeNetAmount.toString());
+      paramIndex++;
+      
+      // Update manager_revenue to match Stripe net amount (what manager actually receives)
+      // This ensures manager_revenue reflects actual Stripe payout
+      updates.push(`manager_revenue = $${paramIndex}`);
+      values.push(params.stripeNetAmount.toString());
+      paramIndex++;
+    }
+    
+    // Store Stripe fees in metadata for reference
+    const currentMetadataResult = await dbPool.query(`
+      SELECT metadata FROM payment_transactions WHERE id = $1
+    `, [transactionId]);
+    const currentMetadata = currentMetadataResult.rows[0]?.metadata 
+      ? (typeof currentMetadataResult.rows[0].metadata === 'string' 
+          ? JSON.parse(currentMetadataResult.rows[0].metadata) 
+          : currentMetadataResult.rows[0].metadata)
+      : {};
+    
+    const stripeFees = {
+      processingFee: params.stripeProcessingFee || 0,
+      platformFee: params.stripePlatformFee || 0,
+      syncedAt: new Date().toISOString(),
+    };
+    
+    const updatedMetadata = {
+      ...currentMetadata,
+      stripeFees,
+    };
+    
+    updates.push(`metadata = $${paramIndex}`);
+    values.push(JSON.stringify(updatedMetadata));
+    paramIndex++;
+  } else if (params.metadata !== undefined) {
     updates.push(`metadata = $${paramIndex}`);
     values.push(JSON.stringify(params.metadata));
     paramIndex++;
@@ -288,6 +342,19 @@ export async function updatePaymentTransaction(
 
   // Track status change in history
   if (params.status !== undefined && params.status !== previousStatus) {
+    const historyMetadata: any = { ...(params.metadata || {}) };
+    
+    // Include Stripe amounts in history if they were synced
+    if (params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) {
+      historyMetadata.stripeAmounts = {
+        amount: params.stripeAmount,
+        netAmount: params.stripeNetAmount,
+        processingFee: params.stripeProcessingFee,
+        platformFee: params.stripePlatformFee,
+        syncedAt: new Date().toISOString(),
+      };
+    }
+    
     await addPaymentHistory(
       transactionId,
       {
@@ -295,9 +362,34 @@ export async function updatePaymentTransaction(
         newStatus: params.status,
         eventType: 'status_change',
         eventSource: params.webhookEventId ? 'stripe_webhook' : 'system',
-        description: `Status changed from ${previousStatus} to ${params.status}`,
+        description: `Status changed from ${previousStatus} to ${params.status}${params.stripeAmount !== undefined ? ' (Stripe amounts synced)' : ''}`,
         stripeEventId: params.webhookEventId,
-        metadata: params.metadata || {},
+        metadata: historyMetadata,
+      },
+      dbPool
+    );
+  }
+  
+  // Track Stripe amount sync in history (separate from status change)
+  if ((params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) && params.status === undefined) {
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus: updated.status,
+        newStatus: updated.status,
+        eventType: 'stripe_sync',
+        eventSource: params.webhookEventId ? 'stripe_webhook' : 'system',
+        description: `Stripe amounts synced: Amount $${((params.stripeAmount || parseFloat(updated.amount || '0')) / 100).toFixed(2)}, Net $${((params.stripeNetAmount || parseFloat(updated.net_amount || '0')) / 100).toFixed(2)}`,
+        stripeEventId: params.webhookEventId,
+        metadata: {
+          stripeAmounts: {
+            amount: params.stripeAmount,
+            netAmount: params.stripeNetAmount,
+            processingFee: params.stripeProcessingFee,
+            platformFee: params.stripePlatformFee,
+            syncedAt: new Date().toISOString(),
+          },
+        },
       },
       dbPool
     );
@@ -325,6 +417,216 @@ export async function updatePaymentTransaction(
   }
 
   return updated;
+}
+
+/**
+ * Sync Stripe amounts to all related booking tables
+ * This ensures all money-related data comes from Stripe, not calculations
+ */
+export async function syncStripeAmountsToBookings(
+  paymentIntentId: string,
+  stripeAmounts: {
+    stripeAmount: number;
+    stripeNetAmount: number;
+    stripeProcessingFee: number;
+    stripePlatformFee: number;
+  },
+  dbPool: Pool
+): Promise<void> {
+  try {
+    // Find the payment transaction
+    const transactionResult = await dbPool.query(`
+      SELECT 
+        pt.id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.base_amount,
+        pt.service_fee,
+        pt.amount as current_amount,
+        pt.manager_revenue as current_manager_revenue
+      FROM payment_transactions pt
+      WHERE pt.payment_intent_id = $1
+    `, [paymentIntentId]);
+
+    if (transactionResult.rows.length === 0) {
+      console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
+      return;
+    }
+
+    const transaction = transactionResult.rows[0];
+    const bookingId = transaction.booking_id;
+    const bookingType = transaction.booking_type;
+
+    // For bundle bookings, we need to get all related bookings
+    if (bookingType === 'bundle') {
+      // Get kitchen booking
+      const kitchenBooking = await dbPool.query(`
+        SELECT id, total_price, service_fee
+        FROM kitchen_bookings
+        WHERE id = $1
+      `, [bookingId]);
+
+      // Get storage bookings
+      const storageBookings = await dbPool.query(`
+        SELECT id, total_price, service_fee
+        FROM storage_bookings
+        WHERE kitchen_booking_id = $1
+      `, [bookingId]);
+
+      // Get equipment bookings
+      const equipmentBookings = await dbPool.query(`
+        SELECT id, total_price, service_fee
+        FROM equipment_bookings
+        WHERE kitchen_booking_id = $1
+      `, [bookingId]);
+
+      // Calculate total base amount from all bookings
+      let totalBaseAmount = parseFloat(transaction.base_amount || '0');
+      if (totalBaseAmount === 0) {
+        // Calculate from bookings if not available
+        const kbAmount = parseFloat(kitchenBooking.rows[0]?.total_price || '0');
+        const sbAmount = storageBookings.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || '0'), 0);
+        const ebAmount = equipmentBookings.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || '0'), 0);
+        totalBaseAmount = kbAmount + sbAmount + ebAmount;
+      }
+
+      // Calculate proportions and update each booking
+      if (kitchenBooking.rows.length > 0 && totalBaseAmount > 0) {
+        const kbBase = parseFloat(kitchenBooking.rows[0].total_price || '0');
+        const kbProportion = kbBase / totalBaseAmount;
+        const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
+        const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
+
+        // Calculate service fee: platform fee portion for this booking
+        // For bundle, distribute platform fee proportionally
+        const kbServiceFee = stripeAmounts.stripePlatformFee > 0
+          ? Math.round(stripeAmounts.stripePlatformFee * kbProportion)
+          : Math.round((kbStripeAmount - kbStripeNet) * 0.5); // Estimate if no platform fee
+        
+        await dbPool.query(`
+          UPDATE kitchen_bookings
+          SET 
+            total_price = $1,
+            service_fee = $2,
+            updated_at = NOW()
+          WHERE id = $3
+        `, [
+          kbStripeAmount.toString(),
+          kbServiceFee.toString(),
+          bookingId
+        ]);
+      }
+
+      // Update storage bookings proportionally
+      for (const sb of storageBookings.rows) {
+        const sbBase = parseFloat(sb.total_price || '0');
+        if (totalBaseAmount > 0 && sbBase > 0) {
+          const sbProportion = sbBase / totalBaseAmount;
+          const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
+          const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
+          
+          // Calculate service fee proportionally
+          const sbServiceFee = stripeAmounts.stripePlatformFee > 0
+            ? Math.round(stripeAmounts.stripePlatformFee * sbProportion)
+            : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
+
+          await dbPool.query(`
+            UPDATE storage_bookings
+            SET 
+              total_price = $1,
+              service_fee = $2,
+              updated_at = NOW()
+            WHERE id = $3
+          `, [
+            sbStripeAmount.toString(),
+            sbServiceFee.toString(),
+            sb.id
+          ]);
+        }
+      }
+
+      // Update equipment bookings proportionally
+      for (const eb of equipmentBookings.rows) {
+        const ebBase = parseFloat(eb.total_price || '0');
+        if (totalBaseAmount > 0 && ebBase > 0) {
+          const ebProportion = ebBase / totalBaseAmount;
+          const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
+          const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
+
+          // Calculate service fee proportionally
+          const ebServiceFee = stripeAmounts.stripePlatformFee > 0
+            ? Math.round(stripeAmounts.stripePlatformFee * ebProportion)
+            : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
+          
+          await dbPool.query(`
+            UPDATE equipment_bookings
+            SET 
+              total_price = $1,
+              service_fee = $2,
+              updated_at = NOW()
+            WHERE id = $3
+          `, [
+            ebStripeAmount.toString(),
+            ebServiceFee.toString(),
+            eb.id
+          ]);
+        }
+      }
+    } else {
+      // Single booking (kitchen, storage, or equipment)
+      // Update the booking directly with Stripe amounts
+      // Service fee = platform fee (not including Stripe processing fee)
+      const serviceFee = stripeAmounts.stripePlatformFee > 0
+        ? stripeAmounts.stripePlatformFee
+        : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
+      
+      if (bookingType === 'kitchen') {
+        await dbPool.query(`
+          UPDATE kitchen_bookings
+          SET 
+            total_price = $1,
+            service_fee = $2,
+            updated_at = NOW()
+          WHERE id = $3
+        `, [
+          stripeAmounts.stripeAmount.toString(),
+          serviceFee.toString(),
+          bookingId
+        ]);
+      } else if (bookingType === 'storage') {
+        await dbPool.query(`
+          UPDATE storage_bookings
+          SET 
+            total_price = $1,
+            service_fee = $2,
+            updated_at = NOW()
+          WHERE id = $3
+        `, [
+          stripeAmounts.stripeAmount.toString(),
+          serviceFee.toString(),
+          bookingId
+        ]);
+      } else if (bookingType === 'equipment') {
+        await dbPool.query(`
+          UPDATE equipment_bookings
+          SET 
+            total_price = $1,
+            service_fee = $2,
+            updated_at = NOW()
+          WHERE id = $3
+        `, [
+          stripeAmounts.stripeAmount.toString(),
+          serviceFee.toString(),
+          bookingId
+        ]);
+      }
+    }
+
+    console.log(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
+  } catch (error: any) {
+    console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
+    // Don't throw - we don't want to fail the webhook if booking update fails
+  }
 }
 
 /**

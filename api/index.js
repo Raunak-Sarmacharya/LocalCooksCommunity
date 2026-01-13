@@ -249,22 +249,63 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
 
   try {
     const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('../server/services/payment-transactions-service.js');
+    const { getStripePaymentAmounts } = await import('../server/services/stripe-service.js');
     
     // Update payment_transactions table
     const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
     if (transaction) {
-      await updatePaymentTransaction(transaction.id, {
+      // Get manager's Stripe Connect account ID if available
+      let managerConnectAccountId;
+      try {
+        const managerResult = await pool.query(`
+          SELECT stripe_connect_account_id 
+          FROM users 
+          WHERE id = $1 AND stripe_connect_account_id IS NOT NULL
+        `, [transaction.manager_id]);
+        if (managerResult.rows.length > 0) {
+          managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
+        }
+      } catch (error) {
+        console.warn(`[Webhook] Could not fetch manager Connect account:`, error);
+      }
+      
+      // Fetch actual Stripe amounts
+      const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerConnectAccountId);
+      
+      const updateParams = {
         status: 'succeeded',
         stripeStatus: paymentIntent.status,
         chargeId: typeof paymentIntent.latest_charge === 'string' ? paymentIntent.latest_charge : paymentIntent.latest_charge?.id,
         paidAt: new Date(),
         lastSyncedAt: new Date(),
         webhookEventId: webhookEventId,
-      }, pool);
-      console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+      };
+      
+      // If we got Stripe amounts, sync them to override calculated amounts
+      if (stripeAmounts) {
+        updateParams.stripeAmount = stripeAmounts.stripeAmount;
+        updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
+        updateParams.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
+        updateParams.stripePlatformFee = stripeAmounts.stripePlatformFee;
+        console.log(`[Webhook] Syncing Stripe amounts for ${paymentIntent.id}:`, {
+          amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+          netAmount: `$${(stripeAmounts.stripeNetAmount / 100).toFixed(2)}`,
+          processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+          platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`,
+        });
+      }
+      
+      await updatePaymentTransaction(transaction.id, updateParams, pool);
+      console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}${stripeAmounts ? ' with Stripe amounts' : ''}`);
+      
+      // Sync Stripe amounts to all related booking tables
+      if (stripeAmounts) {
+        const { syncStripeAmountsToBookings } = await import('../server/services/payment-transactions-service.js');
+        await syncStripeAmountsToBookings(paymentIntent.id, stripeAmounts, pool);
+      }
     }
 
-    // Also update booking tables for backward compatibility
+    // Also update booking tables payment status for backward compatibility
     await pool.query(`
       UPDATE kitchen_bookings
       SET 
