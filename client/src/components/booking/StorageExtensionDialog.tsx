@@ -92,7 +92,9 @@ export function StorageExtensionDialog({
 
     const basePricePerDay = booking.basePrice || 0;
     const extensionBasePrice = basePricePerDay * extensionDays;
-    const extensionServiceFee = extensionBasePrice * serviceFeeRate; // Use configurable service fee rate
+    const percentageFee = extensionBasePrice * serviceFeeRate; // Percentage-based service fee
+    const stripeProcessingFee = 0.30; // $0.30 per transaction
+    const extensionServiceFee = percentageFee + stripeProcessingFee; // Total service fee including 30 cents
     const extensionTotalPrice = extensionBasePrice + extensionServiceFee;
 
     return {
@@ -253,7 +255,7 @@ export function StorageExtensionDialog({
                       <span className="font-medium">${(extensionDetails.extensionBasePrice ?? 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-700">Service Fee ({(serviceFeeRate * 100).toFixed(1)}%):</span>
+                      <span className="text-gray-700">Service Fee ({(serviceFeeRate * 100).toFixed(1)}% + $0.30 per transaction):</span>
                       <span className="font-medium">${(extensionDetails.extensionServiceFee ?? 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-green-200 font-semibold text-green-900">

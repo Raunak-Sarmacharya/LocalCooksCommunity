@@ -14391,6 +14391,7 @@ app.get("/api/manager/revenue/overview", requireFirebaseAuthWithUser, requireMan
       totalRevenue: metrics.totalRevenue / 100,
       platformFee: metrics.platformFee / 100,
       managerRevenue: metrics.managerRevenue / 100,
+      depositedManagerRevenue: (metrics.depositedManagerRevenue || 0) / 100, // Only succeeded transactions
       pendingPayments: metrics.pendingPayments / 100,
       completedPayments: metrics.completedPayments / 100,
       averageBookingValue: metrics.averageBookingValue / 100,
@@ -14402,6 +14403,7 @@ app.get("/api/manager/revenue/overview", requireFirebaseAuthWithUser, requireMan
         totalRevenue: metrics.totalRevenue,
         platformFee: metrics.platformFee,
         managerRevenue: metrics.managerRevenue,
+        depositedManagerRevenue: metrics.depositedManagerRevenue || 0,
       }
     });
   } catch (error) {

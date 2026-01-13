@@ -803,7 +803,7 @@ export default function KitchenDashboardOverview({
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-blue-100 text-[10px] font-medium uppercase tracking-wider">Your Earnings</p>
+                  <p className="text-blue-100 text-[10px] font-medium uppercase tracking-wider">Your Revenue</p>
                   <p className="text-2xl font-bold mt-1">
                     {isLoadingRevenue ? (
                       <span className="text-blue-100">...</span>
@@ -813,12 +813,12 @@ export default function KitchenDashboardOverview({
                         currency: 'CAD',
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
-                      }).format(revenueMetrics.managerRevenue || 0)
+                      }).format(revenueMetrics.depositedManagerRevenue || revenueMetrics.managerRevenue || 0)
                     ) : (
                       '$0'
                     )}
                   </p>
-                  <p className="text-blue-100 text-xs mt-1">After platform fee</p>
+                  <p className="text-blue-100 text-xs mt-1">Deposited in bank</p>
                 </div>
                 <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
                   <TrendingUp className="h-4 w-4" />
