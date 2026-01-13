@@ -13787,18 +13787,13 @@ app.put("/api/manager/locations/:locationId/cancellation-policy", requireFirebas
       });
     }
     if (timezone !== undefined) {
-      // Validate timezone format (basic validation - should be a valid IANA timezone)
-      if (timezone && typeof timezone === 'string' && timezone.trim() !== '') {
-        updates.push(`timezone = $${paramCount++}`);
-        values.push(timezone.trim());
-      } else if (timezone === null || timezone === '') {
-        // Use default if empty
-        updates.push(`timezone = $${paramCount++}`);
-        values.push(DEFAULT_TIMEZONE);
-      }
-      console.log('[PUT] Setting timezone:', {
+      // Timezone is locked to Newfoundland - always enforce DEFAULT_TIMEZONE
+      updates.push(`timezone = $${paramCount++}`);
+      values.push(DEFAULT_TIMEZONE);
+      console.log('[PUT] Setting timezone (locked to Newfoundland):', {
         raw: timezone,
-        processed: timezone && timezone.trim() !== '' ? timezone.trim() : DEFAULT_TIMEZONE
+        processed: DEFAULT_TIMEZONE,
+        note: 'Timezone is locked and cannot be changed'
       });
     }
     
