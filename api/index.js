@@ -13724,7 +13724,7 @@ app.post("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, 
     // Normalize phone number if provided
     let normalizedNotificationPhone = null;
     if (notificationPhone && notificationPhone.trim() !== '') {
-      const { normalizePhoneForStorage } = await import('./phone-utils');
+      const { normalizePhoneForStorage } = await import('./server/phone-utils');
       const normalized = normalizePhoneForStorage(notificationPhone);
       if (!normalized) {
         return res.status(400).json({ 
@@ -13802,7 +13802,7 @@ app.put("/api/manager/locations/:locationId", requireFirebaseAuthWithUser, requi
     }
     if (notificationPhone !== undefined) {
       if (notificationPhone && notificationPhone.trim() !== '') {
-        const { normalizePhoneForStorage } = await import('./phone-utils');
+        const { normalizePhoneForStorage } = await import('./server/phone-utils');
         const normalized = normalizePhoneForStorage(notificationPhone);
         if (!normalized) {
           return res.status(400).json({ 
@@ -17416,7 +17416,7 @@ app.put("/api/manager/locations/:id", requireFirebaseAuthWithUser, requireManage
     }
     if (notificationPhone !== undefined) {
       if (notificationPhone && notificationPhone.trim() !== '') {
-        const { normalizePhoneForStorage } = await import('./phone-utils');
+        const { normalizePhoneForStorage } = await import('./server/phone-utils');
         const normalized = normalizePhoneForStorage(notificationPhone);
         if (!normalized) {
           return res.status(400).json({ 
@@ -19062,7 +19062,7 @@ app.put("/api/admin/locations/:id", requireFirebaseAuthWithUser, requireAdmin, a
     }
     if (notificationPhone !== undefined) {
       if (notificationPhone && notificationPhone.trim() !== '') {
-        const { normalizePhoneForStorage } = await import('./phone-utils');
+        const { normalizePhoneForStorage } = await import('./server/phone-utils');
         const normalized = normalizePhoneForStorage(notificationPhone);
         if (!normalized) {
           return res.status(400).json({

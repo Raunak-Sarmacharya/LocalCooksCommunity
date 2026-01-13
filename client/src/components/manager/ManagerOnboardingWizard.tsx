@@ -31,7 +31,6 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
-import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -76,6 +75,9 @@ export default function ManagerOnboardingWizard() {
   const [kitchenFormData, setKitchenFormData] = useState({
     name: '',
     description: '',
+    hourlyRate: '',
+    currency: 'CAD',
+    minimumBookingHours: '1',
   });
   const [creatingKitchen, setCreatingKitchen] = useState(false);
   
@@ -92,28 +94,16 @@ export default function ManagerOnboardingWizard() {
     description: '',
     basePrice: 0,
     minimumBookingDuration: 1,
-    photos: [] as string[],
-  });
-  const [storagePhotoFiles, setStoragePhotoFiles] = useState<File[]>([]);
-  const storageUploadHook = useSessionFileUpload({
-    maxSize: 4.5 * 1024 * 1024,
-    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
   });
   
   // Equipment listing form state
   const [equipmentFormData, setEquipmentFormData] = useState({
-    category: 'cooking' as 'cooking' | 'prep' | 'refrigeration' | 'baking' | 'other',
+    category: 'cooking' as 'food-prep' | 'cooking' | 'refrigeration' | 'cleaning' | 'specialty',
     name: '',
     description: '',
     condition: 'good' as 'excellent' | 'good' | 'fair' | 'needs_repair',
     availabilityType: 'rental' as 'included' | 'rental',
     sessionRate: 0,
-    photos: [] as string[],
-  });
-  const [equipmentPhotoFiles, setEquipmentPhotoFiles] = useState<File[]>([]);
-  const equipmentUploadHook = useSessionFileUpload({
-    maxSize: 4.5 * 1024 * 1024,
-    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
   });
 
   const steps: OnboardingStep[] = [
@@ -538,7 +528,7 @@ export default function ManagerOnboardingWizard() {
   }, [selectedKitchenId, currentStep]);
 
   const createKitchenMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string }) => {
+    mutationFn: async (data: { name: string; description?: string; hourlyRate?: string; currency?: string; minimumBookingHours?: string }) => {
       if (!selectedLocationId) {
         throw new Error("No location selected");
       }
@@ -551,6 +541,8 @@ export default function ManagerOnboardingWizard() {
       }
       
       const token = await currentFirebaseUser.getIdToken();
+      
+      // Create the kitchen first
       const response = await fetch(`/api/manager/kitchens`, {
         method: "POST",
         headers: { 
@@ -568,14 +560,40 @@ export default function ManagerOnboardingWizard() {
         const error = await response.json();
         throw new Error(error.error || "Failed to create kitchen");
       }
-      return response.json();
+      const kitchen = await response.json();
+      
+      // Set pricing if provided
+      if (data.hourlyRate && data.hourlyRate.trim() !== '') {
+        const hourlyRateNum = parseFloat(data.hourlyRate);
+        if (!isNaN(hourlyRateNum) && hourlyRateNum > 0) {
+          const pricingResponse = await fetch(`/api/manager/kitchens/${kitchen.id}/pricing`, {
+            method: "PUT",
+            headers: { 
+              'Authorization': `Bearer ${token}`,
+              "Content-Type": "application/json" 
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              hourlyRate: hourlyRateNum,
+              currency: data.currency || 'CAD',
+              minimumBookingHours: parseInt(data.minimumBookingHours || '1') || 1,
+            }),
+          });
+          if (!pricingResponse.ok) {
+            console.warn("Kitchen created but failed to set pricing:", await pricingResponse.text());
+            // Don't throw error - kitchen was created successfully, pricing can be set later
+          }
+        }
+      }
+      
+      return kitchen;
     },
     onSuccess: (data) => {
       // Reload kitchens and select the new one
       setKitchens([...kitchens, data]);
       setSelectedKitchenId(data.id);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '' });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1' });
       
       // Update location onboarding status - location no longer needs onboarding
       if (selectedLocationId) {
@@ -1557,6 +1575,57 @@ export default function ManagerOnboardingWizard() {
                           />
                           <p className="text-xs text-gray-500 mt-1">Help chefs understand what makes your kitchen special</p>
                         </div>
+                        <div className="border-t pt-3 mt-3">
+                          <h5 className="text-sm font-semibold text-gray-900 mb-3">Pricing Information</h5>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="kitchen-hourly-rate">
+                                Hourly Rate <span className="text-red-500">*</span>
+                              </Label>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-sm text-gray-500">$</span>
+                                <Input
+                                  id="kitchen-hourly-rate"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={kitchenFormData.hourlyRate}
+                                  onChange={(e) => setKitchenFormData({ ...kitchenFormData, hourlyRate: e.target.value })}
+                                  placeholder="0.00"
+                                  className="flex-1"
+                                />
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Price per hour for kitchen bookings</p>
+                            </div>
+                            <div>
+                              <Label htmlFor="kitchen-currency">Currency</Label>
+                              <Select
+                                value={kitchenFormData.currency}
+                                onValueChange={(value) => setKitchenFormData({ ...kitchenFormData, currency: value })}
+                              >
+                                <SelectTrigger className="mt-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="CAD">CAD ($)</SelectItem>
+                                  <SelectItem value="USD">USD ($)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <Label htmlFor="kitchen-minimum-hours">Minimum Booking Hours</Label>
+                            <Input
+                              id="kitchen-minimum-hours"
+                              type="number"
+                              min="1"
+                              value={kitchenFormData.minimumBookingHours}
+                              onChange={(e) => setKitchenFormData({ ...kitchenFormData, minimumBookingHours: e.target.value })}
+                              className="mt-1"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Minimum number of hours required for a booking</p>
+                          </div>
+                        </div>
                         <div className="flex gap-2">
                           <Button
                             onClick={async () => {
@@ -1564,6 +1633,14 @@ export default function ManagerOnboardingWizard() {
                                 toast({
                                   title: "Missing Information",
                                   description: "Please enter a kitchen name",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              if (!kitchenFormData.hourlyRate || parseFloat(kitchenFormData.hourlyRate) <= 0) {
+                                toast({
+                                  title: "Missing Information",
+                                  description: "Please enter a valid hourly rate",
                                   variant: "destructive",
                                 });
                                 return;
@@ -1593,7 +1670,7 @@ export default function ManagerOnboardingWizard() {
                             variant="outline"
                             onClick={() => {
                               setShowCreateKitchen(false);
-                              setKitchenFormData({ name: '', description: '' });
+                              setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1' });
                             }}
                             disabled={creatingKitchen || createKitchenMutation.isPending}
                           >
@@ -1688,6 +1765,14 @@ export default function ManagerOnboardingWizard() {
                                 });
                                 return;
                               }
+                              if (!kitchenFormData.hourlyRate || parseFloat(kitchenFormData.hourlyRate) <= 0) {
+                                toast({
+                                  title: "Missing Information",
+                                  description: "Please enter a valid hourly rate",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
                               setCreatingKitchen(true);
                               try {
                                 await createKitchenMutation.mutateAsync(kitchenFormData);
@@ -1713,7 +1798,7 @@ export default function ManagerOnboardingWizard() {
                             variant="outline"
                             onClick={() => {
                               setShowCreateKitchen(false);
-                              setKitchenFormData({ name: '', description: '' });
+                              setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1' });
                             }}
                             disabled={creatingKitchen || createKitchenMutation.isPending}
                           >
@@ -1877,67 +1962,6 @@ export default function ManagerOnboardingWizard() {
                         </div>
                       </div>
 
-                      <div>
-                        <Label>Photos (Optional)</Label>
-                        <div className="mt-2 border-2 border-dashed border-gray-300 rounded-lg p-4">
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/jpg,image/png,image/webp"
-                            multiple
-                            onChange={async (e) => {
-                              const files = Array.from(e.target.files || []);
-                              if (files.length > 0) {
-                                setStoragePhotoFiles(files);
-                                try {
-                                  const results = await storageUploadHook.uploadMultipleFiles(files);
-                                  setStorageFormData({
-                                    ...storageFormData,
-                                    photos: results.map(r => r.url),
-                                  });
-                                  toast({
-                                    title: "Photos Uploaded",
-                                    description: `${files.length} photo(s) uploaded successfully`,
-                                  });
-                                } catch (error: any) {
-                                  toast({
-                                    title: "Upload Failed",
-                                    description: error.message || "Failed to upload photos",
-                                    variant: "destructive",
-                                  });
-                                }
-                              }
-                            }}
-                            className="hidden"
-                            id="storage-photos"
-                            disabled={storageUploadHook.isUploading}
-                          />
-                          <label
-                            htmlFor="storage-photos"
-                            className="cursor-pointer flex flex-col items-center gap-3"
-                          >
-                            {storageUploadHook.isUploading ? (
-                              <>
-                                <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
-                                <span className="text-sm text-gray-600">Uploading...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Upload className="h-8 w-8 text-gray-400" />
-                                <span className="text-sm font-medium text-[#F51042] mb-1">Click to upload photos</span>
-                                <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB each)</span>
-                              </>
-                            )}
-                          </label>
-                          {storageFormData.photos.length > 0 && (
-                            <div className="mt-3 grid grid-cols-3 gap-2">
-                              {storageFormData.photos.map((url, idx) => (
-                                <img key={idx} src={url} alt={`Storage ${idx + 1}`} className="w-full h-20 object-cover rounded" />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
                       <Button
                         onClick={async () => {
                           if (!storageFormData.name || !selectedKitchenId) {
@@ -1972,7 +1996,7 @@ export default function ManagerOnboardingWizard() {
                                 pricingModel: 'daily', // Required field
                                 minimumBookingDuration: storageFormData.minimumBookingDuration,
                                 bookingDurationUnit: 'daily',
-                                photos: storageFormData.photos,
+                                photos: [],
                                 currency: "CAD",
                                 isActive: true,
                               }),
@@ -2004,9 +2028,7 @@ export default function ManagerOnboardingWizard() {
                               description: '',
                               basePrice: 0,
                               minimumBookingDuration: 1,
-                              photos: [],
                             });
-                            setStoragePhotoFiles([]);
                           } catch (error: any) {
                             toast({
                               title: "Error",
@@ -2089,6 +2111,57 @@ export default function ManagerOnboardingWizard() {
                             className="mt-1"
                           />
                         </div>
+                        <div className="border-t pt-3 mt-3">
+                          <h5 className="text-sm font-semibold text-gray-900 mb-3">Pricing Information</h5>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label htmlFor="equipment-kitchen-hourly-rate">
+                                Hourly Rate <span className="text-red-500">*</span>
+                              </Label>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-sm text-gray-500">$</span>
+                                <Input
+                                  id="equipment-kitchen-hourly-rate"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={kitchenFormData.hourlyRate}
+                                  onChange={(e) => setKitchenFormData({ ...kitchenFormData, hourlyRate: e.target.value })}
+                                  placeholder="0.00"
+                                  className="flex-1"
+                                />
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Price per hour for kitchen bookings</p>
+                            </div>
+                            <div>
+                              <Label htmlFor="equipment-kitchen-currency">Currency</Label>
+                              <Select
+                                value={kitchenFormData.currency}
+                                onValueChange={(value) => setKitchenFormData({ ...kitchenFormData, currency: value })}
+                              >
+                                <SelectTrigger className="mt-1">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="CAD">CAD ($)</SelectItem>
+                                  <SelectItem value="USD">USD ($)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <Label htmlFor="equipment-kitchen-minimum-hours">Minimum Booking Hours</Label>
+                            <Input
+                              id="equipment-kitchen-minimum-hours"
+                              type="number"
+                              min="1"
+                              value={kitchenFormData.minimumBookingHours}
+                              onChange={(e) => setKitchenFormData({ ...kitchenFormData, minimumBookingHours: e.target.value })}
+                              className="mt-1"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Minimum number of hours required for a booking</p>
+                          </div>
+                        </div>
                         <div className="flex gap-2">
                           <Button
                             onClick={async () => {
@@ -2096,6 +2169,14 @@ export default function ManagerOnboardingWizard() {
                                 toast({
                                   title: "Missing Information",
                                   description: "Please enter a kitchen name",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              if (!kitchenFormData.hourlyRate || parseFloat(kitchenFormData.hourlyRate) <= 0) {
+                                toast({
+                                  title: "Missing Information",
+                                  description: "Please enter a valid hourly rate",
                                   variant: "destructive",
                                 });
                                 return;
@@ -2125,7 +2206,7 @@ export default function ManagerOnboardingWizard() {
                             variant="outline"
                             onClick={() => {
                               setShowCreateKitchen(false);
-                              setKitchenFormData({ name: '', description: '' });
+                              setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1' });
                             }}
                             disabled={creatingKitchen || createKitchenMutation.isPending}
                           >
@@ -2227,7 +2308,7 @@ export default function ManagerOnboardingWizard() {
                           <Label htmlFor="equipment-category">Category</Label>
                         <Select
                           value={equipmentFormData.category}
-                          onValueChange={(value: 'cooking' | 'prep' | 'refrigeration' | 'baking' | 'other') =>
+                          onValueChange={(value: 'food-prep' | 'cooking' | 'refrigeration' | 'cleaning' | 'specialty') =>
                             setEquipmentFormData({ ...equipmentFormData, category: value })
                           }
                         >
@@ -2235,11 +2316,11 @@ export default function ManagerOnboardingWizard() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="cooking">Cooking Equipment</SelectItem>
-                            <SelectItem value="prep">Prep Equipment</SelectItem>
+                            <SelectItem value="food-prep">Food Prep</SelectItem>
+                            <SelectItem value="cooking">Cooking</SelectItem>
                             <SelectItem value="refrigeration">Refrigeration</SelectItem>
-                            <SelectItem value="baking">Baking Equipment</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="cleaning">Cleaning</SelectItem>
+                            <SelectItem value="specialty">Specialty</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -2324,67 +2405,6 @@ export default function ManagerOnboardingWizard() {
                         </Select>
                       </div>
 
-                      <div>
-                        <Label>Photos (Optional)</Label>
-                        <div className="mt-2 border-2 border-dashed border-gray-300 rounded-lg p-4">
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/jpg,image/png,image/webp"
-                            multiple
-                            onChange={async (e) => {
-                              const files = Array.from(e.target.files || []);
-                              if (files.length > 0) {
-                                setEquipmentPhotoFiles(files);
-                                try {
-                                  const results = await equipmentUploadHook.uploadMultipleFiles(files);
-                                  setEquipmentFormData({
-                                    ...equipmentFormData,
-                                    photos: results.map(r => r.url),
-                                  });
-                                  toast({
-                                    title: "Photos Uploaded",
-                                    description: `${files.length} photo(s) uploaded successfully`,
-                                  });
-                                } catch (error: any) {
-                                  toast({
-                                    title: "Upload Failed",
-                                    description: error.message || "Failed to upload photos",
-                                    variant: "destructive",
-                                  });
-                                }
-                              }
-                            }}
-                            className="hidden"
-                            id="equipment-photos"
-                            disabled={equipmentUploadHook.isUploading}
-                          />
-                          <label
-                            htmlFor="equipment-photos"
-                            className="cursor-pointer flex flex-col items-center gap-3"
-                          >
-                            {equipmentUploadHook.isUploading ? (
-                              <>
-                                <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
-                                <span className="text-sm text-gray-600">Uploading...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Upload className="h-8 w-8 text-gray-400" />
-                                <span className="text-sm font-medium text-[#F51042] mb-1">Click to upload photos</span>
-                                <span className="text-xs text-gray-500">PNG, JPG, WebP (max 4.5MB each)</span>
-                              </>
-                            )}
-                          </label>
-                          {equipmentFormData.photos.length > 0 && (
-                            <div className="mt-3 grid grid-cols-3 gap-2">
-                              {equipmentFormData.photos.map((url, idx) => (
-                                <img key={idx} src={url} alt={`Equipment ${idx + 1}`} className="w-full h-20 object-cover rounded" />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
                       <Button
                         onClick={async () => {
                           if (!equipmentFormData.name || !selectedKitchenId) {
@@ -2427,7 +2447,7 @@ export default function ManagerOnboardingWizard() {
                                 condition: equipmentFormData.condition,
                                 availabilityType: equipmentFormData.availabilityType,
                                 sessionRate: equipmentFormData.availabilityType === 'rental' ? equipmentFormData.sessionRate : 0, // API expects dollars, will convert to cents
-                                photos: equipmentFormData.photos,
+                                photos: [],
                                 currency: "CAD",
                                 pricingModel: equipmentFormData.availabilityType === 'rental' ? 'hourly' : null,
                                 isActive: true,
@@ -2462,9 +2482,7 @@ export default function ManagerOnboardingWizard() {
                               condition: 'good',
                               availabilityType: 'rental',
                               sessionRate: 0,
-                              photos: [],
                             });
-                            setEquipmentPhotoFiles([]);
                           } catch (error: any) {
                             toast({
                               title: "Error",
