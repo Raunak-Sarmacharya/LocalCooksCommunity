@@ -9,10 +9,6 @@
       "destination": "/api/unsubscribe.js"
     },
     {
-      "source": "/api/capture-payments",
-      "destination": "/api/capture-payments.js"
-    },
-    {
       "source": "/api/(.*)",
       "destination": "/api/index.js"
     },
@@ -124,19 +120,11 @@
       "memory": 1024,
       "maxDuration": 30
     },
-    "api/capture-payments.js": {
-      "memory": 1024,
-      "maxDuration": 30
-    }
   },
   "crons": [
     {
       "path": "/api/process-payouts",
       "schedule": "0 0 * * 1"
     },
-    {
-      "path": "/api/capture-payments",
-      "schedule": "0 0 * * *"
-    }
   ]
 }

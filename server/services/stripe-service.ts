@@ -2,8 +2,10 @@
  * Stripe Service
  * 
  * Handles Stripe PaymentIntent creation, confirmation, and status checking
- * for both credit/debit card payments (standard in Canada) and ACSS pre-authorized
- * debit payments (for recurring/future payments).
+ * for both credit/debit card payments (standard in Canada) and ACSS debit payments.
+ * 
+ * Uses automatic capture: payments are immediately processed and funds are sent
+ * directly to manager's Stripe Connect account (if set up) or held for LocalCooks payouts.
  */
 
 import Stripe from 'stripe';
@@ -29,10 +31,10 @@ export interface CreatePaymentIntentParams {
   managerConnectAccountId?: string; // Manager's Stripe Connect account ID
   applicationFeeAmount?: number; // Platform service fee in cents
   // Payment method preferences
-  enableACSS?: boolean; // Enable ACSS pre-authorized debit (default: true)
+  enableACSS?: boolean; // Enable ACSS debit (default: true)
   enableCards?: boolean; // Enable credit/debit cards (default: true)
   // Payment settings
-  useAuthorizationHold?: boolean; // DEPRECATED: Always uses automatic capture now
+  useAuthorizationHold?: boolean; // DEPRECATED: No longer used - always uses automatic capture
   saveCardForFuture?: boolean; // Save card for future off-session payments (default: true)
   customerId?: string; // Stripe Customer ID if saving card for future use
 }
@@ -46,11 +48,11 @@ export interface PaymentIntentResult {
 
 /**
  * Create a PaymentIntent with support for credit/debit cards (standard in Canada)
- * and ACSS pre-authorized debit (for recurring/future payments).
+ * and ACSS debit payments.
  * 
- * Uses manual capture (pre-authorization): places authorization hold when confirmed.
- * Payment is captured after the cancellation period expires (via cron job).
- * This allows chefs to cancel within the cancellation window without being charged.
+ * Uses automatic capture: payments are immediately processed when confirmed.
+ * Funds are sent directly to manager's Stripe Connect account (if set up) or
+ * held for LocalCooks payouts.
  */
 export async function createPaymentIntent(params: CreatePaymentIntentParams): Promise<PaymentIntentResult> {
   if (!stripe) {
@@ -66,9 +68,9 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     statementDescriptor = 'LOCALCOOKS',
     managerConnectAccountId,
     applicationFeeAmount,
-    enableACSS = true, // Default to true for pre-authorized debit support
+    enableACSS = true, // Default to true for ACSS debit support
     enableCards = true, // Default to true for standard card payments
-    useAuthorizationHold = true, // Default to true - use manual capture for pre-authorization
+    useAuthorizationHold = true, // DEPRECATED: No longer used - always uses automatic capture
     saveCardForFuture = true, // Default to true to save cards for future use
     customerId,
   } = params;
@@ -107,7 +109,7 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       paymentMethodTypes.push('card'); // Credit/debit cards (standard in Canada)
     }
     if (enableACSS) {
-      paymentMethodTypes.push('acss_debit'); // ACSS pre-authorized debit
+      paymentMethodTypes.push('acss_debit'); // ACSS debit
     }
 
     // Build payment intent parameters
@@ -117,11 +119,8 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       payment_method_types: paymentMethodTypes,
       // Don't auto-confirm - we'll confirm after collecting payment method
       confirm: false,
-      // Set capture_method based on payment methods:
-      // - If only cards: use 'manual' for pre-authorization
-      // - If only ACSS: use 'automatic' (required for ACSS)
-      // - If both: use 'automatic' at top level, override cards in payment_method_options
-      capture_method: enableACSS && !enableCards ? 'automatic' : 'manual',
+      // Use automatic capture: payments are immediately processed when confirmed
+      capture_method: 'automatic',
       metadata: {
         booking_type: 'kitchen',
         kitchen_id: kitchenId.toString(),
@@ -147,28 +146,15 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
     // Initialize payment_method_options object
     paymentIntentParams.payment_method_options = {};
 
-    // Configure card payments with manual capture (pre-authorization)
-    // Manual capture: place authorization hold, capture after cancellation period expires
-    // This allows chefs to cancel within the cancellation window without being charged
-    // When both ACSS and cards are enabled, explicitly set card capture_method to manual
-    // to override the top-level automatic setting
-    if (enableCards) {
-      paymentIntentParams.payment_method_options.card = {
-        capture_method: 'manual',
-      };
-    }
-
-    // Configure ACSS debit for pre-authorized debits (mandate-based)
-    // NOTE: ACSS does NOT support manual capture/authorization holds like cards do.
-    // ACSS payments process immediately when confirmed (automatic capture).
-    // However, ACSS mandates allow future charges without re-entering bank details
+    // Configure ACSS debit for mandate-based payments
+    // ACSS mandates allow future charges without re-entering bank details
     // (similar to saved cards). Using 'combined' payment schedule creates a mandate
     // that allows future charges. This is the standard way Canadian companies handle
-    // handle pre-authorized debits.
+    // recurring or future payments.
     if (enableACSS) {
       paymentIntentParams.payment_method_options.acss_debit = {
         mandate_options: {
-          payment_schedule: 'combined', // Creates a mandate for pre-authorized debits
+          payment_schedule: 'combined', // Creates a mandate for future debits
           transaction_type: 'personal', // Default to personal, can be made configurable
           interval_description: 'Payment for kitchen booking and future bookings as authorized', // Required for 'combined' or 'interval' payment schedules
         },
@@ -271,8 +257,8 @@ export async function getPaymentIntent(paymentIntentId: string): Promise<Payment
 }
 
 /**
- * Capture a PaymentIntent that was authorized (Uber-like flow)
- * Converts the authorization hold into an actual charge
+ * DEPRECATED: Capture PaymentIntent - no longer needed with automatic capture
+ * This function is kept for backward compatibility but payments are now automatically captured
  * 
  * @param paymentIntentId - The PaymentIntent ID to capture
  * @param amountToCapture - Optional: amount to capture (can be less than authorized amount)
@@ -311,8 +297,8 @@ export async function capturePaymentIntent(
 
 /**
  * Cancel a PaymentIntent (releases authorization hold)
- * Use this when a booking is cancelled before completion
- * The bank will release the hold, similar to Uber's "hold disappears after a few days"
+ * DEPRECATED: With automatic capture, payments are already captured.
+ * Use createRefund instead for refunding captured payments.
  * 
  * @param paymentIntentId - The PaymentIntent ID to cancel
  * @returns PaymentIntentResult with canceled status
@@ -334,6 +320,61 @@ export async function cancelPaymentIntent(paymentIntentId: string): Promise<Paym
   } catch (error: any) {
     console.error('Error canceling PaymentIntent:', error);
     throw new Error(`Failed to cancel payment intent: ${error.message}`);
+  }
+}
+
+/**
+ * Create a refund for a captured payment
+ * Use this when a booking is cancelled and payment needs to be refunded
+ * 
+ * @param paymentIntentId - The PaymentIntent ID to refund
+ * @param amount - Optional: amount to refund in cents (if not provided, full refund)
+ * @param reason - Optional: reason for refund ('duplicate', 'fraudulent', 'requested_by_customer')
+ * @returns Refund object
+ */
+export async function createRefund(
+  paymentIntentId: string,
+  amount?: number,
+  reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer'
+): Promise<{ id: string; amount: number; status: string; charge: string }> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    // First, retrieve the payment intent to get the charge ID
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    
+    if (!paymentIntent.latest_charge) {
+      throw new Error('Payment intent has no charge to refund');
+    }
+
+    const chargeId = typeof paymentIntent.latest_charge === 'string' 
+      ? paymentIntent.latest_charge 
+      : paymentIntent.latest_charge.id;
+
+    // Create refund parameters
+    const refundParams: any = {
+      charge: chargeId,
+      reason,
+    };
+
+    // If amount is specified, create partial refund
+    if (amount !== undefined && amount > 0) {
+      refundParams.amount = amount;
+    }
+
+    const refund = await stripe.refunds.create(refundParams);
+
+    return {
+      id: refund.id,
+      amount: refund.amount,
+      status: refund.status,
+      charge: refund.charge as string,
+    };
+  } catch (error: any) {
+    console.error('Error creating refund:', error);
+    throw new Error(`Failed to create refund: ${error.message}`);
   }
 }
 
@@ -385,9 +426,10 @@ export async function verifyPaymentIntentForBooking(
     }
 
     // Check if payment is in a valid state
-    // For manual capture, 'requires_capture' means authorization hold is successful
-    // For automatic capture or already captured, 'succeeded' or 'processing' are valid
-    const validStatuses = ['succeeded', 'processing', 'requires_capture'];
+    // For automatic capture, 'succeeded' or 'processing' are valid statuses
+    // 'succeeded' means payment was successfully processed
+    // 'processing' means payment is still being processed
+    const validStatuses = ['succeeded', 'processing'];
     if (!validStatuses.includes(paymentIntent.status)) {
       return { 
         valid: false, 

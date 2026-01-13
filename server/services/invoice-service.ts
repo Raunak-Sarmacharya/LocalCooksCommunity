@@ -394,11 +394,11 @@ export async function generateInvoicePDF(
       doc.fontSize(10).font('Helvetica-Bold').text('Payment Information', 60, currentY);
       currentY += 18;
       doc.font('Helvetica');
-      doc.text('Payment Method: Pre-Authorized Debit', 60, currentY);
+      doc.text('Payment Method: Credit/Debit Card', 60, currentY);
       currentY += 15;
-      doc.text('Payment Status: Authorized', 60, currentY);
+      doc.text('Payment Status: Paid', 60, currentY);
       currentY += 15;
-      doc.fontSize(9).fillColor('#6b7280').text('Note: Payment will be processed within 3-5 business days.', 60, currentY);
+      doc.fontSize(9).fillColor('#6b7280').text('Note: Payment has been processed successfully.', 60, currentY);
       doc.fillColor('#000000');
       
       // Footer

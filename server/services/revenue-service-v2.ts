@@ -21,9 +21,9 @@ export async function getRevenueMetricsFromTransactions(
 ): Promise<RevenueMetrics> {
   try {
     // Build WHERE clause
-    // IMPORTANT: For revenue metrics, include ALL succeeded AND ALL pending/processing transactions
-    // regardless of date filters - managers need to see all their revenue (completed + pre-authorized).
-    // Pending/processing payments represent pre-authorized revenue that should always be counted.
+    // IMPORTANT: For revenue metrics, include ALL succeeded AND processing transactions
+    // regardless of date filters - managers need to see all their revenue (completed + processing).
+    // Processing payments are payments still being processed and should be counted.
     // Date filters are only used for display/breakdown purposes, not for total revenue calculation.
     // Handle NULL manager_id by joining with locations through bookings
     const params: any[] = [managerId];
@@ -31,9 +31,9 @@ export async function getRevenueMetricsFromTransactions(
 
     // For revenue calculation, ALWAYS include:
     // - ALL succeeded transactions (all captured payments)
-    // - ALL pending/processing transactions (all pre-authorized payments)
+    // - ALL processing transactions (payments still being processed)
     // Date filters don't affect total revenue - they're only for breakdown/display
-    // This ensures managers see all committed revenue (both captured and pre-authorized)
+    // This ensures managers see all committed revenue (both captured and processing)
     // We'll handle the manager_id check in the main query with a JOIN
 
     if (locationId) {
@@ -130,9 +130,9 @@ export async function getRevenueMetricsFromTransactions(
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_booking_count,
-        COUNT(DISTINCT CASE WHEN pt.status IN ('pending', 'processing') THEN pt.booking_id END) as pending_booking_count,
+        COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN pt.booking_id END) as processing_booking_count,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
-        COALESCE(SUM(CASE WHEN pt.status IN ('pending', 'processing') THEN pt.amount::numeric ELSE 0 END), 0)::bigint as pending_payments,
+        COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value
       FROM payment_transactions pt
@@ -143,7 +143,7 @@ export async function getRevenueMetricsFromTransactions(
         pt.manager_id = $1 
         OR (pt.manager_id IS NULL AND l.manager_id = $1)
       )
-        AND (pt.status = 'succeeded' OR pt.status IN ('pending', 'processing'))
+        AND (pt.status = 'succeeded' OR pt.status = 'processing')
         AND pt.booking_type IN ('kitchen', 'bundle')
         ${locationFilter}
         -- Exclude kitchen transactions that are part of a bundle (to avoid double counting)
@@ -193,8 +193,8 @@ export async function getRevenueMetricsFromTransactions(
       ? Math.round(parseFloat(String(row.avg_booking_value)))
       : 0;
 
-    // Total revenue = completed payments + pending payments (pre-authorized)
-    // Pending payments represent committed revenue that will be charged after cancellation period
+    // Total revenue = completed payments + processing payments
+    // Processing payments are payments still being processed
     const totalRevenue = completedPayments + pendingPayments;
 
     // Ensure all values are numbers (not NaN or undefined)
@@ -242,13 +242,13 @@ export async function getRevenueByLocationFromTransactions(
       throw new Error('payment_transactions table does not exist');
     }
     
-    // For revenue by location, ALWAYS include ALL succeeded AND ALL pending/processing transactions
-    // Pending/processing payments represent pre-authorized revenue that should always be counted
+    // For revenue by location, ALWAYS include ALL succeeded AND processing transactions
+    // Processing payments are payments still being processed
     // Date filters are only used for display/breakdown purposes, not for total revenue calculation
     const params: any[] = [managerId];
     
-    // Always include all succeeded and pending/processing transactions
-    // This ensures managers see all committed revenue (both captured and pre-authorized) by location
+    // Always include all succeeded and processing transactions
+    // This ensures managers see all committed revenue (both captured and processing) by location
 
     // Get revenue by location
     const result = await dbPool.query(`
@@ -278,7 +278,7 @@ export async function getRevenueByLocationFromTransactions(
       JOIN locations l ON k.location_id = l.id
       WHERE pt.manager_id = $1
         AND pt.booking_type IN ('kitchen', 'bundle')
-        AND (pt.status = 'succeeded' OR pt.status IN ('pending', 'processing'))
+        AND (pt.status = 'succeeded' OR pt.status = 'processing')
         -- Exclude kitchen transactions that are part of a bundle
         AND NOT (
           pt.booking_type = 'kitchen' 
@@ -346,7 +346,7 @@ export async function getRevenueByDateFromTransactions(
 
     // Get revenue by date from payment_transactions
     // For succeeded transactions, use paid_at date (when payment was captured)
-    // For pending/processing, use created_at (when booking was made)
+    // For processing, use created_at (when booking was made)
     // For date grouping, use the same logic
     const result = await dbPool.query(`
       SELECT 

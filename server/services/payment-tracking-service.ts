@@ -2,7 +2,7 @@
  * Payment Tracking Service
  * 
  * Comprehensive payment tracking that handles all payment states and edge cases:
- * - Pre-authorized payments (processing, requires_capture)
+ * - Processing payments (processing)
  * - Completed payments (succeeded)
  * - Failed payments
  * - Canceled payments
@@ -34,9 +34,8 @@ export function mapStripeStatusToPaymentStatus(stripeStatus: string): PaymentSta
     case 'succeeded':
       return 'paid';
     case 'processing':
-    case 'requires_capture':
     case 'requires_confirmation':
-      return 'processing'; // Pre-authorized but not yet captured
+      return 'processing'; // Payment is being processed
     case 'canceled':
       return 'canceled';
     case 'payment_failed':
@@ -154,7 +153,7 @@ export async function syncPaymentStatusFromStripe(
 
 /**
  * Sync all pending/processing payments for a manager
- * Useful for ensuring all pre-authorized payments are properly tracked
+ * Useful for ensuring all payments are properly tracked
  */
 export async function syncManagerPayments(
   managerId: number,

@@ -7535,7 +7535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Calculate service fee dynamically from platform_settings (5% + $0.30 Stripe processing fee)
+      // Calculate service fee dynamically from platform_settings + $0.30 flat fee
       const serviceFeeCents = await calculatePlatformFeeDynamic(totalPriceCents, pool);
       const stripeProcessingFeeCents = 30; // $0.30 per transaction
       const totalServiceFeeCents = serviceFeeCents + stripeProcessingFeeCents;
@@ -7623,7 +7623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create PaymentIntent with Connect split if manager has account
-      // Only enable cards for pre-authorized payments (ACSS disabled)
+      // Only enable cards for direct payments (ACSS disabled)
       const paymentIntent = await createPaymentIntent({
         amount: finalAmountCents,
         currency: kitchenPricing.currency.toLowerCase(),
@@ -7631,7 +7631,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         kitchenId,
         managerConnectAccountId: managerConnectAccountId,
         applicationFeeAmount: managerConnectAccountId ? totalServiceFeeCents : undefined,
-        enableACSS: false, // Disable ACSS - only use card payments with pre-authorization
+        enableACSS: false, // Disable ACSS - only use card payments with automatic capture
         enableCards: true, // Enable card payments only
         metadata: {
           booking_date: bookingDate,
@@ -7716,55 +7716,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Capture a PaymentIntent (convert authorization hold to actual charge)
-  // Use this when booking is finalized/delivered (Uber-like flow)
+  // DEPRECATED: Capture endpoint - no longer needed with automatic capture
+  // Payments are now automatically captured when confirmed
   app.post("/api/payments/capture", requireChef, async (req: Request, res: Response) => {
-    try {
-      const { paymentIntentId, amountToCapture } = req.body;
-      const chefId = req.user!.id;
-
-      if (!paymentIntentId) {
-        return res.status(400).json({ error: "Missing paymentIntentId" });
-      }
-
-      const { capturePaymentIntent, getPaymentIntent } = await import('./services/stripe-service');
-
-      // Verify payment intent belongs to chef
-      const paymentIntent = await getPaymentIntent(paymentIntentId);
-      if (!paymentIntent) {
-        return res.status(404).json({ error: "Payment intent not found" });
-      }
-
-      // Check if payment intent is in a capturable state
-      if (paymentIntent.status !== 'requires_capture') {
-        return res.status(400).json({ 
-          error: `Payment intent is not capturable. Current status: ${paymentIntent.status}` 
-        });
-      }
-
-      // Capture the payment (convert authorization hold to charge)
-      const captured = await capturePaymentIntent(
-        paymentIntentId,
-        amountToCapture ? parseInt(amountToCapture) : undefined
-      );
-
-      res.json({
-        success: true,
-        paymentIntentId: captured.id,
-        status: captured.status,
-        amount: captured.amount,
-      });
-    } catch (error: any) {
-      console.error('Error capturing payment intent:', error);
-      res.status(500).json({ 
-        error: "Failed to capture payment intent",
-        message: error.message 
-      });
-    }
+    res.status(410).json({ 
+      error: "This endpoint is deprecated. Payments are now automatically captured when confirmed.",
+      message: "With automatic capture enabled, payments are processed immediately. No manual capture is needed."
+    });
   });
 
-  // Cancel a PaymentIntent (release authorization hold)
-  // Use this when booking is cancelled before completion
+  // DEPRECATED: Cancel PaymentIntent endpoint - use refunds instead for captured payments
+  // This endpoint is kept for backward compatibility but should use createRefund for captured payments
   app.post("/api/payments/cancel", requireChef, async (req: Request, res: Response) => {
     try {
       const { paymentIntentId } = req.body;
@@ -7790,14 +7752,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Cancel the payment intent (releases authorization hold)
+      // DEPRECATED: Cancel payment intent - use createRefund for captured payments instead
       const canceled = await cancelPaymentIntent(paymentIntentId);
 
       res.json({
         success: true,
         paymentIntentId: canceled.id,
         status: canceled.status,
-        message: "Authorization hold released. The hold will disappear from your bank account within a few days.",
+        message: "Payment intent cancelled. Note: For captured payments, use refunds instead.",
       });
     } catch (error: any) {
       console.error('Error canceling payment intent:', error);
@@ -8048,7 +8010,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const serviceFee = await calculatePlatformFeeDynamic(expectedTotal, pool);
-        expectedTotal = calculateTotalWithFees(expectedTotal, serviceFee, 0);
+        const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
+        const totalServiceFee = serviceFee + stripeProcessingFeeCents;
+        expectedTotal = calculateTotalWithFees(expectedTotal, totalServiceFee, 0);
 
         const verification = await verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedTotal);
         
@@ -8059,14 +8023,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
-        paymentStatus = verification.status === 'succeeded' ? 'paid' : 'pending';
-        console.log(`✅ STEP 0 COMPLETE: Payment verified with status: ${paymentStatus}`);
+        // With automatic capture, payments are immediately processed
+        // 'succeeded' means payment was successfully captured
+        // 'processing' means payment is being processed (will succeed)
+        paymentStatus = (verification.status === 'succeeded' || verification.status === 'processing') ? 'paid' : 'pending';
+        console.log(`✅ STEP 0 COMPLETE: Payment verified with status: ${paymentStatus} (Stripe status: ${verification.status})`);
       } else {
         // If no payment intent, check if booking requires payment
         const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
         const serviceFee = await calculatePlatformFeeDynamic(kitchenPricing.totalPriceCents, pool);
-        const total = calculateTotalWithFees(kitchenPricing.totalPriceCents, serviceFee, 0);
+        const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
+        const totalServiceFee = serviceFee + stripeProcessingFeeCents;
+        const total = calculateTotalWithFees(kitchenPricing.totalPriceCents, totalServiceFee, 0);
         
         if (total > 0) {
           return res.status(400).json({ 
@@ -8159,9 +8128,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   totalPrice = basePriceCents;
                 }
                 
-                // Calculate service fee dynamically from platform_settings
+                // Calculate service fee dynamically from platform_settings + $0.30 flat fee
                 const { calculatePlatformFeeDynamic } = await import('./services/pricing-service');
-                const serviceFee = await calculatePlatformFeeDynamic(totalPrice, pool);
+                const serviceFeeBase = await calculatePlatformFeeDynamic(totalPrice, pool);
+                const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
+                const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
                 
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
@@ -8221,9 +8192,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
                 // For monthly-flat, use base price directly (pro-rated storage not implemented)
                 
-                // Calculate service fee dynamically from platform_settings
+                // Calculate service fee dynamically from platform_settings + $0.30 flat fee
                 const { calculatePlatformFeeDynamic: calcFee2 } = await import('./services/pricing-service');
-                const serviceFee = await calcFee2(totalPrice, pool);
+                const serviceFeeBase = await calcFee2(totalPrice, pool);
+                const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
+                const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
                 
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
@@ -8284,9 +8257,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
                 
-                // Calculate service fee dynamically from platform_settings
+                // Calculate service fee dynamically from platform_settings + $0.30 flat fee
                 const { calculatePlatformFeeDynamic: calcEquipFee2 } = await import('./services/pricing-service');
-                const serviceFee = await calcEquipFee2(totalPrice, pool);
+                const serviceFeeBase = await calcEquipFee2(totalPrice, pool);
+                const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
+                const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
                 
                 const insertResult = await pool.query(
                   `INSERT INTO equipment_bookings 
@@ -8823,17 +8798,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       
-      // Get booking details before cancelling
-      const booking = await firebaseStorage.getBookingById(id);
-      if (!booking) {
+      if (!pool) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+      
+      // Get booking details with location cancellation policy from database
+      const bookingResult = await pool.query(`
+        SELECT 
+          kb.*,
+          l.cancellation_policy_hours,
+          l.cancellation_policy_message
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE kb.id = $1 AND kb.chef_id = $2
+      `, [id, req.user!.id]);
+      
+      if (bookingResult.rows.length === 0) {
         return res.status(404).json({ error: "Booking not found" });
       }
       
-      // Verify the booking belongs to this chef
-      if (booking.chefId !== req.user!.id) {
-        return res.status(403).json({ error: "You don't have permission to cancel this booking" });
+      const booking = bookingResult.rows[0];
+      
+      // Check if booking is within cancellation period
+      const bookingDateTime = new Date(`${booking.booking_date.toISOString().split('T')[0]}T${booking.start_time}`);
+      const now = new Date();
+      const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+      const cancellationHours = booking.cancellation_policy_hours || 24;
+      
+      // If cancelled within cancellation period and payment was already captured, create refund
+      if (booking.payment_intent_id && hoursUntilBooking >= cancellationHours && booking.payment_status === 'paid') {
+        try {
+          const { createRefund, getPaymentIntent } = await import('./services/stripe-service');
+          
+          // Check if payment intent was successfully captured
+          const paymentIntent = await getPaymentIntent(booking.payment_intent_id);
+          if (paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing')) {
+            // Create refund for the captured payment
+            const refund = await createRefund(booking.payment_intent_id, undefined, 'requested_by_customer');
+            console.log(`[Cancel Booking] Created refund for booking ${id} (PaymentIntent: ${booking.payment_intent_id}, Refund: ${refund.id})`);
+            
+            // Update payment status to refunded
+            await pool.query(`
+              UPDATE kitchen_bookings 
+              SET payment_status = 'refunded'
+              WHERE id = $1
+            `, [id]);
+          }
+        } catch (error) {
+          console.error(`[Cancel Booking] Error creating refund for booking ${id}:`, error);
+          // Continue with booking cancellation even if refund fails
+        }
       }
       
+      // Cancel the booking
       await firebaseStorage.cancelKitchenBooking(id, req.user!.id);
       
       // Send email notifications to chef and manager

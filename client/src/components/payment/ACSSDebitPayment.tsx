@@ -2,14 +2,13 @@
  * Customer Payment Component
  * 
  * This component handles customer payments (chefs booking kitchens) using:
- * - Credit/debit cards only (pre-authorized payments)
+ * - Credit/debit cards
  * 
  * This is SEPARATE from Stripe Connect onboarding (which is for managers/chefs to receive payouts).
  * 
- * Uses PaymentIntent with manual capture (pre-authorization):
- * - Places authorization hold when booking is confirmed
- * - Payment is captured after cancellation period expires
- * - If cancelled within cancellation period, hold is released
+ * Uses PaymentIntent with automatic capture:
+ * - Payment is immediately processed when confirmed
+ * - Funds are sent directly to manager's Stripe Connect account (if set up) or held for LocalCooks payouts
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { loadStripe, StripeElementsOptions } from '@stripe/stripe-js';
@@ -63,8 +62,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
       const retrieved = await stripe.retrievePaymentIntent(clientSecret);
       if (retrieved.paymentIntent) {
         const pi = retrieved.paymentIntent;
-        // Authorization hold successful or payment succeeded
-        if (pi.status === 'succeeded' || pi.status === 'processing' || pi.status === 'requires_capture') {
+        // Payment successful or processing
+        if (pi.status === 'succeeded' || pi.status === 'processing') {
           // Payment already confirmed
           let paymentMethodId = '';
           if (typeof pi.payment_method === 'string') {
@@ -124,8 +123,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
 
       // Check payment intent status
       if (paymentIntent) {
-        // Authorization hold successful or payment succeeded
-        if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing' || paymentIntent.status === 'requires_capture') {
+        // Payment successful or processing
+        if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
           // Get payment method ID - can be string or object
           let paymentMethodId = '';
           if (typeof paymentIntent.payment_method === 'string') {
@@ -159,8 +158,8 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
           const retrieved = await stripe.retrievePaymentIntent(clientSecret);
           if (retrieved.paymentIntent) {
             const pi = retrieved.paymentIntent;
-            // Authorization hold successful or payment succeeded
-            if (pi.status === 'succeeded' || pi.status === 'processing' || pi.status === 'requires_capture') {
+            // Payment successful or processing
+            if (pi.status === 'succeeded' || pi.status === 'processing') {
               let paymentMethodId = '';
               if (typeof pi.payment_method === 'string') {
                 paymentMethodId = pi.payment_method;
@@ -211,7 +210,7 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
           <span className="text-lg font-bold text-gray-900">{formatAmount(amount, currency)}</span>
         </div>
         <p className="text-xs text-gray-500 mt-1">
-          We'll place an authorization hold on your payment method. The charge will be processed after the cancellation period expires.
+          Your payment will be processed immediately when you confirm this booking.
         </p>
       </div>
 
@@ -245,10 +244,9 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
           <div>
             <h4 className="text-sm font-semibold text-blue-900 mb-1">How Payment Works</h4>
             <p className="text-xs text-blue-800 mb-2">
-              <strong>Credit/Debit Card:</strong> We'll place an <strong>authorization hold</strong> on your card when you confirm this booking. 
-              This appears as a "pending" transaction in your bank app. The <strong>actual charge</strong> will be processed 
-              after the cancellation period expires (typically 24 hours before your booking). If you cancel within the cancellation period, 
-              the hold will be released automatically.
+              <strong>Credit/Debit Card:</strong> Your payment will be <strong>processed immediately</strong> when you confirm this booking. 
+              The charge will appear in your bank account right away. If you cancel within the cancellation period, 
+              you will receive a full refund.
             </p>
             <p className="text-xs text-blue-700">
               <strong>Your payment method is saved securely</strong> for faster checkout on future bookings.
@@ -285,10 +283,10 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
 }
 
 /**
- * Customer Payment Component (Card Only - Pre-Authorized)
+ * Customer Payment Component (Card Only - Direct Capture)
  * 
  * This is for CUSTOMERS (chefs) making payments for bookings.
- * Uses PaymentElement restricted to card payments only with pre-authorization.
+ * Uses PaymentElement restricted to card payments only with automatic capture.
  * 
  * NOTE: This is separate from Stripe Connect onboarding (for managers to receive payouts).
  * 
