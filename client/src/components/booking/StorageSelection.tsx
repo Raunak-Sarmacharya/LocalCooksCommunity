@@ -434,13 +434,8 @@ export function StorageSelection({
                               </span>
                               <span className="font-medium">${pricePreview.basePrice.toFixed(2)}</span>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Service Fee ({serviceFeePercentage}%)</span>
-                              <span className="font-medium">${pricePreview.serviceFee.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between pt-2 border-t border-gray-200 font-semibold">
-                              <span>Total</span>
-                              <span>${pricePreview.total.toFixed(2)}</span>
+                            <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
+                              Service fee will be calculated on the combined booking total at checkout
                             </div>
                           </div>
                         </div>
