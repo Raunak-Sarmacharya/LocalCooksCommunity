@@ -27,6 +27,11 @@ declare global {
  */
 export async function verifyFirebaseAuth(req: Request, res: Response, next: NextFunction) {
   try {
+    // Check if response was already sent (to prevent double response errors)
+    if (res.headersSent) {
+      return;
+    }
+
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -55,6 +60,11 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
 
     next();
   } catch (error) {
+    // Check if response was already sent before trying to send error
+    if (res.headersSent) {
+      console.error('Firebase auth verification error (response already sent):', error);
+      return;
+    }
     console.error('Firebase auth verification error:', error);
     return res.status(401).json({ 
       error: 'Unauthorized', 
@@ -71,16 +81,38 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
  */
 export async function requireFirebaseAuthWithUser(req: Request, res: Response, next: NextFunction) {
   try {
-    // First verify Firebase token
-    await verifyFirebaseAuth(req, res, () => {});
+    // Check if response was already sent (to prevent double response errors)
+    if (res.headersSent) {
+      return;
+    }
+
+    // First verify Firebase token directly (don't call as middleware to avoid double responses)
+    const authHeader = req.headers.authorization;
     
-    if (!req.firebaseUser) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ 
         error: 'Unauthorized', 
-        message: 'Firebase authentication required' 
+        message: 'No auth token provided' 
       });
     }
 
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const decodedToken = await verifyFirebaseToken(token);
+
+    if (!decodedToken) {
+      return res.status(401).json({ 
+        error: 'Unauthorized', 
+        message: 'Invalid auth token' 
+      });
+    }
+
+    // Set Firebase user info on request
+    req.firebaseUser = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      email_verified: decodedToken.email_verified,
+    };
+    
     // Now translate Firebase UID to Neon user (NO SESSIONS)
     const neonUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
     
@@ -103,6 +135,11 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
 
     next();
   } catch (error) {
+    // Check if response was already sent before trying to send error
+    if (res.headersSent) {
+      console.error('Firebase auth with user verification error (response already sent):', error);
+      return;
+    }
     console.error('Firebase auth with user verification error:', error);
     return res.status(500).json({ 
       error: 'Internal server error', 
@@ -161,6 +198,11 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
  * NO SESSIONS - Role check based on Neon user data
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  // Check if response was already sent
+  if (res.headersSent) {
+    return;
+  }
+
   if (!req.neonUser) {
     return res.status(401).json({ 
       error: 'Unauthorized', 
@@ -184,6 +226,11 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
  * NO SESSIONS - Role check based on Neon user data
  */
 export function requireManager(req: Request, res: Response, next: NextFunction) {
+  // Check if response was already sent
+  if (res.headersSent) {
+    return;
+  }
+
   if (!req.neonUser) {
     return res.status(401).json({ 
       error: 'Unauthorized', 

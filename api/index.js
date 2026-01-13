@@ -654,8 +654,10 @@ async function getUserByUsername(username) {
 async function getAllLocations() {
   try {
     if (!pool) {
+      console.warn('⚠️ getAllLocations - Database pool not available');
       return [];
     }
+    console.log('📍 getAllLocations - Querying database for all locations...');
     const result = await pool.query(`
       SELECT id, name, address, manager_id as "managerId", 
              notification_email as "notificationEmail",
@@ -669,9 +671,10 @@ async function getAllLocations() {
       FROM locations 
       ORDER BY created_at DESC
     `);
+    console.log(`📍 getAllLocations - Database returned ${result.rows.length} locations`);
     return result.rows;
   } catch (error) {
-    console.error('Error fetching locations from database:', error);
+    console.error('❌ Error fetching locations from database:', error);
     return [];
   }
 }
@@ -13392,6 +13395,7 @@ app.get("/api/admin/managers", requireFirebaseAuthWithUser, requireAdmin, async 
   try {
     // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
     const user = req.neonUser;
+    console.log(`👥 GET /api/admin/managers - Admin user: ${user.id} (${user.username})`);
 
     // Fetch all managers with their locations and notification emails
     if (pool) {
@@ -13452,12 +13456,21 @@ app.get("/api/admin/managers", requireFirebaseAuthWithUser, requireAdmin, async 
         };
       });
       
+      console.log(`👥 GET /api/admin/managers - Returning ${managersWithEmails.length} managers to client`);
+      if (managersWithEmails.length > 0) {
+        console.log(`👥 First manager:`, {
+          id: managersWithEmails[0].id,
+          username: managersWithEmails[0].username,
+          locationsCount: managersWithEmails[0].locations?.length || 0
+        });
+      }
       return res.json(managersWithEmails);
     } else {
+      console.warn("⚠️ GET /api/admin/managers - Database pool not available, returning empty array");
       return res.json([]);
     }
   } catch (error) {
-    console.error("Error fetching managers:", error);
+    console.error("❌ Error fetching managers:", error);
     res.status(500).json({ error: error.message || "Failed to fetch managers" });
   }
 });
@@ -18549,11 +18562,21 @@ app.get("/api/admin/locations", requireFirebaseAuthWithUser, requireAdmin, async
   try {
     // Firebase auth verified by middleware - req.neonUser is guaranteed to be an admin
     const user = req.neonUser;
+    console.log(`📍 GET /api/admin/locations - Admin user: ${user.id} (${user.username})`);
 
     const locations = await getAllLocations();
+    console.log(`📍 GET /api/admin/locations - Found ${locations.length} locations in database`);
+    if (locations.length > 0) {
+      console.log(`📍 First location:`, {
+        id: locations[0].id,
+        name: locations[0].name,
+        managerId: locations[0].managerId || locations[0].manager_id
+      });
+    }
+    console.log(`📍 GET /api/admin/locations - Returning ${locations.length} locations to client`);
     res.json(locations);
   } catch (error) {
-    console.error("Error fetching locations:", error);
+    console.error("❌ Error fetching locations:", error);
     res.status(500).json({ error: "Failed to fetch locations" });
   }
 });
@@ -18571,26 +18594,26 @@ app.get("/api/admin/revenue/all-managers", requireFirebaseAuthWithUser, requireA
 
     const { startDate, endDate } = req.query;
 
-    // Get all managers with their revenue
-    let whereClause = `WHERE kb.status != 'cancelled'`;
+    // Get service fee rate (for reference, but we use direct subtraction now)
+    const { getServiceFeeRate } = await import('../server/services/pricing-service.js');
+    const serviceFeeRate = await getServiceFeeRate(pool);
+
+    // Start from managers and LEFT JOIN to bookings to include all managers, even those without bookings
+    let bookingWhereClause = `AND kb.status != 'cancelled'`;
     const params = [];
     let paramIndex = 1;
 
     if (startDate) {
-      whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+      bookingWhereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
       params.push(startDate);
       paramIndex++;
     }
 
     if (endDate) {
-      whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+      bookingWhereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
       params.push(endDate);
       paramIndex++;
     }
-
-    // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('../server/services/pricing-service.js');
-    const serviceFeeRate = await getServiceFeeRate(pool);
 
     const result = await pool.query(`
       SELECT 
@@ -18599,18 +18622,18 @@ app.get("/api/admin/revenue/all-managers", requireFirebaseAuthWithUser, requireA
         u.username as manager_email,
         l.id as location_id,
         l.name as location_name,
-        COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
-        COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
-        COUNT(*)::int as booking_count,
+        COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.total_price ELSE 0 END), 0)::bigint as total_revenue,
+        COALESCE(SUM(CASE WHEN kb.id IS NOT NULL THEN kb.service_fee ELSE 0 END), 0)::bigint as platform_fee,
+        COUNT(kb.id)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      JOIN users u ON l.manager_id = u.id
-      ${whereClause}
+      FROM users u
+      LEFT JOIN locations l ON l.manager_id = u.id
+      LEFT JOIN kitchens k ON k.location_id = l.id
+      LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id ${bookingWhereClause}
+      WHERE u.role = $${paramIndex}
       GROUP BY u.id, u.username, l.id, l.name
-      ORDER BY total_revenue DESC
-    `, params);
+      ORDER BY u.username ASC, total_revenue DESC
+    `, [...params, 'manager']);
 
     // Group by manager (managers can have multiple locations)
     const managerMap = new Map();
@@ -18643,15 +18666,18 @@ app.get("/api/admin/revenue/all-managers", requireFirebaseAuthWithUser, requireA
       manager.bookingCount += parseInt(row.booking_count) || 0;
       manager.paidBookingCount += parseInt(row.paid_count) || 0;
 
-      manager.locations.push({
-        locationId: parseInt(row.location_id),
-        locationName: row.location_name,
-        totalRevenue,
-        platformFee: parseInt(row.platform_fee) || 0,
-        managerRevenue,
-        bookingCount: parseInt(row.booking_count) || 0,
-        paidBookingCount: parseInt(row.paid_count) || 0,
-      });
+      // Only add location if it exists (not NULL)
+      if (row.location_id) {
+        manager.locations.push({
+          locationId: parseInt(row.location_id),
+          locationName: row.location_name || 'Unnamed Location',
+          totalRevenue,
+          platformFee: parseInt(row.platform_fee) || 0,
+          managerRevenue,
+          bookingCount: parseInt(row.booking_count) || 0,
+          paidBookingCount: parseInt(row.paid_count) || 0,
+        });
+      }
     });
 
     // Convert to array and format for response
@@ -18689,18 +18715,26 @@ app.get("/api/admin/revenue/platform-overview", requireFirebaseAuthWithUser, req
 
     const { startDate, endDate } = req.query;
 
-    let whereClause = `WHERE kb.status != 'cancelled'`;
+    // Get total manager count (all managers, not just those with bookings)
+    const managerCountResult = await pool.query(
+      'SELECT COUNT(*)::int as total_managers FROM users WHERE role = $1',
+      ['manager']
+    );
+    const totalManagers = parseInt(managerCountResult.rows[0]?.total_managers || '0');
+
+    // Get booking statistics with date filters
+    let bookingWhereClause = `WHERE kb.status != 'cancelled'`;
     const params = [];
     let paramIndex = 1;
 
     if (startDate) {
-      whereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+      bookingWhereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
       params.push(startDate);
       paramIndex++;
     }
 
     if (endDate) {
-      whereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+      bookingWhereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
       params.push(endDate);
       paramIndex++;
     }
@@ -18709,14 +18743,13 @@ app.get("/api/admin/revenue/platform-overview", requireFirebaseAuthWithUser, req
       SELECT 
         COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
         COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
-        COUNT(DISTINCT l.manager_id)::int as manager_count,
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COUNT(CASE WHEN kb.payment_status = 'pending' THEN 1 END)::int as pending_count
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
-      ${whereClause}
+      ${bookingWhereClause}
     `, params);
 
     const row = result.rows[0];
@@ -18724,7 +18757,7 @@ app.get("/api/admin/revenue/platform-overview", requireFirebaseAuthWithUser, req
     res.json({
       totalPlatformRevenue: (parseInt(row.total_revenue) || 0) / 100,
       totalPlatformFees: (parseInt(row.platform_fee) || 0) / 100,
-      activeManagers: parseInt(row.manager_count) || 0,
+      activeManagers: totalManagers, // Use total managers count, not just those with bookings
       totalBookings: parseInt(row.booking_count) || 0,
       paidBookingCount: parseInt(row.paid_count) || 0,
       pendingBookingCount: parseInt(row.pending_count) || 0,
