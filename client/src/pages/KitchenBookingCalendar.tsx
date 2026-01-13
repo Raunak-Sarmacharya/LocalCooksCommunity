@@ -309,11 +309,10 @@ export default function KitchenBookingCalendar() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee on combined subtotal (dynamic rate + $0.30 Stripe processing fee)
+  // Calculate service fee on combined subtotal (dynamic rate only, no flat fee)
   const serviceFee = useMemo(() => {
     const percentageFee = Math.round(combinedSubtotal * serviceFeeRate * 100) / 100; // Dynamic service fee
-    const stripeProcessingFee = 0.30; // $0.30 per transaction
-    return percentageFee + stripeProcessingFee;
+    return percentageFee;
   }, [combinedSubtotal, serviceFeeRate]);
 
   // Calculate grand total (subtotal + service fee)

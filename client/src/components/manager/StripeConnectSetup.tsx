@@ -225,7 +225,7 @@ export default function StripeConnectSetup() {
           </CardTitle>
           <CardDescription>
             Connect your Stripe account to start receiving payments directly for kitchen bookings.
-            The platform service fee ({serviceFeePercentage}% + $0.30 per transaction) will be automatically deducted.
+            The platform service fee ({serviceFeePercentage}%) will be automatically deducted.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -279,7 +279,7 @@ export default function StripeConnectSetup() {
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertDescription className="text-green-800">
                 ✅ You'll receive payments automatically after each booking.
-                The platform service fee ({serviceFeePercentage}% + $0.30 per transaction) will be deducted automatically, and the remaining amount
+                The platform service fee ({serviceFeePercentage}%) will be deducted automatically, and the remaining amount
                 will be transferred to your bank account within 2-7 business days.
               </AlertDescription>
             </Alert>
