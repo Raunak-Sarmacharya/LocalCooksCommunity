@@ -2,7 +2,7 @@
  * Stripe Checkout Fee Calculation Service
  * 
  * Calculates platform fees for Stripe Checkout sessions.
- * Platform fee formula: (bookingPrice * 0.029) + 0.30
+ * Platform fee formula: bookingPrice * 0.029 (2.9% only, no flat fee)
  * All amounts are returned as integers in cents to avoid floating-point precision issues.
  */
 
@@ -25,9 +25,9 @@ export interface FeeCalculationResult {
  * // Returns: {
  * //   bookingPriceInCents: 10000,
  * //   percentageFeeInCents: 290,
- * //   flatFeeInCents: 30,
- * //   totalPlatformFeeInCents: 320,
- * //   totalChargeInCents: 10320
+ * //   flatFeeInCents: 0,
+ * //   totalPlatformFeeInCents: 290,
+ * //   totalChargeInCents: 10290
  * // }
  */
 export function calculateCheckoutFees(bookingPrice: number): FeeCalculationResult {
@@ -43,11 +43,11 @@ export function calculateCheckoutFees(bookingPrice: number): FeeCalculationResul
   // Round to nearest cent to avoid floating point precision issues
   const percentageFeeInCents = Math.round(bookingPrice * 0.029 * 100);
 
-  // Flat fee: $0.30 = 30 cents
-  const flatFeeInCents = 30;
+  // Flat fee: $0.00 = 0 cents (removed)
+  const flatFeeInCents = 0;
 
-  // Total platform fee
-  const totalPlatformFeeInCents = percentageFeeInCents + flatFeeInCents;
+  // Total platform fee (percentage only, no flat fee)
+  const totalPlatformFeeInCents = percentageFeeInCents;
 
   // Total amount customer will be charged
   const totalChargeInCents = bookingPriceInCents + totalPlatformFeeInCents;
