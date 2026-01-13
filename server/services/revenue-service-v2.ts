@@ -126,7 +126,17 @@ export async function getRevenueMetricsFromTransactions(
     const result = await dbPool.query(`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
-        COALESCE(SUM(pt.service_fee::numeric), 0)::bigint as platform_fee,
+        -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
+        -- This ensures we use Stripe-synced amounts when available
+        COALESCE(
+          SUM(
+            CASE 
+              WHEN pt.service_fee::numeric > 0 THEN pt.service_fee::numeric
+              ELSE (pt.amount::numeric - pt.manager_revenue::numeric)
+            END
+          ), 
+          0
+        )::bigint as platform_fee,
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_booking_count,
@@ -256,7 +266,16 @@ export async function getRevenueByLocationFromTransactions(
         l.id as location_id,
         l.name as location_name,
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
-        COALESCE(SUM(pt.service_fee::numeric), 0)::bigint as platform_fee,
+        -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
+        COALESCE(
+          SUM(
+            CASE 
+              WHEN pt.service_fee::numeric > 0 THEN pt.service_fee::numeric
+              ELSE (pt.amount::numeric - pt.manager_revenue::numeric)
+            END
+          ), 
+          0
+        )::bigint as platform_fee,
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_count
@@ -358,7 +377,16 @@ export async function getRevenueByDateFromTransactions(
           END
         )::text as date,
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
-        COALESCE(SUM(pt.service_fee::numeric), 0)::bigint as platform_fee,
+        -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
+        COALESCE(
+          SUM(
+            CASE 
+              WHEN pt.service_fee::numeric > 0 THEN pt.service_fee::numeric
+              ELSE (pt.amount::numeric - pt.manager_revenue::numeric)
+            END
+          ), 
+          0
+        )::bigint as platform_fee,
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count
       FROM payment_transactions pt

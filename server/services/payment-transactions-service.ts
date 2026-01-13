@@ -266,9 +266,8 @@ export async function updatePaymentTransaction(
 
   // Handle Stripe-synced amounts (override calculated amounts with actual Stripe amounts)
   if (params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) {
-    // If Stripe amounts are provided, update the transaction amounts
-    // Note: We'll update amount and net_amount, but keep base_amount and service_fee as calculated
-    // The manager_revenue will be recalculated based on Stripe net amount if provided
+    // If Stripe amounts are provided, update the transaction amounts with actual Stripe values
+    // This ensures all amounts match what Stripe shows
     
     if (params.stripeAmount !== undefined) {
       updates.push(`amount = $${paramIndex}`);
@@ -286,6 +285,38 @@ export async function updatePaymentTransaction(
       // This ensures manager_revenue reflects actual Stripe payout
       updates.push(`manager_revenue = $${paramIndex}`);
       values.push(params.stripeNetAmount.toString());
+      paramIndex++;
+    }
+    
+    // Update service_fee (platform fee) with actual Stripe platform fee
+    // For Stripe Connect: platform fee = application_fee_amount (explicitly set)
+    // Platform fee is what goes to the platform, not including Stripe processing fees
+    if (params.stripePlatformFee !== undefined && params.stripePlatformFee > 0) {
+      // Use the explicit platform fee from Stripe (application fee)
+      updates.push(`service_fee = $${paramIndex}`);
+      values.push(params.stripePlatformFee.toString());
+      paramIndex++;
+    } else if (params.stripeAmount !== undefined && params.stripeNetAmount !== undefined) {
+      // Fallback: calculate platform fee as difference
+      // But this includes processing fees, so we need to subtract processing fee
+      const totalFees = params.stripeAmount - params.stripeNetAmount;
+      const processingFee = params.stripeProcessingFee || 0;
+      const actualPlatformFee = Math.max(0, totalFees - processingFee);
+      updates.push(`service_fee = $${paramIndex}`);
+      values.push(actualPlatformFee.toString());
+      paramIndex++;
+    }
+    
+    // Update base_amount: for Stripe Connect, base = amount - platform fee
+    // This represents the amount before platform fee is deducted
+    if (params.stripeAmount !== undefined) {
+      const platformFee = params.stripePlatformFee || 
+        (params.stripeAmount !== undefined && params.stripeNetAmount !== undefined
+          ? Math.max(0, (params.stripeAmount - params.stripeNetAmount) - (params.stripeProcessingFee || 0))
+          : 0);
+      const baseAmount = params.stripeAmount - platformFee;
+      updates.push(`base_amount = $${paramIndex}`);
+      values.push(baseAmount.toString());
       paramIndex++;
     }
     
@@ -626,6 +657,133 @@ export async function syncStripeAmountsToBookings(
   } catch (error: any) {
     console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
     // Don't throw - we don't want to fail the webhook if booking update fails
+  }
+}
+
+/**
+ * Sync existing payment transactions with Stripe amounts
+ * This backfills old transactions that were created before Stripe syncing was implemented
+ */
+export async function syncExistingPaymentTransactionsFromStripe(
+  managerId: number,
+  dbPool: Pool,
+  options?: {
+    limit?: number; // Limit number of transactions to sync (default: all)
+    onlyUnsynced?: boolean; // Only sync transactions that haven't been synced yet (default: true)
+  }
+): Promise<{
+  synced: number;
+  failed: number;
+  errors: Array<{ paymentIntentId: string; error: string }>;
+}> {
+  const { getStripePaymentAmounts } = await import('./stripe-service');
+  
+  const limit = options?.limit || 1000;
+  const onlyUnsynced = options?.onlyUnsynced !== false; // Default to true
+  
+  try {
+    // Find payment transactions that need syncing
+    let query = `
+      SELECT 
+        pt.id,
+        pt.payment_intent_id,
+        pt.manager_id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.amount as current_amount,
+        pt.manager_revenue as current_manager_revenue,
+        pt.last_synced_at
+      FROM payment_transactions pt
+      WHERE pt.payment_intent_id IS NOT NULL
+        AND pt.status IN ('succeeded', 'processing')
+        AND (
+          pt.manager_id = $1 
+          OR EXISTS (
+            SELECT 1 FROM kitchen_bookings kb
+            JOIN kitchens k ON kb.kitchen_id = k.id
+            JOIN locations l ON k.location_id = l.id
+            WHERE kb.id = pt.booking_id 
+              AND l.manager_id = $1
+          )
+        )
+    `;
+    
+    const params: any[] = [managerId];
+    
+    // Only sync transactions that haven't been synced or need re-syncing
+    if (onlyUnsynced) {
+      query += ` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)`;
+    }
+    
+    query += ` ORDER BY pt.created_at DESC LIMIT $${params.length + 1}`;
+    params.push(limit);
+    
+    const result = await dbPool.query(query, params);
+    const transactions = result.rows;
+    
+    console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
+    
+    let synced = 0;
+    let failed = 0;
+    const errors: Array<{ paymentIntentId: string; error: string }> = [];
+    
+    for (const transaction of transactions) {
+      const paymentIntentId = transaction.payment_intent_id;
+      if (!paymentIntentId) continue;
+      
+      try {
+        // Get manager's Stripe Connect account ID if available
+        let managerConnectAccountId: string | undefined;
+        try {
+          const managerResult = await dbPool.query(`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = $1 AND stripe_connect_account_id IS NOT NULL
+          `, [transaction.manager_id || managerId]);
+          if (managerResult.rows.length > 0) {
+            managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
+          }
+        } catch (error) {
+          console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
+        }
+        
+        // Fetch actual Stripe amounts
+        const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
+        
+        if (!stripeAmounts) {
+          console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
+          failed++;
+          errors.push({ paymentIntentId, error: 'Could not fetch Stripe amounts' });
+          continue;
+        }
+        
+        // Update payment transaction with Stripe amounts
+        await updatePaymentTransaction(transaction.id, {
+          stripeAmount: stripeAmounts.stripeAmount,
+          stripeNetAmount: stripeAmounts.stripeNetAmount,
+          stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+          stripePlatformFee: stripeAmounts.stripePlatformFee,
+          lastSyncedAt: new Date(),
+        }, dbPool);
+        
+        // Sync to booking tables
+        await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, dbPool);
+        
+        synced++;
+        console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
+      } catch (error: any) {
+        console.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
+        failed++;
+        errors.push({ paymentIntentId, error: error.message || 'Unknown error' });
+      }
+    }
+    
+    console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
+    
+    return { synced, failed, errors };
+  } catch (error: any) {
+    console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
+    throw error;
   }
 }
 
