@@ -13725,6 +13725,19 @@ app.put("/api/manager/locations/:locationId", requireFirebaseAuthWithUser, requi
       updates.push(`kitchen_license_url = $${paramIndex++}`);
       values.push(kitchenLicenseUrl);
     }
+    if (kitchenLicenseExpiry !== undefined) {
+      // Validate expiration date format
+      if (kitchenLicenseExpiry) {
+        const expiryDate = new Date(kitchenLicenseExpiry);
+        if (isNaN(expiryDate.getTime())) {
+          return res.status(400).json({ 
+            error: "Invalid expiration date format. Please use YYYY-MM-DD format." 
+          });
+        }
+      }
+      updates.push(`kitchen_license_expiry = $${paramIndex++}`);
+      values.push(kitchenLicenseExpiry || null);
+    }
     if (kitchenLicenseStatus !== undefined) {
       updates.push(`kitchen_license_status = $${paramIndex++}`);
       values.push(kitchenLicenseStatus);
@@ -13758,6 +13771,7 @@ app.put("/api/manager/locations/:locationId", requireFirebaseAuthWithUser, requi
       kitchen_license_approved_by as "kitchenLicenseApprovedBy",
       kitchen_license_approved_at as "kitchenLicenseApprovedAt",
       kitchen_license_feedback as "kitchenLicenseFeedback",
+      kitchen_license_expiry as "kitchenLicenseExpiry",
       created_at, updated_at`;
     
     const result = await pool.query(query, values);
