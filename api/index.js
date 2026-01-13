@@ -14361,26 +14361,44 @@ app.get("/api/manager/revenue/overview", requireFirebaseAuthWithUser, requireMan
 
     // Use V2 service that uses payment_transactions (with Stripe-synced amounts)
     // This ensures all amounts come from Stripe, not calculations
-    const { getRevenueMetricsFromTransactions } = await import('../server/services/revenue-service-v2.js');
-    
-    const metrics = await getRevenueMetricsFromTransactions(
-      managerId,
-      pool,
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-      locationId ? parseInt(locationId) : undefined
-    );
+    // Fall back to legacy method if V2 service fails
+    let metrics;
+    try {
+      const { getRevenueMetricsFromTransactions } = await import('../server/services/revenue-service-v2.js');
+      metrics = await getRevenueMetricsFromTransactions(
+        managerId,
+        pool,
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+        locationId ? parseInt(locationId) : undefined
+      );
+    } catch (v2Error) {
+      console.warn(`[Revenue] V2 service failed, falling back to legacy method:`, v2Error.message);
+      // Fall back to legacy method
+      const { getCompleteRevenueMetrics } = await import('../server/services/revenue-service.js');
+      metrics = await getCompleteRevenueMetrics(
+        managerId,
+        pool,
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+        locationId ? parseInt(locationId) : undefined
+      );
+    }
 
     // Validate metrics are not null/undefined
     if (!metrics) {
-      console.error(`[Revenue] getCompleteRevenueMetrics returned null/undefined for manager ${managerId}`);
+      console.error(`[Revenue] Revenue metrics returned null/undefined for manager ${managerId}`);
       return res.status(500).json({ error: "Failed to calculate revenue metrics" });
     }
 
     // Log metrics for debugging
     console.log(`[Revenue] Metrics for manager ${managerId}:`, {
+      startDate: startDate || 'none',
+      endDate: endDate || 'none',
+      locationId: locationId || 'none',
       totalRevenue: metrics.totalRevenue,
       managerRevenue: metrics.managerRevenue,
+      depositedManagerRevenue: metrics.depositedManagerRevenue || 0,
       bookingCount: metrics.bookingCount,
       completedPayments: metrics.completedPayments,
       pendingPayments: metrics.pendingPayments,

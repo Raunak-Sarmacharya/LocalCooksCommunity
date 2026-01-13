@@ -132,7 +132,13 @@ export async function getRevenueMetricsFromTransactions(
       const start = startDate ? (typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0]) : null;
       const end = endDate ? (typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0]) : null;
       
+      console.log('[Revenue Service V2] Applying date filter:', { startDate: start, endDate: end, managerId });
+      
       if (start && end) {
+        // For date filtering:
+        // - For succeeded transactions: use paid_at date (when payment was captured)
+        // - For succeeded transactions without paid_at: use created_at date as fallback
+        // - For processing transactions: use created_at date (when booking was made)
         dateFilter = `AND (
           (pt.status = 'succeeded' AND (
             (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= $${paramIndex}::date AND DATE(pt.paid_at) <= $${paramIndex + 1}::date)
