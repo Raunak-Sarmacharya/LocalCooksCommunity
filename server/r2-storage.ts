@@ -132,35 +132,93 @@ export async function uploadToR2(
 
 /**
  * Delete a file from Cloudflare R2
- * @param fileUrl - Full URL of the file to delete
+ * @param fileUrl - Full URL of the file to delete (can be proxy URL or direct R2 URL)
  * @returns true if deleted successfully
  */
 export async function deleteFromR2(fileUrl: string): Promise<boolean> {
   try {
     const client = getS3Client();
     
-    // Extract key from URL
-    // URL format: https://domain.com/folder/filename or https://account.r2.cloudflarestorage.com/bucket/folder/filename
-    const urlObj = new URL(fileUrl);
-    const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    // Handle proxy URLs - extract actual R2 URL from query parameter
+    let actualFileUrl = fileUrl;
+    if (fileUrl.includes('/api/files/r2-proxy')) {
+      try {
+        const urlObj = new URL(fileUrl, 'http://localhost'); // base URL for relative URLs
+        const urlParam = urlObj.searchParams.get('url');
+        if (urlParam) {
+          actualFileUrl = decodeURIComponent(urlParam);
+          console.log(`🔍 Extracted R2 URL from proxy: ${actualFileUrl}`);
+        } else {
+          console.error('❌ Proxy URL missing url parameter:', fileUrl);
+          return false;
+        }
+      } catch (urlError) {
+        console.error('❌ Error parsing proxy URL:', urlError);
+        return false;
+      }
+    }
     
-    // Remove bucket name from key if present
-    const keyParts = key.split('/');
-    const bucketIndex = keyParts.indexOf(R2_BUCKET_NAME!);
-    const actualKey = bucketIndex >= 0 
-      ? keyParts.slice(bucketIndex + 1).join('/')
-      : key;
+    // Extract key from URL using robust logic (same as getPresignedUrl)
+    const urlObj = new URL(actualFileUrl);
+    let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const pathParts = pathname.split('/').filter(p => p);
+    
+    // Find the bucket name index
+    const bucketIndex = pathParts.indexOf(R2_BUCKET_NAME!);
+    
+    let key: string;
+    if (bucketIndex >= 0) {
+      // Bucket name is in the path, key is everything after it
+      // e.g., [bucket_name, images, filename] -> images/filename
+      key = pathParts.slice(bucketIndex + 1).join('/');
+    } else {
+      // Bucket name not in path (custom domain or different URL format)
+      // Try to detect if it's a custom domain by checking if pathname starts with known folders
+      const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
+      const firstPart = pathParts[0];
+      
+      if (knownFolders.includes(firstPart)) {
+        // Custom domain with folder structure, use entire pathname
+        key = pathname;
+      } else {
+        // Unknown format, try using entire pathname
+        key = pathname;
+      }
+    }
+    
+    // Remove leading/trailing slashes
+    key = key.replace(/^\/+|\/+$/g, '');
+    
+    // Final validation: key should not be empty
+    if (!key || key.length === 0) {
+      console.error(`❌ Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
+      return false;
+    }
+
+    console.log('🔍 R2 Delete Debug:', {
+      originalUrl: fileUrl,
+      actualFileUrl,
+      extractedKey: key,
+      bucketName: R2_BUCKET_NAME,
+      pathname: urlObj.pathname,
+      pathParts,
+      bucketIndex
+    });
 
     const command = new DeleteObjectCommand({
       Bucket: R2_BUCKET_NAME!,
-      Key: actualKey,
+      Key: key,
     });
 
     await client.send(command);
-    console.log(`✅ File deleted from R2: ${actualKey}`);
+    console.log(`✅ File deleted from R2: ${key}`);
     return true;
   } catch (error) {
-    console.error('❌ Error deleting from R2:', error);
+    console.error('❌ Error deleting from R2:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      fileUrl,
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return false;
   }
 }
