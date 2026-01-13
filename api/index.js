@@ -14904,7 +14904,21 @@ app.put("/api/manager/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, r
       UPDATE kitchens 
       SET image_url = $1, updated_at = NOW() 
       WHERE id = $2 
-      RETURNING *
+      RETURNING 
+        id,
+        name,
+        description,
+        location_id as "locationId",
+        is_active as "isActive",
+        image_url as "imageUrl",
+        gallery_images as "galleryImages",
+        amenities,
+        hourly_rate as "hourlyRate",
+        currency,
+        minimum_booking_hours as "minimumBookingHours",
+        pricing_model as "pricingModel",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
     `, [imageUrl || null, kitchenId]);
     
     console.log(`✅ Kitchen ${kitchenId} image updated by manager ${user.id}`);
@@ -14981,7 +14995,21 @@ app.put("/api/manager/kitchens/:kitchenId/gallery", requireFirebaseAuthWithUser,
       UPDATE kitchens 
       SET gallery_images = $1, updated_at = NOW() 
       WHERE id = $2 
-      RETURNING *
+      RETURNING 
+        id,
+        name,
+        description,
+        location_id as "locationId",
+        is_active as "isActive",
+        image_url as "imageUrl",
+        gallery_images as "galleryImages",
+        amenities,
+        hourly_rate as "hourlyRate",
+        currency,
+        minimum_booking_hours as "minimumBookingHours",
+        pricing_model as "pricingModel",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
     `, [JSON.stringify(galleryImages || []), kitchenId]);
     
     console.log(`✅ Kitchen ${kitchenId} gallery images updated by manager ${user.id}`);
@@ -15090,7 +15118,21 @@ app.put("/api/manager/kitchens/:kitchenId", requireFirebaseAuthWithUser, require
       UPDATE kitchens 
       SET ${updates.join(', ')} 
       WHERE id = $${paramCount}
-      RETURNING *
+      RETURNING 
+        id,
+        name,
+        description,
+        location_id as "locationId",
+        is_active as "isActive",
+        image_url as "imageUrl",
+        gallery_images as "galleryImages",
+        amenities,
+        hourly_rate as "hourlyRate",
+        currency,
+        minimum_booking_hours as "minimumBookingHours",
+        pricing_model as "pricingModel",
+        created_at as "createdAt",
+        updated_at as "updatedAt"
     `;
 
     const updateResult = await pool.query(updateQuery, values);
