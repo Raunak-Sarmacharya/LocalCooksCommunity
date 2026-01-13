@@ -205,9 +205,20 @@ export default function KitchenDashboardOverview({
     refetchOnWindowFocus: true,
   });
 
+  // Calculate this month's date range (moved outside query for use in queryKey)
+  const thisMonthDateRange = useMemo(() => {
+    const today = new Date();
+    const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    };
+  }, []); // Recalculate when month changes
+
   // Fetch revenue metrics for this month
-  const { data: revenueMetrics, isLoading: isLoadingRevenue } = useQuery({
-    queryKey: ['/api/manager/revenue/overview', 'this-month', selectedLocation?.id],
+  const { data: revenueMetrics, isLoading: isLoadingRevenue, error: revenueError } = useQuery({
+    queryKey: ['/api/manager/revenue/overview', thisMonthDateRange.startDate, thisMonthDateRange.endDate, selectedLocation?.id],
     queryFn: async () => {
       if (!firebaseUser) {
         throw new Error('Not authenticated');
@@ -219,14 +230,9 @@ export default function KitchenDashboardOverview({
       }
       const token = await currentFirebaseUser.getIdToken();
       
-      // Calculate this month's date range
-      const today = new Date();
-      const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-      const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      
       const params = new URLSearchParams({
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
+        startDate: thisMonthDateRange.startDate,
+        endDate: thisMonthDateRange.endDate,
       });
       
       // Add location filter if a specific location is selected
@@ -243,14 +249,22 @@ export default function KitchenDashboardOverview({
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Overview] Failed to fetch revenue metrics:', response.status, errorText);
         throw new Error('Failed to fetch revenue metrics');
       }
       
-      return response.json();
+      const data = await response.json();
+      console.log('[Overview] Revenue metrics received:', data);
+      return data;
     },
     enabled: !!firebaseUser,
     refetchInterval: 30000, // Refresh every 30 seconds
     refetchOnWindowFocus: true,
+    retry: 2,
+    onError: (error) => {
+      console.error('[Overview] Revenue metrics query error:', error);
+    },
   });
 
   // Calculate dashboard metrics (using filtered bookings)
