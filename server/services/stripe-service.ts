@@ -257,6 +257,109 @@ export async function getPaymentIntent(paymentIntentId: string): Promise<Payment
 }
 
 /**
+ * Get actual Stripe amounts from PaymentIntent and Charge
+ * Returns the actual amounts charged by Stripe, including fees
+ */
+export async function getStripePaymentAmounts(
+  paymentIntentId: string,
+  managerConnectAccountId?: string
+): Promise<{
+  stripeAmount: number; // Total amount charged (in cents)
+  stripeNetAmount: number; // Net amount after all fees (in cents)
+  stripeProcessingFee: number; // Stripe's processing fee (in cents)
+  stripePlatformFee: number; // Platform fee from Stripe Connect (in cents)
+  chargeId: string | null;
+} | null> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    // Retrieve PaymentIntent with expanded charge
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge'],
+    });
+
+    if (!paymentIntent.latest_charge) {
+      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
+      return null;
+    }
+
+    const chargeId = typeof paymentIntent.latest_charge === 'string' 
+      ? paymentIntent.latest_charge 
+      : paymentIntent.latest_charge.id;
+
+    // Get the charge details
+    const charge = typeof paymentIntent.latest_charge === 'string'
+      ? await stripe.charges.retrieve(paymentIntent.latest_charge)
+      : paymentIntent.latest_charge;
+
+    // Get balance transaction to see actual fees
+    let balanceTransaction: Stripe.BalanceTransaction | null = null;
+    if (charge.balance_transaction) {
+      const balanceTransactionId = typeof charge.balance_transaction === 'string'
+        ? charge.balance_transaction
+        : charge.balance_transaction.id;
+      
+      balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
+    }
+
+    // Calculate amounts
+    const stripeAmount = paymentIntent.amount; // Total amount charged
+    let stripeNetAmount = stripeAmount;
+    let stripeProcessingFee = 0;
+    let stripePlatformFee = 0;
+
+    if (balanceTransaction) {
+      // For Stripe Connect payments:
+      // - Total amount = what customer paid (paymentIntent.amount)
+      // - Application fee (platform fee) = goes to platform account
+      // - Net amount = what goes to connected account (manager) after all fees
+      // - Balance transaction net = amount - application_fee - processing_fee
+      
+      // Net amount is what actually gets transferred to the connected account
+      stripeNetAmount = balanceTransaction.net;
+      
+      // If using Stripe Connect, get the application fee (platform fee)
+      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+        stripePlatformFee = paymentIntent.application_fee_amount;
+        // For connected accounts: net = amount - platform_fee - processing_fee
+        // Therefore: processing_fee = amount - platform_fee - net
+        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+      } else {
+        // No Connect account - query balance transaction from platform account perspective
+        // In this case, net = amount - processing_fee
+        stripeProcessingFee = balanceTransaction.fee;
+        stripeNetAmount = stripeAmount - stripeProcessingFee;
+      }
+    } else {
+      // Fallback: estimate fees if balance transaction not available
+      // Stripe's standard fee is approximately 2.9% + $0.30
+      stripeProcessingFee = Math.round(stripeAmount * 0.029 + 30);
+      
+      // If using Connect, subtract platform fee
+      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+        stripePlatformFee = paymentIntent.application_fee_amount;
+        stripeNetAmount = stripeAmount - stripePlatformFee - stripeProcessingFee;
+      } else {
+        stripeNetAmount = stripeAmount - stripeProcessingFee;
+      }
+    }
+
+    return {
+      stripeAmount,
+      stripeNetAmount,
+      stripeProcessingFee,
+      stripePlatformFee,
+      chargeId,
+    };
+  } catch (error: any) {
+    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
+    return null;
+  }
+}
+
+/**
  * DEPRECATED: Capture PaymentIntent - no longer needed with automatic capture
  * This function is kept for backward compatibility but payments are now automatically captured
  * 

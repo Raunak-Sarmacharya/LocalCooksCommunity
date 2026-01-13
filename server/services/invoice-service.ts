@@ -32,9 +32,18 @@ export async function generateInvoicePDF(
       let durationHours = 0;
       let hourlyRate = 0;
       
-      // First, try to use stored total_price
+      // PRIORITY 1: Calculate from hourly_rate * duration_hours (most accurate)
+      // This avoids rounding errors from total_price - service_fee calculations
+      if ((booking.hourly_rate || booking.hourlyRate) && (booking.duration_hours || booking.durationHours)) {
+        const hourlyRateCents = parseFloat(String(booking.hourly_rate || booking.hourlyRate));
+        durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
+        hourlyRate = hourlyRateCents / 100;
+        // Calculate base price directly from rate * duration (no rounding errors)
+        kitchenAmount = (hourlyRateCents * durationHours) / 100;
+      }
+      // FALLBACK 1: Try to use stored total_price - service_fee
       // Note: total_price includes service_fee, so we need to subtract service_fee to get base price
-      if (booking.total_price || booking.totalPrice) {
+      else if (booking.total_price || booking.totalPrice) {
         const totalPriceCents = booking.total_price 
           ? parseFloat(String(booking.total_price)) 
           : parseFloat(String(booking.totalPrice));
@@ -55,13 +64,6 @@ export async function generateInvoicePDF(
         if (booking.hourly_rate || booking.hourlyRate) {
           hourlyRate = parseFloat(String(booking.hourly_rate || booking.hourlyRate)) / 100;
         }
-      }
-      // If no stored total_price, try to calculate from hourly_rate * duration_hours
-      else if ((booking.hourly_rate || booking.hourlyRate) && (booking.duration_hours || booking.durationHours)) {
-        const hourlyRateCents = parseFloat(String(booking.hourly_rate || booking.hourlyRate));
-        durationHours = parseFloat(String(booking.duration_hours || booking.durationHours));
-        hourlyRate = hourlyRateCents / 100;
-        kitchenAmount = (hourlyRateCents * durationHours) / 100;
       }
       // Fall back to recalculating from pricing service
       else if (dbPool && startTime && endTime) {

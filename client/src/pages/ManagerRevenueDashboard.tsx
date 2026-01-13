@@ -389,7 +389,11 @@ export default function ManagerRevenueDashboard({
     transactionsData.transactions.forEach((t: any) => {
       // Use paymentStatus from transaction, default to 'pending' if not set
       const status = t.paymentStatus || 'pending';
-      const amount = t.totalPrice || 0; // Already in dollars from API
+      // For paid/processing transactions, show managerRevenue (what manager actually receives)
+      // For other statuses, show totalPrice (what was charged)
+      const amount = (status === 'paid' || status === 'processing') 
+        ? (t.managerRevenue || 0) // Manager's actual earnings after fees
+        : (t.totalPrice || 0); // Total amount charged
       
       statusAmounts[status] = (statusAmounts[status] || 0) + amount;
       statusCounts[status] = (statusCounts[status] || 0) + 1;
