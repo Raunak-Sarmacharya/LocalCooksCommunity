@@ -82,6 +82,10 @@ export default function ManagerOnboardingWizard() {
   // Storage listing form state
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<any[]>([]);
+  const [existingStorageListings, setExistingStorageListings] = useState<any[]>([]);
+  const [isLoadingStorage, setIsLoadingStorage] = useState(false);
+  const [existingEquipmentListings, setExistingEquipmentListings] = useState<any[]>([]);
+  const [isLoadingEquipment, setIsLoadingEquipment] = useState(false);
   const [storageFormData, setStorageFormData] = useState({
     storageType: 'dry' as 'dry' | 'cold' | 'freezer',
     name: '',
@@ -179,16 +183,181 @@ export default function ManagerOnboardingWizard() {
 
   const isManager = userData?.role === "manager";
   const stepsCompleted = userData?.manager_onboarding_steps_completed || {};
+  
+  // Check if locations exist to determine which steps to show
+  const hasExistingLocation = !isLoadingLocations && locations.length > 0;
+  
+  // Filter steps based on location existence
+  // If location exists, skip Welcome (0), Location & Contact (1), and Kitchen License (2)
+  const visibleSteps = hasExistingLocation 
+    ? steps.filter(step => step.id >= 3) // Only show Create Kitchen, Storage, Equipment
+    : steps; // Show all steps for new locations
+  
+  // Helper function to map visible step index to actual step ID
+  const getActualStepId = (visibleIndex: number): number => {
+    if (visibleIndex < 0 || visibleIndex >= visibleSteps.length) return -1;
+    return visibleSteps[visibleIndex].id;
+  };
+  
+  // Helper function to get visible index from actual step ID
+  const getVisibleIndex = (actualStepId: number): number => {
+    return visibleSteps.findIndex(step => step.id === actualStepId);
+  };
+  
+  // Helper function to get current visible step index
+  const getCurrentVisibleIndex = (): number => {
+    const actualStepId = getActualStepId(currentStep);
+    return getVisibleIndex(actualStepId);
+  };
+  
+  // Track previous location count and location IDs to detect new locations
+  const [previousLocationCount, setPreviousLocationCount] = useState(0);
+  const [previousLocationIds, setPreviousLocationIds] = useState<number[]>([]);
+  const [locationOnboardingStatus, setLocationOnboardingStatus] = useState<Record<number, { hasKitchen: boolean; needsOnboarding: boolean }>>({});
+  
+  // Check if a location needs onboarding
+  const checkLocationNeedsOnboarding = async (locationId: number): Promise<boolean> => {
+    try {
+      const { auth } = await import('@/lib/firebase');
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) return false;
+      
+      const token = await currentFirebaseUser.getIdToken();
+      
+      // Check if location has kitchens
+      const kitchensResponse = await fetch(`/api/manager/kitchens/${locationId}`, {
+        credentials: "include",
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (kitchensResponse.ok) {
+        const kitchens = await kitchensResponse.json();
+        const hasKitchen = Array.isArray(kitchens) && kitchens.length > 0;
+        const needsOnboarding = !hasKitchen;
+        
+        // Update location onboarding status
+        setLocationOnboardingStatus(prev => ({
+          ...prev,
+          [locationId]: { hasKitchen, needsOnboarding }
+        }));
+        
+        return needsOnboarding;
+      }
+      
+      // Default to needing onboarding if check fails
+      setLocationOnboardingStatus(prev => ({
+        ...prev,
+        [locationId]: { hasKitchen: false, needsOnboarding: true }
+      }));
+      return true;
+    } catch (error) {
+      console.error("Error checking location onboarding status:", error);
+      // Default to needing onboarding on error
+      setLocationOnboardingStatus(prev => ({
+        ...prev,
+        [locationId]: { hasKitchen: false, needsOnboarding: true }
+      }));
+      return true;
+    }
+  };
+  
+  // Check all locations for onboarding needs when locations load
+  useEffect(() => {
+    if (!isLoadingLocations && locations.length > 0) {
+      locations.forEach(location => {
+        // Only check if we don't already have status for this location
+        if (!locationOnboardingStatus[location.id]) {
+          checkLocationNeedsOnboarding(location.id);
+        }
+      });
+    }
+  }, [locations, isLoadingLocations]);
+  
+  // Update previous location count and detect new locations
+  useEffect(() => {
+    if (!isLoadingLocations) {
+      const currentCount = locations.length;
+      const currentLocationIds = locations.map(loc => loc.id);
+      
+      // If location count increased, a new location was added
+      if (currentCount > previousLocationCount && previousLocationCount > 0) {
+        // Find the new location (one that wasn't in previous list)
+        const newLocation = locations.find(loc => !previousLocationIds.includes(loc.id));
+        
+        if (newLocation) {
+          // New location was added - check if it needs onboarding
+          checkLocationNeedsOnboarding(newLocation.id).then(needsOnboarding => {
+            if (needsOnboarding) {
+              // Trigger onboarding for this new location
+              setIsOpen(true);
+              setSelectedLocationId(newLocation.id);
+              const loc = newLocation as any;
+              setLocationName(loc.name || "");
+              setLocationAddress(loc.address || "");
+              setNotificationEmail(loc.notificationEmail || "");
+              setNotificationPhone(loc.notificationPhone || "");
+              // Start from step 3 (Create Kitchen) since location exists
+              setCurrentStep(3);
+              // Mark this location as needing onboarding
+              setLocationOnboardingStatus(prev => ({
+                ...prev,
+                [newLocation.id]: { hasKitchen: false, needsOnboarding: true }
+              }));
+            }
+          });
+        }
+      }
+      
+      setPreviousLocationCount(currentCount);
+      setPreviousLocationIds(currentLocationIds);
+    }
+  }, [locations, isLoadingLocations, previousLocationCount, previousLocationIds]);
+  
+  // Check if any location needs onboarding (for initial auto-open)
+  // A location needs onboarding if it doesn't have a kitchen
+  const hasLocationNeedingOnboarding = locations.some(loc => {
+    const status = locationOnboardingStatus[loc.id];
+    // If we haven't checked yet, assume it might need onboarding
+    // If we have checked, use the status
+    return status ? status.needsOnboarding : true;
+  });
+  
+  // For location-specific onboarding: show if no locations exist OR if any location needs onboarding
+  // Global onboarding completion only matters for the first location
   const shouldAutoOpen = 
     isManager &&
-    !userData?.manager_onboarding_completed &&
-    !userData?.manager_onboarding_skipped;
+    (locations.length === 0 || 
+     (!userData?.manager_onboarding_completed && !userData?.manager_onboarding_skipped && hasLocationNeedingOnboarding));
   
   // Allow manual opening from help center even if completed
   const [manualOpen, setManualOpen] = useState(false);
   
   // Initialize stepsCompleted state
   const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>(stepsCompleted);
+  
+  // Initialize currentStep based on location existence and auto-select location
+  useEffect(() => {
+    if (!isLoadingLocations) {
+      if (hasExistingLocation) {
+        // Auto-select first location if none selected
+        if (!selectedLocationId && locations.length > 0) {
+          setSelectedLocationId(locations[0].id);
+          const loc = locations[0] as any;
+          setLocationName(loc.name || "");
+          setLocationAddress(loc.address || "");
+          setNotificationEmail(loc.notificationEmail || "");
+          setNotificationPhone(loc.notificationPhone || "");
+        }
+        // If location exists and we're on an early step, jump to step 3 (Create Kitchen)
+        if (currentStep < 3) {
+          setCurrentStep(3);
+        }
+      }
+    }
+  }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId, currentStep]);
 
   // Listen for manual open from help center
   useEffect(() => {
@@ -204,21 +373,45 @@ export default function ManagerOnboardingWizard() {
     };
   }, [isManager]);
 
-  // Auto-open for new managers (only if not manually opened)
+  // Auto-open for new managers or locations needing onboarding (only if not manually opened)
   useEffect(() => {
     if (shouldAutoOpen && !isLoadingLocations && !manualOpen) {
-      setIsOpen(true);
-      // Auto-select location if only one exists
-      if (locations.length === 1) {
-        setSelectedLocationId(locations[0].id);
-        const loc = locations[0] as any;
-        setLocationName(loc.name || "");
-        setLocationAddress(loc.address || "");
-        setNotificationEmail(loc.notificationEmail || "");
-        setNotificationPhone(loc.notificationPhone || "");
+      // Find a location that needs onboarding
+      const locationNeedingOnboarding = locations.find(loc => {
+        const status = locationOnboardingStatus[loc.id];
+        return status?.needsOnboarding === true;
+      });
+      
+      if (locationNeedingOnboarding || locations.length === 0) {
+        setIsOpen(true);
+        
+        if (locationNeedingOnboarding) {
+          // Select the location that needs onboarding
+          setSelectedLocationId(locationNeedingOnboarding.id);
+          const loc = locationNeedingOnboarding as any;
+          setLocationName(loc.name || "");
+          setLocationAddress(loc.address || "");
+          setNotificationEmail(loc.notificationEmail || "");
+          setNotificationPhone(loc.notificationPhone || "");
+          // Start from step 3 (Create Kitchen) since location exists
+          setCurrentStep(3);
+        } else if (locations.length === 1) {
+          // No locations exist or only one location - select it
+          setSelectedLocationId(locations[0].id);
+          const loc = locations[0] as any;
+          setLocationName(loc.name || "");
+          setLocationAddress(loc.address || "");
+          setNotificationEmail(loc.notificationEmail || "");
+          setNotificationPhone(loc.notificationPhone || "");
+        }
+        
+        // If location exists, start from step 3 (Create Kitchen)
+        if (hasExistingLocation && currentStep < 3) {
+          setCurrentStep(3);
+        }
       }
     }
-  }, [shouldAutoOpen, isLoadingLocations, locations, manualOpen]);
+  }, [shouldAutoOpen, isLoadingLocations, locations, manualOpen, hasExistingLocation, currentStep, locationOnboardingStatus]);
 
 
   // Load kitchens when location is selected
@@ -243,11 +436,20 @@ export default function ManagerOnboardingWizard() {
           });
           if (response.ok) {
             const data = await response.json();
-            setKitchens(data);
-            if (data.length === 1 && !selectedKitchenId) {
-              setSelectedKitchenId(data[0].id);
+            const kitchensData = Array.isArray(data) ? data : [];
+            setKitchens(kitchensData);
+            
+            // Update location onboarding status based on kitchens
+            const hasKitchen = kitchensData.length > 0;
+            setLocationOnboardingStatus(prev => ({
+              ...prev,
+              [selectedLocationId]: { hasKitchen, needsOnboarding: !hasKitchen }
+            }));
+            
+            if (kitchensData.length === 1 && !selectedKitchenId) {
+              setSelectedKitchenId(kitchensData[0].id);
             }
-            if (data.length === 0) {
+            if (kitchensData.length === 0) {
               setShowCreateKitchen(true);
             }
           }
@@ -258,6 +460,82 @@ export default function ManagerOnboardingWizard() {
       loadKitchens();
     }
   }, [selectedLocationId]);
+
+  // Load storage listings when kitchen is selected and we're on storage step
+  useEffect(() => {
+    if (selectedKitchenId && currentStep === 4) {
+      const loadStorageListings = async () => {
+        setIsLoadingStorage(true);
+        try {
+          const { auth } = await import('@/lib/firebase');
+          const currentFirebaseUser = auth.currentUser;
+          if (!currentFirebaseUser) return;
+          
+          const token = await currentFirebaseUser.getIdToken();
+          const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, {
+            credentials: "include",
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setExistingStorageListings(Array.isArray(data) ? data : []);
+          } else {
+            setExistingStorageListings([]);
+          }
+        } catch (error) {
+          console.error("Error loading storage listings:", error);
+          setExistingStorageListings([]);
+        } finally {
+          setIsLoadingStorage(false);
+        }
+      };
+      loadStorageListings();
+    } else if (currentStep !== 4) {
+      // Clear storage listings when not on storage step
+      setExistingStorageListings([]);
+    }
+  }, [selectedKitchenId, currentStep]);
+
+  // Load equipment listings when kitchen is selected and we're on equipment step
+  useEffect(() => {
+    if (selectedKitchenId && currentStep === 5) {
+      const loadEquipmentListings = async () => {
+        setIsLoadingEquipment(true);
+        try {
+          const { auth } = await import('@/lib/firebase');
+          const currentFirebaseUser = auth.currentUser;
+          if (!currentFirebaseUser) return;
+          
+          const token = await currentFirebaseUser.getIdToken();
+          const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
+            credentials: "include",
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setExistingEquipmentListings(Array.isArray(data) ? data : []);
+          } else {
+            setExistingEquipmentListings([]);
+          }
+        } catch (error) {
+          console.error("Error loading equipment listings:", error);
+          setExistingEquipmentListings([]);
+        } finally {
+          setIsLoadingEquipment(false);
+        }
+      };
+      loadEquipmentListings();
+    } else if (currentStep !== 5) {
+      // Clear equipment listings when not on equipment step
+      setExistingEquipmentListings([]);
+    }
+  }, [selectedKitchenId, currentStep]);
 
   const createKitchenMutation = useMutation({
     mutationFn: async (data: { name: string; description?: string }) => {
@@ -298,6 +576,15 @@ export default function ManagerOnboardingWizard() {
       setSelectedKitchenId(data.id);
       setShowCreateKitchen(false);
       setKitchenFormData({ name: '', description: '' });
+      
+      // Update location onboarding status - location no longer needs onboarding
+      if (selectedLocationId) {
+        setLocationOnboardingStatus(prev => ({
+          ...prev,
+          [selectedLocationId]: { hasKitchen: true, needsOnboarding: false }
+        }));
+      }
+      
       toast({
         title: "Kitchen Created",
         description: "Kitchen created successfully. You can now add storage and equipment listings.",
@@ -354,11 +641,35 @@ export default function ManagerOnboardingWizard() {
     },
     onSuccess: (data) => {
       // If we just created a location, set it as selected
+      const wasFirstLocation = locations.length === 0;
       if (data.id && !selectedLocationId) {
         setSelectedLocationId(data.id);
       }
       queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+      
+      // Mark new location as needing onboarding (no kitchen yet)
+      if (data.id) {
+        setLocationOnboardingStatus(prev => ({
+          ...prev,
+          [data.id]: { hasKitchen: false, needsOnboarding: true }
+        }));
+        
+        // If this was a new location (not the first), trigger onboarding for it
+        if (!wasFirstLocation) {
+          // Set the new location as selected
+          setSelectedLocationId(data.id);
+          const loc = data as any;
+          setLocationName(loc.name || "");
+          setLocationAddress(loc.address || "");
+          setNotificationEmail(loc.notificationEmail || "");
+          setNotificationPhone(loc.notificationPhone || "");
+          // Open onboarding wizard
+          setIsOpen(true);
+          // Start from step 3 (Create Kitchen) since location already exists
+          setCurrentStep(3);
+        }
+      }
     },
   });
 
@@ -436,10 +747,18 @@ export default function ManagerOnboardingWizard() {
           : "Your location is set up! Waiting for license approval to activate bookings.",
       });
     },
+    onError: (error: Error) => {
+      console.error("Error completing onboarding:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to complete onboarding. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
-  // Track step completion
-  const trackStepCompletion = async (stepId: number) => {
+  // Track step completion (with optional location ID for location-specific tracking)
+  const trackStepCompletion = async (stepId: number, locationId?: number) => {
     try {
       const { auth } = await import('@/lib/firebase');
       const currentFirebaseUser = auth.currentUser;
@@ -453,7 +772,10 @@ export default function ManagerOnboardingWizard() {
           "Content-Type": "application/json" 
         },
         credentials: "include",
-        body: JSON.stringify({ stepId }),
+        body: JSON.stringify({ 
+          stepId,
+          locationId: locationId || selectedLocationId || undefined
+        }),
       });
       
       if (response.ok) {
@@ -468,6 +790,14 @@ export default function ManagerOnboardingWizard() {
   };
 
   const handleNext = async () => {
+    // If location exists, automatically mark skipped steps as completed
+    if (hasExistingLocation) {
+      // Mark steps 0-2 as completed if not already marked
+      if (!completedSteps['step_0']) await trackStepCompletion(0);
+      if (!completedSteps['step_1']) await trackStepCompletion(1);
+      if (!completedSteps['step_2']) await trackStepCompletion(2);
+    }
+
     if (currentStep === 0) {
       // Welcome step - just move to next
       await trackStepCompletion(0);
@@ -550,13 +880,31 @@ export default function ManagerOnboardingWizard() {
       await trackStepCompletion(5);
       setCurrentStep(6);
     } else if (currentStep === 6) {
-      // Complete onboarding
-      await completeOnboardingMutation.mutateAsync(false);
+      // Complete onboarding - this should not be reached as we use handleCompleteSetup
+      // But keep it as fallback
+      try {
+        await completeOnboardingMutation.mutateAsync(false);
+      } catch (error: any) {
+        // Error is already handled by onError in the mutation
+        console.error("Error in handleNext for step 6:", error);
+      }
+    }
+  };
+
+  // Dedicated handler for completing setup on step 6
+  const handleCompleteSetup = async () => {
+    if (currentStep === 6 && !completeOnboardingMutation.isPending) {
+      try {
+        await completeOnboardingMutation.mutateAsync(false);
+      } catch (error: any) {
+        // Error is already handled by onError in the mutation
+        console.error("Error completing setup:", error);
+      }
     }
   };
 
   const handleSkip = async () => {
-    // If on the final step, complete onboarding with skipped flag
+    // If on step 6 (final step), complete onboarding with skipped flag
     if (currentStep === 6) {
       if (
         window.confirm(
@@ -568,13 +916,36 @@ export default function ManagerOnboardingWizard() {
       return;
     }
 
-    // For all other steps, just mark current step as completed and move to next
-    await trackStepCompletion(currentStep);
-    setCurrentStep(currentStep + 1);
+    // If on the final visible step (but not step 6), complete onboarding
+    const finalStepId = visibleSteps.length > 0 ? visibleSteps[visibleSteps.length - 1].id : 6;
+    if (currentStep === finalStepId) {
+      if (
+        window.confirm(
+          "Are you sure you want to skip onboarding? You can complete it later, but bookings will be disabled until your license is approved."
+        )
+      ) {
+        await completeOnboardingMutation.mutateAsync(true);
+      }
+      return;
+    }
+
+    // For all other steps, find the next visible step
+    const currentVisibleIndex = getVisibleIndex(currentStep);
+    if (currentVisibleIndex >= 0 && currentVisibleIndex < visibleSteps.length - 1) {
+      await trackStepCompletion(currentStep);
+      const nextStepId = visibleSteps[currentVisibleIndex + 1].id;
+      setCurrentStep(nextStepId);
+    }
   };
 
   const handleBack = () => {
-    if (currentStep > 0) {
+    // Find the previous visible step
+    const currentVisibleIndex = getVisibleIndex(currentStep);
+    if (currentVisibleIndex > 0) {
+      const prevStepId = visibleSteps[currentVisibleIndex - 1].id;
+      setCurrentStep(prevStepId);
+    } else if (currentStep > 0 && !hasExistingLocation) {
+      // Fallback for when location doesn't exist - go back one step
       setCurrentStep(currentStep - 1);
     }
   };
@@ -592,13 +963,22 @@ export default function ManagerOnboardingWizard() {
         <div className="bg-gradient-to-r from-[#F51042] via-rose-500 to-[#F51042] px-6 py-5 rounded-t-lg shadow-lg">
           <DialogHeader className="text-white">
             <DialogTitle className="text-2xl font-bold text-white">
-              {currentStep === 0 ? "Welcome to Local Cooks Community!" : "Let's Set Up Your Kitchen"}
+              {hasExistingLocation 
+                ? selectedLocation 
+                  ? `Set Up ${selectedLocation.name}` 
+                  : "Add Equipment & Storage"
+                : currentStep === 0 
+                  ? "Welcome to Local Cooks Community!" 
+                  : "Let's Set Up Your Kitchen"}
             </DialogTitle>
             <DialogDescription className="text-rose-100">
-              {currentStep === 0 
-                ? "We'll guide you through setting up your kitchen space in just a few steps"
-                : "Complete these steps to activate bookings for your location"
-              }
+              {hasExistingLocation
+                ? selectedLocation
+                  ? `Complete setup for ${selectedLocation.name} - add kitchen, storage, and equipment`
+                  : "Add equipment and storage listings to your existing location"
+                : currentStep === 0 
+                  ? "We'll guide you through setting up your kitchen space in just a few steps"
+                  : "Complete these steps to activate bookings for your location"}
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -608,7 +988,7 @@ export default function ManagerOnboardingWizard() {
           <div className="flex items-start justify-between mb-8 relative">
             {/* Icon row - all icons on same horizontal line */}
             <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-0" style={{ height: '3.5rem' }}>
-              {steps.map((step, index) => (
+              {visibleSteps.map((step, index) => (
                 <div key={`icon-${step.id}`} className="flex-1 flex items-center justify-center relative">
                   <div
                     className={`relative w-14 h-14 rounded-full flex items-center justify-center border-3 transition-all duration-300 ${
@@ -631,7 +1011,7 @@ export default function ManagerOnboardingWizard() {
                       <div className="absolute -inset-1 bg-rose-400 rounded-full animate-ping opacity-20"></div>
                     )}
                   </div>
-                  {index < steps.length - 1 && (
+                  {index < visibleSteps.length - 1 && (
                     <div className="absolute left-1/2 right-0 h-1" style={{ top: '50%', transform: 'translateY(-50%)', marginLeft: '1.75rem' }}>
                       <div className={`absolute inset-0 rounded-full transition-all duration-500 ${
                         currentStep > step.id || completedSteps[`step_${step.id}`] 
@@ -652,7 +1032,7 @@ export default function ManagerOnboardingWizard() {
             
             {/* Label row - positioned below icons */}
             <div className="flex items-start justify-between w-full mt-20">
-              {steps.map((step) => (
+              {visibleSteps.map((step) => (
                 <div key={`label-${step.id}`} className="flex-1 flex flex-col items-center justify-center px-1">
                   <div
                     className={`text-xs font-semibold leading-tight text-center ${
@@ -697,7 +1077,7 @@ export default function ManagerOnboardingWizard() {
 
         {/* Step Content */}
         <div className="space-y-6">
-          {currentStep === 0 && (
+          {currentStep === 0 && !hasExistingLocation && (
             <div className="space-y-6">
               <div className="relative bg-gradient-to-br from-[#FFE8DD] via-[#FFF8F5] to-white border-2 border-rose-200/50 rounded-2xl p-8 shadow-xl overflow-hidden">
                 {/* Decorative elements */}
@@ -804,7 +1184,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 1 && (
+          {currentStep === 1 && !hasExistingLocation && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Location & Contact Information</h3>
@@ -898,7 +1278,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 2 && (
+          {currentStep === 2 && !hasExistingLocation && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Kitchen License</h3>
@@ -1066,11 +1446,54 @@ export default function ManagerOnboardingWizard() {
           {currentStep === 3 && (
             <div className="space-y-4">
               <div>
-                <h3 className="text-lg font-semibold mb-1">Create Your First Kitchen</h3>
+                <h3 className="text-lg font-semibold mb-1">
+                  {hasExistingLocation 
+                    ? selectedLocation 
+                      ? `Create Kitchen for ${selectedLocation.name}`
+                      : "Create Kitchen"
+                    : "Create Your First Kitchen"}
+                </h3>
                 <p className="text-sm text-gray-600">
                   A kitchen is a specific space within your location where chefs can book time. You can add more kitchens later.
                 </p>
               </div>
+
+              {/* Location selector if multiple locations exist */}
+              {hasExistingLocation && locations.length > 1 && (
+                <div className="space-y-2">
+                  <Label htmlFor="location-select">Select Location</Label>
+                    <Select
+                      value={selectedLocationId?.toString() || ""}
+                      onValueChange={(value) => {
+                        const locationId = parseInt(value);
+                        setSelectedLocationId(locationId);
+                        const loc = locations.find(l => l.id === locationId);
+                        if (loc) {
+                          setLocationName(loc.name || "");
+                          setLocationAddress(loc.address || "");
+                          setNotificationEmail(loc.notificationEmail || "");
+                          setNotificationPhone(loc.notificationPhone || "");
+                        }
+                        // Check onboarding status for the newly selected location
+                        checkLocationNeedsOnboarding(locationId);
+                        // Reset kitchens when location changes
+                        setKitchens([]);
+                        setSelectedKitchenId(null);
+                      }}
+                    >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select a location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {locations.map((location) => (
+                        <SelectItem key={location.id} value={location.id.toString()}>
+                          {location.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
                 <div className="flex items-start gap-3">
@@ -1330,8 +1753,60 @@ export default function ManagerOnboardingWizard() {
                     </Select>
                   </div>
 
-                  {selectedKitchenId && (
-                    <div className="space-y-3 border rounded-lg p-4 bg-gray-50">
+                  {!selectedKitchenId ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-sm text-yellow-800">
+                        Please select a kitchen to view or add storage listings.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Show existing storage listings */}
+                      {isLoadingStorage ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                          <span className="ml-2 text-sm text-gray-600">Loading existing storage listings...</span>
+                        </div>
+                      ) : existingStorageListings.length > 0 ? (
+                        <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                            <h4 className="font-semibold text-gray-900">
+                              Existing Storage Listings ({existingStorageListings.length})
+                            </h4>
+                          </div>
+                          <div className="space-y-2">
+                            {existingStorageListings.map((listing) => (
+                              <div key={listing.id} className="bg-white rounded-lg p-3 border border-green-200">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-gray-900">{listing.name}</p>
+                                    <p className="text-xs text-gray-600 capitalize mt-1">
+                                      {listing.storageType} Storage
+                                      {listing.basePrice ? ` • $${parseFloat(listing.basePrice).toFixed(2)}/day` : ''}
+                                    </p>
+                                    {listing.description && (
+                                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{listing.description}</p>
+                                    )}
+                                  </div>
+                                  <div className="ml-2">
+                                    {listing.isActive ? (
+                                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Active</span>
+                                    ) : (
+                                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">Inactive</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-3">
+                            💡 You can add more storage listings below or manage them from your dashboard.
+                          </p>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-3 border rounded-lg p-4 bg-gray-50">
                       <div>
                         <Label htmlFor="storage-type">Storage Type</Label>
                         <Select
@@ -1510,6 +1985,18 @@ export default function ManagerOnboardingWizard() {
                               title: "Storage Listing Created",
                               description: "You can add more listings from your dashboard later.",
                             });
+                            // Reload existing storage listings
+                            const refreshResponse = await fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, {
+                              credentials: "include",
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                              },
+                            });
+                            if (refreshResponse.ok) {
+                              const refreshData = await refreshResponse.json();
+                              setExistingStorageListings(Array.isArray(refreshData) ? refreshData : []);
+                            }
                             // Reset form
                             setStorageFormData({
                               storageType: 'dry',
@@ -1534,6 +2021,7 @@ export default function ManagerOnboardingWizard() {
                         <Plus className="h-4 w-4 mr-2" />
                         Add Storage Listing
                       </Button>
+                      </div>
                     </div>
                   )}
 
@@ -1677,10 +2165,66 @@ export default function ManagerOnboardingWizard() {
                     </Select>
                   </div>
 
-                  {selectedKitchenId && (
-                    <div className="space-y-3 border rounded-lg p-4 bg-gray-50">
-                      <div>
-                        <Label htmlFor="equipment-category">Category</Label>
+                  {!selectedKitchenId ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-sm text-yellow-800">
+                        Please select a kitchen to view or add equipment listings.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Show existing equipment listings */}
+                      {isLoadingEquipment ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                          <span className="ml-2 text-sm text-gray-600">Loading existing equipment listings...</span>
+                        </div>
+                      ) : existingEquipmentListings.length > 0 ? (
+                        <div className="border rounded-lg p-4 bg-green-50 border-green-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                            <h4 className="font-semibold text-gray-900">
+                              Existing Equipment Listings ({existingEquipmentListings.length})
+                            </h4>
+                          </div>
+                          <div className="space-y-2">
+                            {existingEquipmentListings.map((listing) => (
+                              <div key={listing.id} className="bg-white rounded-lg p-3 border border-green-200">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="font-medium text-gray-900">{listing.name}</p>
+                                    <p className="text-xs text-gray-600 capitalize mt-1">
+                                      {listing.category || listing.equipmentType}
+                                      {listing.availabilityType === 'rental' && listing.sessionRate 
+                                        ? ` • $${parseFloat(listing.sessionRate).toFixed(2)}/session`
+                                        : listing.availabilityType === 'included' 
+                                          ? ' • Included'
+                                          : ''}
+                                    </p>
+                                    {listing.description && (
+                                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{listing.description}</p>
+                                    )}
+                                  </div>
+                                  <div className="ml-2 flex flex-col gap-1">
+                                    {listing.isActive ? (
+                                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Active</span>
+                                    ) : (
+                                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">Inactive</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-3">
+                            💡 You can add more equipment listings below or manage them from your dashboard.
+                          </p>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-3 border rounded-lg p-4 bg-gray-50">
+                        <div>
+                          <Label htmlFor="equipment-category">Category</Label>
                         <Select
                           value={equipmentFormData.category}
                           onValueChange={(value: 'cooking' | 'prep' | 'refrigeration' | 'baking' | 'other') =>
@@ -1898,6 +2442,18 @@ export default function ManagerOnboardingWizard() {
                               title: "Equipment Listing Created",
                               description: "You can add more listings from your dashboard later.",
                             });
+                            // Reload existing equipment listings
+                            const refreshResponse = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
+                              credentials: "include",
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                              },
+                            });
+                            if (refreshResponse.ok) {
+                              const refreshData = await refreshResponse.json();
+                              setExistingEquipmentListings(Array.isArray(refreshData) ? refreshData : []);
+                            }
                             // Reset form
                             setEquipmentFormData({
                               category: 'cooking',
@@ -1923,6 +2479,7 @@ export default function ManagerOnboardingWizard() {
                         <Plus className="h-4 w-4 mr-2" />
                         Add Equipment Listing
                       </Button>
+                      </div>
                     </div>
                   )}
 
@@ -2039,28 +2596,49 @@ export default function ManagerOnboardingWizard() {
           )}
         </div>
 
-        </div>
-
         {/* Actions */}
         <div className="bg-gradient-to-br from-[#FFE8DD]/30 to-white border-t border-rose-200/50 px-6 py-4 rounded-b-lg">
           <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              onClick={handleSkip}
-              disabled={completeOnboardingMutation.isPending}
-              className="border-gray-300 hover:bg-gray-100"
-            >
-              Skip for Now
-            </Button>
-            <div className="flex gap-3">
-              {currentStep > 0 && (
-                <Button variant="outline" onClick={handleBack} className="border-gray-300 hover:bg-gray-100">
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Back
-                </Button>
-              )}
+            {currentStep === 6 ? (
               <Button
-                onClick={handleNext}
+                variant="outline"
+                onClick={() => setIsOpen(false)}
+                disabled={completeOnboardingMutation.isPending}
+                className="border-gray-300 hover:bg-gray-100"
+              >
+                Close
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleSkip}
+                disabled={completeOnboardingMutation.isPending}
+                className="border-gray-300 hover:bg-gray-100"
+              >
+                Skip for Now
+              </Button>
+            )}
+            <div className="flex gap-3">
+              {(() => {
+                const currentVisibleIndex = getVisibleIndex(currentStep);
+                const hasPreviousStep = currentVisibleIndex > 0;
+                return hasPreviousStep && (
+                  <Button variant="outline" onClick={handleBack} className="border-gray-300 hover:bg-gray-100">
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Back
+                  </Button>
+                );
+              })()}
+              <Button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (currentStep === 6) {
+                    handleCompleteSetup();
+                  } else {
+                    handleNext();
+                  }
+                }}
                 disabled={
                   updateLocationMutation.isPending ||
                   uploadLicenseMutation.isPending ||
@@ -2068,29 +2646,41 @@ export default function ManagerOnboardingWizard() {
                 }
                 className="bg-gradient-to-r from-[#F51042] to-rose-500 hover:from-rose-500 hover:to-[#F51042] text-white shadow-lg shadow-[#F51042]/30 hover:shadow-xl hover:shadow-[#F51042]/40 transition-all duration-200 px-6"
               >
-                {currentStep === steps.length ? (
-                  <>
-                    {completeOnboardingMutation.isPending ? (
+                {(() => {
+                  const currentVisibleIndex = getVisibleIndex(currentStep);
+                  const finalVisibleIndex = visibleSteps.length - 1;
+                  // Step 6 is always the final step, regardless of visibleSteps
+                  const isFinalStep = currentStep === 6 || currentVisibleIndex === finalVisibleIndex;
+                  
+                  if (isFinalStep) {
+                    return (
                       <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Completing...
+                        {completeOnboardingMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Completing...
+                          </>
+                        ) : (
+                          <>
+                            Complete Setup
+                            <CheckCircle className="h-4 w-4 ml-2" />
+                          </>
+                        )}
                       </>
-                    ) : (
+                    );
+                  } else {
+                    return (
                       <>
-                        Complete Setup
-                        <CheckCircle className="h-4 w-4 ml-2" />
+                        {currentStep === 0 && !hasExistingLocation ? "Get Started" : "Next"}
+                        <ChevronRight className="h-4 w-4 ml-1" />
                       </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {currentStep === 0 ? "Get Started" : "Next"}
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </>
-                )}
+                    );
+                  }
+                })()}
               </Button>
             </div>
           </div>
+        </div>
         </div>
       </DialogContent>
     </Dialog>

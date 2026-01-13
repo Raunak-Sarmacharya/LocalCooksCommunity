@@ -3648,6 +3648,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get kitchens for a location (manager)
+  
+  // ===================================
+  // MANAGER ONBOARDING ENDPOINTS
+  // ===================================
+
+  // Manager: Track onboarding step completion
+  app.post("/api/manager/onboarding/step", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const { stepId } = req.body;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+
+      if (stepId === undefined || stepId === null) {
+        return res.status(400).json({ error: "stepId is required" });
+      }
+
+      // Get current steps completed
+      const result = await pool.query(
+        'SELECT manager_onboarding_steps_completed FROM users WHERE id = $1',
+        [user.id]
+      );
+      
+      const currentSteps = result.rows[0]?.manager_onboarding_steps_completed || {};
+      const updatedSteps = {
+        ...currentSteps,
+        [`step_${stepId}`]: true
+      };
+
+      // Update steps completed
+      await pool.query(
+        `UPDATE users 
+         SET manager_onboarding_steps_completed = $1 
+         WHERE id = $2`,
+        [JSON.stringify(updatedSteps), user.id]
+      );
+
+      res.json({ success: true, stepsCompleted: updatedSteps });
+    } catch (error: any) {
+      console.error("Error tracking onboarding step:", error);
+      res.status(500).json({ error: error.message || "Failed to track step" });
+    }
+  });
+
+  // Manager: Complete onboarding
+  app.post("/api/manager/complete-onboarding", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
+      const user = req.neonUser!;
+
+      const { skipped } = req.body;
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+
+      // Update user onboarding status
+      await pool.query(
+        `UPDATE users 
+         SET manager_onboarding_completed = $1, 
+             manager_onboarding_skipped = $2 
+         WHERE id = $3`,
+        [!skipped, !!skipped, user.id]
+      );
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error completing onboarding:", error);
+      res.status(500).json({ error: error.message || "Failed to complete onboarding" });
+    }
+  });
+
   // ===================================
   // STRIPE CONNECT ENDPOINTS FOR MANAGERS
   // ===================================
