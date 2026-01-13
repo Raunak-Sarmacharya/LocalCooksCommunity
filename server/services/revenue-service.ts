@@ -353,11 +353,14 @@ export async function getRevenueMetrics(
       const totalServiceFee = pendingServiceFee + completedServiceFee;
       // Manager revenue = total_price - service_fee (total_price already includes service_fee)
       const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
+      // Deposited manager revenue = only from paid bookings (succeeded transactions)
+      const depositedManagerRevenue = allCompletedPayments - completedServiceFee;
       
       return {
         totalRevenue: totalRevenueWithAllPayments || 0,
         platformFee: totalServiceFee || 0,
         managerRevenue: managerRevenue || 0,
+        depositedManagerRevenue: depositedManagerRevenue || 0,
         pendingPayments: allPendingPayments,
         completedPayments: allCompletedPayments, // Show ALL completed payments, not just in date range
         averageBookingValue: 0,
@@ -429,11 +432,14 @@ export async function getRevenueMetrics(
     
     // Manager revenue = total_price - service_fee (total_price already includes service_fee)
     const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
+    // Deposited manager revenue = only from paid bookings (succeeded transactions)
+    const depositedManagerRevenue = allCompletedPayments - completedServiceFee;
 
     return {
       totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : (totalRevenueWithAllPayments || 0),
       platformFee: isNaN(totalServiceFee) ? 0 : (totalServiceFee || 0),
       managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
+      depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : (depositedManagerRevenue || 0),
       pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
       completedPayments: allCompletedPayments, // Use ALL completed payments, not just those in date range
       averageBookingValue: row.avg_booking_value 
@@ -901,13 +907,6 @@ export async function getCompleteRevenueMetrics(
     // Manager revenue = total_price - service_fee (total_price already includes service_fee)
     const managerRevenue = totalRevenue - platformFee;
     
-    // Deposited manager revenue = only from paid bookings (succeeded transactions)
-    // Calculate from completed payments minus platform fee from paid bookings only
-    const completedPlatformFee = kitchenMetrics.platformFee * (kitchenMetrics.completedPayments / (kitchenMetrics.totalRevenue || 1));
-    const storageCompletedPlatformFee = parseNumeric(storageRow.platform_fee) * (parseNumeric(storageRow.completed_payments) / (parseNumeric(storageRow.total_revenue) || 1));
-    const equipmentCompletedPlatformFee = parseNumeric(equipmentRow.platform_fee) * (parseNumeric(equipmentRow.completed_payments) / (parseNumeric(equipmentRow.total_revenue) || 1));
-    const depositedManagerRevenue = completedPaymentsTotal - (completedPlatformFee + storageCompletedPlatformFee + equipmentCompletedPlatformFee);
-
     // Ensure all values are numbers (not NaN or undefined)
     const pendingPaymentsTotal = kitchenMetrics.pendingPayments + 
       parseNumeric(storageRow.processing_payments) + 
@@ -915,6 +914,13 @@ export async function getCompleteRevenueMetrics(
     const completedPaymentsTotal = kitchenMetrics.completedPayments + 
       parseNumeric(storageRow.completed_payments) + 
       parseNumeric(equipmentRow.completed_payments);
+    
+    // Deposited manager revenue = only from paid bookings (succeeded transactions)
+    // Calculate from completed payments minus platform fee from paid bookings only
+    const completedPlatformFee = kitchenMetrics.platformFee * (kitchenMetrics.completedPayments / (kitchenMetrics.totalRevenue || 1));
+    const storageCompletedPlatformFee = parseNumeric(storageRow.platform_fee) * (parseNumeric(storageRow.completed_payments) / (parseNumeric(storageRow.total_revenue) || 1));
+    const equipmentCompletedPlatformFee = parseNumeric(equipmentRow.platform_fee) * (parseNumeric(equipmentRow.completed_payments) / (parseNumeric(equipmentRow.total_revenue) || 1));
+    const depositedManagerRevenue = completedPaymentsTotal - (completedPlatformFee + storageCompletedPlatformFee + equipmentCompletedPlatformFee);
     const totalBookingCount = kitchenMetrics.bookingCount + 
       parseNumeric(storageRow.booking_count) + 
       parseNumeric(equipmentRow.booking_count);

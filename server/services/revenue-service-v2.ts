@@ -21,19 +21,19 @@ export async function getRevenueMetricsFromTransactions(
 ): Promise<RevenueMetrics> {
   try {
     // Build WHERE clause
-    // IMPORTANT: For revenue metrics, include ALL succeeded AND processing transactions
-    // regardless of date filters - managers need to see all their revenue (completed + processing).
+    // IMPORTANT: For revenue metrics, include succeeded AND processing transactions
     // Processing payments are payments still being processed and should be counted.
-    // Date filters are only used for display/breakdown purposes, not for total revenue calculation.
+    // Date filters are applied when provided:
+    // - For succeeded transactions: filter by paid_at date (when payment was captured)
+    // - For processing transactions: filter by created_at date (when booking was made)
+    // If no date filters are provided, all transactions are included
     // Handle NULL manager_id by joining with locations through bookings
     const params: any[] = [managerId];
     let paramIndex = 2;
 
-    // For revenue calculation, ALWAYS include:
-    // - ALL succeeded transactions (all captured payments)
-    // - ALL processing transactions (payments still being processed)
-    // Date filters don't affect total revenue - they're only for breakdown/display
-    // This ensures managers see all committed revenue (both captured and processing)
+    // For revenue calculation, include:
+    // - Succeeded transactions (all captured payments) - filtered by paid_at if date range provided
+    // - Processing transactions (payments still being processed) - filtered by created_at if date range provided
     // We'll handle the manager_id check in the main query with a JOIN
 
     if (locationId) {
@@ -121,6 +121,48 @@ export async function getRevenueMetricsFromTransactions(
     let locationFilter = '';
     if (locationId) {
       locationFilter = `AND l.id = $${paramIndex}`;
+      paramIndex++;
+    }
+    
+    // Add date filtering if provided
+    // For succeeded transactions: use paid_at date if available, otherwise use created_at (when payment was captured)
+    // For processing transactions: use created_at date (when booking was made)
+    let dateFilter = '';
+    if (startDate || endDate) {
+      const start = startDate ? (typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0]) : null;
+      const end = endDate ? (typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0]) : null;
+      
+      if (start && end) {
+        dateFilter = `AND (
+          (pt.status = 'succeeded' AND (
+            (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= $${paramIndex}::date AND DATE(pt.paid_at) <= $${paramIndex + 1}::date)
+            OR (pt.paid_at IS NULL AND DATE(pt.created_at) >= $${paramIndex}::date AND DATE(pt.created_at) <= $${paramIndex + 1}::date)
+          ))
+          OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= $${paramIndex}::date AND DATE(pt.created_at) <= $${paramIndex + 1}::date)
+        )`;
+        params.push(start, end);
+        paramIndex += 2;
+      } else if (start) {
+        dateFilter = `AND (
+          (pt.status = 'succeeded' AND (
+            (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= $${paramIndex}::date)
+            OR (pt.paid_at IS NULL AND DATE(pt.created_at) >= $${paramIndex}::date)
+          ))
+          OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= $${paramIndex}::date)
+        )`;
+        params.push(start);
+        paramIndex++;
+      } else if (end) {
+        dateFilter = `AND (
+          (pt.status = 'succeeded' AND (
+            (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) <= $${paramIndex}::date)
+            OR (pt.paid_at IS NULL AND DATE(pt.created_at) <= $${paramIndex}::date)
+          ))
+          OR (pt.status != 'succeeded' AND DATE(pt.created_at) <= $${paramIndex}::date)
+        )`;
+        params.push(end);
+        paramIndex++;
+      }
     }
     
     const result = await dbPool.query(`
@@ -157,6 +199,7 @@ export async function getRevenueMetricsFromTransactions(
         AND (pt.status = 'succeeded' OR pt.status = 'processing')
         AND pt.booking_type IN ('kitchen', 'bundle')
         ${locationFilter}
+        ${dateFilter}
         -- Exclude kitchen transactions that are part of a bundle (to avoid double counting)
         AND NOT (
           pt.booking_type = 'kitchen' 
@@ -177,12 +220,16 @@ export async function getRevenueMetricsFromTransactions(
     // Log the actual values returned for debugging
     console.log('[Revenue Service V2] Query result:', {
       managerId,
+      startDate: startDate ? (typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0]) : 'none',
+      endDate: endDate ? (typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0]) : 'none',
+      locationId: locationId || 'none',
       total_revenue: row.total_revenue,
       platform_fee: row.platform_fee,
       manager_revenue: row.manager_revenue,
+      deposited_manager_revenue: row.deposited_manager_revenue,
       booking_count: row.booking_count,
       completed_payments: row.completed_payments,
-      pending_payments: row.pending_payments,
+      processing_payments: row.processing_payments,
     });
 
     // Helper to parse numeric values
