@@ -561,28 +561,75 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // 🔥 Submit Application (with Firebase Auth, NO SESSIONS)
-  app.post('/api/firebase/applications', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  app.post('/api/firebase/applications', 
+    upload.fields([
+      { name: 'foodSafetyLicense', maxCount: 1 },
+      { name: 'foodEstablishmentCert', maxCount: 1 }
+    ]),
+    requireFirebaseAuthWithUser, 
+    async (req: Request, res: Response) => {
     try {
+      console.log(`📝 POST /api/firebase/applications - User ${req.neonUser!.id} submitting chef application`);
+      
+      // Handle file uploads if present
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      let foodSafetyLicenseUrl: string | undefined;
+      let foodEstablishmentCertUrl: string | undefined;
+
+      if (files) {
+        // Upload food safety license if provided
+        if (files['foodSafetyLicense']?.[0]) {
+          try {
+            foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicense'][0], req.neonUser!.id, 'documents');
+            console.log(`✅ Uploaded food safety license: ${foodSafetyLicenseUrl}`);
+          } catch (uploadError) {
+            console.error('❌ Failed to upload food safety license:', uploadError);
+          }
+        }
+        
+        // Upload food establishment cert if provided
+        if (files['foodEstablishmentCert']?.[0]) {
+          try {
+            foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCert'][0], req.neonUser!.id, 'documents');
+            console.log(`✅ Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
+          } catch (uploadError) {
+            console.error('❌ Failed to upload food establishment cert:', uploadError);
+          }
+        }
+      }
+
+      // Prepare application data from form body and uploaded files
+      const applicationData = {
+        ...req.body,
+        userId: req.neonUser!.id, // This is the Neon user ID from the middleware
+        // Use uploaded file URLs if available, otherwise use provided URLs
+        foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
+        foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || undefined,
+      };
+
+      // Set document status to pending if URLs are provided
+      if (applicationData.foodSafetyLicenseUrl) {
+        applicationData.foodSafetyLicenseStatus = "pending";
+      }
+      if (applicationData.foodEstablishmentCertUrl) {
+        applicationData.foodEstablishmentCertStatus = "pending";
+      }
+
       // Validate the request body
-      const parsedData = insertApplicationSchema.safeParse(req.body);
+      const parsedData = insertApplicationSchema.safeParse(applicationData);
 
       if (!parsedData.success) {
         const validationError = fromZodError(parsedData.error);
+        console.log('❌ Validation failed:', validationError.details);
         return res.status(400).json({
           message: "Validation error",
           errors: validationError.details
         });
       }
 
-      // Associate application with the authenticated Neon user
-      const applicationData = {
-        ...parsedData.data,
-        userId: req.neonUser!.id // This is the Neon user ID from the middleware
-      };
-
       console.log(`📝 Creating application: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
 
-      const application = await firebaseStorage.createApplication(applicationData);
+      const application = await firebaseStorage.createApplication(parsedData.data);
 
       res.json({
         success: true,
