@@ -118,29 +118,23 @@ export default function ManagerOnboardingWizard() {
     {
       id: 1,
       title: "Location & Contact",
-      description: "Set up your location details and notification preferences",
+      description: "Set up your location details, notification preferences, and kitchen license",
       icon: <Building2 className="h-6 w-6" />,
     },
     {
       id: 2,
-      title: "Kitchen License",
-      description: "Upload your kitchen license for admin approval",
-      icon: <FileText className="h-6 w-6" />,
-    },
-    {
-      id: 3,
       title: "Create Kitchen",
       description: "Set up your first kitchen space",
       icon: <Settings className="h-6 w-6" />,
     },
     {
-      id: 4,
+      id: 3,
       title: "Storage Listings",
       description: "Add storage options (optional - can add later)",
       icon: <Package className="h-6 w-6" />,
     },
     {
-      id: 5,
+      id: 4,
       title: "Equipment Listings",
       description: "Add equipment options (optional - can add later)",
       icon: <Wrench className="h-6 w-6" />,
@@ -188,15 +182,12 @@ export default function ManagerOnboardingWizard() {
     selectedLocation?.kitchenLicenseStatus !== "expired" &&
     !(selectedLocation?.kitchenLicenseExpiry && new Date(selectedLocation.kitchenLicenseExpiry) < new Date());
   
-  // Filter steps based on location existence and license status
+  // Filter steps based on location existence
   // If location exists:
-  //   - Skip Welcome (0) and Location & Contact (1)
-  //   - Only skip Kitchen License (2) if license is already uploaded
-  //   - Always show Create Kitchen (3), Storage (4), Equipment (5)
+  //   - Skip Welcome (0) and Location & Contact (1) - but allow editing location/license
+  //   - Always show Create Kitchen (2), Storage (3), Equipment (4)
   const visibleSteps = hasExistingLocation 
-    ? hasLicense
-      ? steps.filter(step => step.id >= 3) // Skip Welcome, Location & Contact, and License (already uploaded)
-      : steps.filter(step => step.id === 0 || step.id >= 2) // Skip Welcome and Location & Contact, but show License
+    ? steps.filter(step => step.id >= 2) // Skip Welcome and Location & Contact, show Create Kitchen onwards
     : steps; // Show all steps for new locations
   
   // Helper function to map visible step index to actual step ID
@@ -405,8 +396,8 @@ export default function ManagerOnboardingWizard() {
           setLocationAddress(loc.address || "");
           setNotificationEmail(loc.notificationEmail || "");
           setNotificationPhone(loc.notificationPhone || "");
-          // Start from step 3 (Create Kitchen) since location exists
-          setCurrentStep(3);
+          // Start from step 2 (Create Kitchen) since location exists
+          setCurrentStep(2);
         } else if (locations.length === 1) {
           // No locations exist or only one location - select it
           setSelectedLocationId(locations[0].id);
@@ -417,14 +408,9 @@ export default function ManagerOnboardingWizard() {
           setNotificationPhone(loc.notificationPhone || "");
         }
         
-        // If location exists, start from appropriate step based on license status
+        // If location exists, start from step 2 (Create Kitchen)
         if (hasExistingLocation && currentStep < 2) {
-          const loc = locations.find(l => l.id === selectedLocationId) || locations[0];
-          if (loc && (!loc.kitchenLicenseUrl || loc.kitchenLicenseStatus === "rejected")) {
-            setCurrentStep(2); // Go to license step if missing or rejected
-          } else {
-            setCurrentStep(3); // Go to kitchen step if license exists
-          }
+          setCurrentStep(2); // Go to Create Kitchen step
         }
       }
     }
@@ -852,14 +838,12 @@ export default function ManagerOnboardingWizard() {
     if (hasExistingLocation) {
       // Mark step 1 as completed (Location & Contact) since location exists
       if (!completedSteps['step_1']) await trackStepCompletion(1);
-      // Only mark step 2 (License) as completed if license is already uploaded
-      if (hasLicense && !completedSteps['step_2']) await trackStepCompletion(2);
     }
 
     if (currentStep === 1) {
       // Validate basic info - only for new locations
       if (hasExistingLocation) {
-        // Skip to license step if location exists but no license
+        // Location exists, go to Create Kitchen step
         setCurrentStep(2);
         return;
       }
@@ -873,26 +857,8 @@ export default function ManagerOnboardingWizard() {
         return;
       }
 
-      // Update location with basic info and notification settings
-      try {
-        const updatedLocation = await updateLocationMutation.mutateAsync({
-          name: locationName,
-          address: locationAddress,
-          notificationEmail,
-          notificationPhone,
-        });
-        await trackStepCompletion(1);
-        // Always go to license step (2) after creating/updating location
-        setCurrentStep(2);
-      } catch (error: any) {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to save location information",
-          variant: "destructive",
-        });
-      }
-    } else if (currentStep === 2) {
-      // Upload license if provided
+      // Handle license upload if provided
+      let licenseUrl = null;
       if (licenseFile) {
         // Validate expiration date is provided when uploading a file
         if (!licenseExpiryDate) {
@@ -904,19 +870,7 @@ export default function ManagerOnboardingWizard() {
           return;
         }
         try {
-          const licenseUrl = await uploadLicenseMutation.mutateAsync(licenseFile);
-          await updateLocationMutation.mutateAsync({
-            kitchenLicenseUrl: licenseUrl,
-            kitchenLicenseStatus: "pending",
-            kitchenLicenseExpiry: licenseExpiryDate,
-          });
-          toast({
-            title: "License Uploaded",
-            description: "Your license has been submitted for admin approval.",
-          });
-          // Reset license fields after successful upload
-          setLicenseFile(null);
-          setLicenseExpiryDate('');
+          licenseUrl = await uploadLicenseMutation.mutateAsync(licenseFile);
         } catch (error: any) {
           toast({
             title: "Upload Failed",
@@ -925,27 +879,57 @@ export default function ManagerOnboardingWizard() {
           });
           return;
         }
-      } else if (licenseExpiryDate && !licenseFile) {
-        // If expiration date is entered but no file, just save the expiration date
-        try {
-          await updateLocationMutation.mutateAsync({
-            kitchenLicenseExpiry: licenseExpiryDate,
-          });
-        } catch (error: any) {
-          toast({
-            title: "Error",
-            description: error.message || "Failed to save expiration date",
-            variant: "destructive",
-          });
-          return;
-        }
       }
-      await trackStepCompletion(2);
-      setCurrentStep(3);
-    } else if (currentStep === 3) {
+
+      // Update location with basic info, notification settings, and license (if provided)
+      try {
+        const updateData: any = {
+          name: locationName,
+          address: locationAddress,
+          notificationEmail,
+          notificationPhone,
+        };
+
+        if (licenseUrl) {
+          updateData.kitchenLicenseUrl = licenseUrl;
+          updateData.kitchenLicenseStatus = "pending";
+          updateData.kitchenLicenseExpiry = licenseExpiryDate;
+        } else if (licenseExpiryDate && !licenseFile) {
+          // If expiration date is entered but no file, just save the expiration date
+          updateData.kitchenLicenseExpiry = licenseExpiryDate;
+        }
+
+        await updateLocationMutation.mutateAsync(updateData);
+        
+        if (licenseUrl) {
+          toast({
+            title: "Location & License Saved",
+            description: "Your location information and license have been saved.",
+          });
+          // Reset license fields after successful upload
+          setLicenseFile(null);
+          setLicenseExpiryDate('');
+        } else {
+          toast({
+            title: "Location Saved",
+            description: "Your location information has been saved.",
+          });
+        }
+        
+        await trackStepCompletion(1);
+        // Go to Create Kitchen step (2) after creating/updating location
+        setCurrentStep(2);
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to save location information",
+          variant: "destructive",
+        });
+      }
+    } else if (currentStep === 2) {
       // Kitchen creation step - can skip if kitchen already exists
       if (kitchens.length > 0 || selectedKitchenId) {
-        setCurrentStep(4);
+        setCurrentStep(3);
       } else if (!showCreateKitchen) {
         // If no kitchen exists and not showing create form, prompt to create
         toast({
@@ -956,32 +940,32 @@ export default function ManagerOnboardingWizard() {
         return;
       } else {
         // Kitchen form is showing, move to next step
-        await trackStepCompletion(3);
-        setCurrentStep(4);
+        await trackStepCompletion(2); // Step 2 is Create Kitchen
+        setCurrentStep(3);
       }
-    } else if (currentStep === 4) {
+    } else if (currentStep === 3) {
       // Storage listings step - optional, can skip
-      await trackStepCompletion(4);
+      await trackStepCompletion(3); // Step 3 is Storage Listings
+      setCurrentStep(4);
+    } else if (currentStep === 4) {
+      // Equipment listings step - optional, can skip
+      await trackStepCompletion(4); // Step 4 is Equipment Listings (final step)
       setCurrentStep(5);
     } else if (currentStep === 5) {
-      // Equipment listings step - optional, can skip
-      await trackStepCompletion(5);
-      setCurrentStep(6);
-    } else if (currentStep === 6) {
       // Complete onboarding - this should not be reached as we use handleCompleteSetup
       // But keep it as fallback
       try {
         await completeOnboardingMutation.mutateAsync(false);
       } catch (error: any) {
         // Error is already handled by onError in the mutation
-        console.error("Error in handleNext for step 6:", error);
+        console.error("Error in handleNext for step 5:", error);
       }
     }
   };
 
-  // Dedicated handler for completing setup on step 6
+  // Dedicated handler for completing setup on step 5
   const handleCompleteSetup = async () => {
-    if (currentStep === 6 && !completeOnboardingMutation.isPending) {
+    if (currentStep === 5 && !completeOnboardingMutation.isPending) {
       try {
         await completeOnboardingMutation.mutateAsync(false);
       } catch (error: any) {
@@ -992,8 +976,8 @@ export default function ManagerOnboardingWizard() {
   };
 
   const handleSkip = async () => {
-    // If on step 6 (final step), complete onboarding with skipped flag
-    if (currentStep === 6) {
+    // If on step 5 (final step), complete onboarding with skipped flag
+    if (currentStep === 5) {
       if (
         window.confirm(
           "Are you sure you want to skip onboarding? You can complete it later, but bookings will be disabled until your license is approved."
@@ -1004,8 +988,8 @@ export default function ManagerOnboardingWizard() {
       return;
     }
 
-    // If on the final visible step (but not step 6), complete onboarding
-    const finalStepId = visibleSteps.length > 0 ? visibleSteps[visibleSteps.length - 1].id : 6;
+    // If on the final visible step (but not step 5), complete onboarding
+    const finalStepId = visibleSteps.length > 0 ? visibleSteps[visibleSteps.length - 1].id : 4;
     if (currentStep === finalStepId) {
       if (
         window.confirm(
@@ -1197,23 +1181,13 @@ export default function ManagerOnboardingWizard() {
                       </div>
                       <div className="flex-1">
                         <h4 className="font-bold text-gray-900 mb-1">Location & Contact Info</h4>
-                        <p className="text-sm text-gray-600">Tell us about your kitchen location and how to reach you</p>
+                        <p className="text-sm text-gray-600">Tell us about your kitchen location, contact info, and upload your license (optional)</p>
                       </div>
                     </div>
                     
                     <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-rose-100 hover:shadow-md hover:border-rose-200 transition-all duration-200 group">
                       <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-rose-500 flex items-center justify-center text-white font-bold shadow-lg shadow-[#F51042]/30 group-hover:scale-110 transition-transform">
                         2
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-gray-900 mb-1">Kitchen License</h4>
-                        <p className="text-sm text-gray-600">Upload your license (required for bookings to be activated)</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-rose-100 hover:shadow-md hover:border-rose-200 transition-all duration-200 group">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-[#F51042] to-rose-500 flex items-center justify-center text-white font-bold shadow-lg shadow-[#F51042]/30 group-hover:scale-110 transition-transform">
-                        3
                       </div>
                       <div className="flex-1">
                         <h4 className="font-bold text-gray-900 mb-1">Create Your Kitchen</h4>
@@ -1223,7 +1197,7 @@ export default function ManagerOnboardingWizard() {
                     
                     <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 hover:shadow-md transition-all duration-200 group">
                       <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-gray-400 to-gray-500 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
-                        4
+                        3
                       </div>
                       <div className="flex-1">
                         <h4 className="font-bold text-gray-900 mb-1">Storage Listings <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
@@ -1233,7 +1207,7 @@ export default function ManagerOnboardingWizard() {
                     
                     <div className="flex items-start gap-4 p-4 bg-white/90 backdrop-blur-sm rounded-xl border border-gray-200 hover:shadow-md transition-all duration-200 group">
                       <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-gray-400 to-gray-500 flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform">
-                        5
+                        4
                       </div>
                       <div className="flex-1">
                         <h4 className="font-bold text-gray-900 mb-1">Equipment Listings <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
@@ -1361,302 +1335,55 @@ export default function ManagerOnboardingWizard() {
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
 
-          {currentStep === 2 && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold mb-1">Kitchen License</h3>
-                <p className="text-sm text-gray-600">
-                  Upload your kitchen operating license for admin approval. This is required to activate bookings.
-                </p>
-              </div>
-              
-              <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-200/50 rounded-xl p-5 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-amber-100 rounded-lg">
-                    <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-amber-900 font-bold mb-2">
-                      License Required for Booking Activation
-                    </p>
-                    <p className="text-xs text-amber-800 mb-3 leading-relaxed">
-                      Your kitchen license must be approved by an admin before bookings can be activated. 
-                      You can skip this step and upload later, but bookings will remain disabled until approved.
-                    </p>
-                    <div className="bg-white/60 backdrop-blur-sm rounded-lg px-3 py-2 border border-amber-200">
-                      <p className="text-xs text-amber-900">
-                        <strong className="font-semibold">Accepted formats:</strong> PDF, JPG, PNG (max 10MB)
+                <div className="border-t pt-4 mt-4">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Kitchen License (Optional)</h4>
+                  <p className="text-xs text-gray-600 mb-4">
+                    Upload your kitchen operating license for admin approval. This is required to activate bookings, but you can upload it later.
+                  </p>
+                  
+                  {selectedLocation?.kitchenLicenseUrl && 
+                   selectedLocation?.kitchenLicenseStatus && 
+                   selectedLocation?.kitchenLicenseStatus !== "rejected" && 
+                   selectedLocation?.kitchenLicenseStatus !== "expired" ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 text-green-800 mb-2">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="font-medium">License Uploaded</span>
+                      </div>
+                      <p className="text-sm text-green-700 mb-2">
+                        Status: {selectedLocation.kitchenLicenseStatus || "pending"}
                       </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {selectedLocation?.kitchenLicenseUrl && 
-                 selectedLocation?.kitchenLicenseStatus && 
-                 selectedLocation?.kitchenLicenseStatus !== "rejected" && 
-                 selectedLocation?.kitchenLicenseStatus !== "expired" ? (
-                  (() => {
-                    const isLicenseExpired = selectedLocation.kitchenLicenseExpiry 
-                      ? new Date(selectedLocation.kitchenLicenseExpiry) < new Date()
-                      : false;
-                    const isApprovedAndNotExpired = selectedLocation.kitchenLicenseStatus === "approved" && !isLicenseExpired;
-                    
-                    return (
-                      <div className={`border rounded-lg p-4 ${
-                        isApprovedAndNotExpired
-                          ? "bg-green-50 border-green-200" 
-                          : "bg-yellow-50 border-yellow-200"
-                      }`}>
-                        <div className={`flex items-center gap-2 ${
-                          isApprovedAndNotExpired
-                            ? "text-green-800" 
-                            : "text-yellow-800"
-                        }`}>
-                          <CheckCircle className="h-5 w-5" />
-                          <span className="font-medium">License Uploaded</span>
-                        </div>
-                        <p className={`text-sm mt-1 ${
-                          isApprovedAndNotExpired
-                            ? "text-green-700" 
-                            : "text-yellow-700"
-                        }`}>
-                          Status: {selectedLocation.kitchenLicenseStatus || "pending"}
+                      {selectedLocation.kitchenLicenseExpiry && (
+                        <p className="text-sm text-green-700">
+                          Expiration Date: {new Date(selectedLocation.kitchenLicenseExpiry).toLocaleDateString()}
                         </p>
-                        
-                        {/* Show uploaded license file */}
-                        {selectedLocation.kitchenLicenseUrl && (
-                          <div className="mt-3 flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-gray-600" />
-                            <a
-                              href={selectedLocation.kitchenLicenseUrl.includes('r2.cloudflarestorage.com') 
-                                ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedLocation.kitchenLicenseUrl)}`
-                                : selectedLocation.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${selectedLocation.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-[#F51042] hover:underline"
-                            >
-                              View uploaded license
-                            </a>
-                          </div>
-                        )}
-                        
-                        {/* Show expiration date */}
-                        {selectedLocation.kitchenLicenseExpiry && (
-                          <p className={`text-sm mt-2 ${
-                            isApprovedAndNotExpired
-                              ? "text-green-700" 
-                              : "text-yellow-700"
-                          }`}>
-                            Expiration Date: {new Date(selectedLocation.kitchenLicenseExpiry).toLocaleDateString()}
-                            {isLicenseExpired ? (
-                              <span className="ml-2 font-semibold text-red-600">
-                                (Expired {Math.floor((new Date().getTime() - new Date(selectedLocation.kitchenLicenseExpiry).getTime()) / (1000 * 60 * 60 * 24))} days ago)
-                              </span>
-                            ) : selectedLocation.kitchenLicenseStatus === "approved" ? (
-                              <span className="ml-2 text-green-600">
-                                (Expires in {Math.ceil((new Date(selectedLocation.kitchenLicenseExpiry).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days)
-                              </span>
-                            ) : null}
-                          </p>
-                        )}
-                        
-                        {isApprovedAndNotExpired && (
-                          <p className="text-xs text-green-600 mt-2">
-                            ✓ Your license has been approved! Bookings are now active.
-                          </p>
-                        )}
-                        {selectedLocation.kitchenLicenseStatus === "pending" && (
-                          <p className="text-xs text-yellow-600 mt-2">
-                            ⏳ Your license is pending admin approval. Bookings will be activated once approved.
-                          </p>
-                        )}
-                        
-                        {/* Only show upload option if expired */}
-                        {isLicenseExpired && (
-                          <div className="mt-4 pt-4 border-t border-gray-200">
-                            <p className="text-sm text-red-700 mb-3">
-                              ⚠️ Your license has expired. Please upload a new license to continue bookings.
-                            </p>
-                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                              <input
-                                type="file"
-                                id="expired-license-upload"
-                                accept=".pdf,.jpg,.jpeg,.png"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    if (file.size > 10 * 1024 * 1024) {
-                                      toast({
-                                        title: "File Too Large",
-                                        description: "Please upload a file smaller than 10MB",
-                                        variant: "destructive",
-                                      });
-                                      return;
-                                    }
-                                    setLicenseFile(file);
-                                  }
-                                }}
-                                className="hidden"
-                              />
-                              <label 
-                                htmlFor="expired-license-upload" 
-                                className="cursor-pointer block text-center"
-                              >
-                                <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium">
-                                  Click to upload new license
-                                </span>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  PDF, JPG, or PNG (max 10MB)
-                                </p>
-                              </label>
-                              {licenseFile && (
-                                <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-700">
-                                  <FileText className="h-4 w-4" />
-                                  <span>{licenseFile.name}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="mt-4">
-                              <Label htmlFor="expired-license-expiry-date">
-                                License Expiration Date <span className="text-red-500">*</span>
-                              </Label>
-                              <Input
-                                id="expired-license-expiry-date"
-                                type="date"
-                                value={licenseExpiryDate}
-                                onChange={(e) => setLicenseExpiryDate(e.target.value)}
-                                min={new Date().toISOString().split('T')[0]}
-                                className="mt-1"
-                                required
-                              />
-                              <p className="text-xs text-gray-500 mt-1">
-                                Enter the expiration date of your new kitchen license
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()
-                ) : selectedLocation?.kitchenLicenseStatus === "rejected" || selectedLocation?.kitchenLicenseStatus === "expired" ? (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-center gap-2 text-red-800 mb-2">
-                      <AlertCircle className="h-5 w-5" />
-                      <span className="font-medium">
-                        {selectedLocation.kitchenLicenseStatus === "expired" ? "License Expired" : "License Rejected"}
-                      </span>
-                    </div>
-                    {selectedLocation.kitchenLicenseFeedback && (
-                      <p className="text-sm text-red-700 mb-3">
-                        <strong>Admin Feedback:</strong> {selectedLocation.kitchenLicenseFeedback}
-                      </p>
-                    )}
-                    {selectedLocation.kitchenLicenseExpiry && selectedLocation.kitchenLicenseStatus === "expired" && (
-                      <p className="text-sm text-red-700 mb-2">
-                        Expired on: {new Date(selectedLocation.kitchenLicenseExpiry).toLocaleDateString()}
-                        <span className="ml-2 font-semibold">
-                          ({Math.floor((new Date().getTime() - new Date(selectedLocation.kitchenLicenseExpiry).getTime()) / (1000 * 60 * 60 * 24))} days ago)
-                        </span>
-                      </p>
-                    )}
-                    {/* Show uploaded license file if exists */}
-                    {selectedLocation.kitchenLicenseUrl && (
-                      <div className="mb-3 flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-gray-600" />
-                        <a
-                          href={selectedLocation.kitchenLicenseUrl.includes('r2.cloudflarestorage.com') 
-                            ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedLocation.kitchenLicenseUrl)}`
-                            : selectedLocation.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${selectedLocation.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-[#F51042] hover:underline"
-                        >
-                          View current license
-                        </a>
-                      </div>
-                    )}
-                    <p className="text-sm text-red-700 mb-3">
-                      Please upload a new license document to resubmit for approval.
-                    </p>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-                      <div className="text-center">
-                        <Upload className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                        <input
-                          type="file"
-                          id="rejected-license-upload"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              if (file.size > 10 * 1024 * 1024) {
-                                toast({
-                                  title: "File Too Large",
-                                  description: "Please upload a file smaller than 10MB",
-                                  variant: "destructive",
-                                });
-                                return;
-                              }
-                              setLicenseFile(file);
-                            }
-                          }}
-                          className="hidden"
-                        />
-                        <label 
-                          htmlFor="rejected-license-upload" 
-                          className="cursor-pointer"
-                        >
-                          <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium mb-2">
-                            Click to upload new license
-                          </span>
-                          <p className="text-xs text-gray-500">
-                            PDF, JPG, or PNG (max 10MB)
-                          </p>
-                        </label>
-                        {licenseFile && (
-                          <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-700">
-                            <FileText className="h-4 w-4" />
-                            <span>{licenseFile.name}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {/* License Expiration Date for rejected license re-upload */}
-                    <div className="mt-4">
-                      <Label htmlFor="rejected-license-expiry-date">
-                        License Expiration Date <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="rejected-license-expiry-date"
-                        type="date"
-                        value={licenseExpiryDate}
-                        onChange={(e) => setLicenseExpiryDate(e.target.value)}
-                        min={new Date().toISOString().split('T')[0]}
-                        className="mt-1"
-                        required
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Enter the expiration date of your kitchen license
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 bg-gradient-to-br from-gray-50 to-white hover:border-rose-400 hover:bg-rose-50/30 transition-all duration-200 cursor-pointer group">
-                      <div className="text-center">
-                        <div className="mb-4 flex justify-center">
-                          <div className="p-4 bg-rose-100 rounded-2xl group-hover:bg-rose-200 group-hover:scale-110 transition-all duration-200">
-                            <Upload className="h-10 w-10 text-[#F51042]" />
-                          </div>
+                      )}
+                      {selectedLocation.kitchenLicenseUrl && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-gray-600" />
+                          <a
+                            href={selectedLocation.kitchenLicenseUrl.includes('r2.cloudflarestorage.com') 
+                              ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedLocation.kitchenLicenseUrl)}`
+                              : selectedLocation.kitchenLicenseUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-[#F51042] hover:underline"
+                          >
+                            View uploaded license
+                          </a>
                         </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="license-file">Kitchen License File</Label>
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 mt-1">
                         <input
                           type="file"
-                          id="onboarding-license-upload"
+                          id="license-file"
                           accept=".pdf,.jpg,.jpeg,.png"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
@@ -1675,29 +1402,46 @@ export default function ManagerOnboardingWizard() {
                           className="hidden"
                         />
                         <label 
-                          htmlFor="onboarding-license-upload" 
-                          className="cursor-pointer block"
+                          htmlFor="license-file" 
+                          className="cursor-pointer block text-center"
                         >
-                          <span className="text-base text-[#F51042] hover:text-rose-600 font-semibold block mb-3">
-                            Click to upload license
-                          </span>
-                          <p className="text-sm text-gray-500">
-                            PDF, JPG, or PNG (max 10MB)
-                          </p>
+                          {licenseFile ? (
+                            <div className="flex items-center justify-center gap-2 text-sm text-gray-700">
+                              <FileText className="h-4 w-4" />
+                              <span>{licenseFile.name}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLicenseFile(null);
+                                  const input = document.getElementById('license-file') as HTMLInputElement;
+                                  if (input) input.value = '';
+                                }}
+                                className="ml-2 h-6 px-2"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                              <span className="text-sm text-[#F51042] hover:text-rose-600 font-medium">
+                                Click to upload license
+                              </span>
+                              <p className="text-xs text-gray-500 mt-1">
+                                PDF, JPG, or PNG (max 10MB)
+                              </p>
+                            </>
+                          )}
                         </label>
-                        {licenseFile && (
-                          <div className="mt-4 flex items-center justify-center gap-2 text-sm font-medium text-gray-700 bg-white rounded-lg px-4 py-2 border border-gray-200 shadow-sm">
-                            <FileText className="h-4 w-4 text-[#F51042]" />
-                            <span>{licenseFile.name}</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                     
-                    {/* License Expiration Date - always visible as a proper field */}
                     <div>
                       <Label htmlFor="license-expiry-date">
-                        License Expiration Date <span className="text-red-500">*</span>
+                        License Expiration Date {licenseFile && <span className="text-red-500">*</span>}
                       </Label>
                       <Input
                         id="license-expiry-date"
@@ -1706,19 +1450,20 @@ export default function ManagerOnboardingWizard() {
                         onChange={(e) => setLicenseExpiryDate(e.target.value)}
                         min={new Date().toISOString().split('T')[0]}
                         className="mt-1"
-                        required
                       />
                       <p className="text-xs text-gray-500 mt-1">
-                        Enter the expiration date of your kitchen license
+                        {licenseFile 
+                          ? "Required when uploading a license file"
+                          : "Optional - enter if you know the expiration date"}
                       </p>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           )}
 
-          {currentStep === 3 && (
+          {currentStep === 2 && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">
@@ -1957,7 +1702,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 3 && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Storage Listings (Optional)</h3>
@@ -2314,7 +2059,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 5 && (
+          {currentStep === 4 && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Equipment Listings (Optional)</h3>
@@ -2768,7 +2513,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 6 && (
+          {currentStep === 5 && (
             <div className="space-y-4">
               <div className="text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
@@ -2874,7 +2619,7 @@ export default function ManagerOnboardingWizard() {
         {/* Actions */}
         <div className="bg-gradient-to-br from-[#FFE8DD]/30 to-white border-t border-rose-200/50 px-6 py-4 rounded-b-lg">
           <div className="flex items-center justify-between">
-            {currentStep === 6 ? (
+            {currentStep === 5 ? (
               <Button
                 variant="outline"
                 onClick={() => setIsOpen(false)}
@@ -2908,7 +2653,7 @@ export default function ManagerOnboardingWizard() {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (currentStep === 6) {
+                  if (currentStep === 5) {
                     handleCompleteSetup();
                   } else {
                     handleNext();
@@ -2924,8 +2669,8 @@ export default function ManagerOnboardingWizard() {
                 {(() => {
                   const currentVisibleIndex = getVisibleIndex(currentStep);
                   const finalVisibleIndex = visibleSteps.length - 1;
-                  // Step 6 is always the final step, regardless of visibleSteps
-                  const isFinalStep = currentStep === 6 || currentVisibleIndex === finalVisibleIndex;
+                  // Step 5 is always the final step, regardless of visibleSteps
+                  const isFinalStep = currentStep === 5 || currentVisibleIndex === finalVisibleIndex;
                   
                   if (isFinalStep) {
                     return (

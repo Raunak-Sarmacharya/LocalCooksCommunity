@@ -2076,9 +2076,9 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="flex items-start gap-3">
                   <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Setup & Onboarding</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Onboarding Wizard</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Complete or update your location setup, upload kitchen license, and configure your preferences.
+                      Complete or update your location setup, upload kitchen license, and configure your preferences using the onboarding wizard.
                     </p>
                   </div>
                 </div>
