@@ -244,6 +244,29 @@ async function createBookingDateTime(...args) {
     content = content.replace(/from\s+["']shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
     content = content.replace(/from\s+["']shared\/([^"']+)\.ts["']/g, 'from "../shared/$1.js"');
     
+    // Remove TypeScript type annotations for all files (not just email.ts)
+    // Remove parameter type annotations
+    content = content.replace(/:\s*string\s*(?=[,;=\)\n])/g, '');
+    content = content.replace(/:\s*number\s*(?=[,;=\)\n])/g, '');
+    content = content.replace(/:\s*boolean\s*(?=[,;=\)\n])/g, '');
+    content = content.replace(/:\s*Date\s*(?=[,;=\)\n])/g, '');
+    content = content.replace(/:\s*null\s*(?=[,;=\)\n])/g, '');
+    content = content.replace(/:\s*undefined\s*(?=[,;=\)\n])/g, '');
+    // Remove return type annotations
+    content = content.replace(/\):\s*Promise<[^>]+>\s*\{/g, ') {');
+    content = content.replace(/\):\s*string\s*\{/g, ') {');
+    content = content.replace(/\):\s*number\s*\{/g, ') {');
+    content = content.replace(/\):\s*boolean\s*\{/g, ') {');
+    content = content.replace(/\):\s*null\s*\{/g, ') {');
+    content = content.replace(/\):\s*void\s*\{/g, ') {');
+    // Remove complex types
+    content = content.replace(/:\s*Record<[^>]+>\s*(?=[,;=\)\n])/g, '');
+    content = content.replace(/:\s*Array<[^>]+>\s*(?=[,;=\)\n])/g, '');
+    // Remove optional markers
+    content = content.replace(/\?\s*:/g, '');
+    // Remove 'as any' type assertions
+    content = content.replace(/\s+as\s+any/g, '');
+    
     // Write the modified content to the destination
     fs.writeFileSync(destPath, content);
   } else {

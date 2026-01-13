@@ -30,13 +30,13 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
   const helpSections = [
     {
       id: "setup",
-      title: "Setup Guide",
+      title: "Onboarding Wizard",
       icon: <Sparkles className="h-5 w-5" />,
       description: "Complete step-by-step guide to setting up your kitchen",
       content: (
         <div className="space-y-4">
           <p className="text-sm text-gray-700">
-            Our setup guide will walk you through everything you need to get your kitchen ready for bookings.
+            The onboarding wizard will walk you through everything you need to get your kitchen ready for bookings, including location setup, kitchen license upload, and creating your first kitchen.
           </p>
           <Button 
             onClick={() => {
@@ -47,7 +47,7 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
             className="w-full"
           >
             <BookOpen className="h-4 w-4 mr-2" />
-            Open Setup Guide
+            Open Onboarding Wizard
           </Button>
         </div>
       )

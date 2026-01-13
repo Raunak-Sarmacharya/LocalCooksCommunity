@@ -172,10 +172,39 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
       setAuthState('success');
       setShowLoadingOverlay(false);
       
-      // Give a brief moment for UI to update before redirecting
-      setTimeout(() => {
+      // For managers, ensure we redirect to manager dashboard after registration
+      // Wait a bit longer to ensure auth state is fully updated
+      setTimeout(async () => {
+        try {
+          // Verify user is authenticated and get their role
+          const { auth } = await import('@/lib/firebase');
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const token = await currentUser.getIdToken();
+            const response = await fetch('/api/user/profile', {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (response.ok) {
+              const userData = await response.json();
+              // If manager, redirect directly to manager dashboard
+              if (userData.role === 'manager') {
+                console.log('🏢 Manager registered - redirecting to manager dashboard');
+                window.location.href = '/manager/dashboard';
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error checking user role after registration:', err);
+        }
+        
+        // Fallback to onSuccess callback
         if (onSuccess) onSuccess();
-      }, 500);
+      }, 1000);
 
     } catch (e: any) {
       setShowLoadingOverlay(false);
