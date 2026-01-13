@@ -206,15 +206,15 @@ export async function getRevenueMetricsFromTransactions(
     // Total revenue = sum of all amounts charged (from query)
     const totalRevenue = parseNumeric(row.total_revenue);
     
-    // Manager revenue MUST ALWAYS be calculated as: total_revenue - platform_fee
-    // This ensures accuracy and consistency - manager gets what's left after platform fee
-    const finalManagerRevenue = Math.max(0, totalRevenue - platformFee);
+    // Use manager_revenue directly from database (source of truth from Stripe)
+    // Don't recalculate - the database value is accurate and comes from Stripe webhooks
+    const finalManagerRevenue = managerRevenue;
 
     // Ensure all values are numbers (not NaN or undefined)
     const metrics = {
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
-      managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue, // Always: total - platform fee
+      managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue, // Use database value from Stripe
       pendingPayments: isNaN(pendingPayments) ? 0 : pendingPayments,
       completedPayments: isNaN(completedPayments) ? 0 : completedPayments,
       averageBookingValue: isNaN(averageBookingValue) ? 0 : averageBookingValue,
