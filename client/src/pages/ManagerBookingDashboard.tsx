@@ -63,6 +63,22 @@ interface Kitchen {
   isActive: boolean;
 }
 
+interface StorageListing {
+  id: number;
+  kitchenId: number;
+  name: string;
+  storageType: 'dry' | 'cold' | 'freezer';
+  photos?: string[];
+}
+
+interface EquipmentListing {
+  id: number;
+  kitchenId: number;
+  equipmentType: string;
+  category: string;
+  photos?: string[];
+}
+
 async function getAuthHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -1684,6 +1700,82 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     enabled: !!location.id,
   });
 
+  // Fetch storage listings for all kitchens
+  const { data: storageListings = [], isLoading: isLoadingStorage } = useQuery<StorageListing[]>({
+    queryKey: ['storageListings', location.id, kitchens.map(k => k.id)],
+    queryFn: async () => {
+      if (kitchens.length === 0) return [];
+      
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      // Fetch storage listings for all kitchens
+      const allListings: StorageListing[] = [];
+      for (const kitchen of kitchens) {
+        try {
+          const response = await fetch(`/api/manager/kitchens/${kitchen.id}/storage-listings`, {
+            headers,
+            credentials: "include",
+          });
+          if (response.ok) {
+            const listings = await response.json();
+            allListings.push(...listings);
+          }
+        } catch (error) {
+          console.error(`Failed to fetch storage listings for kitchen ${kitchen.id}:`, error);
+        }
+      }
+      return allListings;
+    },
+    enabled: !!location.id && kitchens.length > 0,
+  });
+
+  // Fetch equipment listings for all kitchens
+  const { data: equipmentListings = [], isLoading: isLoadingEquipment } = useQuery<EquipmentListing[]>({
+    queryKey: ['equipmentListings', location.id, kitchens.map(k => k.id)],
+    queryFn: async () => {
+      if (kitchens.length === 0) return [];
+      
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      // Fetch equipment listings for all kitchens
+      const allListings: EquipmentListing[] = [];
+      for (const kitchen of kitchens) {
+        try {
+          const response = await fetch(`/api/manager/kitchens/${kitchen.id}/equipment-listings`, {
+            headers,
+            credentials: "include",
+          });
+          if (response.ok) {
+            const listings = await response.json();
+            allListings.push(...listings);
+          }
+        } catch (error) {
+          console.error(`Failed to fetch equipment listings for kitchen ${kitchen.id}:`, error);
+        }
+      }
+      return allListings;
+    },
+    enabled: !!location.id && kitchens.length > 0,
+  });
+
   // Update state when location prop changes (e.g., after saving or switching tabs)
   useEffect(() => {
     setCancellationHours(location.cancellationPolicyHours || 24);
@@ -1916,6 +2008,152 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       throw error;
     } finally {
       setIsUploadingLogo(false);
+    }
+  };
+
+  // Handle storage listing photo update
+  const handleStoragePhotoUpdate = async (listingId: number, photoIndex: number, newUrl: string | null) => {
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      // Get current listing to update photos array
+      const getResponse = await fetch(`/api/manager/storage-listings/${listingId}`, {
+        headers,
+        credentials: 'include',
+      });
+      
+      if (!getResponse.ok) {
+        throw new Error('Failed to fetch storage listing');
+      }
+      
+      const listing = await getResponse.json();
+      const currentPhotos = listing.photos || [];
+      
+      // Update the photos array
+      let updatedPhotos: string[];
+      if (newUrl === null) {
+        // Remove photo
+        updatedPhotos = currentPhotos.filter((_: string, idx: number) => idx !== photoIndex);
+      } else {
+        // Replace or add photo
+        if (photoIndex < currentPhotos.length) {
+          updatedPhotos = [...currentPhotos];
+          updatedPhotos[photoIndex] = newUrl;
+        } else {
+          updatedPhotos = [...currentPhotos, newUrl];
+        }
+      }
+      
+      // Update the listing
+      const updateResponse = await fetch(`/api/manager/storage-listings/${listingId}`, {
+        method: 'PUT',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ photos: updatedPhotos }),
+      });
+      
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update storage listing photos');
+      }
+      
+      // Refresh the listings
+      queryClient.invalidateQueries({ queryKey: ['storageListings', location.id] });
+      
+      toast({
+        title: "Success",
+        description: "Storage listing photo updated successfully",
+      });
+    } catch (error: any) {
+      console.error('Storage photo update error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update storage listing photo",
+        variant: "destructive",
+      });
+      throw error;
+    }
+  };
+
+  // Handle equipment listing photo update
+  const handleEquipmentPhotoUpdate = async (listingId: number, photoIndex: number, newUrl: string | null) => {
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      const headers: HeadersInit = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+      
+      // Get current listing to update photos array
+      const getResponse = await fetch(`/api/manager/equipment-listings/${listingId}`, {
+        headers,
+        credentials: 'include',
+      });
+      
+      if (!getResponse.ok) {
+        throw new Error('Failed to fetch equipment listing');
+      }
+      
+      const listing = await getResponse.json();
+      const currentPhotos = listing.photos || [];
+      
+      // Update the photos array
+      let updatedPhotos: string[];
+      if (newUrl === null) {
+        // Remove photo
+        updatedPhotos = currentPhotos.filter((_: string, idx: number) => idx !== photoIndex);
+      } else {
+        // Replace or add photo
+        if (photoIndex < currentPhotos.length) {
+          updatedPhotos = [...currentPhotos];
+          updatedPhotos[photoIndex] = newUrl;
+        } else {
+          updatedPhotos = [...currentPhotos, newUrl];
+        }
+      }
+      
+      // Update the listing
+      const updateResponse = await fetch(`/api/manager/equipment-listings/${listingId}`, {
+        method: 'PUT',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ photos: updatedPhotos }),
+      });
+      
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update equipment listing photos');
+      }
+      
+      // Refresh the listings
+      queryClient.invalidateQueries({ queryKey: ['equipmentListings', location.id] });
+      
+      toast({
+        title: "Success",
+        description: "Equipment listing photo updated successfully",
+      });
+    } catch (error: any) {
+      console.error('Equipment photo update error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update equipment listing photo",
+        variant: "destructive",
+      });
+      throw error;
     }
   };
 
@@ -2755,6 +2993,180 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   ))}
                 </div>
               )}
+              </div>
+            </div>
+
+            {/* Storage Listings Images Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Package className="h-5 w-5 text-indigo-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Storage Listing Images</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Manage images for your storage listings. These images help chefs see your storage facilities.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 space-y-4">
+                {isLoadingStorage ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                  </div>
+                ) : storageListings.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-500">No storage listings found. Create storage listings to manage images here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {storageListings.map((listing) => {
+                      const kitchen = kitchens.find(k => k.id === listing.kitchenId);
+                      const photos = listing.photos || [];
+                      return (
+                        <div key={listing.id} className="bg-white rounded-lg border border-indigo-200 p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <h4 className="font-semibold text-gray-900">{listing.name}</h4>
+                            <span className="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded">
+                              {listing.storageType}
+                            </span>
+                            {kitchen && (
+                              <span className="text-xs text-gray-500">• {kitchen.name}</span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {photos.map((photo, index) => (
+                              <div key={index} className="relative">
+                                <ImageWithReplace
+                                  imageUrl={photo}
+                                  onImageChange={(newUrl) => {
+                                    if (newUrl) {
+                                      handleStoragePhotoUpdate(listing.id, index, newUrl).catch(console.error);
+                                    }
+                                  }}
+                                  onRemove={() => {
+                                    handleStoragePhotoUpdate(listing.id, index, null).catch(console.error);
+                                  }}
+                                  alt={`${listing.name} photo ${index + 1}`}
+                                  className="w-full h-24 object-cover rounded-lg"
+                                  containerClassName="w-full"
+                                  aspectRatio="1/1"
+                                  fieldName={`storage-${listing.id}-${index}`}
+                                  maxSize={4.5 * 1024 * 1024}
+                                  allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
+                                />
+                              </div>
+                            ))}
+                            {/* Add new photo slot */}
+                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 flex items-center justify-center min-h-[96px] hover:border-indigo-400 transition-colors">
+                              <ImageWithReplace
+                                imageUrl={undefined}
+                                onImageChange={(newUrl) => {
+                                  if (newUrl) {
+                                    handleStoragePhotoUpdate(listing.id, photos.length, newUrl).catch(console.error);
+                                  }
+                                }}
+                                alt={`Add photo to ${listing.name}`}
+                                className="w-full h-24 object-cover rounded-lg"
+                                containerClassName="w-full"
+                                aspectRatio="1/1"
+                                fieldName={`storage-${listing.id}-new`}
+                                maxSize={4.5 * 1024 * 1024}
+                                allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Equipment Listings Images Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Wrench className="h-5 w-5 text-teal-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Equipment Listing Images</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Manage images for your equipment listings. These images help chefs see your available equipment.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 space-y-4">
+                {isLoadingEquipment ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+                  </div>
+                ) : equipmentListings.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-500">No equipment listings found. Create equipment listings to manage images here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {equipmentListings.map((listing) => {
+                      const kitchen = kitchens.find(k => k.id === listing.kitchenId);
+                      const photos = listing.photos || [];
+                      return (
+                        <div key={listing.id} className="bg-white rounded-lg border border-teal-200 p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <h4 className="font-semibold text-gray-900">{listing.equipmentType}</h4>
+                            <span className="text-xs px-2 py-1 bg-teal-100 text-teal-700 rounded">
+                              {listing.category}
+                            </span>
+                            {kitchen && (
+                              <span className="text-xs text-gray-500">• {kitchen.name}</span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {photos.map((photo, index) => (
+                              <div key={index} className="relative">
+                                <ImageWithReplace
+                                  imageUrl={photo}
+                                  onImageChange={(newUrl) => {
+                                    if (newUrl) {
+                                      handleEquipmentPhotoUpdate(listing.id, index, newUrl).catch(console.error);
+                                    }
+                                  }}
+                                  onRemove={() => {
+                                    handleEquipmentPhotoUpdate(listing.id, index, null).catch(console.error);
+                                  }}
+                                  alt={`${listing.equipmentType} photo ${index + 1}`}
+                                  className="w-full h-24 object-cover rounded-lg"
+                                  containerClassName="w-full"
+                                  aspectRatio="1/1"
+                                  fieldName={`equipment-${listing.id}-${index}`}
+                                  maxSize={4.5 * 1024 * 1024}
+                                  allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
+                                />
+                              </div>
+                            ))}
+                            {/* Add new photo slot */}
+                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 flex items-center justify-center min-h-[96px] hover:border-teal-400 transition-colors">
+                              <ImageWithReplace
+                                imageUrl={undefined}
+                                onImageChange={(newUrl) => {
+                                  if (newUrl) {
+                                    handleEquipmentPhotoUpdate(listing.id, photos.length, newUrl).catch(console.error);
+                                  }
+                                }}
+                                alt={`Add photo to ${listing.equipmentType}`}
+                                className="w-full h-24 object-cover rounded-lg"
+                                containerClassName="w-full"
+                                aspectRatio="1/1"
+                                fieldName={`equipment-${listing.id}-new`}
+                                maxSize={4.5 * 1024 * 1024}
+                                allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </TabsContent>
