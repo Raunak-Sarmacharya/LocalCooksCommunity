@@ -234,6 +234,8 @@ async function createBookingDateTime(...args) {
     content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/schema["'];/g, 'import {$1} from "../shared/schema.js";');
     // Convert @shared/timezone-utils imports to relative imports
     content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/timezone-utils["'];/g, 'import {$1} from "../shared/timezone-utils.js";');
+    // Convert @shared/phone-validation imports to relative imports
+    content = content.replace(/import\s+{([^}]+)}\s+from\s+["']@shared\/phone-validation["'];/g, 'import {$1} from "../shared/phone-validation.js";');
     // Fix imports from shared directory (relative paths)
     // Ensure .js extension is always included for ESM compatibility
     content = content.replace(/from\s+["']\.\.\/shared\/([^"']+)["']/g, 'from "../shared/$1.js"');
@@ -309,6 +311,45 @@ if (fs.existsSync(timezoneUtilsFile)) {
   console.log(`✅ Created ${timezoneUtilsDestPath}`);
 } else {
   console.error(`❌ Error: ${timezoneUtilsFile} not found!`);
+}
+
+// Process phone-validation file
+const phoneValidationFile = path.join('shared', 'phone-validation.ts');
+const phoneValidationDestPath = path.join(tempSharedDir, 'phone-validation.js');
+
+if (fs.existsSync(phoneValidationFile)) {
+  console.log(`Processing ${phoneValidationFile}...`);
+  
+  // Read the TypeScript file
+  let content = fs.readFileSync(phoneValidationFile, 'utf8');
+  
+  // Convert TypeScript imports to JavaScript
+  // IMPORTANT: Keep package imports as-is (they're npm packages)
+  // Only convert relative .ts imports to .js
+  // Don't touch imports that start with @ or don't have .ts extension
+  content = content.replace(/from\s+["']([^"']+)\.ts["']/g, 'from "$1.js"');
+  
+  // Remove TypeScript type annotations (be careful not to break function signatures)
+  // Only remove type annotations from function parameters and return types
+  // Use lookahead to avoid removing colons in other contexts
+  content = content.replace(/:\s*string\s*(?=[,=\)])/g, '');
+  content = content.replace(/:\s*number\s*(?=[,=\)])/g, '');
+  content = content.replace(/:\s*boolean\s*(?=[,=\)])/g, '');
+  // Remove return type annotations from function declarations
+  content = content.replace(/\)\s*:\s*string\s*\{/g, ') {');
+  content = content.replace(/\)\s*:\s*boolean\s*\{/g, ') {');
+  content = content.replace(/\)\s*:\s*null\s*\{/g, ') {');
+  // Remove complex return type annotations
+  content = content.replace(/\)\s*:\s*Promise<[^>]+>\s*\{/g, ') {');
+  // Remove standalone type/interface exports
+  content = content.replace(/export\s+type\s+\w+[^;]+;/g, '');
+  content = content.replace(/export\s+interface\s+\w+[^}]+}/g, '');
+  
+  // Write the modified content to the destination
+  fs.writeFileSync(phoneValidationDestPath, content);
+  console.log(`✅ Created ${phoneValidationDestPath}`);
+} else {
+  console.error(`❌ Error: ${phoneValidationFile} not found!`);
 }
 
 // Copy subdomain-utils.js file
