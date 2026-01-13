@@ -138,6 +138,7 @@ export async function getRevenueMetricsFromTransactions(
           0
         )::bigint as platform_fee,
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
+        COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.manager_revenue::numeric ELSE 0 END), 0)::bigint as deposited_manager_revenue,
         COUNT(DISTINCT pt.booking_id) as booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_booking_count,
         COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN pt.booking_id END) as processing_booking_count,
@@ -195,6 +196,7 @@ export async function getRevenueMetricsFromTransactions(
     const pendingPayments = parseNumeric(row.pending_payments);
     const platformFee = parseNumeric(row.platform_fee);
     const managerRevenue = parseNumeric(row.manager_revenue);
+    const depositedManagerRevenue = parseNumeric(row.deposited_manager_revenue);
     const refundedAmount = parseNumeric(row.refunded_amount);
     const bookingCount = parseInt(row.booking_count) || 0;
     const paidBookingCount = parseInt(row.paid_booking_count) || 0;
@@ -214,7 +216,8 @@ export async function getRevenueMetricsFromTransactions(
     const metrics = {
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
-      managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue, // Use database value from Stripe
+      managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue, // Use database value from Stripe (includes processing)
+      depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue, // Only succeeded transactions (what's in bank)
       pendingPayments: isNaN(pendingPayments) ? 0 : pendingPayments,
       completedPayments: isNaN(completedPayments) ? 0 : completedPayments,
       averageBookingValue: isNaN(averageBookingValue) ? 0 : averageBookingValue,

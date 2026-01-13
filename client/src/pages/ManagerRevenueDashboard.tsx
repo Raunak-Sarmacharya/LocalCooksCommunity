@@ -657,8 +657,8 @@ export default function ManagerRevenueDashboard({
               </div>
             </CardContent>
           </Card>
-          {/* Row 1: Three Revenue Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Row 1: Revenue Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Total Revenue */}
             <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-1">
               <CardContent className="p-4">
@@ -677,26 +677,6 @@ export default function ManagerRevenueDashboard({
                 <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
               </CardContent>
             </Card>
-
-            {/* Manager Revenue (Earnings) */}
-            <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 hover:-translate-y-1">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-blue-100 text-[10px] font-medium uppercase tracking-wider">Your Earnings</p>
-                    <p className="text-2xl font-bold mt-1">
-                      {revenueMetrics ? formatCurrency(revenueMetrics.managerRevenue) : '$0.00'}
-                    </p>
-                    <p className="text-blue-100 text-xs mt-1">After platform fee</p>
-                  </div>
-                  <div className="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm">
-                    <TrendingUp className="h-4 w-4" />
-                  </div>
-                </div>
-                <div className="absolute -bottom-3 -right-3 w-20 h-20 bg-white/10 rounded-full blur-xl" />
-              </CardContent>
-            </Card>
-
 
             {/* Average Booking Value */}
             <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-lg shadow-purple-500/25 hover:shadow-xl hover:shadow-purple-500/30 transition-all duration-300 hover:-translate-y-1">
@@ -749,12 +729,23 @@ export default function ManagerRevenueDashboard({
                       <div className="group relative">
                         <Info className="h-3 w-3 text-gray-400 cursor-help" />
                         <div className="absolute left-0 bottom-full mb-2 w-72 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                          Money that has been successfully processed and is available in your Stripe Connect account or ready for payout to your bank.
+                          Money that has been successfully processed and is available in your Stripe Connect account or ready for payout to your bank (after platform fees).
                         </div>
                       </div>
                     </div>
                     <p className="text-xl font-bold text-emerald-600 mt-1">
-                      {revenueMetrics ? formatCurrency(revenueMetrics.completedPayments) : '$0.00'}
+                      {revenueMetrics ? (() => {
+                        // Calculate manager revenue from completed payments: total - platform fees
+                        const completedTotal = revenueMetrics.completedPayments || 0;
+                        const totalRevenue = revenueMetrics.totalRevenue || 0;
+                        const platformFee = revenueMetrics.platformFee || 0;
+                        // Calculate platform fee portion from completed payments proportionally
+                        const completedPlatformFee = totalRevenue > 0 
+                          ? (platformFee * (completedTotal / totalRevenue))
+                          : 0;
+                        const managerRevenueFromCompleted = completedTotal - completedPlatformFee;
+                        return formatCurrency(managerRevenueFromCompleted);
+                      })() : '$0.00'}
                     </p>
                     <p className="text-xs text-gray-600 mt-1">
                       {revenueMetrics?.paidBookingCount || 0} {revenueMetrics?.paidBookingCount === 1 ? 'booking' : 'bookings'} processed

@@ -287,7 +287,8 @@ export async function generateInvoicePDF(
   // Service fee (Platform Fee) - get from Stripe via payment_transactions
   // The invoice shows the platform fee that was actually charged by Stripe
   // This is the application_fee_amount from Stripe Connect, which is the platform fee
-  let platformFee = 0; // Platform fee in dollars
+  // Note: The 30 cents Stripe processing fee is added to the displayed platform fee
+  let platformFee = 0; // Platform fee in dollars (percentage-based, without 30 cents)
   
   if (stripePlatformFee > 0) {
     // Use Stripe-synced platform fee (this is what was actually charged)
@@ -315,10 +316,10 @@ export async function generateInvoicePDF(
     }
   }
   
-  // Service fee shown on invoice = platform fee (from Stripe)
-  // Note: Stripe processing fee ($0.30) is not shown separately on invoice
-  // It's included in Stripe's fees but not itemized for the customer
-  const serviceFee = platformFee;
+  // Service fee shown on invoice = platform fee (percentage) + $0.30 Stripe processing fee
+  // This matches what customers see in the UI during booking
+  const stripeProcessingFee = 0.30; // $0.30 per transaction
+  const serviceFee = platformFee + stripeProcessingFee;
   
   // Grand total = base amount + platform fee
   // If we have Stripe total amount, use it (most accurate)
@@ -473,10 +474,10 @@ export async function generateInvoicePDF(
       doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
-      // Platform Fee (from Stripe)
-      // This is the actual platform fee charged by Stripe (application_fee_amount)
+      // Platform Fee (from Stripe + $0.30 processing fee)
+      // This includes the percentage-based platform fee plus the $0.30 Stripe processing fee
       doc.text('Platform Fee:', 380, currentY, { width: 110, align: 'right' });
-      doc.text(`$${platformFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+      doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
       // Total (bold and larger)

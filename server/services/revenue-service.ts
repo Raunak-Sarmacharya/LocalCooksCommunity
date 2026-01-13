@@ -15,7 +15,8 @@ import type { Pool } from '@neondatabase/serverless';
 export interface RevenueMetrics {
   totalRevenue: number;        // Total booking revenue (cents)
   platformFee: number;         // Platform commission (cents)
-  managerRevenue: number;      // Manager earnings (cents) = totalRevenue - platformFee
+  managerRevenue: number;      // Manager earnings (cents) = totalRevenue - platformFee (includes processing)
+  depositedManagerRevenue: number; // Manager earnings from succeeded transactions only (cents) - what's actually in bank
   pendingPayments: number;     // Unpaid bookings (cents)
   completedPayments: number;   // Paid bookings (cents)
   averageBookingValue: number; // Average per booking (cents)
@@ -899,11 +900,18 @@ export async function getCompleteRevenueMetrics(
 
     // Manager revenue = total_price - service_fee (total_price already includes service_fee)
     const managerRevenue = totalRevenue - platformFee;
+    
+    // Deposited manager revenue = only from paid bookings (succeeded transactions)
+    // Calculate from completed payments minus platform fee from paid bookings only
+    const completedPlatformFee = kitchenMetrics.platformFee * (kitchenMetrics.completedPayments / (kitchenMetrics.totalRevenue || 1));
+    const storageCompletedPlatformFee = parseNumeric(storageRow.platform_fee) * (parseNumeric(storageRow.completed_payments) / (parseNumeric(storageRow.total_revenue) || 1));
+    const equipmentCompletedPlatformFee = parseNumeric(equipmentRow.platform_fee) * (parseNumeric(equipmentRow.completed_payments) / (parseNumeric(equipmentRow.total_revenue) || 1));
+    const depositedManagerRevenue = completedPaymentsTotal - (completedPlatformFee + storageCompletedPlatformFee + equipmentCompletedPlatformFee);
 
     // Ensure all values are numbers (not NaN or undefined)
     const pendingPaymentsTotal = kitchenMetrics.pendingPayments + 
-      parseNumeric(storageRow.pending_payments) + 
-      parseNumeric(equipmentRow.pending_payments);
+      parseNumeric(storageRow.processing_payments) + 
+      parseNumeric(equipmentRow.processing_payments);
     const completedPaymentsTotal = kitchenMetrics.completedPayments + 
       parseNumeric(storageRow.completed_payments) + 
       parseNumeric(equipmentRow.completed_payments);
@@ -918,6 +926,7 @@ export async function getCompleteRevenueMetrics(
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
       managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
+      depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue,
       pendingPayments: isNaN(pendingPaymentsTotal) ? 0 : pendingPaymentsTotal,
       completedPayments: isNaN(completedPaymentsTotal) ? 0 : completedPaymentsTotal,
       averageBookingValue: totalRevenue > 0 && totalBookingCount > 0

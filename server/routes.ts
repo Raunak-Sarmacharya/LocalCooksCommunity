@@ -4326,6 +4326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalRevenue: metrics.totalRevenue / 100,
         platformFee: metrics.platformFee / 100,
         managerRevenue: metrics.managerRevenue / 100,
+        depositedManagerRevenue: (metrics.depositedManagerRevenue || 0) / 100, // Only succeeded transactions
         pendingPayments: metrics.pendingPayments / 100,
         completedPayments: metrics.completedPayments / 100,
         averageBookingValue: metrics.averageBookingValue / 100,
@@ -4338,6 +4339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalRevenue: metrics.totalRevenue,
           platformFee: metrics.platformFee,
           managerRevenue: metrics.managerRevenue,
+          depositedManagerRevenue: metrics.depositedManagerRevenue || 0,
         }
       });
     } catch (error: any) {
