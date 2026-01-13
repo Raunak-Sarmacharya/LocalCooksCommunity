@@ -21,6 +21,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
+import { auth } from "@/lib/firebase";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -54,6 +55,14 @@ export default function ChangePassword({ role = 'manager', onSuccess }: ChangePa
     setIsSubmitting(true);
     
     try {
+      // Get Firebase token for authentication
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      
+      const token = await currentFirebaseUser.getIdToken();
+      
       // Use the appropriate endpoint based on role
       const endpoint = role === 'admin' 
         ? '/api/admin/change-password' 
@@ -62,6 +71,7 @@ export default function ChangePassword({ role = 'manager', onSuccess }: ChangePa
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

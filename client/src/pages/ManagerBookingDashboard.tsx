@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
@@ -25,7 +25,6 @@ import ManagerKitchenApplications from "./ManagerKitchenApplications";
 import KitchenPricingManagement from "./KitchenPricingManagement";
 import StorageListingManagement from "./StorageListingManagement";
 import EquipmentListingManagement from "./EquipmentListingManagement";
-import ChangePassword from "@/components/auth/ChangePassword";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
 import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizard";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
@@ -33,6 +32,7 @@ import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar"
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface Location {
   id: number;
@@ -2025,119 +2025,78 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
           <p className="text-sm text-gray-600 mt-1">{location.name}</p>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Setup & Onboarding Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Setup & Onboarding</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Complete or update your location setup, upload kitchen license, and configure your preferences.
-                </p>
-              </div>
-            </div>
+        <div className="p-6">
+          <Tabs defaultValue="setup" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+              <TabsTrigger value="setup" className="flex items-center gap-2 rounded-lg">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Setup</span>
+              </TabsTrigger>
+              <TabsTrigger value="branding" className="flex items-center gap-2 rounded-lg">
+                <ImageIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">Branding</span>
+              </TabsTrigger>
+              <TabsTrigger value="notifications" className="flex items-center gap-2 rounded-lg">
+                <Mail className="h-4 w-4" />
+                <span className="hidden sm:inline">Notifications</span>
+              </TabsTrigger>
+              <TabsTrigger value="booking-rules" className="flex items-center gap-2 rounded-lg">
+                <Clock className="h-4 w-4" />
+                <span className="hidden sm:inline">Booking Rules</span>
+              </TabsTrigger>
+              <TabsTrigger value="location" className="flex items-center gap-2 rounded-lg">
+                <Globe className="h-4 w-4" />
+                <span className="hidden sm:inline">Location</span>
+              </TabsTrigger>
+            </TabsList>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
-              <div>
-                <p className="text-sm text-gray-700 mb-4">
-                  Use the onboarding wizard to set up your location details, upload your kitchen license, and configure notification preferences.
-                </p>
-                <a
-                  href="#license-upload"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const element = document.getElementById('license-upload');
-                    if (element) {
-                      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      // Focus the label to highlight the upload area
-                      const label = element.parentElement?.querySelector('label[for="license-upload"]');
-                      if (label) {
-                        setTimeout(() => {
-                          (label as HTMLElement).focus();
-                        }, 300);
-                      }
-                    }
-                  }}
-                  className="text-sm text-blue-600 hover:text-blue-700 underline font-medium inline-flex items-center gap-1"
-                >
-                  Upload your kitchen license →
-                </a>
-              </div>
-            </div>
-          </div>
+            {/* Setup Tab */}
+            <TabsContent value="setup" className="space-y-6 mt-0">
+              {/* Setup & Onboarding Section */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Setup & Onboarding</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Complete or update your location setup, upload kitchen license, and configure your preferences.
+                    </p>
+                  </div>
+                </div>
 
-          {/* Notification Email Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <Mail className="h-5 w-5 text-purple-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Notification Email</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Configure where booking notifications will be sent. If left empty, notifications will go to the manager's account email.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  value={notificationEmail}
-                  onChange={(e) => setNotificationEmail(e.target.value)}
-                  placeholder="notifications@localcooks.com"
-                  className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                />
-                <p className="text-xs text-gray-600 mt-1">
-                  All booking notifications for this location will be sent to this email address
-                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
+                  <div>
+                    <p className="text-sm text-gray-700 mb-4">
+                      Use the onboarding wizard to set up your location details, upload your kitchen license, and configure notification preferences.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        // Trigger onboarding wizard to open
+                        const event = new CustomEvent('open-onboarding-from-help');
+                        window.dispatchEvent(event);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      Open Onboarding Wizard
+                    </Button>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Phone Number (for SMS notifications)
-                </label>
-                <input
-                  type="tel"
-                  value={notificationPhone}
-                  onChange={(e) => setNotificationPhone(e.target.value)}
-                  placeholder="+1 (555) 123-4567"
-                  className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                />
-                <p className="text-xs text-gray-600 mt-1">
-                  SMS notifications for bookings and cancellations will be sent to this phone number. If left empty, SMS will not be sent.
-                </p>
-              </div>
+              {/* Kitchen License Section */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-orange-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen License</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Upload or update your kitchen license. Bookings will be activated once approved by an admin.
+                    </p>
+                  </div>
+                </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => handleSave()}
-                  disabled={isUpdating}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Save className="h-4 w-4" />
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Kitchen License Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <FileText className="h-5 w-5 text-orange-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen License</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Upload or update your kitchen license. Bookings will be activated once approved by an admin.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
+                <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
               {location.kitchenLicenseUrl && location.kitchenLicenseStatus !== "rejected" && location.kitchenLicenseStatus !== "expired" ? (
                 <div className={`border rounded-lg p-4 ${
                   location.kitchenLicenseStatus === "approved" && !isLicenseExpired
@@ -2421,73 +2380,75 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   )}
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Location Logo Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <ImageIcon className="h-5 w-5 text-green-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Location Logo</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Upload your kitchen location logo to display in the manager header alongside the Local Cooks logo.
-                </p>
               </div>
             </div>
+          </TabsContent>
 
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-4 md:p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Logo Image
-                </label>
-                <div className="max-w-md">
-                  <ImageWithReplace
-                    imageUrl={logoUrl || undefined}
-                    onImageChange={(newUrl) => {
-                      if (newUrl) {
-                        setLogoUrl(newUrl);
-                        // Auto-save when logo changes
-                        handleSave(newUrl);
-                      } else {
+          {/* Branding Tab */}
+          <TabsContent value="branding" className="space-y-6 mt-0">
+            {/* Location Logo Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <ImageIcon className="h-5 w-5 text-green-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Location Logo</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Upload your kitchen location logo to display in the manager header alongside the Local Cooks logo.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 md:p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Logo Image
+                  </label>
+                  <div className="max-w-md">
+                    <ImageWithReplace
+                      imageUrl={logoUrl || undefined}
+                      onImageChange={(newUrl) => {
+                        if (newUrl) {
+                          setLogoUrl(newUrl);
+                          // Auto-save when logo changes
+                          handleSave(newUrl);
+                        } else {
+                          setLogoUrl('');
+                          handleSave('');
+                        }
+                      }}
+                      onRemove={() => {
                         setLogoUrl('');
                         handleSave('');
-                      }
-                    }}
-                    onRemove={() => {
-                      setLogoUrl('');
-                      handleSave('');
-                    }}
-                    alt="Location logo"
-                    className="w-full h-32 object-contain rounded-lg"
-                    containerClassName="w-full"
-                    aspectRatio="16/9"
-                    fieldName="logo"
-                    maxSize={4.5 * 1024 * 1024}
-                    allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                  />
+                      }}
+                      alt="Location logo"
+                      className="w-full h-32 object-contain rounded-lg"
+                      containerClassName="w-full"
+                      aspectRatio="16/9"
+                      fieldName="logo"
+                      maxSize={4.5 * 1024 * 1024}
+                      allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Logo will appear in the manager header next to Local Cooks logo
+                  </p>
                 </div>
-                <p className="text-xs text-gray-600 mt-2">
-                  Logo will appear in the manager header next to Local Cooks logo
-                </p>
-              </div>
-            </div>
-          </div>
-
-
-          {/* Kitchen Images Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <ChefHat className="h-5 w-5 text-amber-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Images</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Upload images for each kitchen space. These will be displayed on the chef landing page to help chefs see your facilities.
-                </p>
               </div>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-4">
+            {/* Kitchen Images Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <ChefHat className="h-5 w-5 text-amber-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Images</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Upload images for each kitchen space. These will be displayed on the chef landing page to help chefs see your facilities.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-medium text-gray-700">Kitchens</h4>
                 {!showCreateKitchen && (
@@ -2794,11 +2755,75 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   ))}
                 </div>
               )}
+              </div>
             </div>
-          </div>
+          </TabsContent>
 
-          {/* Cancellation Policy Section */}
-          <div className="space-y-4">
+          {/* Notifications Tab */}
+          <TabsContent value="notifications" className="space-y-6 mt-0">
+            {/* Notification Email Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Mail className="h-5 w-5 text-purple-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Notification Settings</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Configure where booking notifications will be sent. If left empty, notifications will go to the manager's account email.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    placeholder="notifications@localcooks.com"
+                    className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">
+                    All booking notifications for this location will be sent to this email address
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Phone Number (for SMS notifications)
+                  </label>
+                  <input
+                    type="tel"
+                    value={notificationPhone}
+                    onChange={(e) => setNotificationPhone(e.target.value)}
+                    placeholder="+1 (555) 123-4567"
+                    className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">
+                    SMS notifications for bookings and cancellations will be sent to this phone number. If left empty, SMS will not be sent.
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => handleSave()}
+                    disabled={isUpdating}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Save className="h-4 w-4" />
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Booking Rules Tab */}
+          <TabsContent value="booking-rules" className="space-y-6 mt-0">
+            {/* Cancellation Policy Section */}
+            <div className="space-y-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5" />
               <div className="flex-1">
@@ -2856,8 +2881,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             </div>
           </div>
 
-          {/* Daily Booking Limit Section */}
-          <div className="space-y-4">
+            {/* Daily Booking Limit Section */}
+            <div className="space-y-4">
             <div className="flex items-start gap-3">
               <Clock className="h-5 w-5 text-green-600 mt-0.5" />
               <div className="flex-1">
@@ -2903,48 +2928,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
             </div>
           </div>
 
-          {/* Timezone Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <Globe className="h-5 w-5 text-cyan-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Timezone Settings</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  The timezone for this location is locked to Newfoundland Time. All booking times will be interpreted according to this timezone.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Location Timezone
-                </label>
-                <div className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 bg-gray-50 text-gray-700 flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-gray-400" />
-                  <span>Newfoundland Time (GMT-3:30)</span>
-                  <span className="ml-auto text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">Locked</span>
-                </div>
-                <p className="text-xs text-gray-600 mt-1">
-                  All booking times for this location will be interpreted in Newfoundland Time. This affects when bookings are considered "past", "upcoming", or "active".
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => handleSave()}
-                  disabled={isUpdating}
-                  className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Save className="h-4 w-4" />
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Minimum Booking Window Section */}
-          <div className="space-y-4">
+            {/* Minimum Booking Window Section */}
+            <div className="space-y-4">
             <div className="flex items-start gap-3">
               <Clock className="h-5 w-5 text-orange-600 mt-0.5" />
               <div className="flex-1">
@@ -2989,17 +2974,51 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               </div>
             </div>
           </div>
-        </div>
-      </div>
+          </TabsContent>
 
-      {/* Account Settings Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mt-6">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Account Settings</h2>
-          <p className="text-sm text-gray-600 mt-1">Manage your account password</p>
-        </div>
-        <div className="p-6">
-          <ChangePassword role="manager" />
+          {/* Location Tab */}
+          <TabsContent value="location" className="space-y-6 mt-0">
+            {/* Timezone Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Globe className="h-5 w-5 text-cyan-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Timezone Settings</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    The timezone for this location is locked to Newfoundland Time. All booking times will be interpreted according to this timezone.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Location Timezone
+                  </label>
+                  <div className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 bg-gray-50 text-gray-700 flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-gray-400" />
+                    <span>Newfoundland Time (GMT-3:30)</span>
+                    <span className="ml-auto text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">Locked</span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">
+                    All booking times for this location will be interpreted in Newfoundland Time. This affects when bookings are considered "past", "upcoming", or "active".
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => handleSave()}
+                    disabled={isUpdating}
+                    className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Save className="h-4 w-4" />
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
         </div>
       </div>
     </div>
