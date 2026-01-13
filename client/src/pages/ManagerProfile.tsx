@@ -4,10 +4,9 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Save, User, Mail, Phone, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Save, User, Mail, Phone, Loader2, KeyRound } from "lucide-react";
 import ManagerHeader from "@/components/layout/ManagerHeader";
-import { ImageWithReplace } from "@/components/ui/image-with-replace";
-import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import ChangePassword from "@/components/auth/ChangePassword";
 
 export default function ManagerProfile() {
   const { toast } = useToast();
@@ -17,7 +16,6 @@ export default function ManagerProfile() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
 
   // Fetch manager profile
@@ -55,7 +53,7 @@ export default function ManagerProfile() {
     staleTime: 30 * 1000,
   });
 
-  // Fetch manager profile details (including profile image)
+  // Fetch manager profile details
   const { data: managerProfile, isLoading: isLoadingDetails } = useQuery({
     queryKey: ["/api/manager/profile"],
     queryFn: async () => {
@@ -74,7 +72,7 @@ export default function ManagerProfile() {
         if (!response.ok) {
           if (response.status === 404) {
             // Profile doesn't exist yet, return empty object
-            return { profileImageUrl: null, phone: null, displayName: null };
+            return { phone: null, displayName: null };
           }
           throw new Error(`Failed to fetch manager profile: ${response.status}`);
         }
@@ -82,7 +80,7 @@ export default function ManagerProfile() {
         return response.json();
       } catch (error) {
         console.error('Error fetching manager profile:', error);
-        return { profileImageUrl: null, phone: null, displayName: null };
+        return { phone: null, displayName: null };
       }
     },
     enabled: !!user && user.role === 'manager',
@@ -97,7 +95,6 @@ export default function ManagerProfile() {
       setDisplayName(user.displayName || user.fullName || "");
     }
     if (managerProfile) {
-      setProfileImageUrl(managerProfile.profileImageUrl || null);
       setPhone(managerProfile.phone || "");
       if (managerProfile.displayName) {
         setDisplayName(managerProfile.displayName);
@@ -105,33 +102,12 @@ export default function ManagerProfile() {
     }
   }, [user, managerProfile, firebaseUser]);
 
-  // File upload hook for profile image
-  const { uploadFile, isUploading: isUploadingImage } = useSessionFileUpload({
-    maxSize: 4.5 * 1024 * 1024, // 4.5MB
-    allowedTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
-    onSuccess: (response) => {
-      setProfileImageUrl(response.url);
-      toast({
-        title: 'Image uploaded',
-        description: 'Profile image has been uploaded successfully.',
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: 'Upload failed',
-        description: error,
-        variant: 'destructive',
-      });
-    },
-  });
-
   // Update profile mutation
   const updateProfileMutation = useMutation({
     mutationFn: async (profileData: {
       username?: string;
       displayName?: string;
       phone?: string;
-      profileImageUrl?: string | null;
     }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
@@ -178,7 +154,6 @@ export default function ManagerProfile() {
       username: username !== user?.username ? username : undefined,
       displayName: displayName || undefined,
       phone: phone || undefined,
-      profileImageUrl: profileImageUrl,
     });
   };
 
@@ -217,45 +192,6 @@ export default function ManagerProfile() {
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Profile Image Section */}
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <ImageIcon className="h-5 w-5 text-blue-600 mt-0.5" />
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Profile Picture</h3>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Upload a profile picture to personalize your account. This will be displayed in your manager dashboard.
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6">
-                <div className="max-w-xs">
-                  <ImageWithReplace
-                    imageUrl={profileImageUrl}
-                    onImageChange={(newUrl) => {
-                      setProfileImageUrl(newUrl);
-                      // Auto-save when image changes
-                      if (newUrl) {
-                        updateProfileMutation.mutate({ profileImageUrl: newUrl });
-                      }
-                    }}
-                    onRemove={() => {
-                      setProfileImageUrl(null);
-                      updateProfileMutation.mutate({ profileImageUrl: null });
-                    }}
-                    alt="Profile picture"
-                    className="w-full h-64 object-cover rounded-lg"
-                    containerClassName="w-full"
-                    aspectRatio="1/1"
-                    fieldName="profileImage"
-                    maxSize={4.5 * 1024 * 1024}
-                    allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                  />
-                </div>
-              </div>
-            </div>
-
             {/* Personal Information Section */}
             <div className="space-y-4">
               <div className="flex items-start gap-3">
@@ -337,7 +273,7 @@ export default function ManagerProfile() {
                 <div className="flex gap-3 pt-2">
                   <Button
                     onClick={handleSave}
-                    disabled={updateProfileMutation.isPending || isUploadingImage}
+                    disabled={updateProfileMutation.isPending}
                     className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {updateProfileMutation.isPending ? (
@@ -357,7 +293,6 @@ export default function ManagerProfile() {
                       setUsername(user.username || "");
                       setDisplayName(user.displayName || user.fullName || "");
                       setPhone(managerProfile?.phone || "");
-                      setProfileImageUrl(managerProfile?.profileImageUrl || null);
                     }}
                     variant="outline"
                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
@@ -365,6 +300,23 @@ export default function ManagerProfile() {
                     Reset
                   </Button>
                 </div>
+              </div>
+            </div>
+
+            {/* Change Password Section */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <KeyRound className="h-5 w-5 text-orange-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Change Password</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Update your account password to keep your account secure.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6">
+                <ChangePassword role="manager" />
               </div>
             </div>
           </div>
