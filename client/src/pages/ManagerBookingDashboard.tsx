@@ -950,7 +950,9 @@ export default function ManagerBookingDashboard() {
                   {activeView === 'overview' && (
                     <KitchenDashboardOverview 
                       selectedLocation={selectedLocation}
+                      locations={locations}
                       onNavigate={(view: ViewType) => setActiveView(view)}
+                      onSelectLocation={(location) => setSelectedLocation(location)}
                     />
                   )}
                   
@@ -2188,9 +2190,79 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     </p>
                   )}
                   {!location.kitchenLicenseExpiry && location.kitchenLicenseStatus === "approved" && (
-                    <p className="text-xs text-yellow-600 mt-1">
-                      ⚠️ Please add an expiration date for your license.
-                    </p>
+                    <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-xs text-yellow-700 mb-3">
+                        ⚠️ Please add an expiration date for your license.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="date"
+                          value={licenseExpiryDate}
+                          onChange={(e) => setLicenseExpiryDate(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="flex-1 max-w-md border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        />
+                        <Button
+                          type="button"
+                          onClick={async () => {
+                            if (!licenseExpiryDate) {
+                              toast({
+                                title: "Expiration Date Required",
+                                description: "Please enter an expiration date.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            
+                            try {
+                              const currentFirebaseUser = auth.currentUser;
+                              if (!currentFirebaseUser) {
+                                throw new Error("Firebase user not available");
+                              }
+                              
+                              const token = await currentFirebaseUser.getIdToken();
+                              const response = await fetch(`/api/manager/locations/${location.id}`, {
+                                method: 'PUT',
+                                headers: { 
+                                  'Authorization': `Bearer ${token}`,
+                                  'Content-Type': 'application/json' 
+                                },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                  kitchenLicenseExpiry: licenseExpiryDate,
+                                }),
+                              });
+                              
+                              if (!response.ok) {
+                                const errorData = await response.json();
+                                throw new Error(errorData.error || 'Failed to update expiry date');
+                              }
+                              
+                              // Refresh location data
+                              queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+                              queryClient.invalidateQueries({ queryKey: ['locationDetails', location.id] });
+                              
+                              toast({
+                                title: "Expiry Date Added",
+                                description: "License expiration date has been added successfully.",
+                              });
+                            } catch (error: any) {
+                              console.error('Expiry date update error:', error);
+                              toast({
+                                title: "Update Failed",
+                                description: error.message || "Failed to update expiry date",
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                          disabled={!licenseExpiryDate}
+                          className="bg-orange-600 hover:bg-orange-700 text-white"
+                        >
+                          <Save className="h-4 w-4 mr-1" />
+                          Save Expiry Date
+                        </Button>
+                      </div>
+                    </div>
                   )}
                   {location.kitchenLicenseStatus === "approved" && !isLicenseExpired && (
                     <p className="text-xs text-green-600 mt-1">

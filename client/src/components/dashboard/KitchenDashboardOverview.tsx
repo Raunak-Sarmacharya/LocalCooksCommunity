@@ -28,11 +28,20 @@ import {
   Phone,
   Star,
   Filter,
+  MapPin,
+  Building2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AreaChart,
   Area,
@@ -62,7 +71,9 @@ interface Location {
 
 interface KitchenDashboardOverviewProps {
   selectedLocation: Location | null;
+  locations: Location[];
   onNavigate: (view: ViewType) => void;
+  onSelectLocation?: (location: Location | null) => void;
 }
 
 // Helper function to get auth headers
@@ -81,10 +92,21 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 export default function KitchenDashboardOverview({ 
   selectedLocation, 
-  onNavigate 
+  locations = [],
+  onNavigate,
+  onSelectLocation
 }: KitchenDashboardOverviewProps) {
   // Get Firebase user for authentication
   const { user: firebaseUser } = useFirebaseAuth();
+  
+  // Create a map of location names to location IDs for filtering bookings
+  const locationNameToIdMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (locations || []).forEach(loc => {
+      map.set(loc.name, loc.id);
+    });
+    return map;
+  }, [locations]);
   
   // Fetch all bookings for this manager
   const { data: bookings = [], isLoading: isLoadingBookings } = useQuery({
@@ -123,6 +145,27 @@ export default function KitchenDashboardOverview({
     refetchInterval: 10000, // Real-time updates
     refetchOnWindowFocus: true,
   });
+
+  // Enrich bookings with locationId by matching locationName
+  const enrichedBookings = useMemo(() => {
+    return bookings.map((booking: any) => {
+      const locationId = booking.locationName 
+        ? locationNameToIdMap.get(booking.locationName) || null
+        : null;
+      return {
+        ...booking,
+        locationId,
+      };
+    });
+  }, [bookings, locationNameToIdMap]);
+  
+  // Filter bookings by selected location
+  const filteredBookings = useMemo(() => {
+    if (!selectedLocation) {
+      return enrichedBookings;
+    }
+    return enrichedBookings.filter((b: any) => b.locationId === selectedLocation.id);
+  }, [enrichedBookings, selectedLocation]);
 
   // Fetch chef kitchen applications for this manager
   const { data: applications = [], isLoading: isLoadingApplications } = useQuery({
@@ -210,7 +253,7 @@ export default function KitchenDashboardOverview({
     refetchOnWindowFocus: true,
   });
 
-  // Calculate dashboard metrics
+  // Calculate dashboard metrics (using filtered bookings)
   const dashboardMetrics = useMemo(() => {
     // Helper function to normalize date to YYYY-MM-DD in local timezone
     const normalizeDate = (date: Date | string): string => {
@@ -231,26 +274,26 @@ export default function KitchenDashboardOverview({
     const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
 
-    // Filter bookings by date
-    const todayBookings = bookings.filter((b: any) => {
+    // Filter bookings by date (using filteredBookings)
+    const todayBookings = filteredBookings.filter((b: any) => {
       if (!b.bookingDate) return false;
       const bookingDateStr = normalizeDate(b.bookingDate);
       return bookingDateStr === todayStr && b.status !== 'cancelled';
     });
 
-    const weekBookings = bookings.filter((b: any) => {
+    const weekBookings = filteredBookings.filter((b: any) => {
       if (!b.bookingDate) return false;
       const bookingDate = new Date(b.bookingDate);
       bookingDate.setHours(0, 0, 0, 0);
       return bookingDate >= today && bookingDate <= weekFromNow && b.status !== 'cancelled';
     });
 
-    const pendingBookings = bookings.filter((b: any) => b.status === 'pending');
-    const confirmedBookings = bookings.filter((b: any) => b.status === 'confirmed');
-    const cancelledBookings = bookings.filter((b: any) => b.status === 'cancelled');
+    const pendingBookings = filteredBookings.filter((b: any) => b.status === 'pending');
+    const confirmedBookings = filteredBookings.filter((b: any) => b.status === 'confirmed');
+    const cancelledBookings = filteredBookings.filter((b: any) => b.status === 'cancelled');
 
     // This month's bookings
-    const thisMonthBookings = bookings.filter((b: any) => {
+    const thisMonthBookings = filteredBookings.filter((b: any) => {
       if (!b.bookingDate) return false;
       const bookingDate = new Date(b.bookingDate);
       bookingDate.setHours(0, 0, 0, 0);
@@ -258,7 +301,7 @@ export default function KitchenDashboardOverview({
     });
 
     // Last month's bookings (for comparison)
-    const lastMonthBookings = bookings.filter((b: any) => {
+    const lastMonthBookings = filteredBookings.filter((b: any) => {
       if (!b.bookingDate) return false;
       const bookingDate = new Date(b.bookingDate);
       bookingDate.setHours(0, 0, 0, 0);
@@ -291,13 +334,13 @@ export default function KitchenDashboardOverview({
       pendingBookings: pendingBookings.length,
       confirmedBookings: confirmedBookings.length,
       cancelledBookings: cancelledBookings.length,
-      totalBookings: bookings.length,
+      totalBookings: filteredBookings.length,
       thisMonthBookings: thisMonthCount,
       bookingTrend: Math.round(bookingTrend),
       uniqueChefs: uniqueChefs.size,
       utilizationRate: Math.min(utilizationRate, 100),
     };
-  }, [bookings]);
+  }, [filteredBookings]);
 
   // Generate chart data for weekly bookings (next 7 days including today)
   const weeklyChartData = useMemo(() => {
@@ -322,7 +365,7 @@ export default function KitchenDashboardOverview({
       date.setDate(date.getDate() + i);
       const dateStr = normalizeDate(date);
       
-      const dayBookings = bookings.filter((b: any) => {
+      const dayBookings = filteredBookings.filter((b: any) => {
         if (!b.bookingDate) return false;
         const bookingDateStr = normalizeDate(b.bookingDate);
         return bookingDateStr === dateStr;
@@ -337,14 +380,14 @@ export default function KitchenDashboardOverview({
       });
     }
     return data;
-  }, [bookings]);
+  }, [filteredBookings]);
 
   // Get recent bookings for the table
   const recentBookings = useMemo(() => {
-    return [...bookings]
+    return [...filteredBookings]
       .sort((a: any, b: any) => new Date(b.createdAt || b.bookingDate).getTime() - new Date(a.createdAt || a.bookingDate).getTime())
       .slice(0, 5);
-  }, [bookings]);
+  }, [filteredBookings]);
 
   // Get urgent actions
   const urgentActions = useMemo(() => {
@@ -390,28 +433,131 @@ export default function KitchenDashboardOverview({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  // Calculate per-location metrics for summary cards
+  const locationMetrics = useMemo(() => {
+    const metrics = new Map<number, {
+      location: Location;
+      todayBookings: number;
+      weekBookings: number;
+      pendingBookings: number;
+      thisMonthBookings: number;
+      thisMonthRevenue: number;
+    }>();
+
+    (locations || []).forEach(location => {
+      const locationBookings = enrichedBookings.filter((b: any) => b.locationId === location.id);
+      
+      const normalizeDate = (date: Date | string): string => {
+        const d = typeof date === 'string' ? new Date(date) : date;
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = normalizeDate(today);
+      const weekFromNow = new Date(today);
+      weekFromNow.setDate(weekFromNow.getDate() + 7);
+      weekFromNow.setHours(23, 59, 59, 999);
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+      const todayBookings = locationBookings.filter((b: any) => {
+        if (!b.bookingDate) return false;
+        const bookingDateStr = normalizeDate(b.bookingDate);
+        return bookingDateStr === todayStr && b.status !== 'cancelled';
+      });
+
+      const weekBookings = locationBookings.filter((b: any) => {
+        if (!b.bookingDate) return false;
+        const bookingDate = new Date(b.bookingDate);
+        bookingDate.setHours(0, 0, 0, 0);
+        return bookingDate >= today && bookingDate <= weekFromNow && b.status !== 'cancelled';
+      });
+
+      const pendingBookings = locationBookings.filter((b: any) => b.status === 'pending');
+
+      const thisMonthBookings = locationBookings.filter((b: any) => {
+        if (!b.bookingDate) return false;
+        const bookingDate = new Date(b.bookingDate);
+        bookingDate.setHours(0, 0, 0, 0);
+        return bookingDate >= startOfMonth && b.status === 'confirmed';
+      });
+
+      // Calculate revenue for this month (from confirmed bookings)
+      const thisMonthRevenue = thisMonthBookings.reduce((total: number, b: any) => {
+        return total + (b.totalPrice || 0);
+      }, 0) / 100; // Convert from cents to dollars
+
+      metrics.set(location.id, {
+        location,
+        todayBookings: todayBookings.length,
+        weekBookings: weekBookings.length,
+        pendingBookings: pendingBookings.length,
+        thisMonthBookings: thisMonthBookings.length,
+        thisMonthRevenue,
+      });
+    });
+
+    return Array.from(metrics.values());
+  }, [locations, enrichedBookings]);
+
   return (
     <div className="space-y-6">
       {/* ═══════════════════════════════════════════════════════════════════════
-          WELCOME HEADER
+          WELCOME HEADER WITH LOCATION SELECTOR
       ═══════════════════════════════════════════════════════════════════════ */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             Welcome back{selectedLocation ? `, ${selectedLocation.name}` : ''} 👋
           </h1>
           <p className="text-gray-500 mt-1">
-            Here's what's happening with your kitchen today
+            {selectedLocation 
+              ? `Here's what's happening with ${selectedLocation.name} today`
+              : "Here's what's happening across all your locations today"
+            }
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <CalendarDays className="h-4 w-4" />
-          {new Date().toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          })}
+        <div className="flex items-center gap-4">
+          {/* Location Selector */}
+          {(locations || []).length > 1 && onSelectLocation && (
+            <Select
+              value={selectedLocation?.id?.toString() || 'all'}
+              onValueChange={(value) => {
+                if (value === 'all') {
+                  onSelectLocation(null);
+                } else {
+                  const location = (locations || []).find(l => l.id.toString() === value);
+                  if (location) {
+                    onSelectLocation(location);
+                  }
+                }
+              }}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select location" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Locations</SelectItem>
+                {(locations || []).map((location) => (
+                  <SelectItem key={location.id} value={location.id.toString()}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <CalendarDays className="h-4 w-4" />
+            {new Date().toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+          </div>
         </div>
       </div>
 
@@ -788,10 +934,69 @@ export default function KitchenDashboardOverview({
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════
+          LOCATION SUMMARY CARDS (Only shown when viewing all locations)
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {!selectedLocation && (locations || []).length > 1 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Location Overview</h2>
+            <p className="text-sm text-gray-500">{(locations || []).length} locations</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {locationMetrics.map((metrics) => (
+              <Card
+                key={metrics.location.id}
+                className="border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300 cursor-pointer group"
+                onClick={() => onSelectLocation?.(metrics.location)}
+              >
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Building2 className="h-4 w-4 text-gray-400" />
+                        <h3 className="font-semibold text-gray-900">{metrics.location.name}</h3>
+                      </div>
+                      <p className="text-xs text-gray-500 line-clamp-1">{metrics.location.address}</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-2 bg-rose-50 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-1">Today</p>
+                      <p className="text-lg font-bold text-gray-900">{metrics.todayBookings}</p>
+                    </div>
+                    <div className="p-2 bg-violet-50 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-1">This Week</p>
+                      <p className="text-lg font-bold text-gray-900">{metrics.weekBookings}</p>
+                    </div>
+                    <div className="p-2 bg-amber-50 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-1">Pending</p>
+                      <p className="text-lg font-bold text-gray-900">{metrics.pendingBookings}</p>
+                    </div>
+                    <div className="p-2 bg-emerald-50 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-1">This Month</p>
+                      <p className="text-lg font-bold text-gray-900">
+                        {new Intl.NumberFormat('en-CA', {
+                          style: 'currency',
+                          currency: 'CAD',
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(metrics.thisMonthRevenue)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════
           BOOKING CALENDAR - Main Highlight
       ═══════════════════════════════════════════════════════════════════════ */}
       <BookingCalendarWidget
-        bookings={bookings}
+        bookings={filteredBookings}
         isLoading={isLoadingBookings}
         onNavigateToBookings={() => onNavigate('bookings')}
       />
@@ -892,7 +1097,7 @@ export default function KitchenDashboardOverview({
 
         {/* Customer Management */}
         <CustomerManagementPanel 
-          bookings={bookings}
+          bookings={filteredBookings}
           applications={applications}
           onNavigate={onNavigate}
           isLoading={isLoadingBookings || isLoadingApplications}
