@@ -16,6 +16,24 @@ export async function generateInvoicePDF(
   paymentIntentId: string | null,
   dbPool: Pool | null
 ): Promise<Buffer> {
+  // Get Stripe-synced platform fee from payment_transactions if available
+  let stripePlatformFee = 0; // Platform fee from Stripe (in cents)
+  let stripeTotalAmount = 0; // Total amount from Stripe (in cents)
+  
+  if (dbPool && paymentIntentId) {
+    try {
+      const { findPaymentTransactionByIntentId } = await import('./payment-transactions-service.js');
+      const paymentTransaction = await findPaymentTransactionByIntentId(paymentIntentId, dbPool);
+      if (paymentTransaction) {
+        // Use Stripe-synced values
+        stripeTotalAmount = parseInt(paymentTransaction.amount) || 0;
+        stripePlatformFee = parseInt(paymentTransaction.service_fee) || 0; // This is the platform fee from Stripe
+        console.log(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, platformFee=${stripePlatformFee}`);
+      }
+    } catch (error) {
+      console.warn('[Invoice] Could not fetch payment transaction, will calculate fees:', error);
+    }
+  }
   // Calculate pricing first (async operations)
   let totalAmount = 0;
   const items: Array<{ description: string; quantity: number; rate: number; amount: number }> = [];
@@ -203,42 +221,48 @@ export async function generateInvoicePDF(
     }
   }
 
-  // Service fee - calculate once on subtotal (not per item)
-  // This matches how Stripe charges: one service fee on the total transaction
-  // Service fee includes: platform fee (percentage) + $0.30 Stripe processing fee
-  // All items above show base prices only (service fee already subtracted)
-  let serviceFee = 0;
-  let serviceFeeRate = 0.05; // Default
-  const stripeProcessingFee = 0.30; // $0.30 flat fee per transaction
+  // Service fee (Platform Fee) - get from Stripe via payment_transactions
+  // The invoice shows the platform fee that was actually charged by Stripe
+  // This is the application_fee_amount from Stripe Connect, which is the platform fee
+  let platformFee = 0; // Platform fee in dollars
   
-  // Try to use stored service_fee from booking if available (includes $0.30)
-  // This ensures we use the actual Stripe-synced amount if available
-  if (booking.service_fee || booking.serviceFee) {
+  if (stripePlatformFee > 0) {
+    // Use Stripe-synced platform fee (this is what was actually charged)
+    platformFee = stripePlatformFee / 100; // Convert cents to dollars
+    console.log(`[Invoice] Using Stripe platform fee: $${platformFee.toFixed(2)}`);
+  } else if (booking.service_fee || booking.serviceFee) {
+    // Fallback: use stored service_fee from booking (should be Stripe-synced)
     const storedServiceFeeCents = parseFloat(String(booking.service_fee || booking.serviceFee));
-    serviceFee = storedServiceFeeCents / 100; // Convert cents to dollars
+    platformFee = storedServiceFeeCents / 100; // Convert cents to dollars
+    console.log(`[Invoice] Using stored service_fee from booking: $${platformFee.toFixed(2)}`);
   } else {
-    // Calculate service fee if not stored
-    // Get service fee rate from platform settings
+    // Last resort: calculate platform fee (should rarely happen if Stripe sync worked)
+    let serviceFeeRate = 0.05; // Default 5%
     if (dbPool) {
       try {
         const { getServiceFeeRate } = await import('./pricing-service.js');
         serviceFeeRate = await getServiceFeeRate(dbPool);
       } catch (error) {
-        console.error('Error getting service fee rate for invoice:', error);
-        // Use default 5%
+        console.warn('[Invoice] Could not get service fee rate, using default 5%:', error);
       }
     }
-    
-    // Calculate service fee once on the subtotal (sum of all base prices)
-    // This matches the Stripe transaction: one service fee on the total amount
-    // Service fee = platform fee (percentage) + $0.30 Stripe processing fee
     if (totalAmount > 0) {
-      const platformFee = totalAmount * serviceFeeRate;
-      serviceFee = platformFee + stripeProcessingFee;
+      platformFee = totalAmount * serviceFeeRate;
+      console.log(`[Invoice] Calculated platform fee (fallback): $${platformFee.toFixed(2)}`);
     }
   }
   
-  const grandTotal = totalAmount + serviceFee;
+  // Service fee shown on invoice = platform fee (from Stripe)
+  // Note: Stripe processing fee ($0.30) is not shown separately on invoice
+  // It's included in Stripe's fees but not itemized for the customer
+  const serviceFee = platformFee;
+  
+  // Grand total = base amount + platform fee
+  // If we have Stripe total amount, use it (most accurate)
+  // Otherwise calculate as base + platform fee
+  const grandTotal = stripeTotalAmount > 0 
+    ? stripeTotalAmount / 100  // Use Stripe total amount (most accurate)
+    : totalAmount + serviceFee; // Fallback calculation
 
   // Now generate PDF
   return new Promise((resolve, reject) => {
@@ -386,20 +410,10 @@ export async function generateInvoicePDF(
       doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
-      // Service fee (platform fee + Stripe processing fee)
-      doc.text('Service Fee:', 380, currentY, { width: 110, align: 'right' });
-      doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
-      currentY += 20;
-      
-      // Subtotal
-      doc.fontSize(10).font('Helvetica').text('Subtotal:', 380, currentY, { align: 'right', width: 110 });
-      doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
-      currentY += 20;
-      
-      // Service Fee - show as "Service Fee" (includes platform fee + $0.30 Stripe processing fee)
-      // Don't show percentage since it includes a flat $0.30 fee
-      doc.text('Service Fee:', 380, currentY, { align: 'right', width: 110 });
-      doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+      // Platform Fee (from Stripe)
+      // This is the actual platform fee charged by Stripe (application_fee_amount)
+      doc.text('Platform Fee:', 380, currentY, { width: 110, align: 'right' });
+      doc.text(`$${platformFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
       // Total (bold and larger)

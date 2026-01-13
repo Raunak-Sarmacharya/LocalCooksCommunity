@@ -203,15 +203,18 @@ export async function getRevenueMetricsFromTransactions(
       ? Math.round(parseFloat(String(row.avg_booking_value)))
       : 0;
 
-    // Total revenue = completed payments + processing payments
-    // Processing payments are payments still being processed
-    const totalRevenue = completedPayments + pendingPayments;
+    // Total revenue = sum of all amounts charged (from query)
+    const totalRevenue = parseNumeric(row.total_revenue);
+    
+    // Manager revenue MUST ALWAYS be calculated as: total_revenue - platform_fee
+    // This ensures accuracy and consistency - manager gets what's left after platform fee
+    const finalManagerRevenue = Math.max(0, totalRevenue - platformFee);
 
     // Ensure all values are numbers (not NaN or undefined)
     const metrics = {
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
-      managerRevenue: isNaN(managerRevenue) ? 0 : managerRevenue,
+      managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue, // Always: total - platform fee
       pendingPayments: isNaN(pendingPayments) ? 0 : pendingPayments,
       completedPayments: isNaN(completedPayments) ? 0 : completedPayments,
       averageBookingValue: isNaN(averageBookingValue) ? 0 : averageBookingValue,
@@ -321,12 +324,17 @@ export async function getRevenueByLocationFromTransactions(
         return parseInt(String(value)) || 0;
       };
 
+      // Calculate manager revenue as total_revenue - platform_fee for consistency
+      const locTotalRevenue = parseNumeric(row.total_revenue);
+      const locPlatformFee = parseNumeric(row.platform_fee);
+      const locManagerRevenue = Math.max(0, locTotalRevenue - locPlatformFee);
+      
       return {
         locationId: parseInt(row.location_id),
         locationName: row.location_name,
-        totalRevenue: parseNumeric(row.total_revenue),
-        platformFee: parseNumeric(row.platform_fee),
-        managerRevenue: parseNumeric(row.manager_revenue),
+        totalRevenue: locTotalRevenue,
+        platformFee: locPlatformFee,
+        managerRevenue: locManagerRevenue, // Calculated as total - platform fee
         bookingCount: parseInt(row.booking_count) || 0,
         paidBookingCount: parseInt(row.paid_count) || 0,
       };
@@ -429,7 +437,7 @@ export async function getRevenueByDateFromTransactions(
         date: row.date,
         totalRevenue: parseNumeric(row.total_revenue),
         platformFee: parseNumeric(row.platform_fee),
-        managerRevenue: parseNumeric(row.manager_revenue),
+        managerRevenue: Math.max(0, parseNumeric(row.total_revenue) - parseNumeric(row.platform_fee)), // Calculate as total - platform fee
         bookingCount: parseInt(row.booking_count) || 0,
       };
     });
