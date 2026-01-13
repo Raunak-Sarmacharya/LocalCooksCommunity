@@ -5264,23 +5264,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const { deleteFromR2, isR2Configured } = await import('./r2-storage');
         const isProduction = process.env.NODE_ENV === 'production';
+        const r2Configured = isR2Configured();
         
-        if (isProduction && isR2Configured()) {
+        if (!r2Configured) {
+          console.error('❌ R2 not configured. Required env vars:', {
+            hasAccountId: !!process.env.CLOUDFLARE_ACCOUNT_ID,
+            hasAccessKey: !!process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+            hasSecretKey: !!process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+            hasBucketName: !!process.env.CLOUDFLARE_R2_BUCKET_NAME
+          });
+          return res.status(500).json({ 
+            error: "R2 storage not configured",
+            message: "Cloudflare R2 is not properly configured. Please check environment variables."
+          });
+        }
+        
+        if (isProduction || process.env.ALLOW_R2_DELETE_IN_DEV === 'true') {
           const deleted = await deleteFromR2(fileUrl);
           if (deleted) {
             console.log(`✅ File deleted from R2 by manager ${user.id}: ${fileUrl}`);
             return res.json({ success: true, message: "File deleted successfully" });
           } else {
-            return res.status(500).json({ error: "Failed to delete file from R2" });
+            console.error(`❌ Failed to delete file from R2: ${fileUrl}`);
+            return res.status(500).json({ 
+              error: "Failed to delete file from R2",
+              message: "The file could not be deleted from R2 storage. Check server logs for details."
+            });
           }
         } else {
-          // In development, just return success
-          console.log(`💻 Development mode: File deletion skipped for ${fileUrl}`);
+          // In development, just return success (unless explicitly enabled)
+          console.log(`💻 Development mode: File deletion skipped for ${fileUrl}. Set ALLOW_R2_DELETE_IN_DEV=true to enable.`);
           return res.json({ success: true, message: "File deletion skipped (development mode)" });
         }
       } catch (error: any) {
-        console.error('Error deleting file from R2:', error);
-        return res.status(500).json({ error: error.message || "Failed to delete file" });
+        console.error('❌ Error deleting file from R2:', {
+          error: error.message,
+          fileUrl,
+          stack: error.stack
+        });
+        return res.status(500).json({ 
+          error: error.message || "Failed to delete file",
+          message: "An error occurred while deleting the file. Check server logs for details."
+        });
       }
     } catch (error: any) {
       console.error("Error in delete file endpoint:", error);

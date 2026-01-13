@@ -754,7 +754,21 @@ async function getAllKitchens() {
       return [];
     }
     const result = await pool.query(`
-      SELECT id, location_id as "locationId", name, description, is_active as "isActive", created_at, updated_at 
+      SELECT 
+        id, 
+        location_id as "locationId", 
+        name, 
+        description, 
+        is_active as "isActive",
+        image_url as "imageUrl",
+        gallery_images as "galleryImages",
+        amenities,
+        hourly_rate as "hourlyRate",
+        currency,
+        minimum_booking_hours as "minimumBookingHours",
+        pricing_model as "pricingModel",
+        created_at as "createdAt", 
+        updated_at as "updatedAt"
       FROM kitchens 
       ORDER BY created_at DESC
     `);
@@ -937,27 +951,86 @@ async function deleteFromR2(fileUrl) {
     const client = getR2Client();
     const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME;
     
-    // Extract key from URL
-    const urlObj = new URL(fileUrl);
-    let key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    // Handle proxy URLs - extract actual R2 URL from query parameter
+    let actualFileUrl = fileUrl;
+    if (fileUrl.includes('/api/files/r2-proxy')) {
+      try {
+        const urlObj = new URL(fileUrl, 'http://localhost'); // base URL for relative URLs
+        const urlParam = urlObj.searchParams.get('url');
+        if (urlParam) {
+          actualFileUrl = decodeURIComponent(urlParam);
+          console.log(`🔍 Extracted R2 URL from proxy: ${actualFileUrl}`);
+        } else {
+          console.error('❌ Proxy URL missing url parameter:', fileUrl);
+          return false;
+        }
+      } catch (urlError) {
+        console.error('❌ Error parsing proxy URL:', urlError);
+        return false;
+      }
+    }
     
-    // Remove bucket name from key if present
-    const keyParts = key.split('/');
-    const bucketIndex = keyParts.indexOf(R2_BUCKET_NAME);
-    const actualKey = bucketIndex >= 0 
-      ? keyParts.slice(bucketIndex + 1).join('/')
-      : key;
+    // Extract key from URL using robust logic (same as getPresignedUrl)
+    const urlObj = new URL(actualFileUrl);
+    let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const pathParts = pathname.split('/').filter(p => p);
+    
+    // Find the bucket name index
+    const bucketIndex = pathParts.indexOf(R2_BUCKET_NAME);
+    
+    let key;
+    if (bucketIndex >= 0) {
+      // Bucket name is in the path, key is everything after it
+      // e.g., [bucket_name, images, filename] -> images/filename
+      key = pathParts.slice(bucketIndex + 1).join('/');
+    } else {
+      // Bucket name not in path (custom domain or different URL format)
+      // Try to detect if it's a custom domain by checking if pathname starts with known folders
+      const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
+      const firstPart = pathParts[0];
+      
+      if (knownFolders.includes(firstPart)) {
+        // Custom domain with folder structure, use entire pathname
+        key = pathname;
+      } else {
+        // Unknown format, try using entire pathname
+        key = pathname;
+      }
+    }
+    
+    // Remove leading/trailing slashes
+    key = key.replace(/^\/+|\/+$/g, '');
+    
+    // Final validation: key should not be empty
+    if (!key || key.length === 0) {
+      console.error(`❌ Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
+      return false;
+    }
+
+    console.log('🔍 R2 Delete Debug:', {
+      originalUrl: fileUrl,
+      actualFileUrl,
+      extractedKey: key,
+      bucketName: R2_BUCKET_NAME,
+      pathname: urlObj.pathname,
+      pathParts,
+      bucketIndex
+    });
 
     const command = new DeleteObjectCommand({
       Bucket: R2_BUCKET_NAME,
-      Key: actualKey,
+      Key: key,
     });
 
     await client.send(command);
-    console.log(`✅ File deleted from R2: ${actualKey}`);
+    console.log(`✅ File deleted from R2: ${key}`);
     return true;
   } catch (error) {
-    console.error('❌ Error deleting from R2:', error);
+    console.error('❌ Error deleting from R2:', {
+      error: error.message,
+      fileUrl,
+      stack: error.stack
+    });
     return false;
   }
 }
@@ -15035,23 +15108,48 @@ app.delete("/api/manager/files", requireFirebaseAuthWithUser, requireManager, as
 
     try {
       const isProduction = process.env.NODE_ENV === 'production';
+      const r2Configured = isR2Configured();
       
-      if (isProduction && isR2Configured()) {
+      if (!r2Configured) {
+        console.error('❌ R2 not configured. Required env vars:', {
+          hasAccountId: !!process.env.CLOUDFLARE_ACCOUNT_ID,
+          hasAccessKey: !!process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+          hasSecretKey: !!process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+          hasBucketName: !!process.env.CLOUDFLARE_R2_BUCKET_NAME
+        });
+        return res.status(500).json({ 
+          error: "R2 storage not configured",
+          message: "Cloudflare R2 is not properly configured. Please check environment variables."
+        });
+      }
+      
+      if (isProduction || process.env.ALLOW_R2_DELETE_IN_DEV === 'true') {
         const deleted = await deleteFromR2(fileUrl);
         if (deleted) {
           console.log(`✅ File deleted from R2 by manager ${user.id}: ${fileUrl}`);
           return res.json({ success: true, message: "File deleted successfully" });
         } else {
-          return res.status(500).json({ error: "Failed to delete file from R2" });
+          console.error(`❌ Failed to delete file from R2: ${fileUrl}`);
+          return res.status(500).json({ 
+            error: "Failed to delete file from R2",
+            message: "The file could not be deleted from R2 storage. Check server logs for details."
+          });
         }
       } else {
-        // In development, just return success
-        console.log(`💻 Development mode: File deletion skipped for ${fileUrl}`);
+        // In development, just return success (unless explicitly enabled)
+        console.log(`💻 Development mode: File deletion skipped for ${fileUrl}. Set ALLOW_R2_DELETE_IN_DEV=true to enable.`);
         return res.json({ success: true, message: "File deletion skipped (development mode)" });
       }
     } catch (error) {
-      console.error('Error deleting file from R2:', error);
-      return res.status(500).json({ error: error.message || "Failed to delete file" });
+      console.error('❌ Error deleting file from R2:', {
+        error: error.message,
+        fileUrl,
+        stack: error.stack
+      });
+      return res.status(500).json({ 
+        error: error.message || "Failed to delete file",
+        message: "An error occurred while deleting the file. Check server logs for details."
+      });
     }
   } catch (error) {
     console.error("Error in delete file endpoint:", error);
@@ -22473,6 +22571,8 @@ app.get("/api/public/kitchens", async (req, res) => {
         k.description,
         k.location_id as "locationId",
         k.is_active as "isActive",
+        k.image_url as "imageUrl",
+        k.gallery_images as "galleryImages",
         l.name as "locationName",
         l.address as "locationAddress"
       FROM kitchens k
@@ -22497,16 +22597,28 @@ app.get("/api/public/kitchens", async (req, res) => {
       const locationId = kitchen.locationId || kitchen.location_id;
       const locationName = kitchen.locationName || kitchen.location_name;
       const locationAddress = kitchen.locationAddress || kitchen.location_address;
+      const imageUrl = kitchen.imageUrl || kitchen.image_url || null;
+      const galleryImages = (kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) 
+        ? kitchen.galleryImages 
+        : (kitchen.gallery_images && Array.isArray(kitchen.gallery_images))
+          ? kitchen.gallery_images
+          : [];
       
       // Log for debugging
       if (locationId && !locationName) {
         console.warn(`[API] Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
       }
       
+      // Normalize image URLs
+      const normalizedImageUrl = normalizeImageUrl(imageUrl, req);
+      const normalizedGalleryImages = galleryImages.map(img => normalizeImageUrl(img, req));
+      
       return {
         id: kitchen.id,
         name: kitchen.name,
         description: kitchen.description,
+        imageUrl: normalizedImageUrl,
+        galleryImages: normalizedGalleryImages,
         locationId: locationId || null,
         locationName: locationName || null,
         locationAddress: locationAddress || null,
@@ -23458,7 +23570,15 @@ app.get("/api/portal/locations/:locationSlug/kitchens", requirePortalUser, async
 
     // Get kitchens for this location
     const kitchensResult = await pool.query(
-      'SELECT id, name, description, location_id FROM kitchens WHERE location_id = $1 AND is_active != false',
+      `SELECT 
+        id, 
+        name, 
+        description, 
+        location_id as "locationId",
+        image_url as "imageUrl",
+        gallery_images as "galleryImages"
+      FROM kitchens 
+      WHERE location_id = $1 AND is_active != false`,
       [userLocationId]
     );
 
@@ -23466,7 +23586,13 @@ app.get("/api/portal/locations/:locationSlug/kitchens", requirePortalUser, async
       id: kitchen.id,
       name: kitchen.name,
       description: kitchen.description,
-      locationId: kitchen.location_id,
+      locationId: kitchen.locationId || kitchen.location_id,
+      imageUrl: kitchen.imageUrl || kitchen.image_url || null,
+      galleryImages: (kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) 
+        ? kitchen.galleryImages 
+        : (kitchen.gallery_images && Array.isArray(kitchen.gallery_images))
+          ? kitchen.gallery_images
+          : [],
     }));
 
     res.json(publicKitchens);
