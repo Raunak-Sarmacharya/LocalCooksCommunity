@@ -205,25 +205,37 @@ export async function generateInvoicePDF(
 
   // Service fee - calculate once on subtotal (not per item)
   // This matches how Stripe charges: one service fee on the total transaction
+  // Service fee includes: platform fee (percentage) + $0.30 Stripe processing fee
   // All items above show base prices only (service fee already subtracted)
   let serviceFee = 0;
   let serviceFeeRate = 0.05; // Default
+  const stripeProcessingFee = 0.30; // $0.30 flat fee per transaction
   
-  // Get service fee rate from platform settings
-  if (dbPool) {
-    try {
-      const { getServiceFeeRate } = await import('./pricing-service.js');
-      serviceFeeRate = await getServiceFeeRate(dbPool);
-    } catch (error) {
-      console.error('Error getting service fee rate for invoice:', error);
-      // Use default 5%
+  // Try to use stored service_fee from booking if available (includes $0.30)
+  // This ensures we use the actual Stripe-synced amount if available
+  if (booking.service_fee || booking.serviceFee) {
+    const storedServiceFeeCents = parseFloat(String(booking.service_fee || booking.serviceFee));
+    serviceFee = storedServiceFeeCents / 100; // Convert cents to dollars
+  } else {
+    // Calculate service fee if not stored
+    // Get service fee rate from platform settings
+    if (dbPool) {
+      try {
+        const { getServiceFeeRate } = await import('./pricing-service.js');
+        serviceFeeRate = await getServiceFeeRate(dbPool);
+      } catch (error) {
+        console.error('Error getting service fee rate for invoice:', error);
+        // Use default 5%
+      }
     }
-  }
-  
-  // Calculate service fee once on the subtotal (sum of all base prices)
-  // This matches the Stripe transaction: one service fee on the total amount
-  if (totalAmount > 0) {
-    serviceFee = totalAmount * serviceFeeRate;
+    
+    // Calculate service fee once on the subtotal (sum of all base prices)
+    // This matches the Stripe transaction: one service fee on the total amount
+    // Service fee = platform fee (percentage) + $0.30 Stripe processing fee
+    if (totalAmount > 0) {
+      const platformFee = totalAmount * serviceFeeRate;
+      serviceFee = platformFee + stripeProcessingFee;
+    }
   }
   
   const grandTotal = totalAmount + serviceFee;
@@ -369,13 +381,24 @@ export async function generateInvoicePDF(
       currentY += 15;
       
       // Subtotal
+      doc.fontSize(10).font('Helvetica');
+      doc.text('Subtotal:', 380, currentY, { width: 110, align: 'right' });
+      doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+      currentY += 20;
+      
+      // Service fee (platform fee + Stripe processing fee)
+      doc.text('Service Fee:', 380, currentY, { width: 110, align: 'right' });
+      doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+      currentY += 20;
+      
+      // Subtotal
       doc.fontSize(10).font('Helvetica').text('Subtotal:', 380, currentY, { align: 'right', width: 110 });
       doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       
-      // Service Fee - calculate percentage for display
-      const serviceFeePercentage = totalAmount > 0 ? (serviceFee / totalAmount * 100).toFixed(1) : '5.0';
-      doc.text(`Service Fee (${serviceFeePercentage}%):`, 380, currentY, { align: 'right', width: 110 });
+      // Service Fee - show as "Service Fee" (includes platform fee + $0.30 Stripe processing fee)
+      // Don't show percentage since it includes a flat $0.30 fee
+      doc.text('Service Fee:', 380, currentY, { align: 'right', width: 110 });
       doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       currentY += 20;
       

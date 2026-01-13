@@ -14201,25 +14201,30 @@ app.get("/api/manager/stripe-connect/dashboard-link", requireFirebaseAuthWithUse
 // MANAGER REVENUE ENDPOINTS
 // ===================================
 
-// Sync payment statuses for manager (ensures all payments are up-to-date)
+// Sync payment statuses and Stripe amounts for manager (ensures all payments are up-to-date)
 app.post("/api/manager/revenue/sync-payments", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
   try {
     const managerId = req.neonUser.id;
+    const { limit = '100', onlyUnsynced = 'true' } = req.body || {};
 
     if (!pool) {
       return res.status(500).json({ error: "Database connection not available" });
     }
 
-    const { syncManagerPayments } = await import('../server/services/payment-tracking-service.js');
+    // Sync existing payment transactions with Stripe amounts
+    const { syncExistingPaymentTransactionsFromStripe } = await import('../server/services/payment-transactions-service.js');
     
-    const result = await syncManagerPayments(managerId, pool);
+    const result = await syncExistingPaymentTransactionsFromStripe(managerId, pool, {
+      limit: parseInt(limit) || 100,
+      onlyUnsynced: onlyUnsynced !== 'false',
+    });
 
     res.json({
       success: true,
+      message: `Synced ${result.synced} payment transactions with Stripe amounts${result.failed > 0 ? `, ${result.failed} failed` : ''}`,
       synced: result.synced,
-      updated: result.updated,
+      failed: result.failed,
       errors: result.errors,
-      message: `Synced ${result.synced} payments: ${result.updated} updated, ${result.errors} errors`
     });
   } catch (error) {
     console.error('Error syncing payments:', error);
@@ -14333,21 +14338,32 @@ app.get("/api/manager/revenue/overview", requireFirebaseAuthWithUser, requireMan
       return res.status(500).json({ error: "Database connection not available" });
     }
 
-    // Optionally sync payments before calculating metrics (if syncPayments=true)
-    if (syncPayments === 'true') {
-      try {
-        const { syncManagerPayments } = await import('../server/services/payment-tracking-service.js');
-        await syncManagerPayments(managerId, pool);
-        console.log(`[Revenue] Synced payments for manager ${managerId} before calculating metrics`);
-      } catch (syncError) {
-        console.warn(`[Revenue] Payment sync failed (continuing anyway):`, syncError.message);
-        // Continue even if sync fails
+    // Auto-sync payments on first load (one-time backfill for old transactions)
+    // This ensures old database rows get updated with Stripe amounts
+    // Only sync if there are unsynced transactions (safe to run multiple times)
+    try {
+      const { syncExistingPaymentTransactionsFromStripe } = await import('../server/services/payment-transactions-service.js');
+      const syncResult = await syncExistingPaymentTransactionsFromStripe(managerId, pool, {
+        limit: 50, // Sync up to 50 transactions per request (to avoid timeout)
+        onlyUnsynced: true, // Only sync transactions that haven't been synced yet
+      });
+      if (syncResult.synced > 0) {
+        console.log(`[Revenue] Auto-synced ${syncResult.synced} payment transactions from Stripe for manager ${managerId}`);
       }
+      // Don't log failures as errors - they might be expected (e.g., deleted PaymentIntents)
+      if (syncResult.failed > 0 && syncResult.synced === 0) {
+        console.warn(`[Revenue] Could not sync ${syncResult.failed} transactions (may need manual sync)`);
+      }
+    } catch (syncError) {
+      // Don't fail the request if sync fails - just log and continue
+      console.warn(`[Revenue] Auto-sync failed (continuing anyway):`, syncError.message);
     }
 
-    const { getCompleteRevenueMetrics } = await import('../server/services/revenue-service.js');
+    // Use V2 service that uses payment_transactions (with Stripe-synced amounts)
+    // This ensures all amounts come from Stripe, not calculations
+    const { getRevenueMetricsFromTransactions } = await import('../server/services/revenue-service-v2.js');
     
-    const metrics = await getCompleteRevenueMetrics(
+    const metrics = await getRevenueMetricsFromTransactions(
       managerId,
       pool,
       startDate ? new Date(startDate) : undefined,
