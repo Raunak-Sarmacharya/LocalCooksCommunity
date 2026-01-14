@@ -262,6 +262,11 @@ export default function ManagerBookingDashboard() {
     !userData?.manager_onboarding_completed &&
     !userData?.manager_onboarding_skipped;
 
+  // Check if license is expired for selected location
+  const isLicenseExpired = selectedLocation?.kitchenLicenseExpiry 
+    ? new Date(selectedLocation.kitchenLicenseExpiry) < new Date()
+    : false;
+
   // Auto-select location if only one exists
   useEffect(() => {
     if (!isLoadingLocations && locations.length === 1 && !selectedLocation) {
