@@ -1770,6 +1770,38 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [licenseExpiryDate, setLicenseExpiryDate] = useState<string>(location.kitchenLicenseExpiry || '');
   const [showCreateKitchen, setShowCreateKitchen] = useState(false);
   
+  // Helper function to extract filename from URL
+  const getDocumentFilename = (url?: string): string => {
+    if (!url) return 'No document';
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const filename = pathname.split('/').pop() || 'kitchen-license';
+      // Decode URL encoding
+      return decodeURIComponent(filename);
+    } catch {
+      // If URL parsing fails, try to extract from string
+      const parts = url.split('/');
+      return decodeURIComponent(parts[parts.length - 1] || 'kitchen-license');
+    }
+  };
+  
+  // Helper function to calculate days until expiry
+  const getDaysUntilExpiry = (expiryDate?: string): number | null => {
+    if (!expiryDate) return null;
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+  
+  // Helper function to check if expiry is approaching (within 30 days)
+  const isExpiryApproaching = (expiryDate?: string): boolean => {
+    const daysUntil = getDaysUntilExpiry(expiryDate);
+    return daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
+  };
+  
   // Check if license is expired
   const isLicenseExpired = location.kitchenLicenseExpiry 
     ? new Date(location.kitchenLicenseExpiry) < new Date()
