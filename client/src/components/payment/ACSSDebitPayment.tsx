@@ -24,8 +24,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 
 // Initialize Stripe
 // Support both VITE_STRIPE_PUBLISHABLE_KEY (Vite convention) and STRIPE_PUBLISHABLE_KEY (fallback)
-const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || import.meta.env.STRIPE_PUBLISHABLE_KEY || '';
-const stripePromise = loadStripe(stripePublishableKey);
+const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || import.meta.env.STRIPE_PUBLISHABLE_KEY;
+// Only initialize Stripe if we have a valid key
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : null;
 
 interface CustomerPaymentProps {
   clientSecret: string;
@@ -302,11 +303,13 @@ export default function ACSSDebitPayment({ clientSecret, amount, currency, onSuc
     }
   }, []);
 
-  if (stripeError) {
+  if (stripeError || !stripePromise) {
     return (
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
-        <AlertDescription>{stripeError}</AlertDescription>
+        <AlertDescription>
+          {stripeError || 'Stripe publishable key is not configured. Please set VITE_STRIPE_PUBLISHABLE_KEY in environment variables.'}
+        </AlertDescription>
       </Alert>
     );
   }

@@ -136,9 +136,14 @@ export default function KitchenComparisonPage() {
   const { approvedKitchens: approvedLocations, isLoading: locationsLoading } = useChefApprovedKitchens();
   const { applications, isLoading: applicationsLoading } = useChefKitchenApplicationsStatus();
   
+  console.log('[KitchenComparisonPage] Approved locations:', approvedLocations);
+  console.log('[KitchenComparisonPage] Applications:', applications);
+  
   // Get applied location IDs (all applications)
   const appliedLocationIds = new Set(applications.map((a) => a.locationId));
   const approvedLocationIds = new Set(approvedLocations.map((loc) => loc.id));
+  
+  console.log('[KitchenComparisonPage] Approved location IDs:', Array.from(approvedLocationIds));
   
   // Get pending applications (inReview status)
   const pendingApplications = applications.filter((a) => a.status === "inReview");
@@ -157,7 +162,7 @@ export default function KitchenComparisonPage() {
     staleTime: 60000, // Cache for 1 minute
   });
 
-  // Fetch kitchens for all approved locations (for "available to book" section)
+  // Fetch ALL kitchens (for "available to book" section - shows all kitchens, filters by approved locations)
   const { data: approvedKitchens, isLoading: kitchensLoading } = useQuery<Kitchen[]>({
     queryKey: ["/api/chef/kitchens", approvedLocations],
     queryFn: async () => {
@@ -172,12 +177,17 @@ export default function KitchenComparisonPage() {
       }
 
       const kitchens = await response.json();
+      console.log('[KitchenComparisonPage] Fetched kitchens:', kitchens.length, 'kitchens');
       
       // Filter kitchens to only include those from approved locations
-      return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
+      const filtered = (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         return approvedLocationIds.has(locationId);
-      }).map((k: any) => {
+      });
+      
+      console.log('[KitchenComparisonPage] Filtered to approved locations:', filtered.length, 'kitchens');
+      
+      return filtered.map((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         const location = approvedLocations.find((loc) => loc.id === locationId);
         
@@ -195,10 +205,14 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
+          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          currency: k.currency || 'CAD',
+          minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
+          pricingModel: k.pricingModel || k.pricing_model || 'hourly',
         };
       });
     },
-    enabled: approvedLocations.length > 0,
+    enabled: !!user && approvedLocations.length > 0, // Only fetch when user is authenticated and has approved locations
     staleTime: 60000, // Cache for 1 minute
   });
 
@@ -219,6 +233,7 @@ export default function KitchenComparisonPage() {
       }
 
       const kitchens = await response.json();
+      console.log('[KitchenComparisonPage] Fetched kitchens for available to apply:', kitchens.length, 'kitchens');
       
       // Filter to locations chef hasn't applied to yet
       const notAppliedLocationIds = (publicLocations || [])
@@ -249,6 +264,10 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
+          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          currency: k.currency || 'CAD',
+          minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
+          pricingModel: k.pricingModel || k.pricing_model || 'hourly',
         };
 
         // Fetch equipment listings (public info, no auth needed for preview)
@@ -320,6 +339,10 @@ export default function KitchenComparisonPage() {
 
         return {
           ...baseKitchen,
+          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          currency: k.currency || 'CAD',
+          minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
+          pricingModel: k.pricingModel || k.pricing_model || 'hourly',
           equipment,
           storage,
         };
@@ -327,7 +350,7 @@ export default function KitchenComparisonPage() {
 
       return Promise.all(kitchenPromises);
     },
-    enabled: !!publicLocations && publicLocations.length > 0,
+    enabled: !!user && !!publicLocations && publicLocations.length > 0, // Only fetch when user is authenticated
     staleTime: 60000,
   });
 
@@ -348,6 +371,7 @@ export default function KitchenComparisonPage() {
       }
 
       const kitchens = await response.json();
+      console.log('[KitchenComparisonPage] Fetched kitchens for pending locations:', kitchens.length, 'kitchens');
       
       // Filter to locations with pending applications
       return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
@@ -371,10 +395,14 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
+          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          currency: k.currency || 'CAD',
+          minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
+          pricingModel: k.pricingModel || k.pricing_model || 'hourly',
         };
       });
     },
-    enabled: pendingLocationIds.size > 0,
+    enabled: !!user && pendingLocationIds.size > 0, // Only fetch when user is authenticated
     staleTime: 60000,
   });
 
@@ -589,6 +617,8 @@ export default function KitchenComparisonPage() {
       (k) => k.locationId === location.id
     );
 
+    console.log(`[KitchenComparisonPage] Location ${location.name} (${location.id}): ${locationKitchens.length} kitchens`);
+
     return {
       id: location.id,
       name: location.name,
@@ -599,6 +629,8 @@ export default function KitchenComparisonPage() {
       isApproved: true,
     };
   }).filter((loc) => loc.kitchens.length > 0);
+  
+  console.log('[KitchenComparisonPage] Approved locations with kitchens:', approvedLocationsWithKitchens.length);
 
   // Group pending application kitchens by location
   const pendingApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string })[] = 
@@ -653,6 +685,13 @@ export default function KitchenComparisonPage() {
     ...pendingApplicationLocations,
     ...availableToApplyLocations,
   ];
+  
+  console.log('[KitchenComparisonPage] All locations with kitchens:', {
+    approved: approvedLocationsWithKitchens.length,
+    pending: pendingApplicationLocations.length,
+    availableToApply: availableToApplyLocations.length,
+    total: allLocationsWithKitchens.length
+  });
 
   // Filter all locations
   const filteredLocations = allLocationsWithKitchens

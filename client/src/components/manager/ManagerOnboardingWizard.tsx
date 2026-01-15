@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { optionalPhoneNumberSchema } from "@shared/phone-validation";
 import {
   Dialog,
   DialogContent,
@@ -883,11 +884,26 @@ export default function ManagerOnboardingWizard() {
 
       // Update location with basic info, notification settings, and license (if provided)
       try {
+        // Validate phone number if provided
+        let validatedPhone: string | null = null;
+        if (notificationPhone && notificationPhone.trim() !== '') {
+          const phoneValidation = optionalPhoneNumberSchema.safeParse(notificationPhone);
+          if (!phoneValidation.success) {
+            toast({
+              title: "Invalid Phone Number",
+              description: phoneValidation.error.errors[0]?.message || "Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)",
+              variant: "destructive",
+            });
+            return;
+          }
+          validatedPhone = phoneValidation.data;
+        }
+        
         const updateData: any = {
           name: locationName,
           address: locationAddress,
           notificationEmail,
-          notificationPhone,
+          notificationPhone: validatedPhone,
         };
 
         if (licenseUrl) {

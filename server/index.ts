@@ -14,6 +14,7 @@ app.use(express.urlencoded({ limit: '12mb', extended: true }));
 // Initialize Firebase Admin SDK
 initializeFirebaseAdmin();
 
+// Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -44,55 +45,83 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  // Register traditional routes FIRST (includes admin PUT routes that must come before any catch-all)
-  await registerRoutes(app);
-  
-  // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication (registered after specific routes)
-  registerFirebaseRoutes(app);
-  
-  // Create HTTP server for Firebase-only architecture
-  const { createServer } = await import('http');
-  const server = createServer(app);
+// Track if routes have been initialized
+let routesInitialized = false;
 
-  // Determine port (5001 for dev, 5000 for production, or PORT env var)
-  const port = process.env.PORT || (app.get("env") === "development" ? 5001 : 5000);
-
-  // Warm up vehicle data cache on server startup
+// Initialize routes immediately (top-level await)
+const initPromise = (async () => {
+  if (routesInitialized) return;
+  
   try {
-    log('🚗 Warming up vehicle data cache on server startup...');
-    const baseUrl = `http://localhost:${port}`;
-    const preloadResponse = await fetch(`${baseUrl}/api/vehicles/preload`);
-    if (preloadResponse.ok) {
-      const preloadData = await preloadResponse.json();
-      log(`🚗 Vehicle data cache warmed up successfully: ${preloadData.makesCount} makes, ${preloadData.modelsCount} models`);
+    log('[INIT] Starting route registration...');
+    
+    // Register traditional routes FIRST (includes admin PUT routes that must come before any catch-all)
+    await registerRoutes(app);
+    
+    // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication (registered after specific routes)
+    registerFirebaseRoutes(app);
+
+    // Error handling middleware
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+
+      res.status(status).json({ message });
+      console.error(err);
+    });
+
+    routesInitialized = true;
+    log('[ROUTES] All routes registered successfully');
+
+    // Environment detection at runtime
+    if (process.env.VERCEL) {
+      // Serverless: Vercel expects default export
+      log('[SERVERLESS] Running on Vercel - routes registered');
     } else {
-      log('⚠️ Vehicle data cache warmup failed, will load on-demand');
+      // Local development: start HTTP server
+      const { createServer } = await import('http');
+      const server = createServer(app);
+      const port = process.env.PORT || (app.get("env") === "development" ? 5001 : 5000);
+      
+      // Setup Vite for hot reloading in development
+      if (app.get("env") === "development") {
+        await setupVite(app, server);
+      } else {
+        serveStatic(app);
+      }
+      
+      server.listen(port, () => {
+        log(`[LOCAL] Server running on http://localhost:${port}`);
+      });
+      
+      // Warmup cache on startup (local only)
+      try {
+        log('🚗 Warming up vehicle data cache on server startup...');
+        const baseUrl = `http://localhost:${port}`;
+        const preloadResponse = await fetch(`${baseUrl}/api/vehicles/preload`);
+        if (preloadResponse.ok) {
+          const preloadData = await preloadResponse.json();
+          log(`🚗 Vehicle data cache warmed up successfully: ${preloadData.makesCount} makes, ${preloadData.modelsCount} models`);
+        } else {
+          log('⚠️ Vehicle data cache warmup failed, will load on-demand');
+        }
+      } catch (error) {
+        log('⚠️ Vehicle data cache warmup failed, will load on-demand:', String(error));
+      }
     }
   } catch (error) {
-    log('⚠️ Vehicle data cache warmup failed, will load on-demand:', String(error));
+    console.error('Failed to register routes:', error);
+    throw error;
   }
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
-
-  // Serve the app on configured port (5001 for dev, 5000 for production, or PORT env var)
-  // This serves both the API and the client.
-  server.listen(port, () => {
-    log(`serving on port ${port}`);
-  });
 })();
+
+// Ensure routes are initialized before handling any requests
+app.use(async (req, res, next) => {
+  if (!routesInitialized) {
+    await initPromise;
+  }
+  next();
+});
+
+// Export app for Vercel serverless (will be bundled by esbuild)
+export default app;

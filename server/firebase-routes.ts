@@ -472,15 +472,26 @@ export function registerFirebaseRoutes(app: Express) {
         }
       }
 
+      // Log user data for debugging
+      console.log(`[USER PROFILE] Returning profile for user ${req.neonUser!.id}:`, {
+        id: req.neonUser!.id,
+        username: req.neonUser!.username,
+        role: req.neonUser!.role,
+        isChef: req.neonUser!.isChef,
+        isDeliveryPartner: req.neonUser!.isDeliveryPartner,
+        isManager: req.neonUser!.isManager,
+        rawNeonUser: req.neonUser
+      });
+
       // Return flat structure expected by frontend
       res.json({
         id: req.neonUser!.id,
         username: req.neonUser!.username,
         role: req.neonUser!.role,
-        is_verified: (req.neonUser as any).isVerified || req.firebaseUser!.email_verified,
-        has_seen_welcome: (req.neonUser as any).has_seen_welcome || false,
-        isChef: (req.neonUser as any).isChef || false,
-        isDeliveryPartner: (req.neonUser as any).isDeliveryPartner || false,
+        is_verified: req.neonUser!.isVerified !== undefined ? req.neonUser!.isVerified : req.firebaseUser!.email_verified,
+        has_seen_welcome: req.neonUser!.has_seen_welcome || false,
+        isChef: req.neonUser!.isChef || false,
+        isDeliveryPartner: req.neonUser!.isDeliveryPartner || false,
         displayName: userFullName || null, // User's full name from application
         fullName: userFullName || null, // Alias for compatibility
         stripeConnectAccountId: stripeConnectAccountId, // Stripe Connect account ID
@@ -648,10 +659,28 @@ export function registerFirebaseRoutes(app: Express) {
   // 🔥 Get User's Applications (with Firebase Auth, NO SESSIONS)
   app.get('/api/firebase/applications/my', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
+      const userId = req.neonUser!.id;
+      const firebaseUid = req.firebaseUser!.uid;
+      
+      console.log(`[APPLICATIONS] Fetching applications for user ID: ${userId} (Firebase UID: ${firebaseUid})`);
+      console.log(`[APPLICATIONS] User object:`, { 
+        id: req.neonUser!.id, 
+        username: req.neonUser!.username, 
+        role: req.neonUser!.role,
+        isChef: (req.neonUser as any).isChef 
+      });
+      
       // Get applications for the authenticated Neon user
-      const applications = await firebaseStorage.getApplicationsByUserId(req.neonUser!.id);
+      const applications = await firebaseStorage.getApplicationsByUserId(userId);
 
-      console.log(`📋 Retrieved ${applications.length} applications: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
+      console.log(`[APPLICATIONS] Retrieved ${applications.length} applications for user ${userId}`);
+      if (applications.length > 0) {
+        console.log(`[APPLICATIONS] First application sample:`, {
+          id: applications[0].id,
+          userId: applications[0].userId,
+          status: applications[0].status
+        });
+      }
 
       res.json(applications);
     } catch (error) {
@@ -2427,9 +2456,28 @@ export function registerFirebaseRoutes(app: Express) {
    */
   app.get('/api/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-      console.log(`🍳 GET /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id}`);
+      const chefId = req.neonUser!.id;
+      const firebaseUid = req.firebaseUser!.uid;
       
-      const applications = await firebaseStorage.getChefKitchenApplicationsByChefId(req.neonUser!.id);
+      console.log(`[KITCHEN APPLICATIONS] Fetching kitchen applications for chef ID: ${chefId} (Firebase UID: ${firebaseUid})`);
+      console.log(`[KITCHEN APPLICATIONS] User object:`, { 
+        id: req.neonUser!.id, 
+        username: req.neonUser!.username, 
+        role: req.neonUser!.role,
+        isChef: (req.neonUser as any).isChef 
+      });
+
+      const applications = await firebaseStorage.getChefKitchenApplicationsByChefId(chefId);
+      
+      console.log(`[KITCHEN APPLICATIONS] Retrieved ${applications.length} kitchen applications for chef ${chefId}`);
+      if (applications.length > 0) {
+        console.log(`[KITCHEN APPLICATIONS] First application sample:`, {
+          id: applications[0].id,
+          chefId: applications[0].chefId,
+          locationId: applications[0].locationId,
+          status: applications[0].status
+        });
+      }
       
       // Enrich with location details
       const enrichedApplications = await Promise.all(
@@ -2539,6 +2587,11 @@ export function registerFirebaseRoutes(app: Express) {
       console.log(`🍳 GET /api/firebase/chef/approved-kitchens - Chef ${req.neonUser!.id}`);
       
       const approvedKitchens = await firebaseStorage.getChefApprovedKitchens(req.neonUser!.id);
+      
+      console.log(`[APPROVED KITCHENS] Returning ${approvedKitchens.length} approved locations for chef ${req.neonUser!.id}`);
+      if (approvedKitchens.length > 0) {
+        console.log(`[APPROVED KITCHENS] First location sample:`, approvedKitchens[0]);
+      }
       
       res.json(approvedKitchens);
     } catch (error) {
@@ -2864,6 +2917,179 @@ export function registerFirebaseRoutes(app: Express) {
       });
     }
   });
+
+  // Firebase microlearning completion endpoint
+  app.get('/api/firebase/microlearning/completion/:userId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const currentUserId = req.neonUser!.id;
+      
+      // Verify user can access this completion (either their own or admin)
+      if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const completion = await firebaseStorage.getMicrolearningCompletion(userId);
+      
+      if (!completion) {
+        return res.status(404).json({ message: 'No completion found' });
+      }
+
+      res.json(completion);
+    } catch (error) {
+      console.error('Error getting microlearning completion status:', error);
+      res.status(500).json({ message: 'Failed to get completion status' });
+    }
+  });
+
+  // Firebase microlearning certificate endpoint
+  app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const currentUserId = req.neonUser!.id;
+      
+      // Verify user can access this certificate (either their own or admin)
+      if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const completion = await firebaseStorage.getMicrolearningCompletion(userId);
+      if (!completion || !completion.confirmed) {
+        return res.status(404).json({ message: 'No confirmed completion found' });
+      }
+
+      const user = await firebaseStorage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      // Return certificate URL
+      const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
+
+      res.json({
+        success: true,
+        certificateUrl,
+        completionDate: completion.completedAt,
+        message: 'Certificate for skillpass.nl food safety training preparation - Complete your official certification at skillpass.nl'
+      });
+    } catch (error) {
+      console.error('Error getting microlearning certificate:', error);
+      res.status(500).json({ message: 'Failed to get certificate' });
+    }
+  });
+
+  // Firebase microlearning progress by userId (GET)
+  app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const currentUserId = req.neonUser!.id;
+      
+      // Verify user can access this data (either their own or admin)
+      if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const progress = await firebaseStorage.getMicrolearningProgress(userId);
+      const completionStatus = await firebaseStorage.getMicrolearningCompletion(userId);
+      
+      // Check if user has approved application
+      const applications = await firebaseStorage.getApplicationsByUserId(userId);
+      const hasApproval = applications.some((app: any) => app.status === 'approved');
+      
+      const isAdmin = req.neonUser!.role === 'admin';
+      const isCompleted = completionStatus?.confirmed || false;
+      const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
+
+      res.json({
+        success: true,
+        progress: progress || [],
+        completionConfirmed: completionStatus?.confirmed || false,
+        completedAt: completionStatus?.completedAt,
+        hasApprovedApplication: hasApproval,
+        accessLevel: accessLevel,
+        isAdmin: isAdmin
+      });
+    } catch (error) {
+      console.error('Error fetching microlearning progress:', error);
+      res.status(500).json({ message: 'Failed to fetch progress' });
+    }
+  });
+
+  // Firebase microlearning complete endpoint
+  app.post('/api/firebase/microlearning/complete', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const { userId, completionDate, videoProgress } = req.body;
+      const currentUserId = req.neonUser!.id;
+      
+      // Verify user can complete this (either their own or admin)
+      if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      // Check if user has approved application
+      const applications = await firebaseStorage.getApplicationsByUserId(userId);
+      const hasApproval = applications.some((app: any) => app.status === 'approved');
+      const isAdmin = req.neonUser!.role === 'admin';
+      
+      if (!hasApproval && !isAdmin) {
+        return res.status(403).json({ 
+          message: 'Application approval required to complete full certification',
+          accessLevel: 'limited',
+          requiresApproval: true
+        });
+      }
+
+      // Verify all required videos are completed
+      const requiredVideos = [
+        'basics-personal-hygiene', 'basics-temperature-danger', 'basics-cross-contamination',
+        'basics-allergen-awareness', 'basics-food-storage', 'basics-cooking-temps',
+        'basics-cooling-reheating', 'basics-thawing', 'basics-receiving', 'basics-fifo',
+        'basics-illness-reporting', 'basics-pest-control', 'basics-chemical-safety', 'basics-food-safety-plan',
+        'howto-handwashing', 'howto-sanitizing', 'howto-thermometer', 'howto-cleaning-schedule',
+        'howto-equipment-cleaning', 'howto-uniform-care', 'howto-wound-care', 'howto-inspection-prep'
+      ];
+      const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
+      const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));
+
+      if (!allRequired) {
+        return res.status(400).json({ 
+          message: 'All required videos must be completed before certification',
+          missingVideos: requiredVideos.filter(id => !completedVideos.includes(id))
+        });
+      }
+
+      const user = await firebaseStorage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const completionData = {
+        userId,
+        completedAt: new Date(completionDate),
+        videoProgress,
+        confirmed: true,
+        certificateGenerated: false
+      };
+
+      await firebaseStorage.createMicrolearningCompletion(completionData);
+
+      res.json({
+        success: true,
+        message: 'Microlearning completed successfully',
+        completionConfirmed: true
+      });
+    } catch (error) {
+      console.error('Error completing microlearning:', error);
+      res.status(500).json({ message: 'Failed to complete microlearning' });
+    }
+  });
+
+  // Firebase upload file endpoint (alias for /api/upload)
+  app.post('/api/firebase/upload-file', 
+    upload.single('file'), 
+    requireFirebaseAuthWithUser,
+    handleFileUpload
+  );
 
   console.log('🔥 Firebase authentication routes registered successfully');
   console.log('✨ Session-free architecture active - JWT tokens only');
