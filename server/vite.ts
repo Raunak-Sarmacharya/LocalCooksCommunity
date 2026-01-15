@@ -19,8 +19,14 @@ export function log(message: string, source = "express") {
 
 export async function setupVite(app: Express, server: Server) {
   // Dynamic import to avoid bundling Vite (and Rollup) in production
+  // This function is only called in local development, never in Vercel serverless
   const { createLogger, createServer: createViteServer } = await import("vite");
-  const viteConfig = await import("../vite.config");
+  // Dynamic import of vite.config to avoid bundling it
+  // Use string literal to prevent esbuild from statically analyzing the import
+  const viteConfigPath = "../vite.config";
+  const viteConfigModule = await import(viteConfigPath);
+  // vite.config exports default
+  const viteConfig = viteConfigModule.default;
   
   const viteLogger = createLogger();
   const serverOptions = {
@@ -30,7 +36,7 @@ export async function setupVite(app: Express, server: Server) {
   };
 
   const vite = await createViteServer({
-    ...viteConfig.default,
+    ...viteConfig,
     configFile: false,
     customLogger: {
       ...viteLogger,
