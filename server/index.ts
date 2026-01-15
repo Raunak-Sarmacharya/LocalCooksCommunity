@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import express, { NextFunction, type Request, Response } from "express";
-import { initializeFirebaseAdmin } from "./firebase-admin";
-import { registerFirebaseRoutes } from "./firebase-routes";
-import { registerRoutes } from "./routes";
-import { log, serveStatic, setupVite } from "./vite";
+import { initializeFirebaseAdmin } from "./firebase-admin.js";
+import { registerFirebaseRoutes } from "./firebase-routes.js";
+import { registerRoutes } from "./routes.js";
+import { log, serveStatic, setupVite } from "./vite.js";
 
 const app = express();
 // Set environment explicitly to match NODE_ENV
