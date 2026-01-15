@@ -39,7 +39,8 @@ if (!fs.existsSync('api')) {
 
 // Bundle the compiled server entry point to api/index.js
 // This replaces the old 25k-line api/index.js with a unified build
-runCommand('npx esbuild dist/server/index.js --bundle --platform=node --packages=external --format=esm --outfile=api/index.js');
+// Exclude Vite and Rollup (build tools) from the bundle - they have platform-specific native deps
+runCommand('npx esbuild dist/server/index.js --bundle --platform=node --packages=external --format=esm --outfile=api/index.js --external:vite --external:rollup --external:@rollup/*');
 
 // 4. Copy static assets
 console.log('Copying static assets...');
