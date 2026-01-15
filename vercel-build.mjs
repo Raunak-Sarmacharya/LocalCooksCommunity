@@ -24,12 +24,9 @@ console.log('🔨 Building for production...');
 console.log('Building frontend...');
 runCommand('npx vite build');
 
-// 2. Compile TypeScript server to dist/ (needed for path resolution)
-console.log('Compiling server TypeScript...');
-runCommand('npx tsc -p tsconfig.server.json');
-
-// 3. Bundle for Vercel using esbuild
+// 2. Bundle for Vercel using esbuild directly from TypeScript source
 // This creates a single unified api/index.js from server/index.ts
+// esbuild handles TypeScript natively and resolves imports correctly
 // This unifies the entry point - no more dual entry points!
 console.log('Bundling for serverless...');
 // Create api directory if it doesn't exist
@@ -37,11 +34,12 @@ if (!fs.existsSync('api')) {
   fs.mkdirSync('api', { recursive: true });
 }
 
-// Bundle the compiled server entry point to api/index.js
+// Bundle directly from TypeScript source - esbuild handles TS compilation and module resolution
 // This replaces the old 25k-line api/index.js with a unified build
 // Exclude Vite and Rollup (build tools) from the bundle - they have platform-specific native deps
 // Dynamic imports in setupVite() prevent bundling, but we explicitly exclude to be safe
-runCommand('npx esbuild dist/server/index.js --bundle --platform=node --packages=external --format=esm --outfile=api/index.js --external:vite --external:rollup');
+// esbuild automatically handles .ts files and resolves .js extensions in imports to .ts source files
+runCommand('npx esbuild server/index.ts --bundle --platform=node --packages=external --format=esm --outfile=api/index.js --external:vite --external:rollup');
 
 // 4. Copy static assets
 console.log('Copying static assets...');
