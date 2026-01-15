@@ -25,7 +25,7 @@ var __copyProps = (to, from, except, desc3) => {
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// dist/server/firebase-admin.js
+// server/firebase-admin.ts
 var firebase_admin_exports = {};
 __export(firebase_admin_exports, {
   firebaseAdmin: () => firebaseAdmin,
@@ -95,7 +95,7 @@ function isFirebaseAdminConfigured() {
 }
 var firebaseAdmin;
 var init_firebase_admin = __esm({
-  "dist/server/firebase-admin.js"() {
+  "server/firebase-admin.ts"() {
     "use strict";
     firebaseAdmin = null;
   }
@@ -1506,7 +1506,7 @@ var init_schema = __esm({
   }
 });
 
-// dist/server/db.js
+// server/db.ts
 var db_exports = {};
 __export(db_exports, {
   db: () => db,
@@ -1517,7 +1517,7 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 var pool, db;
 var init_db = __esm({
-  "dist/server/db.js"() {
+  "server/db.ts"() {
     "use strict";
     init_schema();
     neonConfig.webSocketConstructor = ws;
@@ -1529,7 +1529,7 @@ var init_db = __esm({
   }
 });
 
-// dist/server/r2-storage.js
+// server/r2-storage.ts
 var r2_storage_exports = {};
 __export(r2_storage_exports, {
   deleteFromR2: () => deleteFromR2,
@@ -1574,12 +1574,12 @@ function getS3Client() {
 async function uploadToR2(file, userId, folder = "documents") {
   try {
     const client = getS3Client();
-    const timestamp3 = Date.now();
+    const timestamp2 = Date.now();
     const documentType = file.fieldname || "file";
     const ext = file.originalname.split(".").pop() || "";
     const baseName = file.originalname.replace(/\.[^/.]+$/, "");
     const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const filename = `${userId}_${documentType}_${timestamp3}_${sanitizedBaseName}.${ext}`;
+    const filename = `${userId}_${documentType}_${timestamp2}_${sanitizedBaseName}.${ext}`;
     const key = `${folder}/${filename}`;
     let fileBuffer;
     if (file.buffer) {
@@ -1748,7 +1748,7 @@ function isR2Configured() {
 }
 var R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL, R2_ENDPOINT, s3Client;
 var init_r2_storage = __esm({
-  "dist/server/r2-storage.js"() {
+  "server/r2-storage.ts"() {
     "use strict";
     R2_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
     R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
@@ -1760,7 +1760,7 @@ var init_r2_storage = __esm({
   }
 });
 
-// dist/server/phone-utils.js
+// server/phone-utils.ts
 var phone_utils_exports = {};
 __export(phone_utils_exports, {
   getChefPhone: () => getChefPhone,
@@ -1779,7 +1779,10 @@ async function getManagerPhone(location, managerId, pool3) {
   }
   if (!phone && managerId && pool3) {
     try {
-      const result = await pool3.query("SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [managerId]);
+      const result = await pool3.query(
+        "SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [managerId]
+      );
       if (result.rows.length > 0 && result.rows[0].phone) {
         phone = result.rows[0].phone;
         const normalized = validateAndNormalizePhone(phone);
@@ -1795,10 +1798,12 @@ async function getManagerPhone(location, managerId, pool3) {
   return null;
 }
 async function getChefPhone(chefId, pool3) {
-  if (!chefId || !pool3)
-    return null;
+  if (!chefId || !pool3) return null;
   try {
-    const result = await pool3.query("SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [chefId]);
+    const result = await pool3.query(
+      "SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+      [chefId]
+    );
     if (result.rows.length > 0 && result.rows[0].phone) {
       const phone = result.rows[0].phone;
       const normalized = validateAndNormalizePhone(phone);
@@ -1813,12 +1818,14 @@ async function getChefPhone(chefId, pool3) {
   return null;
 }
 async function getPortalUserPhone(userId, locationId, pool3) {
-  if (!userId || !pool3)
-    return null;
+  if (!userId || !pool3) return null;
   let phone = null;
   if (locationId) {
     try {
-      const result = await pool3.query("SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1", [userId, locationId]);
+      const result = await pool3.query(
+        "SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1",
+        [userId, locationId]
+      );
       if (result.rows.length > 0 && result.rows[0].phone) {
         phone = result.rows[0].phone;
         const normalized = validateAndNormalizePhone(phone);
@@ -1834,7 +1841,10 @@ async function getPortalUserPhone(userId, locationId, pool3) {
   }
   if (!phone) {
     try {
-      const result = await pool3.query("SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [userId]);
+      const result = await pool3.query(
+        "SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+        [userId]
+      );
       if (result.rows.length > 0 && result.rows[0].phone) {
         phone = result.rows[0].phone;
         const normalized = validateAndNormalizePhone(phone);
@@ -1850,18 +1860,17 @@ async function getPortalUserPhone(userId, locationId, pool3) {
   return null;
 }
 function normalizePhoneForStorage(phone) {
-  if (!phone)
-    return null;
+  if (!phone) return null;
   return validateAndNormalizePhone(phone);
 }
 var init_phone_utils = __esm({
-  "dist/server/phone-utils.js"() {
+  "server/phone-utils.ts"() {
     "use strict";
     init_phone_validation();
   }
 });
 
-// dist/server/services/pricing-service.js
+// server/services/pricing-service.ts
 var pricing_service_exports = {};
 __export(pricing_service_exports, {
   calculateDurationHours: () => calculateDurationHours,
@@ -1943,7 +1952,10 @@ async function getServiceFeeRate(dbPool) {
       console.warn("Database pool not available, using default service fee rate of 5%");
       return 0.05;
     }
-    const result = await activePool.query("SELECT value FROM platform_settings WHERE key = $1", ["service_fee_rate"]);
+    const result = await activePool.query(
+      "SELECT value FROM platform_settings WHERE key = $1",
+      ["service_fee_rate"]
+    );
     if (result.rows.length === 0) {
       console.warn("Service fee rate not found in platform_settings, using default 5%");
       return 0.05;
@@ -1971,7 +1983,7 @@ function calculateTotalWithFees(basePriceCents, serviceFeeCents = 0, damageDepos
 }
 var pool2;
 var init_pricing_service = __esm({
-  "dist/server/services/pricing-service.js"() {
+  "server/services/pricing-service.ts"() {
     "use strict";
     pool2 = null;
     try {
@@ -1983,7 +1995,7 @@ var init_pricing_service = __esm({
   }
 });
 
-// dist/server/email.js
+// server/email.ts
 var email_exports = {};
 __export(email_exports, {
   generateApplicationWithDocumentsEmail: () => generateApplicationWithDocumentsEmail,
@@ -2182,13 +2194,12 @@ If you have any questions, contact us at ${supportEmail}
 }
 var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDeliveryPartnerApplicationWithDocumentsEmail, generateDeliveryPartnerApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generateDeliveryPartnerDocumentStatusChangeEmail, generateDeliveryPartnerStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail;
 var init_email = __esm({
-  "dist/server/email.js"() {
+  "server/email.ts"() {
     "use strict";
     createBookingDateTimeImpl = createBookingDateTimeFallback;
     loadAttempted = false;
     (async () => {
-      if (loadAttempted)
-        return;
+      if (loadAttempted) return;
       loadAttempted = true;
       try {
         const __filename = fileURLToPath(import.meta.url);
@@ -2291,9 +2302,8 @@ var init_email = __esm({
           recentEmails.set(options.trackingId, now);
           if (recentEmails.size > 100) {
             const cutoffTime = now - DUPLICATE_PREVENTION_WINDOW;
-            recentEmails.forEach((timestamp3, id) => {
-              if (timestamp3 < cutoffTime)
-                recentEmails.delete(id);
+            recentEmails.forEach((timestamp2, id) => {
+              if (timestamp2 < cutoffTime) recentEmails.delete(id);
             });
           }
         }
@@ -2498,17 +2508,17 @@ var init_email = __esm({
       }
       return "generic";
     };
-    formatDateForCalendar = (date3) => {
-      const year = date3.getUTCFullYear();
-      const month = String(date3.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(date3.getUTCDate()).padStart(2, "0");
-      const hours = String(date3.getUTCHours()).padStart(2, "0");
-      const minutes = String(date3.getUTCMinutes()).padStart(2, "0");
-      const seconds = String(date3.getUTCSeconds()).padStart(2, "0");
+    formatDateForCalendar = (date2) => {
+      const year = date2.getUTCFullYear();
+      const month = String(date2.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(date2.getUTCDate()).padStart(2, "0");
+      const hours = String(date2.getUTCHours()).padStart(2, "0");
+      const minutes = String(date2.getUTCMinutes()).padStart(2, "0");
+      const seconds = String(date2.getUTCSeconds()).padStart(2, "0");
       return `${year}${month}${day}T${hours}${minutes}${seconds}Z`;
     };
-    escapeIcalText = (text3) => {
-      return text3.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n").replace(/\r/g, "");
+    escapeIcalText = (text2) => {
+      return text2.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n").replace(/\r/g, "");
     };
     generateEventUid = (bookingDate, startTime, location) => {
       const dateStr = bookingDate instanceof Date ? bookingDate.toISOString().split("T")[0] : bookingDate.split("T")[0];
@@ -3722,8 +3732,7 @@ Visit: ${getWebsiteUrl()}
       const defaultPromoStyle = userData.promoStyle || { colorTheme: "green", borderStyle: "dashed" };
       const messageContent = userData.customMessage || userData.message || "";
       const getSectionData = (sectionId) => {
-        if (!userData.sections)
-          return null;
+        if (!userData.sections) return null;
         if (Array.isArray(userData.sections)) {
           return userData.sections.find((s) => s.id === sectionId || s.id === `${sectionId}-section`) || null;
         }
@@ -3924,8 +3933,7 @@ Visit: ${getWebsiteUrl()}
         }).join("");
       };
       const generateDivider = () => {
-        if (!userData.dividers?.enabled)
-          return "";
+        if (!userData.dividers?.enabled) return "";
         return `
       <div style="margin: ${userData.dividers.margin || "24px 0"};">
         <hr style="
@@ -4569,7 +4577,16 @@ Time: ${bookingData.startTime} - ${bookingData.endTime}
 Status: Pending Approval${bookingData.specialNotes ? `
 
 Notes: ${bookingData.specialNotes}` : ""}`;
-      const calendarUrl = generateCalendarUrl(bookingData.managerEmail, calendarTitle, bookingData.bookingDate, bookingData.startTime, bookingData.endTime, locationName, calendarDescription, timezone);
+      const calendarUrl = generateCalendarUrl(
+        bookingData.managerEmail,
+        calendarTitle,
+        bookingData.bookingDate,
+        bookingData.startTime,
+        bookingData.endTime,
+        locationName,
+        calendarDescription,
+        timezone
+      );
       const calendarButtonText = detectEmailProvider(bookingData.managerEmail) === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : detectEmailProvider(bookingData.managerEmail) === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : detectEmailProvider(bookingData.managerEmail) === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
       const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
       const startDateTime = createBookingDateTime2(bookingDateStr, bookingData.startTime, timezone);
@@ -4622,7 +4639,16 @@ Chef: ${bookingData.chefName}
 Date: ${bookingDateObj.toLocaleDateString()}
 Time: ${bookingData.startTime} - ${bookingData.endTime}
 Status: Confirmed`;
-        calendarUrl = generateCalendarUrl(bookingData.managerEmail, calendarTitle, bookingData.bookingDate, bookingData.startTime, bookingData.endTime, locationName, calendarDescription, timezone);
+        calendarUrl = generateCalendarUrl(
+          bookingData.managerEmail,
+          calendarTitle,
+          bookingData.bookingDate,
+          bookingData.startTime,
+          bookingData.endTime,
+          locationName,
+          calendarDescription,
+          timezone
+        );
         const provider = detectEmailProvider(bookingData.managerEmail);
         calendarButtonText = provider === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : provider === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : provider === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
       }
@@ -4681,7 +4707,16 @@ Time: ${bookingData.startTime} - ${bookingData.endTime}
 Status: Pending Approval${bookingData.specialNotes ? `
 
 Notes: ${bookingData.specialNotes}` : ""}`;
-      const calendarUrl = generateCalendarUrl(bookingData.chefEmail, calendarTitle, bookingData.bookingDate, bookingData.startTime, bookingData.endTime, locationName, calendarDescription, timezone);
+      const calendarUrl = generateCalendarUrl(
+        bookingData.chefEmail,
+        calendarTitle,
+        bookingData.bookingDate,
+        bookingData.startTime,
+        bookingData.endTime,
+        locationName,
+        calendarDescription,
+        timezone
+      );
       const provider = detectEmailProvider(bookingData.chefEmail);
       const calendarButtonText = provider === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : provider === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : provider === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
       const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
@@ -4726,7 +4761,16 @@ Time: ${bookingData.startTime} - ${bookingData.endTime}
 Status: Confirmed${bookingData.specialNotes ? `
 
 Notes: ${bookingData.specialNotes}` : ""}`;
-      const calendarUrl = generateCalendarUrl(bookingData.chefEmail, calendarTitle, bookingData.bookingDate, bookingData.startTime, bookingData.endTime, locationName, calendarDescription, timezone);
+      const calendarUrl = generateCalendarUrl(
+        bookingData.chefEmail,
+        calendarTitle,
+        bookingData.bookingDate,
+        bookingData.startTime,
+        bookingData.endTime,
+        locationName,
+        calendarDescription,
+        timezone
+      );
       const provider = detectEmailProvider(bookingData.chefEmail);
       const calendarButtonText = provider === "outlook" ? "\u{1F4C5} Add to Outlook Calendar" : provider === "yahoo" ? "\u{1F4C5} Add to Yahoo Calendar" : provider === "apple" ? "\u{1F4C5} Add to Apple Calendar" : "\u{1F4C5} Add to Calendar";
       const bookingDateStr = bookingData.bookingDate instanceof Date ? bookingData.bookingDate.toISOString().split("T")[0] : bookingData.bookingDate.split("T")[0];
@@ -4841,7 +4885,7 @@ var init_firebase = __esm({
   }
 });
 
-// dist/server/services/stripe-connect-service.js
+// server/services/stripe-connect-service.ts
 var stripe_connect_service_exports = {};
 __export(stripe_connect_service_exports, {
   createAccountLink: () => createAccountLink,
@@ -4972,11 +5016,14 @@ async function getPayouts(accountId, limit = 100) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const payouts = await stripe.payouts.list({
-      limit
-    }, {
-      stripeAccount: accountId
-    });
+    const payouts = await stripe.payouts.list(
+      {
+        limit
+      },
+      {
+        stripeAccount: accountId
+      }
+    );
     return payouts.data;
   } catch (error) {
     console.error("Error retrieving payouts:", error);
@@ -4988,9 +5035,12 @@ async function getPayout(accountId, payoutId) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const payout = await stripe.payouts.retrieve(payoutId, {
-      stripeAccount: accountId
-    });
+    const payout = await stripe.payouts.retrieve(
+      payoutId,
+      {
+        stripeAccount: accountId
+      }
+    );
     return payout;
   } catch (error) {
     if (error.code === "resource_missing") {
@@ -5025,9 +5075,12 @@ async function getBalanceTransactions(accountId, startDate, endDate, limit = 100
         };
       }
     }
-    const transactions = await stripe.balanceTransactions.list(params, {
-      stripeAccount: accountId
-    });
+    const transactions = await stripe.balanceTransactions.list(
+      params,
+      {
+        stripeAccount: accountId
+      }
+    );
     return transactions.data;
   } catch (error) {
     console.error("Error retrieving balance transactions:", error);
@@ -5062,7 +5115,7 @@ async function createDashboardLoginLink(accountId) {
 }
 var stripeSecretKey, stripe;
 var init_stripe_connect_service = __esm({
-  "dist/server/services/stripe-connect-service.js"() {
+  "server/services/stripe-connect-service.ts"() {
     "use strict";
     stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
@@ -5074,7 +5127,7 @@ var init_stripe_connect_service = __esm({
   }
 });
 
-// dist/server/services/stripe-checkout-transactions-service.js
+// server/services/stripe-checkout-transactions-service.ts
 var stripe_checkout_transactions_service_exports = {};
 __export(stripe_checkout_transactions_service_exports, {
   createTransaction: () => createTransaction,
@@ -5082,8 +5135,20 @@ __export(stripe_checkout_transactions_service_exports, {
   updateTransactionBySessionId: () => updateTransactionBySessionId
 });
 async function createTransaction(params, dbPool) {
-  const { bookingId, stripeSessionId, customerEmail, bookingAmountCents, platformFeePercentageCents, platformFeeFlatCents, totalPlatformFeeCents, totalCustomerChargedCents, managerReceivesCents, metadata = {} } = params;
-  const result = await dbPool.query(`INSERT INTO transactions (
+  const {
+    bookingId,
+    stripeSessionId,
+    customerEmail,
+    bookingAmountCents,
+    platformFeePercentageCents,
+    platformFeeFlatCents,
+    totalPlatformFeeCents,
+    totalCustomerChargedCents,
+    managerReceivesCents,
+    metadata = {}
+  } = params;
+  const result = await dbPool.query(
+    `INSERT INTO transactions (
       booking_id,
       stripe_session_id,
       customer_email,
@@ -5096,19 +5161,21 @@ async function createTransaction(params, dbPool) {
       status,
       metadata
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    RETURNING *`, [
-    bookingId,
-    stripeSessionId,
-    customerEmail,
-    bookingAmountCents,
-    platformFeePercentageCents,
-    platformFeeFlatCents,
-    totalPlatformFeeCents,
-    totalCustomerChargedCents,
-    managerReceivesCents,
-    "pending",
-    JSON.stringify(metadata)
-  ]);
+    RETURNING *`,
+    [
+      bookingId,
+      stripeSessionId,
+      customerEmail,
+      bookingAmountCents,
+      platformFeePercentageCents,
+      platformFeeFlatCents,
+      totalPlatformFeeCents,
+      totalCustomerChargedCents,
+      managerReceivesCents,
+      "pending",
+      JSON.stringify(metadata)
+    ]
+  );
   if (result.rows.length === 0) {
     throw new Error("Failed to create transaction record");
   }
@@ -5165,7 +5232,10 @@ async function updateTransactionBySessionId(sessionId, params, dbPool) {
   return mapRowToTransaction(result.rows[0]);
 }
 async function getTransactionBySessionId(sessionId, dbPool) {
-  const result = await dbPool.query(`SELECT * FROM transactions WHERE stripe_session_id = $1`, [sessionId]);
+  const result = await dbPool.query(
+    `SELECT * FROM transactions WHERE stripe_session_id = $1`,
+    [sessionId]
+  );
   if (result.rows.length === 0) {
     return null;
   }
@@ -5193,12 +5263,12 @@ function mapRowToTransaction(row) {
   };
 }
 var init_stripe_checkout_transactions_service = __esm({
-  "dist/server/services/stripe-checkout-transactions-service.js"() {
+  "server/services/stripe-checkout-transactions-service.ts"() {
     "use strict";
   }
 });
 
-// dist/server/services/payment-transactions-service.js
+// server/services/payment-transactions-service.ts
 var payment_transactions_service_exports = {};
 __export(payment_transactions_service_exports, {
   addPaymentHistory: () => addPaymentHistory,
@@ -5212,7 +5282,22 @@ __export(payment_transactions_service_exports, {
   updatePaymentTransaction: () => updatePaymentTransaction
 });
 async function createPaymentTransaction(params, dbPool) {
-  const { bookingId, bookingType, chefId, managerId, amount, baseAmount, serviceFee, managerRevenue, currency = "CAD", paymentIntentId, paymentMethodId, status = "pending", stripeStatus, metadata = {} } = params;
+  const {
+    bookingId,
+    bookingType,
+    chefId,
+    managerId,
+    amount,
+    baseAmount,
+    serviceFee,
+    managerRevenue,
+    currency = "CAD",
+    paymentIntentId,
+    paymentMethodId,
+    status = "pending",
+    stripeStatus,
+    metadata = {}
+  } = params;
   const netAmount = amount;
   const result = await dbPool.query(`
     INSERT INTO payment_transactions (
@@ -5254,14 +5339,18 @@ async function createPaymentTransaction(params, dbPool) {
     JSON.stringify(metadata)
   ]);
   const record = result.rows[0];
-  await addPaymentHistory(record.id, {
-    previousStatus: null,
-    newStatus: status,
-    eventType: "created",
-    eventSource: "system",
-    description: `Payment transaction created for ${bookingType} booking ${bookingId}`,
-    metadata: { initialAmount: amount, baseAmount, serviceFee, managerRevenue }
-  }, dbPool);
+  await addPaymentHistory(
+    record.id,
+    {
+      previousStatus: null,
+      newStatus: status,
+      eventType: "created",
+      eventSource: "system",
+      description: `Payment transaction created for ${bookingType} booking ${bookingId}`,
+      metadata: { initialAmount: amount, baseAmount, serviceFee, managerRevenue }
+    },
+    dbPool
+  );
   return record;
 }
 async function updatePaymentTransaction(transactionId, params, dbPool) {
@@ -5420,49 +5509,61 @@ async function updatePaymentTransaction(transactionId, params, dbPool) {
         syncedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
     }
-    await addPaymentHistory(transactionId, {
-      previousStatus,
-      newStatus: params.status,
-      eventType: "status_change",
-      eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-      description: `Status changed from ${previousStatus} to ${params.status}${params.stripeAmount !== void 0 ? " (Stripe amounts synced)" : ""}`,
-      stripeEventId: params.webhookEventId,
-      metadata: historyMetadata
-    }, dbPool);
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus,
+        newStatus: params.status,
+        eventType: "status_change",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Status changed from ${previousStatus} to ${params.status}${params.stripeAmount !== void 0 ? " (Stripe amounts synced)" : ""}`,
+        stripeEventId: params.webhookEventId,
+        metadata: historyMetadata
+      },
+      dbPool
+    );
   }
   if ((params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) && params.status === void 0) {
-    await addPaymentHistory(transactionId, {
-      previousStatus: updated.status,
-      newStatus: updated.status,
-      eventType: "stripe_sync",
-      eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-      description: `Stripe amounts synced: Amount $${((params.stripeAmount || parseFloat(updated.amount || "0")) / 100).toFixed(2)}, Net $${((params.stripeNetAmount || parseFloat(updated.net_amount || "0")) / 100).toFixed(2)}`,
-      stripeEventId: params.webhookEventId,
-      metadata: {
-        stripeAmounts: {
-          amount: params.stripeAmount,
-          netAmount: params.stripeNetAmount,
-          processingFee: params.stripeProcessingFee,
-          platformFee: params.stripePlatformFee,
-          syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus: updated.status,
+        newStatus: updated.status,
+        eventType: "stripe_sync",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Stripe amounts synced: Amount $${((params.stripeAmount || parseFloat(updated.amount || "0")) / 100).toFixed(2)}, Net $${((params.stripeNetAmount || parseFloat(updated.net_amount || "0")) / 100).toFixed(2)}`,
+        stripeEventId: params.webhookEventId,
+        metadata: {
+          stripeAmounts: {
+            amount: params.stripeAmount,
+            netAmount: params.stripeNetAmount,
+            processingFee: params.stripeProcessingFee,
+            platformFee: params.stripePlatformFee,
+            syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
         }
-      }
-    }, dbPool);
+      },
+      dbPool
+    );
   }
   if (params.refundAmount !== void 0 && params.refundAmount > currentRefundAmount) {
-    await addPaymentHistory(transactionId, {
-      previousStatus,
-      newStatus: updated.status,
-      eventType: params.refundAmount === parseFloat(updated.amount || "0") ? "refund" : "partial_refund",
-      eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-      description: `Refund of ${params.refundAmount / 100} ${updated.currency}${params.refundReason ? `: ${params.refundReason}` : ""}`,
-      stripeEventId: params.webhookEventId,
-      metadata: {
-        refundAmount: params.refundAmount,
-        refundReason: params.refundReason,
-        refundId: params.refundId
-      }
-    }, dbPool);
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus,
+        newStatus: updated.status,
+        eventType: params.refundAmount === parseFloat(updated.amount || "0") ? "refund" : "partial_refund",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Refund of ${params.refundAmount / 100} ${updated.currency}${params.refundReason ? `: ${params.refundReason}` : ""}`,
+        stripeEventId: params.webhookEventId,
+        metadata: {
+          refundAmount: params.refundAmount,
+          refundReason: params.refundReason,
+          refundId: params.refundId
+        }
+      },
+      dbPool
+    );
   }
   return updated;
 }
@@ -5493,12 +5594,12 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, dbPoo
         FROM kitchen_bookings
         WHERE id = $1
       `, [bookingId]);
-      const storageBookings3 = await dbPool.query(`
+      const storageBookings2 = await dbPool.query(`
         SELECT id, total_price, service_fee
         FROM storage_bookings
         WHERE kitchen_booking_id = $1
       `, [bookingId]);
-      const equipmentBookings3 = await dbPool.query(`
+      const equipmentBookings2 = await dbPool.query(`
         SELECT id, total_price, service_fee
         FROM equipment_bookings
         WHERE kitchen_booking_id = $1
@@ -5506,8 +5607,8 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, dbPoo
       let totalBaseAmount = parseFloat(transaction.base_amount || "0");
       if (totalBaseAmount === 0) {
         const kbAmount = parseFloat(kitchenBooking.rows[0]?.total_price || "0");
-        const sbAmount = storageBookings3.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || "0"), 0);
-        const ebAmount = equipmentBookings3.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || "0"), 0);
+        const sbAmount = storageBookings2.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || "0"), 0);
+        const ebAmount = equipmentBookings2.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || "0"), 0);
         totalBaseAmount = kbAmount + sbAmount + ebAmount;
       }
       if (kitchenBooking.rows.length > 0 && totalBaseAmount > 0) {
@@ -5529,7 +5630,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, dbPoo
           bookingId
         ]);
       }
-      for (const sb of storageBookings3.rows) {
+      for (const sb of storageBookings2.rows) {
         const sbBase = parseFloat(sb.total_price || "0");
         if (totalBaseAmount > 0 && sbBase > 0) {
           const sbProportion = sbBase / totalBaseAmount;
@@ -5550,7 +5651,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, dbPoo
           ]);
         }
       }
-      for (const eb of equipmentBookings3.rows) {
+      for (const eb of equipmentBookings2.rows) {
         const ebBase = parseFloat(eb.total_price || "0");
         if (totalBaseAmount > 0 && ebBase > 0) {
           const ebProportion = ebBase / totalBaseAmount;
@@ -5687,8 +5788,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, dbPool, opti
     const errors = [];
     for (const transaction of transactions) {
       const paymentIntentId = transaction.payment_intent_id;
-      if (!paymentIntentId)
-        continue;
+      if (!paymentIntentId) continue;
       try {
         let managerConnectAccountId;
         try {
@@ -5832,12 +5932,12 @@ async function getManagerPaymentTransactions(managerId, dbPool, filters) {
   };
 }
 var init_payment_transactions_service = __esm({
-  "dist/server/services/payment-transactions-service.js"() {
+  "server/services/payment-transactions-service.ts"() {
     "use strict";
   }
 });
 
-// dist/server/services/stripe-service.js
+// server/services/stripe-service.ts
 var stripe_service_exports = {};
 __export(stripe_service_exports, {
   cancelPaymentIntent: () => cancelPaymentIntent,
@@ -6170,7 +6270,7 @@ async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAm
 }
 var stripeSecretKey2, stripe2;
 var init_stripe_service = __esm({
-  "dist/server/services/stripe-service.js"() {
+  "server/services/stripe-service.ts"() {
     "use strict";
     stripeSecretKey2 = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey2) {
@@ -6182,7 +6282,7 @@ var init_stripe_service = __esm({
   }
 });
 
-// dist/server/services/payment-tracking-service.js
+// server/services/payment-tracking-service.ts
 var payment_tracking_service_exports = {};
 __export(payment_tracking_service_exports, {
   getPaymentStatus: () => getPaymentStatus,
@@ -6500,13 +6600,13 @@ async function getPaymentStatus(bookingId, dbPool) {
   }
 }
 var init_payment_tracking_service = __esm({
-  "dist/server/services/payment-tracking-service.js"() {
+  "server/services/payment-tracking-service.ts"() {
     "use strict";
     init_stripe_service();
   }
 });
 
-// dist/server/services/revenue-service-v2.js
+// server/services/revenue-service-v2.ts
 var revenue_service_v2_exports = {};
 __export(revenue_service_v2_exports, {
   getRevenueByDateFromTransactions: () => getRevenueByDateFromTransactions,
@@ -6681,10 +6781,8 @@ async function getRevenueMetricsFromTransactions(managerId, dbPool, startDate, e
       processing_payments: row.processing_payments
     });
     const parseNumeric = (value) => {
-      if (!value)
-        return 0;
-      if (typeof value === "string")
-        return parseInt(value) || 0;
+      if (!value) return 0;
+      if (typeof value === "string") return parseInt(value) || 0;
       return parseInt(String(value)) || 0;
     };
     const completedPayments = parseNumeric(row.completed_payments);
@@ -6787,10 +6885,8 @@ async function getRevenueByLocationFromTransactions(managerId, dbPool, startDate
     console.log(`[Revenue Service V2] Revenue by location: ${result.rows.length} locations found`);
     return result.rows.map((row) => {
       const parseNumeric = (value) => {
-        if (!value)
-          return 0;
-        if (typeof value === "string")
-          return parseInt(value) || 0;
+        if (!value) return 0;
+        if (typeof value === "string") return parseInt(value) || 0;
         return parseInt(String(value)) || 0;
       };
       const locTotalRevenue = parseNumeric(row.total_revenue);
@@ -6877,10 +6973,8 @@ async function getRevenueByDateFromTransactions(managerId, dbPool, startDate, en
     console.log(`[Revenue Service V2] Revenue by date: ${result.rows.length} dates found`);
     return result.rows.map((row) => {
       const parseNumeric = (value) => {
-        if (!value)
-          return 0;
-        if (typeof value === "string")
-          return parseInt(value) || 0;
+        if (!value) return 0;
+        if (typeof value === "string") return parseInt(value) || 0;
         return parseInt(String(value)) || 0;
       };
       return {
@@ -6898,12 +6992,12 @@ async function getRevenueByDateFromTransactions(managerId, dbPool, startDate, en
   }
 }
 var init_revenue_service_v2 = __esm({
-  "dist/server/services/revenue-service-v2.js"() {
+  "server/services/revenue-service-v2.ts"() {
     "use strict";
   }
 });
 
-// dist/server/services/revenue-service.js
+// server/services/revenue-service.ts
 var revenue_service_exports = {};
 __export(revenue_service_exports, {
   calculateManagerRevenue: () => calculateManagerRevenue,
@@ -7511,10 +7605,8 @@ async function getCompleteRevenueMetrics(managerId, dbPool, startDate, endDate, 
     const storageRow = storageResult.rows[0] || {};
     const equipmentRow = equipmentResult.rows[0] || {};
     const parseNumeric = (value) => {
-      if (!value)
-        return 0;
-      if (typeof value === "string")
-        return parseInt(value) || 0;
+      if (!value) return 0;
+      if (typeof value === "string") return parseInt(value) || 0;
       return parseInt(String(value)) || 0;
     };
     const totalRevenue = kitchenMetrics.totalRevenue + parseNumeric(storageRow.total_revenue) + parseNumeric(equipmentRow.total_revenue);
@@ -7549,18 +7641,18 @@ async function getCompleteRevenueMetrics(managerId, dbPool, startDate, endDate, 
   }
 }
 var init_revenue_service = __esm({
-  "dist/server/services/revenue-service.js"() {
+  "server/services/revenue-service.ts"() {
     "use strict";
   }
 });
 
-// dist/server/services/invoice-service.js
+// server/services/invoice-service.ts
 var invoice_service_exports = {};
 __export(invoice_service_exports, {
   generateInvoicePDF: () => generateInvoicePDF
 });
 import PDFDocument from "pdfkit";
-async function generateInvoicePDF(booking, chef, kitchen, location, storageBookings3, equipmentBookings3, paymentIntentId, dbPool) {
+async function generateInvoicePDF(booking, chef, kitchen, location, storageBookings2, equipmentBookings2, paymentIntentId, dbPool) {
   let stripePlatformFee = 0;
   let stripeTotalAmount = 0;
   let stripeBaseAmount = 0;
@@ -7619,7 +7711,12 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         }
       } else if (dbPool && startTime && endTime) {
         const { calculateKitchenBookingPrice: calculateKitchenBookingPrice2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-        const kitchenPricing = await calculateKitchenBookingPrice2(kitchenId, startTime, endTime, dbPool);
+        const kitchenPricing = await calculateKitchenBookingPrice2(
+          kitchenId,
+          startTime,
+          endTime,
+          dbPool
+        );
         if (kitchenPricing.totalPriceCents > 0) {
           durationHours = kitchenPricing.durationHours;
           hourlyRate = kitchenPricing.hourlyRateCents / 100;
@@ -7649,8 +7746,8 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       console.error("Error calculating kitchen price:", error);
     }
   }
-  if (storageBookings3 && storageBookings3.length > 0) {
-    for (const storageBooking of storageBookings3) {
+  if (storageBookings2 && storageBookings2.length > 0) {
+    for (const storageBooking of storageBookings2) {
       try {
         let storageAmount = 0;
         let basePrice = 0;
@@ -7661,7 +7758,10 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         if (dbPool) {
           const storageListingId = storageBooking.storageListingId || storageBooking.storage_listing_id;
           if (storageListingId) {
-            const result = await dbPool.query("SELECT base_price, pricing_model, minimum_booking_duration FROM storage_listings WHERE id = $1", [storageListingId]);
+            const result = await dbPool.query(
+              "SELECT base_price, pricing_model, minimum_booking_duration FROM storage_listings WHERE id = $1",
+              [storageListingId]
+            );
             if (result.rows.length > 0) {
               const listing = result.rows[0];
               const listingBasePriceCents = parseFloat(String(listing.base_price)) || 0;
@@ -7705,14 +7805,17 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       }
     }
   }
-  if (equipmentBookings3 && equipmentBookings3.length > 0) {
-    for (const equipmentBooking of equipmentBookings3) {
+  if (equipmentBookings2 && equipmentBookings2.length > 0) {
+    for (const equipmentBooking of equipmentBookings2) {
       try {
         let sessionRate = 0;
         if (dbPool) {
           const equipmentListingId = equipmentBooking.equipmentListingId || equipmentBooking.equipment_listing_id;
           if (equipmentListingId) {
-            const result = await dbPool.query("SELECT session_rate FROM equipment_listings WHERE id = $1", [equipmentListingId]);
+            const result = await dbPool.query(
+              "SELECT session_rate FROM equipment_listings WHERE id = $1",
+              [equipmentListingId]
+            );
             if (result.rows.length > 0) {
               const listingSessionRateCents = parseFloat(String(result.rows[0].session_rate)) || 0;
               sessionRate = listingSessionRateCents / 100;
@@ -7907,12 +8010,12 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
   });
 }
 var init_invoice_service = __esm({
-  "dist/server/services/invoice-service.js"() {
+  "server/services/invoice-service.ts"() {
     "use strict";
   }
 });
 
-// dist/server/services/payout-statement-service.js
+// server/services/payout-statement-service.ts
 var payout_statement_service_exports = {};
 __export(payout_statement_service_exports, {
   generatePayoutStatementPDF: () => generatePayoutStatementPDF
@@ -8016,7 +8119,11 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
       doc.fontSize(12).font("Helvetica-Bold").text("Period:", 50, leftY);
       leftY += 18;
       doc.fontSize(10).font("Helvetica");
-      doc.text(`${periodStart.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} - ${periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`, 50, leftY);
+      doc.text(
+        `${periodStart.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} - ${periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`,
+        50,
+        leftY
+      );
       leftY += 40;
       doc.fontSize(14).font("Helvetica-Bold").text("Summary", 50, leftY);
       leftY += 25;
@@ -8070,8 +8177,18 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
       }
       const footerY = doc.page.height - 100;
       doc.fontSize(8).font("Helvetica");
-      doc.text("This is an automated payout statement from Local Cooks Community.", 50, footerY, { align: "center", width: doc.page.width - 100 });
-      doc.text("For questions, contact support@localcooks.ca", 50, footerY + 15, { align: "center", width: doc.page.width - 100 });
+      doc.text(
+        "This is an automated payout statement from Local Cooks Community.",
+        50,
+        footerY,
+        { align: "center", width: doc.page.width - 100 }
+      );
+      doc.text(
+        "For questions, contact support@localcooks.ca",
+        50,
+        footerY + 15,
+        { align: "center", width: doc.page.width - 100 }
+      );
       doc.end();
     } catch (error) {
       reject(error);
@@ -8079,12 +8196,12 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
   });
 }
 var init_payout_statement_service = __esm({
-  "dist/server/services/payout-statement-service.js"() {
+  "server/services/payout-statement-service.ts"() {
     "use strict";
   }
 });
 
-// dist/server/services/stripe-checkout-fee-service.js
+// server/services/stripe-checkout-fee-service.ts
 var stripe_checkout_fee_service_exports = {};
 __export(stripe_checkout_fee_service_exports, {
   calculateCheckoutFees: () => calculateCheckoutFees
@@ -8107,12 +8224,12 @@ function calculateCheckoutFees(bookingPrice) {
   };
 }
 var init_stripe_checkout_fee_service = __esm({
-  "dist/server/services/stripe-checkout-fee-service.js"() {
+  "server/services/stripe-checkout-fee-service.ts"() {
     "use strict";
   }
 });
 
-// dist/server/services/stripe-checkout-service.js
+// server/services/stripe-checkout-service.ts
 var stripe_checkout_service_exports = {};
 __export(stripe_checkout_service_exports, {
   createCheckoutSession: () => createCheckoutSession
@@ -8122,7 +8239,17 @@ async function createCheckoutSession(params) {
   if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
-  const { bookingPriceInCents, platformFeeInCents, managerStripeAccountId, customerEmail, bookingId, currency = "cad", successUrl, cancelUrl, metadata = {} } = params;
+  const {
+    bookingPriceInCents,
+    platformFeeInCents,
+    managerStripeAccountId,
+    customerEmail,
+    bookingId,
+    currency = "cad",
+    successUrl,
+    cancelUrl,
+    metadata = {}
+  } = params;
   if (bookingPriceInCents <= 0) {
     throw new Error("Booking price must be greater than 0");
   }
@@ -8200,7 +8327,7 @@ async function createCheckoutSession(params) {
 }
 var stripeSecretKey3, stripe3;
 var init_stripe_checkout_service = __esm({
-  "dist/server/services/stripe-checkout-service.js"() {
+  "server/services/stripe-checkout-service.ts"() {
     "use strict";
     stripeSecretKey3 = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey3) {
@@ -8212,1410 +8339,7 @@ var init_stripe_checkout_service = __esm({
   }
 });
 
-// dist/shared/phone-validation.js
-import { z as z3 } from "zod";
-var normalizePhoneNumber2, isValidNorthAmericanPhone2, phoneNumberSchema2, optionalPhoneNumberSchema2;
-var init_phone_validation2 = __esm({
-  "dist/shared/phone-validation.js"() {
-    "use strict";
-    normalizePhoneNumber2 = (phone) => {
-      if (!phone)
-        return null;
-      const trimmed = phone.trim();
-      if (!trimmed)
-        return null;
-      const cleaned = trimmed.replace(/[^\d+]/g, "");
-      if (cleaned.startsWith("+")) {
-        const digitsAfterPlus = cleaned.substring(1);
-        if (digitsAfterPlus.length >= 1 && digitsAfterPlus.length <= 15 && /^\d+$/.test(digitsAfterPlus)) {
-          if (digitsAfterPlus.startsWith("1") && digitsAfterPlus.length === 11) {
-            return cleaned;
-          }
-          if (digitsAfterPlus.length === 10) {
-            return `+1${digitsAfterPlus}`;
-          }
-          return null;
-        }
-        return null;
-      }
-      const digitsOnly = cleaned.replace(/\D/g, "");
-      if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
-        return `+${digitsOnly}`;
-      }
-      if (digitsOnly.length === 10) {
-        return `+1${digitsOnly}`;
-      }
-      return null;
-    };
-    isValidNorthAmericanPhone2 = (phone) => {
-      if (!phone)
-        return false;
-      let normalized;
-      if (phone.startsWith("+1") && phone.length === 12) {
-        normalized = phone;
-      } else {
-        normalized = normalizePhoneNumber2(phone);
-      }
-      if (!normalized)
-        return false;
-      if (!normalized.startsWith("+1") || normalized.length !== 12) {
-        return false;
-      }
-      const digits = normalized.substring(2);
-      if (digits.length !== 10 || !/^\d{10}$/.test(digits)) {
-        return false;
-      }
-      const areaCodeFirstDigit = parseInt(digits[0]);
-      if (areaCodeFirstDigit < 2 || areaCodeFirstDigit > 9)
-        return false;
-      const exchangeCodeFirstDigit = parseInt(digits[3]);
-      if (exchangeCodeFirstDigit < 2 || exchangeCodeFirstDigit > 9)
-        return false;
-      return true;
-    };
-    phoneNumberSchema2 = z3.string().min(1, "Phone number is required").refine((val) => {
-      const normalized = normalizePhoneNumber2(val);
-      return normalized !== null && isValidNorthAmericanPhone2(normalized);
-    }, {
-      message: "Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
-    }).transform((val) => {
-      const normalized = normalizePhoneNumber2(val);
-      return normalized || val;
-    });
-    optionalPhoneNumberSchema2 = z3.string().optional().refine((val) => {
-      if (!val || val.trim() === "")
-        return true;
-      const normalized = normalizePhoneNumber2(val);
-      return normalized !== null && isValidNorthAmericanPhone2(normalized);
-    }, {
-      message: "Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
-    }).transform((val) => {
-      if (!val || val.trim() === "")
-        return null;
-      const normalized = normalizePhoneNumber2(val);
-      return normalized || val;
-    });
-  }
-});
-
-// dist/shared/schema.js
-var schema_exports2 = {};
-__export(schema_exports2, {
-  applicationStatusEnum: () => applicationStatusEnum2,
-  applicationTypeEnum: () => applicationTypeEnum2,
-  applications: () => applications2,
-  bookingDurationUnitEnum: () => bookingDurationUnitEnum2,
-  bookingStatusEnum: () => bookingStatusEnum2,
-  bookingTypeEnum: () => bookingTypeEnum2,
-  certificationStatusEnum: () => certificationStatusEnum2,
-  chefKitchenAccess: () => chefKitchenAccess2,
-  chefKitchenApplications: () => chefKitchenApplications2,
-  chefKitchenProfiles: () => chefKitchenProfiles2,
-  chefLocationAccess: () => chefLocationAccess2,
-  chefLocationProfiles: () => chefLocationProfiles2,
-  deliveryPartnerApplications: () => deliveryPartnerApplications2,
-  documentVerificationStatusEnum: () => documentVerificationStatusEnum2,
-  equipmentAvailabilityTypeEnum: () => equipmentAvailabilityTypeEnum2,
-  equipmentBookings: () => equipmentBookings2,
-  equipmentCategoryEnum: () => equipmentCategoryEnum2,
-  equipmentConditionEnum: () => equipmentConditionEnum2,
-  equipmentListings: () => equipmentListings2,
-  equipmentPricingModelEnum: () => equipmentPricingModelEnum2,
-  insertApplicationSchema: () => insertApplicationSchema2,
-  insertChefKitchenAccessSchema: () => insertChefKitchenAccessSchema2,
-  insertChefKitchenApplicationSchema: () => insertChefKitchenApplicationSchema2,
-  insertChefKitchenProfileSchema: () => insertChefKitchenProfileSchema2,
-  insertChefLocationAccessSchema: () => insertChefLocationAccessSchema2,
-  insertChefLocationProfileSchema: () => insertChefLocationProfileSchema2,
-  insertDeliveryPartnerApplicationSchema: () => insertDeliveryPartnerApplicationSchema2,
-  insertEquipmentBookingSchema: () => insertEquipmentBookingSchema2,
-  insertEquipmentListingSchema: () => insertEquipmentListingSchema2,
-  insertKitchenAvailabilitySchema: () => insertKitchenAvailabilitySchema2,
-  insertKitchenBookingSchema: () => insertKitchenBookingSchema2,
-  insertKitchenDateOverrideSchema: () => insertKitchenDateOverrideSchema2,
-  insertKitchenSchema: () => insertKitchenSchema2,
-  insertLocationSchema: () => insertLocationSchema2,
-  insertMicrolearningCompletionSchema: () => insertMicrolearningCompletionSchema2,
-  insertPaymentTransactionSchema: () => insertPaymentTransactionSchema2,
-  insertPlatformSettingSchema: () => insertPlatformSettingSchema2,
-  insertPortalUserApplicationSchema: () => insertPortalUserApplicationSchema2,
-  insertPortalUserLocationAccessSchema: () => insertPortalUserLocationAccessSchema2,
-  insertStorageBookingSchema: () => insertStorageBookingSchema2,
-  insertStorageListingSchema: () => insertStorageListingSchema2,
-  insertUserSchema: () => insertUserSchema2,
-  insertVideoProgressSchema: () => insertVideoProgressSchema2,
-  kitchenAvailability: () => kitchenAvailability2,
-  kitchenBookings: () => kitchenBookings2,
-  kitchenDateOverrides: () => kitchenDateOverrides2,
-  kitchenPreferenceEnum: () => kitchenPreferenceEnum2,
-  kitchens: () => kitchens2,
-  listingStatusEnum: () => listingStatusEnum2,
-  locations: () => locations2,
-  microlearningCompletions: () => microlearningCompletions2,
-  paymentHistory: () => paymentHistory2,
-  paymentStatusEnum: () => paymentStatusEnum2,
-  paymentTransactions: () => paymentTransactions2,
-  platformSettings: () => platformSettings2,
-  portalUserApplications: () => portalUserApplications2,
-  portalUserLocationAccess: () => portalUserLocationAccess2,
-  storageBookings: () => storageBookings2,
-  storageListings: () => storageListings2,
-  storagePricingModelEnum: () => storagePricingModelEnum2,
-  storageTypeEnum: () => storageTypeEnum2,
-  transactionStatusEnum: () => transactionStatusEnum2,
-  updateApplicationDocumentsSchema: () => updateApplicationDocumentsSchema2,
-  updateApplicationStatusSchema: () => updateApplicationStatusSchema2,
-  updateChefKitchenApplicationDocumentsSchema: () => updateChefKitchenApplicationDocumentsSchema2,
-  updateChefKitchenApplicationSchema: () => updateChefKitchenApplicationSchema2,
-  updateChefKitchenApplicationStatusSchema: () => updateChefKitchenApplicationStatusSchema2,
-  updateChefKitchenProfileSchema: () => updateChefKitchenProfileSchema2,
-  updateChefLocationProfileSchema: () => updateChefLocationProfileSchema2,
-  updateDeliveryPartnerApplicationStatusSchema: () => updateDeliveryPartnerApplicationStatusSchema2,
-  updateDeliveryPartnerDocumentVerificationSchema: () => updateDeliveryPartnerDocumentVerificationSchema2,
-  updateDeliveryPartnerDocumentsSchema: () => updateDeliveryPartnerDocumentsSchema2,
-  updateDocumentVerificationSchema: () => updateDocumentVerificationSchema2,
-  updateEquipmentBookingSchema: () => updateEquipmentBookingSchema2,
-  updateEquipmentBookingStatusSchema: () => updateEquipmentBookingStatusSchema2,
-  updateEquipmentListingSchema: () => updateEquipmentListingSchema2,
-  updateEquipmentListingStatusSchema: () => updateEquipmentListingStatusSchema2,
-  updateKitchenBookingSchema: () => updateKitchenBookingSchema2,
-  updateKitchenDateOverrideSchema: () => updateKitchenDateOverrideSchema2,
-  updateKitchenSchema: () => updateKitchenSchema2,
-  updateLocationSchema: () => updateLocationSchema2,
-  updatePaymentTransactionSchema: () => updatePaymentTransactionSchema2,
-  updatePlatformSettingSchema: () => updatePlatformSettingSchema2,
-  updatePortalUserApplicationStatusSchema: () => updatePortalUserApplicationStatusSchema2,
-  updateStorageBookingSchema: () => updateStorageBookingSchema2,
-  updateStorageBookingStatusSchema: () => updateStorageBookingStatusSchema2,
-  updateStorageListingSchema: () => updateStorageListingSchema2,
-  updateStorageListingStatusSchema: () => updateStorageListingStatusSchema2,
-  updateUserApplicationTypeSchema: () => updateUserApplicationTypeSchema2,
-  userRoleEnum: () => userRoleEnum2,
-  users: () => users2,
-  vehicleTypeEnum: () => vehicleTypeEnum2,
-  videoProgress: () => videoProgress2
-});
-import { boolean as boolean2, date as date2, integer as integer2, jsonb as jsonb2, numeric as numeric2, pgEnum as pgEnum2, pgTable as pgTable2, serial as serial2, text as text2, timestamp as timestamp2 } from "drizzle-orm/pg-core";
-import { createInsertSchema as createInsertSchema2 } from "drizzle-zod";
-import { z as z4 } from "zod";
-var kitchenPreferenceEnum2, certificationStatusEnum2, applicationStatusEnum2, userRoleEnum2, documentVerificationStatusEnum2, applicationTypeEnum2, vehicleTypeEnum2, bookingStatusEnum2, storageTypeEnum2, storagePricingModelEnum2, bookingDurationUnitEnum2, listingStatusEnum2, equipmentCategoryEnum2, equipmentConditionEnum2, equipmentPricingModelEnum2, equipmentAvailabilityTypeEnum2, paymentStatusEnum2, transactionStatusEnum2, bookingTypeEnum2, users2, applications2, deliveryPartnerApplications2, insertApplicationSchema2, updateApplicationStatusSchema2, updateApplicationDocumentsSchema2, updateDocumentVerificationSchema2, insertUserSchema2, microlearningCompletions2, videoProgress2, insertMicrolearningCompletionSchema2, insertVideoProgressSchema2, insertDeliveryPartnerApplicationSchema2, updateDeliveryPartnerApplicationStatusSchema2, updateDeliveryPartnerDocumentsSchema2, updateDeliveryPartnerDocumentVerificationSchema2, updateUserApplicationTypeSchema2, locations2, kitchens2, kitchenAvailability2, kitchenDateOverrides2, kitchenBookings2, chefLocationAccess2, chefKitchenAccess2, chefKitchenProfiles2, chefLocationProfiles2, portalUserApplications2, portalUserLocationAccess2, insertLocationSchema2, updateLocationSchema2, insertKitchenSchema2, updateKitchenSchema2, insertKitchenAvailabilitySchema2, insertKitchenDateOverrideSchema2, updateKitchenDateOverrideSchema2, insertKitchenBookingSchema2, updateKitchenBookingSchema2, insertChefLocationAccessSchema2, insertChefKitchenAccessSchema2, insertChefKitchenProfileSchema2, updateChefKitchenProfileSchema2, insertChefLocationProfileSchema2, updateChefLocationProfileSchema2, insertPortalUserApplicationSchema2, updatePortalUserApplicationStatusSchema2, insertPortalUserLocationAccessSchema2, storageListings2, insertStorageListingSchema2, updateStorageListingSchema2, updateStorageListingStatusSchema2, equipmentListings2, insertEquipmentListingSchema2, updateEquipmentListingSchema2, updateEquipmentListingStatusSchema2, storageBookings2, insertStorageBookingSchema2, updateStorageBookingSchema2, updateStorageBookingStatusSchema2, equipmentBookings2, insertEquipmentBookingSchema2, updateEquipmentBookingSchema2, updateEquipmentBookingStatusSchema2, platformSettings2, insertPlatformSettingSchema2, updatePlatformSettingSchema2, chefKitchenApplications2, insertChefKitchenApplicationSchema2, updateChefKitchenApplicationSchema2, updateChefKitchenApplicationStatusSchema2, updateChefKitchenApplicationDocumentsSchema2, paymentTransactions2, paymentHistory2, insertPaymentTransactionSchema2, updatePaymentTransactionSchema2;
-var init_schema2 = __esm({
-  "dist/shared/schema.js"() {
-    "use strict";
-    init_phone_validation2();
-    kitchenPreferenceEnum2 = pgEnum2("kitchen_preference", ["commercial", "home", "notSure"]);
-    certificationStatusEnum2 = pgEnum2("certification_status", ["yes", "no", "notSure"]);
-    applicationStatusEnum2 = pgEnum2("application_status", ["inReview", "approved", "rejected", "cancelled"]);
-    userRoleEnum2 = pgEnum2("user_role", ["admin", "chef", "delivery_partner", "manager"]);
-    documentVerificationStatusEnum2 = pgEnum2("document_verification_status", ["pending", "approved", "rejected", "expired"]);
-    applicationTypeEnum2 = pgEnum2("application_type", ["chef", "delivery_partner"]);
-    vehicleTypeEnum2 = pgEnum2("vehicle_type", ["car", "suv", "truck", "van"]);
-    bookingStatusEnum2 = pgEnum2("booking_status", ["pending", "confirmed", "cancelled"]);
-    storageTypeEnum2 = pgEnum2("storage_type", ["dry", "cold", "freezer"]);
-    storagePricingModelEnum2 = pgEnum2("storage_pricing_model", ["monthly-flat", "per-cubic-foot", "hourly", "daily"]);
-    bookingDurationUnitEnum2 = pgEnum2("booking_duration_unit", ["hourly", "daily", "monthly"]);
-    listingStatusEnum2 = pgEnum2("listing_status", ["draft", "pending", "approved", "rejected", "active", "inactive"]);
-    equipmentCategoryEnum2 = pgEnum2("equipment_category", ["food-prep", "cooking", "refrigeration", "cleaning", "specialty"]);
-    equipmentConditionEnum2 = pgEnum2("equipment_condition", ["excellent", "good", "fair", "needs-repair"]);
-    equipmentPricingModelEnum2 = pgEnum2("equipment_pricing_model", ["hourly", "daily", "weekly", "monthly"]);
-    equipmentAvailabilityTypeEnum2 = pgEnum2("equipment_availability_type", ["included", "rental"]);
-    paymentStatusEnum2 = pgEnum2("payment_status", ["pending", "paid", "refunded", "failed", "partially_refunded"]);
-    transactionStatusEnum2 = pgEnum2("transaction_status", ["pending", "processing", "succeeded", "failed", "canceled", "refunded", "partially_refunded"]);
-    bookingTypeEnum2 = pgEnum2("booking_type_enum", ["kitchen", "storage", "equipment", "bundle"]);
-    users2 = pgTable2("users", {
-      id: serial2("id").primaryKey(),
-      username: text2("username").notNull().unique(),
-      password: text2("password").notNull(),
-      role: userRoleEnum2("role"),
-      // Allow null initially - user will choose role
-      googleId: text2("google_id").unique(),
-      facebookId: text2("facebook_id").unique(),
-      firebaseUid: text2("firebase_uid").unique(),
-      isVerified: boolean2("is_verified").default(false).notNull(),
-      has_seen_welcome: boolean2("has_seen_welcome").default(false).notNull(),
-      // Support dual roles - users can be both chef and delivery partner
-      isChef: boolean2("is_chef").default(false).notNull(),
-      isDeliveryPartner: boolean2("is_delivery_partner").default(false).notNull(),
-      isManager: boolean2("is_manager").default(false).notNull(),
-      isPortalUser: boolean2("is_portal_user").default(false).notNull(),
-      // Portal user (third-party kitchen users)
-      applicationType: applicationTypeEnum2("application_type"),
-      // DEPRECATED: kept for backward compatibility
-      // Manager onboarding fields
-      managerOnboardingCompleted: boolean2("manager_onboarding_completed").default(false).notNull(),
-      // Whether manager completed onboarding
-      managerOnboardingSkipped: boolean2("manager_onboarding_skipped").default(false).notNull(),
-      // Whether manager skipped onboarding
-      managerOnboardingStepsCompleted: jsonb2("manager_onboarding_steps_completed").default({}).notNull(),
-      // JSON object tracking completed onboarding steps
-      // Stripe Connect fields for manager payments
-      stripeConnectAccountId: text2("stripe_connect_account_id").unique(),
-      // Stripe Connect Express account ID
-      stripeConnectOnboardingStatus: text2("stripe_connect_onboarding_status").default("not_started").notNull()
-      // Status: 'not_started', 'in_progress', 'complete', 'failed'
-    });
-    applications2 = pgTable2("applications", {
-      id: serial2("id").primaryKey(),
-      userId: integer2("user_id").references(() => users2.id),
-      fullName: text2("full_name").notNull(),
-      email: text2("email").notNull(),
-      phone: text2("phone").notNull(),
-      foodSafetyLicense: certificationStatusEnum2("food_safety_license").notNull(),
-      foodEstablishmentCert: certificationStatusEnum2("food_establishment_cert").notNull(),
-      kitchenPreference: kitchenPreferenceEnum2("kitchen_preference").notNull(),
-      feedback: text2("feedback"),
-      status: applicationStatusEnum2("status").default("inReview").notNull(),
-      // Document verification fields
-      foodSafetyLicenseUrl: text2("food_safety_license_url"),
-      foodEstablishmentCertUrl: text2("food_establishment_cert_url"),
-      foodSafetyLicenseStatus: documentVerificationStatusEnum2("food_safety_license_status").default("pending"),
-      foodEstablishmentCertStatus: documentVerificationStatusEnum2("food_establishment_cert_status").default("pending"),
-      documentsAdminFeedback: text2("documents_admin_feedback"),
-      documentsReviewedBy: integer2("documents_reviewed_by").references(() => users2.id),
-      documentsReviewedAt: timestamp2("documents_reviewed_at"),
-      createdAt: timestamp2("created_at").defaultNow().notNull()
-    });
-    deliveryPartnerApplications2 = pgTable2("delivery_partner_applications", {
-      id: serial2("id").primaryKey(),
-      userId: integer2("user_id").references(() => users2.id),
-      fullName: text2("full_name").notNull(),
-      email: text2("email").notNull(),
-      phone: text2("phone").notNull(),
-      address: text2("address").notNull(),
-      city: text2("city").notNull(),
-      province: text2("province").notNull(),
-      postalCode: text2("postal_code").notNull(),
-      // Vehicle details
-      vehicleType: vehicleTypeEnum2("vehicle_type").notNull(),
-      vehicleMake: text2("vehicle_make").notNull(),
-      vehicleModel: text2("vehicle_model").notNull(),
-      vehicleYear: integer2("vehicle_year").notNull(),
-      licensePlate: text2("license_plate").notNull(),
-      // Document uploads
-      driversLicenseUrl: text2("drivers_license_url"),
-      vehicleRegistrationUrl: text2("vehicle_registration_url"),
-      insuranceUrl: text2("insurance_url"),
-      // Document verification status
-      driversLicenseStatus: documentVerificationStatusEnum2("drivers_license_status").default("pending"),
-      vehicleRegistrationStatus: documentVerificationStatusEnum2("vehicle_registration_status").default("pending"),
-      insuranceStatus: documentVerificationStatusEnum2("insurance_status").default("pending"),
-      // Admin fields
-      documentsAdminFeedback: text2("documents_admin_feedback"),
-      documentsReviewedBy: integer2("documents_reviewed_by").references(() => users2.id),
-      documentsReviewedAt: timestamp2("documents_reviewed_at"),
-      feedback: text2("feedback"),
-      status: applicationStatusEnum2("status").default("inReview").notNull(),
-      createdAt: timestamp2("created_at").defaultNow().notNull()
-    });
-    insertApplicationSchema2 = createInsertSchema2(applications2, {
-      fullName: z4.string().min(2, "Name must be at least 2 characters"),
-      email: z4.string().email("Please enter a valid email address"),
-      phone: phoneNumberSchema2,
-      // Uses shared phone validation
-      foodSafetyLicense: z4.enum(["yes", "no", "notSure"]),
-      foodEstablishmentCert: z4.enum(["yes", "no", "notSure"]),
-      kitchenPreference: z4.enum(["commercial", "home", "notSure"]),
-      feedback: z4.string().optional(),
-      userId: z4.number().optional(),
-      // Document fields are optional during initial application submission
-      foodSafetyLicenseUrl: z4.string().optional(),
-      foodEstablishmentCertUrl: z4.string().optional(),
-      // Allow setting document status during creation
-      foodSafetyLicenseStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      foodEstablishmentCertStatus: z4.enum(["pending", "approved", "rejected"]).optional()
-    }).omit({
-      id: true,
-      status: true,
-      createdAt: true,
-      documentsAdminFeedback: true,
-      documentsReviewedBy: true,
-      documentsReviewedAt: true
-    });
-    updateApplicationStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["inReview", "approved", "rejected", "cancelled"])
-    });
-    updateApplicationDocumentsSchema2 = z4.object({
-      id: z4.number(),
-      foodSafetyLicenseUrl: z4.string().optional(),
-      foodEstablishmentCertUrl: z4.string().optional()
-    });
-    updateDocumentVerificationSchema2 = z4.object({
-      id: z4.number(),
-      foodSafetyLicenseStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      foodEstablishmentCertStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      documentsAdminFeedback: z4.string().optional(),
-      documentsReviewedBy: z4.number().optional()
-    });
-    insertUserSchema2 = z4.object({
-      username: z4.string().min(3, "Username must be at least 3 characters"),
-      password: z4.string().min(6, "Password must be at least 6 characters"),
-      role: z4.enum(["admin", "chef", "delivery_partner", "manager"]).default("chef"),
-      googleId: z4.string().optional(),
-      facebookId: z4.string().optional(),
-      firebaseUid: z4.string().optional(),
-      isChef: z4.boolean().default(false),
-      isDeliveryPartner: z4.boolean().default(false),
-      isManager: z4.boolean().default(false),
-      isPortalUser: z4.boolean().default(false)
-    });
-    microlearningCompletions2 = pgTable2("microlearning_completions", {
-      id: serial2("id").primaryKey(),
-      userId: integer2("user_id").references(() => users2.id).notNull(),
-      completedAt: timestamp2("completed_at").defaultNow().notNull(),
-      confirmed: boolean2("confirmed").default(false).notNull(),
-      certificateGenerated: boolean2("certificate_generated").default(false).notNull(),
-      videoProgress: jsonb2("video_progress"),
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    videoProgress2 = pgTable2("video_progress", {
-      id: serial2("id").primaryKey(),
-      userId: integer2("user_id").references(() => users2.id).notNull(),
-      videoId: text2("video_id").notNull(),
-      progress: numeric2("progress", { precision: 5, scale: 2 }).default("0").notNull(),
-      completed: boolean2("completed").default(false).notNull(),
-      completedAt: timestamp2("completed_at"),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull(),
-      watchedPercentage: numeric2("watched_percentage", { precision: 5, scale: 2 }).default("0").notNull(),
-      isRewatching: boolean2("is_rewatching").default(false).notNull()
-    });
-    insertMicrolearningCompletionSchema2 = createInsertSchema2(microlearningCompletions2, {
-      userId: z4.number(),
-      confirmed: z4.boolean().optional(),
-      certificateGenerated: z4.boolean().optional(),
-      videoProgress: z4.any().optional()
-    }).omit({
-      id: true,
-      completedAt: true,
-      createdAt: true,
-      updatedAt: true
-    });
-    insertVideoProgressSchema2 = createInsertSchema2(videoProgress2, {
-      userId: z4.number(),
-      videoId: z4.string().min(1, "Video ID is required"),
-      progress: z4.number().min(0).max(100).optional(),
-      completed: z4.boolean().optional(),
-      watchedPercentage: z4.number().min(0).max(100).optional(),
-      isRewatching: z4.boolean().optional()
-    }).omit({
-      id: true,
-      completedAt: true,
-      updatedAt: true
-    });
-    insertDeliveryPartnerApplicationSchema2 = createInsertSchema2(deliveryPartnerApplications2, {
-      fullName: z4.string().min(2, "Name must be at least 2 characters"),
-      email: z4.string().email("Please enter a valid email address"),
-      phone: phoneNumberSchema2,
-      address: z4.string().min(5, "Address must be at least 5 characters"),
-      city: z4.string().min(2, "City must be at least 2 characters"),
-      province: z4.string().min(2, "Province must be at least 2 characters"),
-      postalCode: z4.string().regex(/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/, "Please enter a valid Canadian postal code"),
-      vehicleType: z4.enum(["car", "suv", "truck", "van"]),
-      vehicleMake: z4.string().min(1, "Vehicle make is required"),
-      vehicleModel: z4.string().min(1, "Vehicle model is required"),
-      vehicleYear: z4.number().min(1900).max((/* @__PURE__ */ new Date()).getFullYear() + 1, "Please enter a valid vehicle year"),
-      licensePlate: z4.string().min(1, "License plate is required"),
-      userId: z4.number().optional(),
-      // Document fields - insurance is required, others are optional during initial submission
-      driversLicenseUrl: z4.string().optional(),
-      vehicleRegistrationUrl: z4.string().optional(),
-      insuranceUrl: z4.string().min(1, "Vehicle insurance is required")
-    }).omit({
-      id: true,
-      status: true,
-      createdAt: true,
-      documentsAdminFeedback: true,
-      documentsReviewedBy: true,
-      documentsReviewedAt: true,
-      // Document status fields are managed by admin
-      driversLicenseStatus: true,
-      vehicleRegistrationStatus: true,
-      insuranceStatus: true
-    });
-    updateDeliveryPartnerApplicationStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["inReview", "approved", "rejected", "cancelled"])
-    });
-    updateDeliveryPartnerDocumentsSchema2 = z4.object({
-      id: z4.number(),
-      driversLicenseUrl: z4.string().optional(),
-      vehicleRegistrationUrl: z4.string().optional(),
-      insuranceUrl: z4.string().optional(),
-      backgroundCheckUrl: z4.string().optional()
-    });
-    updateDeliveryPartnerDocumentVerificationSchema2 = z4.object({
-      id: z4.number(),
-      driversLicenseStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      vehicleRegistrationStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      insuranceStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      backgroundCheckStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      documentsAdminFeedback: z4.string().optional(),
-      documentsReviewedBy: z4.number().optional()
-    });
-    updateUserApplicationTypeSchema2 = z4.object({
-      userId: z4.number(),
-      applicationType: z4.enum(["chef", "delivery_partner"])
-    });
-    locations2 = pgTable2("locations", {
-      id: serial2("id").primaryKey(),
-      name: text2("name").notNull(),
-      address: text2("address").notNull(),
-      managerId: integer2("manager_id").references(() => users2.id),
-      notificationEmail: text2("notification_email"),
-      // Email where notifications will be sent
-      notificationPhone: text2("notification_phone"),
-      // Phone number where SMS notifications will be sent
-      cancellationPolicyHours: integer2("cancellation_policy_hours").default(24).notNull(),
-      cancellationPolicyMessage: text2("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
-      defaultDailyBookingLimit: integer2("default_daily_booking_limit").default(2).notNull(),
-      minimumBookingWindowHours: integer2("minimum_booking_window_hours").default(1).notNull(),
-      logoUrl: text2("logo_url"),
-      // Logo URL for the location (for manager header)
-      brandImageUrl: text2("brand_image_url"),
-      // Brand image URL for the location (displayed on public kitchen listings)
-      timezone: text2("timezone").default("America/St_Johns").notNull(),
-      // Timezone for this location (default: Newfoundland)
-      // Kitchen license fields for manager onboarding
-      kitchenLicenseUrl: text2("kitchen_license_url"),
-      // URL to uploaded kitchen license document
-      kitchenLicenseStatus: text2("kitchen_license_status").default("pending"),
-      // pending, approved, rejected
-      kitchenLicenseApprovedBy: integer2("kitchen_license_approved_by").references(() => users2.id),
-      // Admin who approved/rejected
-      kitchenLicenseApprovedAt: timestamp2("kitchen_license_approved_at"),
-      // When license was approved/rejected
-      kitchenLicenseFeedback: text2("kitchen_license_feedback"),
-      // Admin feedback on license
-      kitchenLicenseExpiry: date2("kitchen_license_expiry"),
-      // Expiration date of the kitchen license
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    kitchens2 = pgTable2("kitchens", {
-      id: serial2("id").primaryKey(),
-      locationId: integer2("location_id").references(() => locations2.id).notNull(),
-      name: text2("name").notNull(),
-      description: text2("description"),
-      imageUrl: text2("image_url"),
-      // Image URL for the kitchen (displayed on public kitchen listings)
-      galleryImages: jsonb2("gallery_images").default([]),
-      // Array of image URLs for kitchen gallery carousel
-      amenities: jsonb2("amenities").default([]),
-      // Array of amenities/features for the kitchen
-      isActive: boolean2("is_active").default(true).notNull(),
-      // Pricing fields (all prices stored as integers in cents to avoid floating-point precision issues)
-      hourlyRate: numeric2("hourly_rate"),
-      // Base hourly rate in cents (e.g., 5000 = $50.00/hour)
-      currency: text2("currency").default("CAD").notNull(),
-      // Currency code (ISO 4217)
-      minimumBookingHours: integer2("minimum_booking_hours").default(1).notNull(),
-      // Minimum booking duration
-      pricingModel: text2("pricing_model").default("hourly").notNull(),
-      // Pricing structure ('hourly', 'daily', 'weekly')
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    kitchenAvailability2 = pgTable2("kitchen_availability", {
-      id: serial2("id").primaryKey(),
-      kitchenId: integer2("kitchen_id").references(() => kitchens2.id).notNull(),
-      dayOfWeek: integer2("day_of_week").notNull(),
-      // 0-6, Sunday is 0
-      startTime: text2("start_time").notNull(),
-      // HH:MM format
-      endTime: text2("end_time").notNull(),
-      // HH:MM format
-      isAvailable: boolean2("is_available").default(true).notNull()
-    });
-    kitchenDateOverrides2 = pgTable2("kitchen_date_overrides", {
-      id: serial2("id").primaryKey(),
-      kitchenId: integer2("kitchen_id").references(() => kitchens2.id).notNull(),
-      specificDate: timestamp2("specific_date").notNull(),
-      // Specific date for override
-      startTime: text2("start_time"),
-      // HH:MM format, null if closed all day
-      endTime: text2("end_time"),
-      // HH:MM format, null if closed all day
-      isAvailable: boolean2("is_available").default(false).notNull(),
-      // false = closed, true = custom hours
-      reason: text2("reason"),
-      // Optional reason (e.g., "Holiday", "Maintenance")
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    kitchenBookings2 = pgTable2("kitchen_bookings", {
-      id: serial2("id").primaryKey(),
-      chefId: integer2("chef_id").references(() => users2.id),
-      // Nullable for external/third-party bookings
-      kitchenId: integer2("kitchen_id").references(() => kitchens2.id).notNull(),
-      bookingDate: timestamp2("booking_date").notNull(),
-      startTime: text2("start_time").notNull(),
-      // HH:MM format
-      endTime: text2("end_time").notNull(),
-      // HH:MM format
-      status: bookingStatusEnum2("status").default("pending").notNull(),
-      specialNotes: text2("special_notes"),
-      bookingType: text2("booking_type").default("chef").notNull(),
-      // 'chef', 'external', 'manager_blocked'
-      createdBy: integer2("created_by").references(() => users2.id),
-      // Manager who created the booking (for external/manual bookings)
-      externalContactName: text2("external_contact_name"),
-      // For third-party bookings
-      externalContactEmail: text2("external_contact_email"),
-      // For third-party bookings
-      externalContactPhone: text2("external_contact_phone"),
-      // For third-party bookings
-      externalContactCompany: text2("external_contact_company"),
-      // For third-party bookings
-      // Pricing fields (all prices stored as integers in cents)
-      totalPrice: numeric2("total_price"),
-      // Total booking price in cents
-      hourlyRate: numeric2("hourly_rate"),
-      // Rate used for this booking (in cents)
-      durationHours: numeric2("duration_hours"),
-      // Calculated duration (decimal for partial hours)
-      storageItems: jsonb2("storage_items").default([]),
-      // Array of storage booking IDs: [{storageBookingId: 1, storageListingId: 5}]
-      equipmentItems: jsonb2("equipment_items").default([]),
-      // Array of equipment booking IDs: [{equipmentBookingId: 2, equipmentListingId: 8}]
-      paymentStatus: paymentStatusEnum2("payment_status").default("pending"),
-      // Payment status
-      paymentIntentId: text2("payment_intent_id"),
-      // Stripe PaymentIntent ID (nullable, unique)
-      damageDeposit: numeric2("damage_deposit").default("0"),
-      // Damage deposit amount (in cents)
-      serviceFee: numeric2("service_fee").default("0"),
-      // Platform commission (in cents)
-      currency: text2("currency").default("CAD").notNull(),
-      // Currency code
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    chefLocationAccess2 = pgTable2("chef_location_access", {
-      id: serial2("id").primaryKey(),
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      locationId: integer2("location_id").references(() => locations2.id, { onDelete: "cascade" }).notNull(),
-      grantedBy: integer2("granted_by").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      // admin who granted access
-      grantedAt: timestamp2("granted_at").defaultNow().notNull()
-    });
-    chefKitchenAccess2 = pgTable2("chef_kitchen_access", {
-      id: serial2("id").primaryKey(),
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      kitchenId: integer2("kitchen_id").references(() => kitchens2.id, { onDelete: "cascade" }).notNull(),
-      grantedBy: integer2("granted_by").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      grantedAt: timestamp2("granted_at").defaultNow().notNull()
-    });
-    chefKitchenProfiles2 = pgTable2("chef_kitchen_profiles", {
-      id: serial2("id").primaryKey(),
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      kitchenId: integer2("kitchen_id").references(() => kitchens2.id, { onDelete: "cascade" }).notNull(),
-      status: text2("status").default("pending").notNull(),
-      // 'pending', 'approved', 'rejected'
-      sharedAt: timestamp2("shared_at").defaultNow().notNull(),
-      reviewedBy: integer2("reviewed_by").references(() => users2.id, { onDelete: "set null" }),
-      // manager who reviewed
-      reviewedAt: timestamp2("reviewed_at"),
-      reviewFeedback: text2("review_feedback")
-      // optional feedback from manager
-    });
-    chefLocationProfiles2 = pgTable2("chef_location_profiles", {
-      id: serial2("id").primaryKey(),
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      locationId: integer2("location_id").references(() => locations2.id, { onDelete: "cascade" }).notNull(),
-      status: text2("status").default("pending").notNull(),
-      // 'pending', 'approved', 'rejected'
-      sharedAt: timestamp2("shared_at").defaultNow().notNull(),
-      reviewedBy: integer2("reviewed_by").references(() => users2.id, { onDelete: "set null" }),
-      // manager who reviewed
-      reviewedAt: timestamp2("reviewed_at"),
-      reviewFeedback: text2("review_feedback")
-      // optional feedback from manager
-    });
-    portalUserApplications2 = pgTable2("portal_user_applications", {
-      id: serial2("id").primaryKey(),
-      userId: integer2("user_id").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      locationId: integer2("location_id").references(() => locations2.id, { onDelete: "cascade" }).notNull(),
-      fullName: text2("full_name").notNull(),
-      email: text2("email").notNull(),
-      phone: text2("phone").notNull(),
-      company: text2("company"),
-      // Optional company name
-      status: applicationStatusEnum2("status").default("inReview").notNull(),
-      // 'inReview', 'approved', 'rejected', 'cancelled'
-      feedback: text2("feedback"),
-      // Manager feedback
-      reviewedBy: integer2("reviewed_by").references(() => users2.id, { onDelete: "set null" }),
-      // manager who reviewed
-      reviewedAt: timestamp2("reviewed_at"),
-      createdAt: timestamp2("created_at").defaultNow().notNull()
-    });
-    portalUserLocationAccess2 = pgTable2("portal_user_location_access", {
-      id: serial2("id").primaryKey(),
-      portalUserId: integer2("portal_user_id").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      locationId: integer2("location_id").references(() => locations2.id, { onDelete: "cascade" }).notNull(),
-      grantedBy: integer2("granted_by").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      // manager who granted access
-      grantedAt: timestamp2("granted_at").defaultNow().notNull(),
-      applicationId: integer2("application_id").references(() => portalUserApplications2.id, { onDelete: "set null" })
-      // Link to original application
-    });
-    insertLocationSchema2 = createInsertSchema2(locations2, {
-      name: z4.string().min(2, "Location name must be at least 2 characters"),
-      address: z4.string().min(5, "Address must be at least 5 characters"),
-      managerId: z4.number().optional(),
-      notificationEmail: z4.string().email("Please enter a valid email address").optional(),
-      notificationPhone: optionalPhoneNumberSchema2
-      // Optional phone for SMS notifications
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true
-    });
-    updateLocationSchema2 = z4.object({
-      id: z4.number(),
-      name: z4.string().min(2).optional(),
-      address: z4.string().min(5).optional(),
-      managerId: z4.number().optional(),
-      notificationEmail: z4.string().email("Please enter a valid email address").optional(),
-      notificationPhone: optionalPhoneNumberSchema2
-      // Optional phone for SMS notifications
-    });
-    insertKitchenSchema2 = createInsertSchema2(kitchens2, {
-      locationId: z4.number(),
-      name: z4.string().min(1, "Kitchen name is required"),
-      description: z4.string().optional(),
-      isActive: z4.boolean().optional(),
-      hourlyRate: z4.number().int().positive("Hourly rate must be positive").optional(),
-      currency: z4.string().min(3).max(3).optional(),
-      minimumBookingHours: z4.number().int().positive("Minimum booking hours must be positive").optional(),
-      pricingModel: z4.enum(["hourly", "daily", "weekly"]).optional()
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true
-    });
-    updateKitchenSchema2 = z4.object({
-      id: z4.number(),
-      name: z4.string().min(1).optional(),
-      description: z4.string().optional(),
-      isActive: z4.boolean().optional(),
-      hourlyRate: z4.number().int().positive("Hourly rate must be positive").optional(),
-      currency: z4.string().min(3).max(3).optional(),
-      minimumBookingHours: z4.number().int().positive("Minimum booking hours must be positive").optional(),
-      pricingModel: z4.enum(["hourly", "daily", "weekly"]).optional()
-    });
-    insertKitchenAvailabilitySchema2 = createInsertSchema2(kitchenAvailability2, {
-      kitchenId: z4.number(),
-      dayOfWeek: z4.number().min(0).max(6),
-      startTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
-      endTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
-      isAvailable: z4.boolean().optional()
-    }).omit({
-      id: true
-    });
-    insertKitchenDateOverrideSchema2 = createInsertSchema2(kitchenDateOverrides2, {
-      kitchenId: z4.number(),
-      specificDate: z4.string().or(z4.date()),
-      startTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
-      endTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
-      isAvailable: z4.boolean().optional(),
-      reason: z4.string().optional()
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true
-    });
-    updateKitchenDateOverrideSchema2 = z4.object({
-      id: z4.number(),
-      startTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
-      endTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
-      isAvailable: z4.boolean().optional(),
-      reason: z4.string().optional()
-    });
-    insertKitchenBookingSchema2 = createInsertSchema2(kitchenBookings2, {
-      chefId: z4.number(),
-      // REQUIRED - matches actual DB
-      kitchenId: z4.number(),
-      bookingDate: z4.string().or(z4.date()),
-      startTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
-      endTime: z4.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
-      status: z4.enum(["pending", "confirmed", "cancelled"]).optional(),
-      specialNotes: z4.string().optional()
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true
-    });
-    updateKitchenBookingSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["pending", "confirmed", "cancelled"]).optional(),
-      specialNotes: z4.string().optional()
-    });
-    insertChefLocationAccessSchema2 = createInsertSchema2(chefLocationAccess2, {
-      chefId: z4.number(),
-      locationId: z4.number(),
-      grantedBy: z4.number()
-    }).omit({
-      id: true,
-      grantedAt: true
-    });
-    insertChefKitchenAccessSchema2 = createInsertSchema2(chefKitchenAccess2, {
-      chefId: z4.number(),
-      kitchenId: z4.number(),
-      grantedBy: z4.number()
-    }).omit({
-      id: true,
-      grantedAt: true
-    });
-    insertChefKitchenProfileSchema2 = createInsertSchema2(chefKitchenProfiles2, {
-      chefId: z4.number(),
-      kitchenId: z4.number(),
-      status: z4.enum(["pending", "approved", "rejected"]).optional()
-    }).omit({
-      id: true,
-      sharedAt: true,
-      reviewedBy: true,
-      reviewedAt: true,
-      reviewFeedback: true
-    });
-    updateChefKitchenProfileSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["pending", "approved", "rejected"]),
-      reviewFeedback: z4.string().optional()
-    });
-    insertChefLocationProfileSchema2 = createInsertSchema2(chefLocationProfiles2, {
-      chefId: z4.number(),
-      locationId: z4.number(),
-      status: z4.enum(["pending", "approved", "rejected"]).optional()
-    }).omit({
-      id: true,
-      sharedAt: true,
-      reviewedBy: true,
-      reviewedAt: true,
-      reviewFeedback: true
-    });
-    updateChefLocationProfileSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["pending", "approved", "rejected"]),
-      reviewFeedback: z4.string().optional()
-    });
-    insertPortalUserApplicationSchema2 = createInsertSchema2(portalUserApplications2, {
-      userId: z4.number(),
-      locationId: z4.number(),
-      fullName: z4.string().min(2, "Name must be at least 2 characters"),
-      email: z4.string().email("Please enter a valid email address"),
-      phone: phoneNumberSchema2,
-      // Uses shared phone validation
-      company: z4.string().optional()
-    }).omit({
-      id: true,
-      status: true,
-      createdAt: true,
-      reviewedBy: true,
-      reviewedAt: true,
-      feedback: true
-    });
-    updatePortalUserApplicationStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["inReview", "approved", "rejected", "cancelled"]),
-      feedback: z4.string().optional()
-    });
-    insertPortalUserLocationAccessSchema2 = createInsertSchema2(portalUserLocationAccess2, {
-      portalUserId: z4.number(),
-      locationId: z4.number(),
-      grantedBy: z4.number(),
-      applicationId: z4.number().optional()
-    }).omit({
-      id: true,
-      grantedAt: true
-    });
-    storageListings2 = pgTable2("storage_listings", {
-      id: serial2("id").primaryKey(),
-      kitchenId: integer2("kitchen_id").references(() => kitchens2.id, { onDelete: "cascade" }).notNull(),
-      storageType: storageTypeEnum2("storage_type").notNull(),
-      name: text2("name").notNull(),
-      description: text2("description"),
-      // Physical specifications
-      dimensionsLength: numeric2("dimensions_length"),
-      // feet/meters
-      dimensionsWidth: numeric2("dimensions_width"),
-      dimensionsHeight: numeric2("dimensions_height"),
-      totalVolume: numeric2("total_volume"),
-      // cubic feet/meters (auto-calculated)
-      shelfCount: integer2("shelf_count"),
-      shelfMaterial: text2("shelf_material"),
-      accessType: text2("access_type"),
-      // 'walk-in', 'shelving-unit', 'rack-system'
-      // Features & amenities (JSONB for flexibility - following existing pattern)
-      features: jsonb2("features").default([]),
-      securityFeatures: jsonb2("security_features").default([]),
-      climateControl: boolean2("climate_control").default(false),
-      temperatureRange: text2("temperature_range"),
-      // "35-40°F"
-      humidityControl: boolean2("humidity_control").default(false),
-      powerOutlets: integer2("power_outlets").default(0),
-      // Pricing (all in cents)
-      pricingModel: storagePricingModelEnum2("pricing_model").notNull(),
-      basePrice: numeric2("base_price").notNull(),
-      // Base price in cents (integer)
-      pricePerCubicFoot: numeric2("price_per_cubic_foot"),
-      // For per-cubic-foot model (in cents)
-      // Booking duration (flexible: hourly, daily, or monthly)
-      minimumBookingDuration: integer2("minimum_booking_duration").default(1).notNull(),
-      // Minimum booking duration (number)
-      bookingDurationUnit: bookingDurationUnitEnum2("booking_duration_unit").default("monthly").notNull(),
-      // Unit: hourly, daily, or monthly
-      currency: text2("currency").default("CAD").notNull(),
-      // Locked to CAD
-      // Status & moderation (admin approval workflow)
-      status: listingStatusEnum2("status").default("draft").notNull(),
-      approvedBy: integer2("approved_by").references(() => users2.id, { onDelete: "set null" }),
-      // Admin who approved
-      approvedAt: timestamp2("approved_at"),
-      rejectionReason: text2("rejection_reason"),
-      // If rejected by admin
-      // Availability
-      isActive: boolean2("is_active").default(true).notNull(),
-      availabilityCalendar: jsonb2("availability_calendar").default({}),
-      // Blocked dates, maintenance windows
-      // Compliance & documentation
-      certifications: jsonb2("certifications").default([]),
-      photos: jsonb2("photos").default([]),
-      // Array of image URLs
-      documents: jsonb2("documents").default([]),
-      // Array of document URLs
-      // Rules & restrictions
-      houseRules: jsonb2("house_rules").default([]),
-      prohibitedItems: jsonb2("prohibited_items").default([]),
-      insuranceRequired: boolean2("insurance_required").default(false),
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    insertStorageListingSchema2 = createInsertSchema2(storageListings2, {
-      kitchenId: z4.number(),
-      name: z4.string().min(3, "Name must be at least 3 characters"),
-      storageType: z4.enum(["dry", "cold", "freezer"]),
-      pricingModel: z4.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
-      basePrice: z4.number().int().positive("Base price must be positive"),
-      pricePerCubicFoot: z4.number().int().positive("Price per cubic foot must be positive").optional(),
-      minimumBookingDuration: z4.number().int().positive("Minimum booking duration must be positive").optional(),
-      bookingDurationUnit: z4.enum(["hourly", "daily", "monthly"]).optional(),
-      dimensionsLength: z4.number().positive().optional(),
-      dimensionsWidth: z4.number().positive().optional(),
-      dimensionsHeight: z4.number().positive().optional(),
-      totalVolume: z4.number().positive().optional(),
-      shelfCount: z4.number().int().min(0).optional(),
-      temperatureRange: z4.string().optional(),
-      features: z4.array(z4.string()).optional(),
-      securityFeatures: z4.array(z4.string()).optional(),
-      certifications: z4.array(z4.string()).optional(),
-      photos: z4.array(z4.string()).optional(),
-      documents: z4.array(z4.string()).optional(),
-      houseRules: z4.array(z4.string()).optional(),
-      prohibitedItems: z4.array(z4.string()).optional(),
-      availabilityCalendar: z4.record(z4.any()).optional()
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true,
-      status: true,
-      approvedBy: true,
-      approvedAt: true,
-      rejectionReason: true,
-      currency: true
-      // Always CAD, not user-selectable
-    });
-    updateStorageListingSchema2 = z4.object({
-      id: z4.number(),
-      name: z4.string().min(3).optional(),
-      description: z4.string().optional(),
-      storageType: z4.enum(["dry", "cold", "freezer"]).optional(),
-      pricingModel: z4.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]).optional(),
-      basePrice: z4.number().int().positive().optional(),
-      pricePerCubicFoot: z4.number().int().positive().optional(),
-      minimumBookingDuration: z4.number().int().positive().optional(),
-      bookingDurationUnit: z4.enum(["hourly", "daily", "monthly"]).optional(),
-      dimensionsLength: z4.number().positive().optional(),
-      dimensionsWidth: z4.number().positive().optional(),
-      dimensionsHeight: z4.number().positive().optional(),
-      totalVolume: z4.number().positive().optional(),
-      shelfCount: z4.number().int().min(0).optional(),
-      shelfMaterial: z4.string().optional(),
-      accessType: z4.string().optional(),
-      temperatureRange: z4.string().optional(),
-      climateControl: z4.boolean().optional(),
-      humidityControl: z4.boolean().optional(),
-      powerOutlets: z4.number().int().min(0).optional(),
-      isActive: z4.boolean().optional(),
-      insuranceRequired: z4.boolean().optional(),
-      features: z4.array(z4.string()).optional(),
-      securityFeatures: z4.array(z4.string()).optional(),
-      certifications: z4.array(z4.string()).optional(),
-      photos: z4.array(z4.string()).optional(),
-      documents: z4.array(z4.string()).optional(),
-      houseRules: z4.array(z4.string()).optional(),
-      prohibitedItems: z4.array(z4.string()).optional(),
-      availabilityCalendar: z4.record(z4.any()).optional()
-    });
-    updateStorageListingStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["draft", "pending", "approved", "rejected", "active", "inactive"]),
-      rejectionReason: z4.string().optional()
-    });
-    equipmentListings2 = pgTable2("equipment_listings", {
-      id: serial2("id").primaryKey(),
-      kitchenId: integer2("kitchen_id").references(() => kitchens2.id, { onDelete: "cascade" }).notNull(),
-      // Category & type
-      category: equipmentCategoryEnum2("category").notNull(),
-      equipmentType: text2("equipment_type").notNull(),
-      // 'mixer', 'oven', 'fryer', etc.
-      brand: text2("brand"),
-      model: text2("model"),
-      // Specifications
-      description: text2("description"),
-      condition: equipmentConditionEnum2("condition").notNull(),
-      age: integer2("age"),
-      // years
-      serviceHistory: text2("service_history"),
-      dimensions: jsonb2("dimensions").default({}),
-      // {width, depth, height, weight}
-      powerRequirements: text2("power_requirements"),
-      // '110V', '208V', '240V', '3-phase'
-      // Equipment-specific fields (JSONB for flexibility)
-      specifications: jsonb2("specifications").default({}),
-      certifications: jsonb2("certifications").default([]),
-      safetyFeatures: jsonb2("safety_features").default([]),
-      // Availability type: included (free with kitchen) or rental (paid addon)
-      availabilityType: equipmentAvailabilityTypeEnum2("availability_type").default("rental").notNull(),
-      // Pricing - SIMPLIFIED to flat session rate (in cents)
-      // For rental equipment: charged once per kitchen booking session, regardless of duration
-      sessionRate: numeric2("session_rate").default("0"),
-      // Flat session rate in cents (e.g., 2500 = $25.00/session)
-      pricingModel: equipmentPricingModelEnum2("pricing_model"),
-      // Nullable for included equipment
-      // Legacy rate fields - kept for backwards compatibility but session_rate is primary
-      hourlyRate: numeric2("hourly_rate"),
-      // @deprecated - use sessionRate
-      dailyRate: numeric2("daily_rate"),
-      // @deprecated - use sessionRate
-      weeklyRate: numeric2("weekly_rate"),
-      // @deprecated - use sessionRate
-      monthlyRate: numeric2("monthly_rate"),
-      // @deprecated - use sessionRate
-      minimumRentalHours: integer2("minimum_rental_hours"),
-      // @deprecated
-      minimumRentalDays: integer2("minimum_rental_days"),
-      // @deprecated
-      currency: text2("currency").default("CAD").notNull(),
-      // Usage terms
-      usageRestrictions: jsonb2("usage_restrictions").default([]),
-      trainingRequired: boolean2("training_required").default(false),
-      cleaningResponsibility: text2("cleaning_responsibility"),
-      // 'renter', 'host', 'shared'
-      // Status & moderation (admin approval workflow)
-      status: listingStatusEnum2("status").default("draft").notNull(),
-      // Reuse same enum
-      approvedBy: integer2("approved_by").references(() => users2.id, { onDelete: "set null" }),
-      approvedAt: timestamp2("approved_at"),
-      rejectionReason: text2("rejection_reason"),
-      // Availability
-      isActive: boolean2("is_active").default(true).notNull(),
-      availabilityCalendar: jsonb2("availability_calendar").default({}),
-      prepTimeHours: integer2("prep_time_hours").default(4),
-      // Cleaning time between rentals
-      // Visuals & documentation
-      photos: jsonb2("photos").default([]),
-      manuals: jsonb2("manuals").default([]),
-      // PDF URLs
-      maintenanceLog: jsonb2("maintenance_log").default([]),
-      // Damage & liability (deposits in cents)
-      damageDeposit: numeric2("damage_deposit").default("0"),
-      // Refundable deposit (in cents)
-      insuranceRequired: boolean2("insurance_required").default(false),
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    insertEquipmentListingSchema2 = createInsertSchema2(equipmentListings2, {
-      kitchenId: z4.number(),
-      category: z4.enum(["food-prep", "cooking", "refrigeration", "cleaning", "specialty"]),
-      equipmentType: z4.string().min(1, "Equipment type is required"),
-      condition: z4.enum(["excellent", "good", "fair", "needs-repair"]),
-      availabilityType: z4.enum(["included", "rental"]),
-      pricingModel: z4.enum(["hourly", "daily", "weekly", "monthly"]).optional(),
-      // Optional for included equipment
-      hourlyRate: z4.number().int().positive("Hourly rate must be positive").optional(),
-      dailyRate: z4.number().int().positive("Daily rate must be positive").optional(),
-      weeklyRate: z4.number().int().positive("Weekly rate must be positive").optional(),
-      monthlyRate: z4.number().int().positive("Monthly rate must be positive").optional(),
-      minimumRentalHours: z4.number().int().min(1).optional(),
-      minimumRentalDays: z4.number().int().min(1).optional(),
-      damageDeposit: z4.number().int().min(0).optional(),
-      age: z4.number().int().min(0).optional(),
-      prepTimeHours: z4.number().int().min(0).optional(),
-      dimensions: z4.record(z4.any()).optional(),
-      specifications: z4.record(z4.any()).optional(),
-      certifications: z4.array(z4.string()).optional(),
-      safetyFeatures: z4.array(z4.string()).optional(),
-      usageRestrictions: z4.array(z4.string()).optional(),
-      photos: z4.array(z4.string()).optional(),
-      manuals: z4.array(z4.string()).optional(),
-      maintenanceLog: z4.array(z4.any()).optional(),
-      availabilityCalendar: z4.record(z4.any()).optional(),
-      cleaningResponsibility: z4.enum(["renter", "host", "shared"]).optional()
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true,
-      status: true,
-      approvedBy: true,
-      approvedAt: true,
-      rejectionReason: true,
-      currency: true
-      // Always CAD, not user-selectable
-    });
-    updateEquipmentListingSchema2 = z4.object({
-      id: z4.number(),
-      category: z4.enum(["food-prep", "cooking", "refrigeration", "cleaning", "specialty"]).optional(),
-      equipmentType: z4.string().min(1).optional(),
-      brand: z4.string().optional(),
-      model: z4.string().optional(),
-      description: z4.string().optional(),
-      condition: z4.enum(["excellent", "good", "fair", "needs-repair"]).optional(),
-      age: z4.number().int().min(0).optional(),
-      serviceHistory: z4.string().optional(),
-      dimensions: z4.record(z4.any()).optional(),
-      powerRequirements: z4.string().optional(),
-      specifications: z4.record(z4.any()).optional(),
-      availabilityType: z4.enum(["included", "rental"]).optional(),
-      pricingModel: z4.enum(["hourly", "daily", "weekly", "monthly"]).optional(),
-      hourlyRate: z4.number().int().positive().optional(),
-      dailyRate: z4.number().int().positive().optional(),
-      weeklyRate: z4.number().int().positive().optional(),
-      monthlyRate: z4.number().int().positive().optional(),
-      minimumRentalHours: z4.number().int().min(1).optional(),
-      minimumRentalDays: z4.number().int().min(1).optional(),
-      usageRestrictions: z4.array(z4.string()).optional(),
-      trainingRequired: z4.boolean().optional(),
-      cleaningResponsibility: z4.enum(["renter", "host", "shared"]).optional(),
-      isActive: z4.boolean().optional(),
-      prepTimeHours: z4.number().int().min(0).optional(),
-      damageDeposit: z4.number().int().min(0).optional(),
-      insuranceRequired: z4.boolean().optional(),
-      certifications: z4.array(z4.string()).optional(),
-      safetyFeatures: z4.array(z4.string()).optional(),
-      photos: z4.array(z4.string()).optional(),
-      manuals: z4.array(z4.string()).optional(),
-      maintenanceLog: z4.array(z4.any()).optional(),
-      availabilityCalendar: z4.record(z4.any()).optional()
-    });
-    updateEquipmentListingStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["draft", "pending", "approved", "rejected", "active", "inactive"]),
-      rejectionReason: z4.string().optional()
-    });
-    storageBookings2 = pgTable2("storage_bookings", {
-      id: serial2("id").primaryKey(),
-      storageListingId: integer2("storage_listing_id").references(() => storageListings2.id, { onDelete: "cascade" }).notNull(),
-      kitchenBookingId: integer2("kitchen_booking_id").references(() => kitchenBookings2.id, { onDelete: "cascade" }),
-      // NULLABLE - storage can be booked independently
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "set null" }),
-      // Chef making the booking
-      startDate: timestamp2("start_date").notNull(),
-      endDate: timestamp2("end_date").notNull(),
-      status: bookingStatusEnum2("status").default("pending").notNull(),
-      totalPrice: numeric2("total_price").notNull(),
-      // In cents (daily_rate × number_of_days)
-      pricingModel: storagePricingModelEnum2("pricing_model").notNull(),
-      // Always 'daily' now
-      paymentStatus: paymentStatusEnum2("payment_status").default("pending"),
-      paymentIntentId: text2("payment_intent_id"),
-      // Stripe PaymentIntent ID
-      serviceFee: numeric2("service_fee").default("0"),
-      // Platform commission in cents
-      currency: text2("currency").default("CAD").notNull(),
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    insertStorageBookingSchema2 = createInsertSchema2(storageBookings2, {
-      storageListingId: z4.number(),
-      kitchenBookingId: z4.number().optional().nullable(),
-      // Optional - for standalone storage bookings
-      chefId: z4.number().optional(),
-      startDate: z4.string().or(z4.date()),
-      endDate: z4.string().or(z4.date()),
-      status: z4.enum(["pending", "confirmed", "cancelled"]).optional(),
-      totalPrice: z4.number().int().positive("Total price must be positive"),
-      pricingModel: z4.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
-      paymentStatus: z4.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
-      paymentIntentId: z4.string().optional(),
-      serviceFee: z4.number().int().min(0).optional()
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true,
-      currency: true
-      // Always CAD, not user-selectable
-    });
-    updateStorageBookingSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["pending", "confirmed", "cancelled"]).optional(),
-      paymentStatus: z4.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
-      paymentIntentId: z4.string().optional(),
-      serviceFee: z4.number().int().min(0).optional()
-    });
-    updateStorageBookingStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["pending", "confirmed", "cancelled"])
-    });
-    equipmentBookings2 = pgTable2("equipment_bookings", {
-      id: serial2("id").primaryKey(),
-      equipmentListingId: integer2("equipment_listing_id").references(() => equipmentListings2.id, { onDelete: "cascade" }).notNull(),
-      kitchenBookingId: integer2("kitchen_booking_id").references(() => kitchenBookings2.id, { onDelete: "cascade" }).notNull(),
-      // REQUIRED - no standalone bookings
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "set null" }),
-      // Nullable for external bookings
-      startDate: timestamp2("start_date").notNull(),
-      endDate: timestamp2("end_date").notNull(),
-      status: bookingStatusEnum2("status").default("pending").notNull(),
-      // Reuse existing enum
-      totalPrice: numeric2("total_price").notNull(),
-      // In cents
-      pricingModel: equipmentPricingModelEnum2("pricing_model").notNull(),
-      // Reuse enum
-      damageDeposit: numeric2("damage_deposit").default("0"),
-      // In cents (only for rental)
-      paymentStatus: paymentStatusEnum2("payment_status").default("pending"),
-      // Reuse enum
-      paymentIntentId: text2("payment_intent_id"),
-      // Stripe PaymentIntent ID (nullable, unique)
-      serviceFee: numeric2("service_fee").default("0"),
-      // Platform commission in cents
-      currency: text2("currency").default("CAD").notNull(),
-      // NOTE: No delivery/pickup fields - equipment stays in kitchen
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    insertEquipmentBookingSchema2 = createInsertSchema2(equipmentBookings2, {
-      equipmentListingId: z4.number(),
-      kitchenBookingId: z4.number(),
-      chefId: z4.number().optional(),
-      startDate: z4.string().or(z4.date()),
-      endDate: z4.string().or(z4.date()),
-      status: z4.enum(["pending", "confirmed", "cancelled"]).optional(),
-      totalPrice: z4.number().int().positive("Total price must be positive"),
-      pricingModel: z4.enum(["hourly", "daily", "weekly", "monthly"]),
-      damageDeposit: z4.number().int().min(0).optional(),
-      paymentStatus: z4.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
-      paymentIntentId: z4.string().optional(),
-      serviceFee: z4.number().int().min(0).optional()
-    }).omit({
-      id: true,
-      createdAt: true,
-      updatedAt: true,
-      currency: true
-      // Always CAD, not user-selectable
-    });
-    updateEquipmentBookingSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["pending", "confirmed", "cancelled"]).optional(),
-      paymentStatus: z4.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
-      paymentIntentId: z4.string().optional(),
-      damageDeposit: z4.number().int().min(0).optional(),
-      serviceFee: z4.number().int().min(0).optional()
-    });
-    updateEquipmentBookingStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["pending", "confirmed", "cancelled"])
-    });
-    platformSettings2 = pgTable2("platform_settings", {
-      id: serial2("id").primaryKey(),
-      key: text2("key").notNull().unique(),
-      value: text2("value").notNull(),
-      description: text2("description"),
-      updatedBy: integer2("updated_by").references(() => users2.id),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull(),
-      createdAt: timestamp2("created_at").defaultNow().notNull()
-    });
-    insertPlatformSettingSchema2 = createInsertSchema2(platformSettings2);
-    updatePlatformSettingSchema2 = z4.object({
-      value: z4.string().optional(),
-      description: z4.string().optional()
-    });
-    chefKitchenApplications2 = pgTable2("chef_kitchen_applications", {
-      id: serial2("id").primaryKey(),
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "cascade" }).notNull(),
-      locationId: integer2("location_id").references(() => locations2.id, { onDelete: "cascade" }).notNull(),
-      // Personal Info (collected per application)
-      fullName: text2("full_name").notNull(),
-      email: text2("email").notNull(),
-      phone: text2("phone").notNull(),
-      // Business Info
-      kitchenPreference: kitchenPreferenceEnum2("kitchen_preference").notNull(),
-      businessDescription: text2("business_description"),
-      cookingExperience: text2("cooking_experience"),
-      // Food Safety License
-      foodSafetyLicense: certificationStatusEnum2("food_safety_license").notNull(),
-      foodSafetyLicenseUrl: text2("food_safety_license_url"),
-      foodSafetyLicenseStatus: documentVerificationStatusEnum2("food_safety_license_status").default("pending"),
-      foodSafetyLicenseExpiry: date2("food_safety_license_expiry"),
-      // Food Establishment Certificate (optional)
-      foodEstablishmentCert: certificationStatusEnum2("food_establishment_cert").notNull(),
-      foodEstablishmentCertUrl: text2("food_establishment_cert_url"),
-      foodEstablishmentCertStatus: documentVerificationStatusEnum2("food_establishment_cert_status").default("pending"),
-      foodEstablishmentCertExpiry: date2("food_establishment_cert_expiry"),
-      // Application Status
-      status: applicationStatusEnum2("status").default("inReview").notNull(),
-      feedback: text2("feedback"),
-      // Manager Review
-      reviewedBy: integer2("reviewed_by").references(() => users2.id, { onDelete: "set null" }),
-      reviewedAt: timestamp2("reviewed_at"),
-      // Timestamps
-      createdAt: timestamp2("created_at").defaultNow().notNull(),
-      updatedAt: timestamp2("updated_at").defaultNow().notNull()
-    });
-    insertChefKitchenApplicationSchema2 = createInsertSchema2(chefKitchenApplications2, {
-      chefId: z4.number(),
-      locationId: z4.number(),
-      fullName: z4.string().min(2, "Name must be at least 2 characters"),
-      email: z4.string().email("Please enter a valid email address"),
-      phone: phoneNumberSchema2,
-      kitchenPreference: z4.enum(["commercial", "home", "notSure"]),
-      businessDescription: z4.string().optional(),
-      cookingExperience: z4.string().optional(),
-      foodSafetyLicense: z4.enum(["yes", "no", "notSure"]),
-      foodSafetyLicenseUrl: z4.string().optional(),
-      foodSafetyLicenseExpiry: z4.string().optional(),
-      foodEstablishmentCert: z4.enum(["yes", "no", "notSure"]),
-      foodEstablishmentCertUrl: z4.string().optional(),
-      foodEstablishmentCertExpiry: z4.string().optional()
-    }).omit({
-      id: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-      reviewedBy: true,
-      reviewedAt: true,
-      feedback: true,
-      foodSafetyLicenseStatus: true,
-      foodEstablishmentCertStatus: true
-    });
-    updateChefKitchenApplicationSchema2 = z4.object({
-      id: z4.number(),
-      fullName: z4.string().min(2).optional(),
-      email: z4.string().email().optional(),
-      phone: phoneNumberSchema2.optional(),
-      kitchenPreference: z4.enum(["commercial", "home", "notSure"]).optional(),
-      businessDescription: z4.string().optional(),
-      cookingExperience: z4.string().optional(),
-      foodSafetyLicenseUrl: z4.string().optional(),
-      foodEstablishmentCertUrl: z4.string().optional()
-    });
-    updateChefKitchenApplicationStatusSchema2 = z4.object({
-      id: z4.number(),
-      status: z4.enum(["inReview", "approved", "rejected", "cancelled"]),
-      feedback: z4.string().optional()
-    });
-    updateChefKitchenApplicationDocumentsSchema2 = z4.object({
-      id: z4.number(),
-      foodSafetyLicenseUrl: z4.string().optional(),
-      foodEstablishmentCertUrl: z4.string().optional(),
-      foodSafetyLicenseStatus: z4.enum(["pending", "approved", "rejected"]).optional(),
-      foodEstablishmentCertStatus: z4.enum(["pending", "approved", "rejected"]).optional()
-    });
-    paymentTransactions2 = pgTable2("payment_transactions", {
-      id: serial2("id").primaryKey(),
-      bookingId: integer2("booking_id").notNull(),
-      // References kitchen_bookings.id, storage_bookings.id, or equipment_bookings.id
-      bookingType: bookingTypeEnum2("booking_type").notNull(),
-      // Which booking table this transaction belongs to
-      chefId: integer2("chef_id").references(() => users2.id, { onDelete: "set null" }),
-      // Chef who made the payment
-      managerId: integer2("manager_id").references(() => users2.id, { onDelete: "set null" }),
-      // Manager who receives the payment
-      // Payment amounts (all in cents)
-      amount: numeric2("amount").notNull(),
-      // Total transaction amount (includes service fee)
-      baseAmount: numeric2("base_amount").notNull(),
-      // Base amount before service fee
-      serviceFee: numeric2("service_fee").notNull().default("0"),
-      // Platform service fee
-      managerRevenue: numeric2("manager_revenue").notNull(),
-      // Manager earnings (base_amount - service_fee)
-      refundAmount: numeric2("refund_amount").default("0"),
-      // Total refunded amount
-      netAmount: numeric2("net_amount").notNull(),
-      // Final amount after refunds (amount - refund_amount)
-      currency: text2("currency").notNull().default("CAD"),
-      // Stripe integration
-      paymentIntentId: text2("payment_intent_id"),
-      // Stripe PaymentIntent ID (nullable, unique when set)
-      chargeId: text2("charge_id"),
-      // Stripe Charge ID
-      refundId: text2("refund_id"),
-      // Stripe Refund ID
-      paymentMethodId: text2("payment_method_id"),
-      // Stripe PaymentMethod ID
-      // Status tracking
-      status: transactionStatusEnum2("status").notNull().default("pending"),
-      stripeStatus: text2("stripe_status"),
-      // Raw Stripe status for comparison
-      // Metadata and tracking
-      metadata: jsonb2("metadata").default({}),
-      // Additional metadata
-      refundReason: text2("refund_reason"),
-      // Reason for refund
-      failureReason: text2("failure_reason"),
-      // Reason for payment failure
-      webhookEventId: text2("webhook_event_id"),
-      // Stripe webhook event ID
-      lastSyncedAt: timestamp2("last_synced_at"),
-      // Last time synced with Stripe
-      // Timestamps
-      createdAt: timestamp2("created_at").notNull().defaultNow(),
-      updatedAt: timestamp2("updated_at").notNull().defaultNow(),
-      paidAt: timestamp2("paid_at"),
-      // When payment was successfully captured
-      refundedAt: timestamp2("refunded_at")
-      // When refund was issued
-    });
-    paymentHistory2 = pgTable2("payment_history", {
-      id: serial2("id").primaryKey(),
-      transactionId: integer2("transaction_id").references(() => paymentTransactions2.id, { onDelete: "cascade" }).notNull(),
-      previousStatus: transactionStatusEnum2("previous_status"),
-      newStatus: transactionStatusEnum2("new_status").notNull(),
-      eventType: text2("event_type").notNull(),
-      // 'status_change', 'refund', 'webhook', 'manual_update', etc.
-      eventSource: text2("event_source"),
-      // 'stripe_webhook', 'admin', 'system', 'sync', etc.
-      stripeEventId: text2("stripe_event_id"),
-      // Stripe event ID if from webhook
-      description: text2("description"),
-      // Human-readable description
-      metadata: jsonb2("metadata").default({}),
-      // Additional event data
-      createdAt: timestamp2("created_at").notNull().defaultNow(),
-      createdBy: integer2("created_by").references(() => users2.id, { onDelete: "set null" })
-      // User who triggered the change
-    });
-    insertPaymentTransactionSchema2 = createInsertSchema2(paymentTransactions2);
-    updatePaymentTransactionSchema2 = z4.object({
-      status: z4.enum(["pending", "processing", "succeeded", "failed", "canceled", "refunded", "partially_refunded"]).optional(),
-      stripeStatus: z4.string().optional(),
-      refundAmount: z4.number().optional(),
-      refundReason: z4.string().optional(),
-      failureReason: z4.string().optional(),
-      chargeId: z4.string().optional(),
-      refundId: z4.string().optional(),
-      paidAt: z4.date().optional(),
-      refundedAt: z4.date().optional(),
-      lastSyncedAt: z4.date().optional(),
-      metadata: z4.record(z4.any()).optional()
-    });
-  }
-});
-
-// dist/server/services/payout-processing-service.js
+// server/services/payout-processing-service.ts
 var payout_processing_service_exports = {};
 __export(payout_processing_service_exports, {
   getPayoutSummary: () => getPayoutSummary,
@@ -9633,7 +8357,10 @@ async function processManagerPayout(managerId, dbPool, dryRun = false) {
     };
   }
   try {
-    const userResult = await dbPool.query("SELECT id, email, stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1 AND role = $2", [managerId, "manager"]);
+    const userResult = await dbPool.query(
+      "SELECT id, email, stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1 AND role = $2",
+      [managerId, "manager"]
+    );
     if (userResult.rows.length === 0) {
       return {
         managerId,
@@ -9719,7 +8446,11 @@ async function processWeeklyPayouts(dbPool, dryRun = false) {
     `);
     const results = [];
     for (const manager of managersResult.rows) {
-      const result = await processManagerPayout(manager.id, dbPool, dryRun);
+      const result = await processManagerPayout(
+        manager.id,
+        dbPool,
+        dryRun
+      );
       results.push(result);
     }
     return results;
@@ -9779,7 +8510,7 @@ async function getPayoutSummary(dbPool) {
 }
 var stripeSecretKey4, stripe4;
 var init_payout_processing_service = __esm({
-  "dist/server/services/payout-processing-service.js"() {
+  "server/services/payout-processing-service.ts"() {
     "use strict";
     stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
     stripe4 = stripeSecretKey4 ? new Stripe4(stripeSecretKey4, {
@@ -9788,12 +8519,12 @@ var init_payout_processing_service = __esm({
   }
 });
 
-// dist/server/index.js
+// server/index.ts
 init_firebase_admin();
 import "dotenv/config";
 import express2 from "express";
 
-// dist/server/firebase-routes.js
+// server/firebase-routes.ts
 init_schema();
 init_schema();
 init_schema();
@@ -9802,7 +8533,7 @@ init_db();
 import { eq as eq3, and as and3 } from "drizzle-orm";
 import { fromZodError } from "zod-validation-error";
 
-// dist/server/fileUpload.js
+// server/fileUpload.ts
 init_r2_storage();
 import multer from "multer";
 import path from "path";
@@ -9818,11 +8549,11 @@ var storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const userId = req.user?.id || "unknown";
-    const timestamp3 = Date.now();
+    const timestamp2 = Date.now();
     const documentType = file.fieldname;
     const ext = path.extname(file.originalname);
     const baseName = path.basename(file.originalname, ext);
-    const filename = `${userId}_${documentType}_${timestamp3}_${baseName}${ext}`;
+    const filename = `${userId}_${documentType}_${timestamp2}_${baseName}${ext}`;
     cb(null, filename);
   }
 });
@@ -9910,7 +8641,7 @@ var cleanupApplicationDocuments = async (application) => {
   }
 };
 
-// dist/server/upload-handler.js
+// server/upload-handler.ts
 init_r2_storage();
 import fs2 from "fs";
 async function handleFileUpload(req, res) {
@@ -9981,13 +8712,13 @@ async function handleFileUpload(req, res) {
   }
 }
 
-// dist/server/firebase-routes.js
+// server/firebase-routes.ts
 init_firebase_admin();
 
-// dist/server/firebase-auth-middleware.js
+// server/firebase-auth-middleware.ts
 init_firebase_admin();
 
-// dist/server/storage-firebase.js
+// server/storage-firebase.ts
 init_schema();
 init_db();
 import { eq, and, inArray, asc, desc, or } from "drizzle-orm";
@@ -10018,7 +8749,7 @@ function getHoursUntilBooking(bookingDate, bookingTime, timezone = DEFAULT_TIMEZ
   return diffMs / (1e3 * 60 * 60);
 }
 
-// dist/server/storage-firebase.js
+// server/storage-firebase.ts
 var FirebaseStorage = class {
   // ===== USER MANAGEMENT =====
   async getUser(id) {
@@ -10086,23 +8817,26 @@ var FirebaseStorage = class {
     }
     if (pool && insertUser.firebaseUid) {
       try {
-        const result = await pool.query("INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *", [
-          insertUser.username,
-          insertUser.password || "",
-          // Empty password for Firebase users
-          insertUser.role || (() => {
-            console.error(`\u274C CRITICAL ERROR: No role provided to createUser in storage-firebase.ts!`);
-            console.error(`   - This should not happen - role should always be provided for Firebase users`);
-            throw new Error("Role is required when creating a Firebase user. This is a programming error.");
-          })(),
-          insertUser.firebaseUid,
-          insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
-          insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
-          insertUser.isChef !== void 0 ? insertUser.isChef : false,
-          insertUser.isDeliveryPartner !== void 0 ? insertUser.isDeliveryPartner : false,
-          insertUser.isManager !== void 0 ? insertUser.isManager : false,
-          insertUser.isPortalUser !== void 0 ? insertUser.isPortalUser : false
-        ]);
+        const result = await pool.query(
+          "INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+          [
+            insertUser.username,
+            insertUser.password || "",
+            // Empty password for Firebase users
+            insertUser.role || (() => {
+              console.error(`\u274C CRITICAL ERROR: No role provided to createUser in storage-firebase.ts!`);
+              console.error(`   - This should not happen - role should always be provided for Firebase users`);
+              throw new Error("Role is required when creating a Firebase user. This is a programming error.");
+            })(),
+            insertUser.firebaseUid,
+            insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
+            insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
+            insertUser.isChef !== void 0 ? insertUser.isChef : false,
+            insertUser.isDeliveryPartner !== void 0 ? insertUser.isDeliveryPartner : false,
+            insertUser.isManager !== void 0 ? insertUser.isManager : false,
+            insertUser.isPortalUser !== void 0 ? insertUser.isPortalUser : false
+          ]
+        );
         return result.rows[0];
       } catch (error) {
         console.error("Error creating user with firebase_uid:", error);
@@ -10126,10 +8860,12 @@ var FirebaseStorage = class {
     return user;
   }
   async setUserHasSeenWelcome(userId) {
-    if (!pool)
-      return;
+    if (!pool) return;
     try {
-      await pool.query("UPDATE users SET has_seen_welcome = true WHERE id = $1", [userId]);
+      await pool.query(
+        "UPDATE users SET has_seen_welcome = true WHERE id = $1",
+        [userId]
+      );
     } catch (error) {
       console.error("Error setting has_seen_welcome:", error);
       throw new Error("Failed to set has_seen_welcome");
@@ -10184,10 +8920,12 @@ var FirebaseStorage = class {
   }
   // ===== MICROLEARNING =====
   async getMicrolearningProgress(userId) {
-    if (!pool)
-      return [];
+    if (!pool) return [];
     try {
-      const result = await pool.query("SELECT * FROM video_progress WHERE user_id = $1 ORDER BY updated_at DESC", [userId]);
+      const result = await pool.query(
+        "SELECT * FROM video_progress WHERE user_id = $1 ORDER BY updated_at DESC",
+        [userId]
+      );
       return result.rows;
     } catch (error) {
       console.error("Error getting microlearning progress:", error);
@@ -10195,10 +8933,12 @@ var FirebaseStorage = class {
     }
   }
   async getMicrolearningCompletion(userId) {
-    if (!pool)
-      return void 0;
+    if (!pool) return void 0;
     try {
-      const result = await pool.query("SELECT * FROM microlearning_completions WHERE user_id = $1", [userId]);
+      const result = await pool.query(
+        "SELECT * FROM microlearning_completions WHERE user_id = $1",
+        [userId]
+      );
       return result.rows[0] || void 0;
     } catch (error) {
       console.error("Error getting microlearning completion:", error);
@@ -10206,10 +8946,10 @@ var FirebaseStorage = class {
     }
   }
   async updateVideoProgress(progressData) {
-    if (!pool)
-      return;
+    if (!pool) return;
     try {
-      await pool.query(`INSERT INTO video_progress (user_id, video_id, progress, completed, watched_percentage, is_rewatching, updated_at)
+      await pool.query(
+        `INSERT INTO video_progress (user_id, video_id, progress, completed, watched_percentage, is_rewatching, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT (user_id, video_id) 
          DO UPDATE SET 
@@ -10217,31 +8957,35 @@ var FirebaseStorage = class {
            completed = EXCLUDED.completed,
            watched_percentage = EXCLUDED.watched_percentage,
            is_rewatching = EXCLUDED.is_rewatching,
-           updated_at = NOW()`, [
-        progressData.userId,
-        progressData.videoId,
-        progressData.progress || 0,
-        progressData.completed || false,
-        progressData.watchedPercentage || 0,
-        progressData.isRewatching || false
-      ]);
+           updated_at = NOW()`,
+        [
+          progressData.userId,
+          progressData.videoId,
+          progressData.progress || 0,
+          progressData.completed || false,
+          progressData.watchedPercentage || 0,
+          progressData.isRewatching || false
+        ]
+      );
     } catch (error) {
       console.error("Error updating video progress:", error);
       throw error;
     }
   }
   async createMicrolearningCompletion(completionData) {
-    if (!pool)
-      return null;
+    if (!pool) return null;
     try {
-      const result = await pool.query(`INSERT INTO microlearning_completions (user_id, confirmed, certificate_generated, video_progress, created_at, updated_at)
+      const result = await pool.query(
+        `INSERT INTO microlearning_completions (user_id, confirmed, certificate_generated, video_progress, created_at, updated_at)
          VALUES ($1, $2, $3, $4, NOW(), NOW())
-         RETURNING *`, [
-        completionData.userId,
-        completionData.confirmed || false,
-        completionData.certificateGenerated || false,
-        JSON.stringify(completionData.videoProgress || {})
-      ]);
+         RETURNING *`,
+        [
+          completionData.userId,
+          completionData.confirmed || false,
+          completionData.certificateGenerated || false,
+          JSON.stringify(completionData.videoProgress || {})
+        ]
+      );
       return result.rows[0];
     } catch (error) {
       console.error("Error creating microlearning completion:", error);
@@ -10391,8 +9135,7 @@ var FirebaseStorage = class {
   async getLocationById(id) {
     try {
       const [location] = await db.select().from(locations).where(eq(locations.id, id));
-      if (!location)
-        return void 0;
+      if (!location) return void 0;
       return {
         ...location,
         managerId: location.managerId || location.manager_id || null,
@@ -10621,7 +9364,10 @@ var FirebaseStorage = class {
     try {
       if (pool && "query" in pool) {
         try {
-          const directQuery = await pool.query("SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model FROM kitchens WHERE id = $1", [kitchenId]);
+          const directQuery = await pool.query(
+            "SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model FROM kitchens WHERE id = $1",
+            [kitchenId]
+          );
           if (directQuery.rows && directQuery.rows[0]) {
             const row = directQuery.rows[0];
             const dbValue = row.hourly_rate;
@@ -10638,8 +9384,7 @@ var FirebaseStorage = class {
         }
       }
       const kitchen = await this.getKitchenById(kitchenId);
-      if (!kitchen)
-        return void 0;
+      if (!kitchen) return void 0;
       const hourlyRateCents = kitchen.hourlyRate ? parseFloat(kitchen.hourlyRate.toString()) : null;
       const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
       return {
@@ -10676,7 +9421,10 @@ var FirebaseStorage = class {
       let hourlyRateCents = null;
       if (pool && "query" in pool) {
         try {
-          const directQuery = await pool.query("SELECT hourly_rate::text as hourly_rate FROM kitchens WHERE id = $1", [kitchenId]);
+          const directQuery = await pool.query(
+            "SELECT hourly_rate::text as hourly_rate FROM kitchens WHERE id = $1",
+            [kitchenId]
+          );
           if (directQuery.rows && directQuery.rows[0]) {
             const dbValue = directQuery.rows[0].hourly_rate;
             hourlyRateCents = dbValue ? parseFloat(String(dbValue)) : null;
@@ -10706,7 +9454,8 @@ var FirebaseStorage = class {
     try {
       if (pool && "query" in pool) {
         try {
-          const directQuery = await pool.query(`SELECT 
+          const directQuery = await pool.query(
+            `SELECT 
               id, kitchen_id, storage_type, name, description,
               dimensions_length::text as dimensions_length,
               dimensions_width::text as dimensions_width,
@@ -10725,7 +9474,9 @@ var FirebaseStorage = class {
               house_rules, prohibited_items, insurance_required,
               created_at, updated_at
             FROM storage_listings 
-            WHERE id = $1`, [id]);
+            WHERE id = $1`,
+            [id]
+          );
           if (directQuery.rows && directQuery.rows[0]) {
             const row = directQuery.rows[0];
             return {
@@ -10757,8 +9508,7 @@ var FirebaseStorage = class {
         }
       }
       const [listing] = await db.select().from(storageListings).where(eq(storageListings.id, id));
-      if (!listing)
-        return void 0;
+      if (!listing) return void 0;
       const basePriceCents = listing.basePrice ? parseFloat(listing.basePrice.toString()) : null;
       const pricePerCubicFootCents = listing.pricePerCubicFoot ? parseFloat(listing.pricePerCubicFoot.toString()) : null;
       return {
@@ -10776,7 +9526,8 @@ var FirebaseStorage = class {
     try {
       if (pool && "query" in pool) {
         try {
-          const directQuery = await pool.query(`SELECT 
+          const directQuery = await pool.query(
+            `SELECT 
               id, kitchen_id, storage_type, name, description,
               base_price::text as base_price,
               price_per_cubic_foot::text as price_per_cubic_foot,
@@ -10792,7 +9543,9 @@ var FirebaseStorage = class {
               status, is_active, created_at, updated_at
             FROM storage_listings 
             WHERE kitchen_id = $1
-            ORDER BY created_at DESC`, [kitchenId]);
+            ORDER BY created_at DESC`,
+            [kitchenId]
+          );
           return directQuery.rows.map((row) => ({
             id: row.id,
             kitchenId: row.kitchen_id,
@@ -10894,52 +9647,29 @@ var FirebaseStorage = class {
       const dbUpdates = {
         updatedAt: /* @__PURE__ */ new Date()
       };
-      if (updates.name !== void 0)
-        dbUpdates.name = updates.name;
-      if (updates.description !== void 0)
-        dbUpdates.description = updates.description || null;
-      if (updates.storageType !== void 0)
-        dbUpdates.storageType = updates.storageType;
-      if (updates.pricingModel !== void 0)
-        dbUpdates.pricingModel = updates.pricingModel;
-      if (updates.minimumBookingDuration !== void 0)
-        dbUpdates.minimumBookingDuration = updates.minimumBookingDuration;
-      if (updates.bookingDurationUnit !== void 0)
-        dbUpdates.bookingDurationUnit = updates.bookingDurationUnit;
-      if (updates.shelfCount !== void 0)
-        dbUpdates.shelfCount = updates.shelfCount;
-      if (updates.shelfMaterial !== void 0)
-        dbUpdates.shelfMaterial = updates.shelfMaterial || null;
-      if (updates.accessType !== void 0)
-        dbUpdates.accessType = updates.accessType || null;
-      if (updates.temperatureRange !== void 0)
-        dbUpdates.temperatureRange = updates.temperatureRange || null;
-      if (updates.climateControl !== void 0)
-        dbUpdates.climateControl = updates.climateControl;
-      if (updates.humidityControl !== void 0)
-        dbUpdates.humidityControl = updates.humidityControl;
-      if (updates.powerOutlets !== void 0)
-        dbUpdates.powerOutlets = updates.powerOutlets;
-      if (updates.isActive !== void 0)
-        dbUpdates.isActive = updates.isActive;
-      if (updates.insuranceRequired !== void 0)
-        dbUpdates.insuranceRequired = updates.insuranceRequired;
-      if (updates.features !== void 0)
-        dbUpdates.features = updates.features;
-      if (updates.securityFeatures !== void 0)
-        dbUpdates.securityFeatures = updates.securityFeatures;
-      if (updates.certifications !== void 0)
-        dbUpdates.certifications = updates.certifications;
-      if (updates.photos !== void 0)
-        dbUpdates.photos = updates.photos;
-      if (updates.documents !== void 0)
-        dbUpdates.documents = updates.documents;
-      if (updates.houseRules !== void 0)
-        dbUpdates.houseRules = updates.houseRules;
-      if (updates.prohibitedItems !== void 0)
-        dbUpdates.prohibitedItems = updates.prohibitedItems;
-      if (updates.availabilityCalendar !== void 0)
-        dbUpdates.availabilityCalendar = updates.availabilityCalendar;
+      if (updates.name !== void 0) dbUpdates.name = updates.name;
+      if (updates.description !== void 0) dbUpdates.description = updates.description || null;
+      if (updates.storageType !== void 0) dbUpdates.storageType = updates.storageType;
+      if (updates.pricingModel !== void 0) dbUpdates.pricingModel = updates.pricingModel;
+      if (updates.minimumBookingDuration !== void 0) dbUpdates.minimumBookingDuration = updates.minimumBookingDuration;
+      if (updates.bookingDurationUnit !== void 0) dbUpdates.bookingDurationUnit = updates.bookingDurationUnit;
+      if (updates.shelfCount !== void 0) dbUpdates.shelfCount = updates.shelfCount;
+      if (updates.shelfMaterial !== void 0) dbUpdates.shelfMaterial = updates.shelfMaterial || null;
+      if (updates.accessType !== void 0) dbUpdates.accessType = updates.accessType || null;
+      if (updates.temperatureRange !== void 0) dbUpdates.temperatureRange = updates.temperatureRange || null;
+      if (updates.climateControl !== void 0) dbUpdates.climateControl = updates.climateControl;
+      if (updates.humidityControl !== void 0) dbUpdates.humidityControl = updates.humidityControl;
+      if (updates.powerOutlets !== void 0) dbUpdates.powerOutlets = updates.powerOutlets;
+      if (updates.isActive !== void 0) dbUpdates.isActive = updates.isActive;
+      if (updates.insuranceRequired !== void 0) dbUpdates.insuranceRequired = updates.insuranceRequired;
+      if (updates.features !== void 0) dbUpdates.features = updates.features;
+      if (updates.securityFeatures !== void 0) dbUpdates.securityFeatures = updates.securityFeatures;
+      if (updates.certifications !== void 0) dbUpdates.certifications = updates.certifications;
+      if (updates.photos !== void 0) dbUpdates.photos = updates.photos;
+      if (updates.documents !== void 0) dbUpdates.documents = updates.documents;
+      if (updates.houseRules !== void 0) dbUpdates.houseRules = updates.houseRules;
+      if (updates.prohibitedItems !== void 0) dbUpdates.prohibitedItems = updates.prohibitedItems;
+      if (updates.availabilityCalendar !== void 0) dbUpdates.availabilityCalendar = updates.availabilityCalendar;
       if (updates.dimensionsLength !== void 0) {
         dbUpdates.dimensionsLength = updates.dimensionsLength?.toString() || null;
       }
@@ -10984,7 +9714,8 @@ var FirebaseStorage = class {
     try {
       if (pool && "query" in pool) {
         try {
-          const directQuery = await pool.query(`SELECT 
+          const directQuery = await pool.query(
+            `SELECT 
               id, kitchen_id, category, equipment_type, brand, model, description,
               condition, age, service_history,
               dimensions::text as dimensions,
@@ -11006,7 +9737,9 @@ var FirebaseStorage = class {
               insurance_required,
               created_at, updated_at
             FROM equipment_listings 
-            WHERE id = $1`, [id]);
+            WHERE id = $1`,
+            [id]
+          );
           if (directQuery.rows && directQuery.rows[0]) {
             const row = directQuery.rows[0];
             return {
@@ -11044,8 +9777,7 @@ var FirebaseStorage = class {
         }
       }
       const [listing] = await db.select().from(equipmentListings).where(eq(equipmentListings.id, id));
-      if (!listing)
-        return void 0;
+      if (!listing) return void 0;
       const hourlyRateCents = listing.hourlyRate ? parseFloat(listing.hourlyRate.toString()) : null;
       const dailyRateCents = listing.dailyRate ? parseFloat(listing.dailyRate.toString()) : null;
       const weeklyRateCents = listing.weeklyRate ? parseFloat(listing.weeklyRate.toString()) : null;
@@ -11069,7 +9801,8 @@ var FirebaseStorage = class {
     try {
       if (pool && "query" in pool) {
         try {
-          const directQuery = await pool.query(`SELECT 
+          const directQuery = await pool.query(
+            `SELECT 
               id, kitchen_id, category, equipment_type, brand, model, description,
               condition, availability_type, pricing_model,
               session_rate::text as session_rate,
@@ -11083,7 +9816,9 @@ var FirebaseStorage = class {
               status, is_active, created_at, updated_at
             FROM equipment_listings 
             WHERE kitchen_id = $1
-            ORDER BY created_at DESC`, [kitchenId]);
+            ORDER BY created_at DESC`,
+            [kitchenId]
+          );
           return directQuery.rows.map((row) => ({
             id: row.id,
             kitchenId: row.kitchen_id,
@@ -11204,28 +9939,17 @@ var FirebaseStorage = class {
       const dbUpdates = {
         updatedAt: /* @__PURE__ */ new Date()
       };
-      if (updates.category !== void 0)
-        dbUpdates.category = updates.category;
-      if (updates.equipmentType !== void 0)
-        dbUpdates.equipmentType = updates.equipmentType;
-      if (updates.brand !== void 0)
-        dbUpdates.brand = updates.brand || null;
-      if (updates.model !== void 0)
-        dbUpdates.model = updates.model || null;
-      if (updates.description !== void 0)
-        dbUpdates.description = updates.description || null;
-      if (updates.condition !== void 0)
-        dbUpdates.condition = updates.condition;
-      if (updates.age !== void 0)
-        dbUpdates.age = updates.age || null;
-      if (updates.serviceHistory !== void 0)
-        dbUpdates.serviceHistory = updates.serviceHistory || null;
-      if (updates.dimensions !== void 0)
-        dbUpdates.dimensions = updates.dimensions || {};
-      if (updates.powerRequirements !== void 0)
-        dbUpdates.powerRequirements = updates.powerRequirements || null;
-      if (updates.specifications !== void 0)
-        dbUpdates.specifications = updates.specifications || {};
+      if (updates.category !== void 0) dbUpdates.category = updates.category;
+      if (updates.equipmentType !== void 0) dbUpdates.equipmentType = updates.equipmentType;
+      if (updates.brand !== void 0) dbUpdates.brand = updates.brand || null;
+      if (updates.model !== void 0) dbUpdates.model = updates.model || null;
+      if (updates.description !== void 0) dbUpdates.description = updates.description || null;
+      if (updates.condition !== void 0) dbUpdates.condition = updates.condition;
+      if (updates.age !== void 0) dbUpdates.age = updates.age || null;
+      if (updates.serviceHistory !== void 0) dbUpdates.serviceHistory = updates.serviceHistory || null;
+      if (updates.dimensions !== void 0) dbUpdates.dimensions = updates.dimensions || {};
+      if (updates.powerRequirements !== void 0) dbUpdates.powerRequirements = updates.powerRequirements || null;
+      if (updates.specifications !== void 0) dbUpdates.specifications = updates.specifications || {};
       if (updates.availabilityType !== void 0) {
         dbUpdates.availabilityType = updates.availabilityType;
         if (updates.availabilityType === "included") {
@@ -11254,30 +9978,18 @@ var FirebaseStorage = class {
           dbUpdates.minimumRentalDays = updates.minimumRentalDays || null;
         }
       }
-      if (updates.usageRestrictions !== void 0)
-        dbUpdates.usageRestrictions = updates.usageRestrictions;
-      if (updates.trainingRequired !== void 0)
-        dbUpdates.trainingRequired = updates.trainingRequired;
-      if (updates.cleaningResponsibility !== void 0)
-        dbUpdates.cleaningResponsibility = updates.cleaningResponsibility || null;
-      if (updates.isActive !== void 0)
-        dbUpdates.isActive = updates.isActive;
-      if (updates.prepTimeHours !== void 0)
-        dbUpdates.prepTimeHours = updates.prepTimeHours;
-      if (updates.insuranceRequired !== void 0)
-        dbUpdates.insuranceRequired = updates.insuranceRequired;
-      if (updates.certifications !== void 0)
-        dbUpdates.certifications = updates.certifications;
-      if (updates.safetyFeatures !== void 0)
-        dbUpdates.safetyFeatures = updates.safetyFeatures;
-      if (updates.photos !== void 0)
-        dbUpdates.photos = updates.photos;
-      if (updates.manuals !== void 0)
-        dbUpdates.manuals = updates.manuals;
-      if (updates.maintenanceLog !== void 0)
-        dbUpdates.maintenanceLog = updates.maintenanceLog;
-      if (updates.availabilityCalendar !== void 0)
-        dbUpdates.availabilityCalendar = updates.availabilityCalendar;
+      if (updates.usageRestrictions !== void 0) dbUpdates.usageRestrictions = updates.usageRestrictions;
+      if (updates.trainingRequired !== void 0) dbUpdates.trainingRequired = updates.trainingRequired;
+      if (updates.cleaningResponsibility !== void 0) dbUpdates.cleaningResponsibility = updates.cleaningResponsibility || null;
+      if (updates.isActive !== void 0) dbUpdates.isActive = updates.isActive;
+      if (updates.prepTimeHours !== void 0) dbUpdates.prepTimeHours = updates.prepTimeHours;
+      if (updates.insuranceRequired !== void 0) dbUpdates.insuranceRequired = updates.insuranceRequired;
+      if (updates.certifications !== void 0) dbUpdates.certifications = updates.certifications;
+      if (updates.safetyFeatures !== void 0) dbUpdates.safetyFeatures = updates.safetyFeatures;
+      if (updates.photos !== void 0) dbUpdates.photos = updates.photos;
+      if (updates.manuals !== void 0) dbUpdates.manuals = updates.manuals;
+      if (updates.maintenanceLog !== void 0) dbUpdates.maintenanceLog = updates.maintenanceLog;
+      if (updates.availabilityCalendar !== void 0) dbUpdates.availabilityCalendar = updates.availabilityCalendar;
       if (updates.hourlyRate !== void 0) {
         if (updates.availabilityType === "rental" || !updates.availabilityType) {
           dbUpdates.hourlyRate = updates.hourlyRate === null ? null : Math.round(updates.hourlyRate * 100).toString();
@@ -11369,7 +10081,8 @@ var FirebaseStorage = class {
   async getStorageBookingsByKitchenBooking(kitchenBookingId) {
     try {
       if (pool && "query" in pool) {
-        const result2 = await pool.query(`SELECT 
+        const result2 = await pool.query(
+          `SELECT 
             sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
             sb.start_date, sb.end_date, sb.status,
             sb.total_price::text as total_price,
@@ -11380,7 +10093,9 @@ var FirebaseStorage = class {
           FROM storage_bookings sb
           JOIN storage_listings sl ON sb.storage_listing_id = sl.id
           WHERE sb.kitchen_booking_id = $1
-          ORDER BY sb.created_at DESC`, [kitchenBookingId]);
+          ORDER BY sb.created_at DESC`,
+          [kitchenBookingId]
+        );
         return result2.rows.map((row) => ({
           id: row.id,
           storageListingId: row.storage_listing_id,
@@ -11421,7 +10136,8 @@ var FirebaseStorage = class {
   async getStorageBookingsByChef(chefId) {
     try {
       if (pool && "query" in pool) {
-        const result = await pool.query(`SELECT 
+        const result = await pool.query(
+          `SELECT 
             sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
             sb.start_date, sb.end_date, sb.status,
             sb.total_price::text as total_price,
@@ -11434,7 +10150,9 @@ var FirebaseStorage = class {
           JOIN storage_listings sl ON sb.storage_listing_id = sl.id
           JOIN kitchens k ON sl.kitchen_id = k.id
           WHERE sb.chef_id = $1
-          ORDER BY sb.start_date DESC`, [chefId]);
+          ORDER BY sb.start_date DESC`,
+          [chefId]
+        );
         return result.rows.map((row) => ({
           id: row.id,
           storageListingId: row.storage_listing_id,
@@ -11508,7 +10226,8 @@ var FirebaseStorage = class {
   async getStorageBookingById(id) {
     try {
       if (pool && "query" in pool) {
-        const result = await pool.query(`SELECT 
+        const result = await pool.query(
+          `SELECT 
             sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
             sb.start_date, sb.end_date, sb.status,
             sb.total_price::text as total_price,
@@ -11522,7 +10241,9 @@ var FirebaseStorage = class {
           FROM storage_bookings sb
           JOIN storage_listings sl ON sb.storage_listing_id = sl.id
           JOIN kitchens k ON sl.kitchen_id = k.id
-          WHERE sb.id = $1`, [id]);
+          WHERE sb.id = $1`,
+          [id]
+        );
         if (result.rows.length === 0) {
           return void 0;
         }
@@ -11653,7 +10374,8 @@ var FirebaseStorage = class {
       }
       const today = /* @__PURE__ */ new Date();
       today.setHours(0, 0, 0, 0);
-      const result = await pool.query(`SELECT 
+      const result = await pool.query(
+        `SELECT 
           sb.id, sb.storage_listing_id, sb.chef_id, sb.end_date, sb.total_price::text as total_price,
           sb.service_fee::text as service_fee, sb.payment_status, sb.payment_intent_id,
           sl.base_price::text as base_price, sl.minimum_booking_duration
@@ -11662,7 +10384,9 @@ var FirebaseStorage = class {
         WHERE sb.end_date < $1
           AND sb.status != 'cancelled'
           AND sb.payment_status != 'failed'
-        ORDER BY sb.end_date ASC`, [today]);
+        ORDER BY sb.end_date ASC`,
+        [today]
+      );
       const processedBookings = [];
       for (const row of result.rows) {
         try {
@@ -11670,8 +10394,7 @@ var FirebaseStorage = class {
           const endDate = new Date(row.end_date);
           const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1e3 * 60 * 60 * 24));
           const daysToCharge = Math.min(daysOverdue, maxDaysToCharge);
-          if (daysToCharge <= 0)
-            continue;
+          if (daysToCharge <= 0) continue;
           const basePricePerDay = parseFloat(row.base_price) / 100;
           const penaltyRatePerDay = basePricePerDay * 2;
           const penaltyBasePrice = penaltyRatePerDay * daysToCharge;
@@ -11748,7 +10471,8 @@ var FirebaseStorage = class {
   async getEquipmentBookingsByKitchenBooking(kitchenBookingId) {
     try {
       if (pool && "query" in pool) {
-        const result2 = await pool.query(`SELECT 
+        const result2 = await pool.query(
+          `SELECT 
             eb.id, eb.equipment_listing_id, eb.kitchen_booking_id, eb.chef_id,
             eb.start_date, eb.end_date, eb.status,
             eb.total_price::text as total_price,
@@ -11760,7 +10484,9 @@ var FirebaseStorage = class {
           FROM equipment_bookings eb
           JOIN equipment_listings el ON eb.equipment_listing_id = el.id
           WHERE eb.kitchen_booking_id = $1
-          ORDER BY eb.created_at DESC`, [kitchenBookingId]);
+          ORDER BY eb.created_at DESC`,
+          [kitchenBookingId]
+        );
         return result2.rows.map((row) => ({
           id: row.id,
           equipmentListingId: row.equipment_listing_id,
@@ -11806,7 +10532,8 @@ var FirebaseStorage = class {
   async getEquipmentBookingsByChef(chefId) {
     try {
       if (pool && "query" in pool) {
-        const result = await pool.query(`SELECT 
+        const result = await pool.query(
+          `SELECT 
             eb.id, eb.equipment_listing_id, eb.kitchen_booking_id, eb.chef_id,
             eb.start_date, eb.end_date, eb.status,
             eb.total_price::text as total_price,
@@ -11820,7 +10547,9 @@ var FirebaseStorage = class {
           JOIN equipment_listings el ON eb.equipment_listing_id = el.id
           JOIN kitchens k ON el.kitchen_id = k.id
           WHERE eb.chef_id = $1
-          ORDER BY eb.start_date DESC`, [chefId]);
+          ORDER BY eb.start_date DESC`,
+          [chefId]
+        );
         return result.rows.map((row) => ({
           id: row.id,
           equipmentListingId: row.equipment_listing_id,
@@ -11912,7 +10641,10 @@ var FirebaseStorage = class {
     try {
       console.log("\u{1F552} Setting kitchen availability:", { kitchenId, ...availability });
       const isAvailable = availability.isAvailable !== void 0 ? availability.isAvailable : true;
-      const existing = await db.select().from(kitchenAvailability).where(and(eq(kitchenAvailability.kitchenId, kitchenId), eq(kitchenAvailability.dayOfWeek, availability.dayOfWeek)));
+      const existing = await db.select().from(kitchenAvailability).where(and(
+        eq(kitchenAvailability.kitchenId, kitchenId),
+        eq(kitchenAvailability.dayOfWeek, availability.dayOfWeek)
+      ));
       console.log(`\u{1F50D} Found ${existing.length} existing availability records for kitchen ${kitchenId}, day ${availability.dayOfWeek}`);
       if (existing.length > 0) {
         console.log("\u{1F504} Updating existing availability record:", existing[0].id);
@@ -11920,7 +10652,10 @@ var FirebaseStorage = class {
           startTime: availability.startTime,
           endTime: availability.endTime,
           isAvailable
-        }).where(and(eq(kitchenAvailability.kitchenId, kitchenId), eq(kitchenAvailability.dayOfWeek, availability.dayOfWeek))).returning();
+        }).where(and(
+          eq(kitchenAvailability.kitchenId, kitchenId),
+          eq(kitchenAvailability.dayOfWeek, availability.dayOfWeek)
+        )).returning();
         console.log("\u2705 Updated availability:", updated);
         return updated;
       } else {
@@ -11993,10 +10728,12 @@ var FirebaseStorage = class {
     try {
       let query = db.select().from(kitchenDateOverrides).where(eq(kitchenDateOverrides.kitchenId, kitchenId));
       if (startDate && endDate) {
-        return await query.then((results) => results.filter((r) => {
-          const overrideDate = new Date(r.specificDate);
-          return overrideDate >= startDate && overrideDate <= endDate;
-        }));
+        return await query.then(
+          (results) => results.filter((r) => {
+            const overrideDate = new Date(r.specificDate);
+            return overrideDate >= startDate && overrideDate <= endDate;
+          })
+        );
       }
       return await query;
     } catch (error) {
@@ -12004,13 +10741,13 @@ var FirebaseStorage = class {
       throw error;
     }
   }
-  async getKitchenDateOverrideForDate(kitchenId, date3) {
+  async getKitchenDateOverrideForDate(kitchenId, date2) {
     try {
       let targetDateStr;
-      if (typeof date3 === "string") {
-        targetDateStr = date3.split("T")[0];
-      } else if (date3 instanceof Date) {
-        targetDateStr = date3.toISOString().split("T")[0];
+      if (typeof date2 === "string") {
+        targetDateStr = date2.split("T")[0];
+      } else if (date2 instanceof Date) {
+        targetDateStr = date2.toISOString().split("T")[0];
       } else {
         throw new Error("Invalid date type");
       }
@@ -12029,7 +10766,9 @@ var FirebaseStorage = class {
         console.log(`   Result: NO MATCH`);
         return void 0;
       }
-      const availableOverride = dateOverrides.find((o) => o.isAvailable === true && o.startTime && o.endTime);
+      const availableOverride = dateOverrides.find(
+        (o) => o.isAvailable === true && o.startTime && o.endTime
+      );
       if (availableOverride) {
         console.log(`   Result: FOUND AVAILABLE override ID ${availableOverride.id}`);
         return availableOverride;
@@ -12064,7 +10803,12 @@ var FirebaseStorage = class {
     try {
       console.log("Inserting kitchen booking into database:", bookingData);
       const { calculateKitchenBookingPrice: calculateKitchenBookingPrice2, calculatePlatformFeeDynamic: calculatePlatformFeeDynamic2, calculateTotalWithFees: calculateTotalWithFees2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-      const pricing = await calculateKitchenBookingPrice2(bookingData.kitchenId, bookingData.startTime, bookingData.endTime, pool);
+      const pricing = await calculateKitchenBookingPrice2(
+        bookingData.kitchenId,
+        bookingData.startTime,
+        bookingData.endTime,
+        pool
+      );
       const serviceFeeCents = await calculatePlatformFeeDynamic2(pricing.totalPriceCents, pool);
       const totalWithFeesCents = calculateTotalWithFees2(
         pricing.totalPriceCents,
@@ -12107,7 +10851,12 @@ var FirebaseStorage = class {
     try {
       console.log("Creating booking (with external support):", bookingData);
       const { calculateKitchenBookingPrice: calculateKitchenBookingPrice2, calculatePlatformFeeDynamic: calculatePlatformFeeDynamic2, calculateTotalWithFees: calculateTotalWithFees2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-      const pricing = await calculateKitchenBookingPrice2(bookingData.kitchenId, bookingData.startTime, bookingData.endTime, pool);
+      const pricing = await calculateKitchenBookingPrice2(
+        bookingData.kitchenId,
+        bookingData.startTime,
+        bookingData.endTime,
+        pool
+      );
       const serviceFeeCents = await calculatePlatformFeeDynamic2(pricing.totalPriceCents, pool);
       const totalWithFeesCents = calculateTotalWithFees2(
         pricing.totalPriceCents,
@@ -12205,88 +10954,111 @@ var FirebaseStorage = class {
       if (!pool) {
         return [];
       }
-      const locationsResult = await pool.query("SELECT id FROM locations WHERE manager_id = $1", [managerId]);
+      const locationsResult = await pool.query(
+        "SELECT id FROM locations WHERE manager_id = $1",
+        [managerId]
+      );
       const locationIds = locationsResult.rows.map((row) => row.id);
       if (locationIds.length === 0) {
         return [];
       }
-      const kitchensResult = await pool.query("SELECT id FROM kitchens WHERE location_id = ANY($1::int[])", [locationIds]);
+      const kitchensResult = await pool.query(
+        "SELECT id FROM kitchens WHERE location_id = ANY($1::int[])",
+        [locationIds]
+      );
       const kitchenIds = kitchensResult.rows.map((row) => row.id);
       if (kitchenIds.length === 0) {
         return [];
       }
-      const bookingsResult = await pool.query(`SELECT 
+      const bookingsResult = await pool.query(
+        `SELECT 
           id, chef_id, kitchen_id, booking_date, start_time, end_time, 
           status, special_notes, created_at, updated_at,
           total_price, payment_status, payment_intent_id, service_fee, currency
         FROM kitchen_bookings 
         WHERE kitchen_id = ANY($1::int[])
-        ORDER BY booking_date DESC, start_time ASC`, [kitchenIds]);
-      const enrichedBookings = await Promise.all(bookingsResult.rows.map(async (booking) => {
-        let chefName = null;
-        if (booking.chef_id) {
-          try {
-            const chefResult = await pool.query("SELECT id, username FROM users WHERE id = $1", [booking.chef_id]);
-            const chef = chefResult.rows[0];
-            if (chef) {
-              chefName = chef.username;
-              const appResult = await pool.query("SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [booking.chef_id]);
-              if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
-                chefName = appResult.rows[0].full_name;
+        ORDER BY booking_date DESC, start_time ASC`,
+        [kitchenIds]
+      );
+      const enrichedBookings = await Promise.all(
+        bookingsResult.rows.map(async (booking) => {
+          let chefName = null;
+          if (booking.chef_id) {
+            try {
+              const chefResult = await pool.query(
+                "SELECT id, username FROM users WHERE id = $1",
+                [booking.chef_id]
+              );
+              const chef = chefResult.rows[0];
+              if (chef) {
+                chefName = chef.username;
+                const appResult = await pool.query(
+                  "SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+                  [booking.chef_id]
+                );
+                if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
+                  chefName = appResult.rows[0].full_name;
+                }
               }
+            } catch (error) {
             }
-          } catch (error) {
           }
-        }
-        let kitchenName = "Kitchen";
-        let locationId = null;
-        if (booking.kitchen_id) {
-          try {
-            const kitchenResult = await pool.query("SELECT id, name, location_id FROM kitchens WHERE id = $1", [booking.kitchen_id]);
-            const kitchen = kitchenResult.rows[0];
-            if (kitchen) {
-              kitchenName = kitchen.name || "Kitchen";
-              locationId = kitchen.location_id;
+          let kitchenName = "Kitchen";
+          let locationId = null;
+          if (booking.kitchen_id) {
+            try {
+              const kitchenResult = await pool.query(
+                "SELECT id, name, location_id FROM kitchens WHERE id = $1",
+                [booking.kitchen_id]
+              );
+              const kitchen = kitchenResult.rows[0];
+              if (kitchen) {
+                kitchenName = kitchen.name || "Kitchen";
+                locationId = kitchen.location_id;
+              }
+            } catch (error) {
             }
-          } catch (error) {
           }
-        }
-        let locationName = null;
-        let locationTimezone = DEFAULT_TIMEZONE;
-        if (locationId) {
-          try {
-            const locationResult = await pool.query("SELECT id, name, timezone FROM locations WHERE id = $1", [locationId]);
-            const location = locationResult.rows[0];
-            if (location) {
-              locationName = location.name;
-              locationTimezone = location.timezone || DEFAULT_TIMEZONE;
+          let locationName = null;
+          let locationTimezone = DEFAULT_TIMEZONE;
+          if (locationId) {
+            try {
+              const locationResult = await pool.query(
+                "SELECT id, name, timezone FROM locations WHERE id = $1",
+                [locationId]
+              );
+              const location = locationResult.rows[0];
+              if (location) {
+                locationName = location.name;
+                locationTimezone = location.timezone || DEFAULT_TIMEZONE;
+              }
+            } catch (error) {
             }
-          } catch (error) {
           }
-        }
-        return {
-          id: booking.id,
-          chefId: booking.chef_id,
-          kitchenId: booking.kitchen_id,
-          bookingDate: booking.booking_date,
-          startTime: booking.start_time,
-          endTime: booking.end_time,
-          status: booking.status,
-          specialNotes: booking.special_notes,
-          createdAt: booking.created_at,
-          updatedAt: booking.updated_at,
-          chefName,
-          kitchenName,
-          locationName,
-          locationTimezone,
-          // Include payment fields for revenue dashboard
-          totalPrice: booking.total_price ? parseInt(String(booking.total_price)) || 0 : null,
-          paymentStatus: booking.payment_status || null,
-          paymentIntentId: booking.payment_intent_id || null,
-          serviceFee: booking.service_fee ? parseInt(String(booking.service_fee)) || 0 : null,
-          currency: booking.currency || "CAD"
-        };
-      }));
+          return {
+            id: booking.id,
+            chefId: booking.chef_id,
+            kitchenId: booking.kitchen_id,
+            bookingDate: booking.booking_date,
+            startTime: booking.start_time,
+            endTime: booking.end_time,
+            status: booking.status,
+            specialNotes: booking.special_notes,
+            createdAt: booking.created_at,
+            updatedAt: booking.updated_at,
+            chefName,
+            kitchenName,
+            locationName,
+            locationTimezone,
+            // Include payment fields for revenue dashboard
+            totalPrice: booking.total_price ? parseInt(String(booking.total_price)) || 0 : null,
+            paymentStatus: booking.payment_status || null,
+            paymentIntentId: booking.payment_intent_id || null,
+            serviceFee: booking.service_fee ? parseInt(String(booking.service_fee)) || 0 : null,
+            currency: booking.currency || "CAD"
+          };
+        })
+      );
       return enrichedBookings;
     } catch (error) {
       console.error("Error getting bookings by manager:", error);
@@ -12304,7 +11076,10 @@ var FirebaseStorage = class {
   }
   async cancelKitchenBooking(id, chefId) {
     try {
-      const [booking] = await db.select().from(kitchenBookings).where(and(eq(kitchenBookings.id, id), eq(kitchenBookings.chefId, chefId)));
+      const [booking] = await db.select().from(kitchenBookings).where(and(
+        eq(kitchenBookings.id, id),
+        eq(kitchenBookings.chefId, chefId)
+      ));
       if (!booking) {
         throw new Error("Booking not found or you do not have permission to cancel it");
       }
@@ -12334,10 +11109,10 @@ var FirebaseStorage = class {
     }
   }
   // New method: Get ALL time slots with booking info (for chef view)
-  async getAllTimeSlotsWithBookingInfo(kitchenId, date3) {
+  async getAllTimeSlotsWithBookingInfo(kitchenId, date2) {
     try {
-      console.log(`\u{1F550} Getting all slots with booking info for kitchen ${kitchenId}, date: ${date3.toISOString()}`);
-      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date3);
+      console.log(`\u{1F550} Getting all slots with booking info for kitchen ${kitchenId}, date: ${date2.toISOString()}`);
+      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date2);
       let startHour;
       let endHour;
       let capacity;
@@ -12356,7 +11131,7 @@ var FirebaseStorage = class {
           return [];
         }
       } else {
-        const dayOfWeek = date3.getDay();
+        const dayOfWeek = date2.getDay();
         const availability = await this.getKitchenAvailability(kitchenId);
         const dayAvailability = availability.find((a) => a.dayOfWeek === dayOfWeek);
         if (!dayAvailability || !dayAvailability.isAvailable) {
@@ -12373,7 +11148,7 @@ var FirebaseStorage = class {
         allSlots.push(`${hour.toString().padStart(2, "0")}:00`);
       }
       const bookings = await this.getBookingsByKitchen(kitchenId);
-      const dateStr = date3.toISOString().split("T")[0];
+      const dateStr = date2.toISOString().split("T")[0];
       const dayBookings = bookings.filter((b) => {
         const bookingDateStr = new Date(b.bookingDate).toISOString().split("T")[0];
         return bookingDateStr === dateStr && b.status !== "cancelled";
@@ -12409,10 +11184,10 @@ var FirebaseStorage = class {
       throw error;
     }
   }
-  async getAvailableTimeSlots(kitchenId, date3) {
+  async getAvailableTimeSlots(kitchenId, date2) {
     try {
-      console.log(`\u{1F550} Getting slots for kitchen ${kitchenId}, date: ${date3.toISOString()}`);
-      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date3);
+      console.log(`\u{1F550} Getting slots for kitchen ${kitchenId}, date: ${date2.toISOString()}`);
+      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date2);
       console.log(`\u{1F4C5} Date override found:`, dateOverride ? "YES" : "NO");
       if (dateOverride) {
         console.log(`   Override details:`, {
@@ -12438,7 +11213,7 @@ var FirebaseStorage = class {
           return [];
         }
       } else {
-        const dayOfWeek = date3.getDay();
+        const dayOfWeek = date2.getDay();
         const availability = await this.getKitchenAvailability(kitchenId);
         console.log(`\u{1F4C6} No override, checking weekly schedule for day ${dayOfWeek}`);
         const dayAvailability = availability.find((a) => a.dayOfWeek === dayOfWeek);
@@ -12455,7 +11230,7 @@ var FirebaseStorage = class {
         slots.push(`${hour.toString().padStart(2, "0")}:00`);
       }
       const bookings = await this.getBookingsByKitchen(kitchenId);
-      const dateStr = date3.toISOString().split("T")[0];
+      const dateStr = date2.toISOString().split("T")[0];
       const dayBookings = bookings.filter((b) => {
         const bookingDateStr = new Date(b.bookingDate).toISOString().split("T")[0];
         return bookingDateStr === dateStr && b.status !== "cancelled";
@@ -12484,8 +11259,8 @@ var FirebaseStorage = class {
   // Get available slots in format expected by public API
   async getAvailableSlots(kitchenId, dateStr) {
     try {
-      const date3 = new Date(dateStr);
-      const slots = await this.getAvailableTimeSlots(kitchenId, date3);
+      const date2 = new Date(dateStr);
+      const slots = await this.getAvailableTimeSlots(kitchenId, date2);
       return slots.map((time) => ({ time, available: true }));
     } catch (error) {
       console.error("Error getting available slots:", error);
@@ -12496,8 +11271,7 @@ var FirebaseStorage = class {
   async getLocationManager(locationId) {
     try {
       const location = await this.getLocationById(locationId);
-      if (!location || !location.managerId)
-        return void 0;
+      if (!location || !location.managerId) return void 0;
       return await this.getUser(location.managerId);
     } catch (error) {
       console.error("Error getting location manager:", error);
@@ -12550,7 +11324,13 @@ var FirebaseStorage = class {
   }
   async checkBookingConflict(kitchenId, bookingDate, startTime, endTime) {
     try {
-      const bookings = await db.select().from(kitchenBookings).where(and(eq(kitchenBookings.kitchenId, kitchenId), or(eq(kitchenBookings.status, "confirmed"), eq(kitchenBookings.status, "pending"))));
+      const bookings = await db.select().from(kitchenBookings).where(and(
+        eq(kitchenBookings.kitchenId, kitchenId),
+        or(
+          eq(kitchenBookings.status, "confirmed"),
+          eq(kitchenBookings.status, "pending")
+        )
+      ));
       const targetDateStr = bookingDate.toISOString().split("T")[0];
       for (const booking of bookings) {
         const bookingDateTime = new Date(booking.bookingDate);
@@ -12585,7 +11365,12 @@ var FirebaseStorage = class {
   }
   async revokeChefLocationAccess(chefId, locationId) {
     try {
-      await db.delete(chefLocationAccess).where(and(eq(chefLocationAccess.chefId, chefId), eq(chefLocationAccess.locationId, locationId)));
+      await db.delete(chefLocationAccess).where(
+        and(
+          eq(chefLocationAccess.chefId, chefId),
+          eq(chefLocationAccess.locationId, locationId)
+        )
+      );
     } catch (error) {
       console.error("Error revoking chef location access:", error);
       throw error;
@@ -12602,7 +11387,12 @@ var FirebaseStorage = class {
   // Helper: Check if chef has access to a location (used for booking validation)
   async chefHasLocationAccess(chefId, locationId) {
     try {
-      const access = await db.select().from(chefLocationAccess).where(and(eq(chefLocationAccess.chefId, chefId), eq(chefLocationAccess.locationId, locationId))).limit(1);
+      const access = await db.select().from(chefLocationAccess).where(
+        and(
+          eq(chefLocationAccess.chefId, chefId),
+          eq(chefLocationAccess.locationId, locationId)
+        )
+      ).limit(1);
       return access.length > 0;
     } catch (error) {
       console.error("Error checking chef location access:", error);
@@ -12635,7 +11425,12 @@ var FirebaseStorage = class {
   }
   async revokeChefKitchenAccess(chefId, kitchenId) {
     try {
-      await db.delete(chefKitchenAccess).where(and(eq(chefKitchenAccess.chefId, chefId), eq(chefKitchenAccess.kitchenId, kitchenId)));
+      await db.delete(chefKitchenAccess).where(
+        and(
+          eq(chefKitchenAccess.chefId, chefId),
+          eq(chefKitchenAccess.kitchenId, kitchenId)
+        )
+      );
     } catch (error) {
       console.error("Error revoking chef kitchen access:", error);
       throw error;
@@ -12652,7 +11447,12 @@ var FirebaseStorage = class {
   // ===== CHEF KITCHEN PROFILE MANAGEMENT (Chef shares, Manager approves) =====
   async shareChefProfileWithKitchen(chefId, kitchenId) {
     try {
-      const existing = await db.select().from(chefKitchenProfiles).where(and(eq(chefKitchenProfiles.chefId, chefId), eq(chefKitchenProfiles.kitchenId, kitchenId)));
+      const existing = await db.select().from(chefKitchenProfiles).where(
+        and(
+          eq(chefKitchenProfiles.chefId, chefId),
+          eq(chefKitchenProfiles.kitchenId, kitchenId)
+        )
+      );
       if (existing.length > 0) {
         if (existing[0].status === "rejected") {
           const [updated] = await db.update(chefKitchenProfiles).set({
@@ -12693,7 +11493,12 @@ var FirebaseStorage = class {
   }
   async getChefKitchenProfile(chefId, kitchenId) {
     try {
-      const [profile] = await db.select().from(chefKitchenProfiles).where(and(eq(chefKitchenProfiles.chefId, chefId), eq(chefKitchenProfiles.kitchenId, kitchenId)));
+      const [profile] = await db.select().from(chefKitchenProfiles).where(
+        and(
+          eq(chefKitchenProfiles.chefId, chefId),
+          eq(chefKitchenProfiles.kitchenId, kitchenId)
+        )
+      );
       return profile || void 0;
     } catch (error) {
       console.error("Error getting chef kitchen profile:", error);
@@ -12708,32 +11513,39 @@ var FirebaseStorage = class {
       }
       const locationIds = managerLocations.map((loc) => loc.id);
       const profiles = await db.select().from(chefLocationProfiles).where(inArray(chefLocationProfiles.locationId, locationIds));
-      const enrichedProfiles = await Promise.all(profiles.map(async (profile) => {
-        const chef = await this.getUser(profile.chefId);
-        const location = await db.select().from(locations).where(eq(locations.id, profile.locationId)).then((rows) => rows[0]);
-        const chefApplications = await db.select().from(applications).where(and(eq(applications.userId, profile.chefId), eq(applications.status, "approved"))).orderBy(asc(applications.createdAt));
-        const latestApp = chefApplications.length > 0 ? chefApplications[chefApplications.length - 1] : null;
-        return {
-          ...profile,
-          chef: chef ? {
-            id: chef.id,
-            username: chef.username
-          } : null,
-          location: location ? {
-            id: location.id,
-            name: location.name,
-            address: location.address
-          } : null,
-          application: latestApp ? {
-            id: latestApp.id,
-            fullName: latestApp.fullName,
-            email: latestApp.email,
-            phone: latestApp.phone,
-            foodSafetyLicenseUrl: latestApp.foodSafetyLicenseUrl,
-            foodEstablishmentCertUrl: latestApp.foodEstablishmentCertUrl
-          } : null
-        };
-      }));
+      const enrichedProfiles = await Promise.all(
+        profiles.map(async (profile) => {
+          const chef = await this.getUser(profile.chefId);
+          const location = await db.select().from(locations).where(eq(locations.id, profile.locationId)).then((rows) => rows[0]);
+          const chefApplications = await db.select().from(applications).where(
+            and(
+              eq(applications.userId, profile.chefId),
+              eq(applications.status, "approved")
+            )
+          ).orderBy(asc(applications.createdAt));
+          const latestApp = chefApplications.length > 0 ? chefApplications[chefApplications.length - 1] : null;
+          return {
+            ...profile,
+            chef: chef ? {
+              id: chef.id,
+              username: chef.username
+            } : null,
+            location: location ? {
+              id: location.id,
+              name: location.name,
+              address: location.address
+            } : null,
+            application: latestApp ? {
+              id: latestApp.id,
+              fullName: latestApp.fullName,
+              email: latestApp.email,
+              phone: latestApp.phone,
+              foodSafetyLicenseUrl: latestApp.foodSafetyLicenseUrl,
+              foodEstablishmentCertUrl: latestApp.foodEstablishmentCertUrl
+            } : null
+          };
+        })
+      );
       return enrichedProfiles;
     } catch (error) {
       console.error("Error getting chef profiles for manager:", error);
@@ -12743,7 +11555,12 @@ var FirebaseStorage = class {
   // ===== CHEF LOCATION PROFILE MANAGEMENT (NEW - Location-based profile sharing) =====
   async shareChefProfileWithLocation(chefId, locationId) {
     try {
-      const existing = await db.select().from(chefLocationProfiles).where(and(eq(chefLocationProfiles.chefId, chefId), eq(chefLocationProfiles.locationId, locationId)));
+      const existing = await db.select().from(chefLocationProfiles).where(
+        and(
+          eq(chefLocationProfiles.chefId, chefId),
+          eq(chefLocationProfiles.locationId, locationId)
+        )
+      );
       if (existing.length > 0) {
         if (existing[0].status === "rejected") {
           const [updated] = await db.update(chefLocationProfiles).set({
@@ -12770,7 +11587,12 @@ var FirebaseStorage = class {
   }
   async getChefLocationProfile(chefId, locationId) {
     try {
-      const [profile] = await db.select().from(chefLocationProfiles).where(and(eq(chefLocationProfiles.chefId, chefId), eq(chefLocationProfiles.locationId, locationId)));
+      const [profile] = await db.select().from(chefLocationProfiles).where(
+        and(
+          eq(chefLocationProfiles.chefId, chefId),
+          eq(chefLocationProfiles.locationId, locationId)
+        )
+      );
       return profile || void 0;
     } catch (error) {
       console.error("Error getting chef location profile:", error);
@@ -12808,7 +11630,12 @@ var FirebaseStorage = class {
    */
   async createChefKitchenApplication(data) {
     try {
-      const existing = await db.select().from(chefKitchenApplications).where(and(eq(chefKitchenApplications.chefId, data.chefId), eq(chefKitchenApplications.locationId, data.locationId))).limit(1);
+      const existing = await db.select().from(chefKitchenApplications).where(
+        and(
+          eq(chefKitchenApplications.chefId, data.chefId),
+          eq(chefKitchenApplications.locationId, data.locationId)
+        )
+      ).limit(1);
       const now = /* @__PURE__ */ new Date();
       if (existing.length > 0) {
         if (existing[0].status === "rejected" || existing[0].status === "cancelled") {
@@ -12855,7 +11682,12 @@ var FirebaseStorage = class {
    */
   async getChefKitchenApplication(chefId, locationId) {
     try {
-      const [application] = await db.select().from(chefKitchenApplications).where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId))).limit(1);
+      const [application] = await db.select().from(chefKitchenApplications).where(
+        and(
+          eq(chefKitchenApplications.chefId, chefId),
+          eq(chefKitchenApplications.locationId, locationId)
+        )
+      ).limit(1);
       return application || void 0;
     } catch (error) {
       console.error("Error getting chef kitchen application:", error);
@@ -12869,17 +11701,17 @@ var FirebaseStorage = class {
     try {
       console.log(`[STORAGE] getChefKitchenApplicationsByChefId called with chefId: ${chefId}`);
       console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
-      const applications3 = await db.select().from(chefKitchenApplications).where(eq(chefKitchenApplications.chefId, chefId)).orderBy(desc(chefKitchenApplications.createdAt));
-      console.log(`[STORAGE] Found ${applications3.length} kitchen applications for chef ${chefId}`);
-      if (applications3.length > 0) {
+      const applications2 = await db.select().from(chefKitchenApplications).where(eq(chefKitchenApplications.chefId, chefId)).orderBy(desc(chefKitchenApplications.createdAt));
+      console.log(`[STORAGE] Found ${applications2.length} kitchen applications for chef ${chefId}`);
+      if (applications2.length > 0) {
         console.log(`[STORAGE] First kitchen application sample:`, {
-          id: applications3[0].id,
-          chefId: applications3[0].chefId,
-          locationId: applications3[0].locationId,
-          status: applications3[0].status
+          id: applications2[0].id,
+          chefId: applications2[0].chefId,
+          locationId: applications2[0].locationId,
+          status: applications2[0].status
         });
       }
-      return applications3;
+      return applications2;
     } catch (error) {
       console.error("Error getting chef kitchen applications:", error);
       throw error;
@@ -12892,23 +11724,25 @@ var FirebaseStorage = class {
   async getChefKitchenApplicationsByLocationId(locationId) {
     try {
       const apps = await db.select().from(chefKitchenApplications).where(eq(chefKitchenApplications.locationId, locationId)).orderBy(desc(chefKitchenApplications.createdAt));
-      const enrichedApplications = await Promise.all(apps.map(async (app3) => {
-        const chef = await this.getUser(app3.chefId);
-        const location = await this.getLocationById(app3.locationId);
-        return {
-          ...app3,
-          chef: chef ? {
-            id: chef.id,
-            username: chef.username,
-            role: chef.role
-          } : null,
-          location: location ? {
-            id: location.id,
-            name: location.name,
-            address: location.address
-          } : null
-        };
-      }));
+      const enrichedApplications = await Promise.all(
+        apps.map(async (app3) => {
+          const chef = await this.getUser(app3.chefId);
+          const location = await this.getLocationById(app3.locationId);
+          return {
+            ...app3,
+            chef: chef ? {
+              id: chef.id,
+              username: chef.username,
+              role: chef.role
+            } : null,
+            location: location ? {
+              id: location.id,
+              name: location.name,
+              address: location.address
+            } : null
+          };
+        })
+      );
       return enrichedApplications;
     } catch (error) {
       console.error("Error getting applications for location:", error);
@@ -12927,23 +11761,25 @@ var FirebaseStorage = class {
       }
       const locationIds = managedLocations.map((loc) => loc.id);
       const apps = await db.select().from(chefKitchenApplications).where(inArray(chefKitchenApplications.locationId, locationIds)).orderBy(desc(chefKitchenApplications.createdAt));
-      const enrichedApplications = await Promise.all(apps.map(async (app3) => {
-        const chef = await this.getUser(app3.chefId);
-        const location = managedLocations.find((l) => l.id === app3.locationId);
-        return {
-          ...app3,
-          chef: chef ? {
-            id: chef.id,
-            username: chef.username,
-            role: chef.role
-          } : null,
-          location: location ? {
-            id: location.id,
-            name: location.name,
-            address: location.address
-          } : null
-        };
-      }));
+      const enrichedApplications = await Promise.all(
+        apps.map(async (app3) => {
+          const chef = await this.getUser(app3.chefId);
+          const location = managedLocations.find((l) => l.id === app3.locationId);
+          return {
+            ...app3,
+            chef: chef ? {
+              id: chef.id,
+              username: chef.username,
+              role: chef.role
+            } : null,
+            location: location ? {
+              id: location.id,
+              name: location.name,
+              address: location.address
+            } : null
+          };
+        })
+      );
       return enrichedApplications;
     } catch (error) {
       console.error("Error getting chef kitchen applications for manager:", error);
@@ -13001,7 +11837,13 @@ var FirebaseStorage = class {
    */
   async chefHasApprovedKitchenApplication(chefId, locationId) {
     try {
-      const [application] = await db.select().from(chefKitchenApplications).where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.locationId, locationId), eq(chefKitchenApplications.status, "approved"))).limit(1);
+      const [application] = await db.select().from(chefKitchenApplications).where(
+        and(
+          eq(chefKitchenApplications.chefId, chefId),
+          eq(chefKitchenApplications.locationId, locationId),
+          eq(chefKitchenApplications.status, "approved")
+        )
+      ).limit(1);
       return !!application;
     } catch (error) {
       console.error("Error checking chef kitchen application approval:", error);
@@ -13075,7 +11917,12 @@ var FirebaseStorage = class {
    */
   async cancelChefKitchenApplication(applicationId, chefId) {
     try {
-      const [existing] = await db.select().from(chefKitchenApplications).where(and(eq(chefKitchenApplications.id, applicationId), eq(chefKitchenApplications.chefId, chefId))).limit(1);
+      const [existing] = await db.select().from(chefKitchenApplications).where(
+        and(
+          eq(chefKitchenApplications.id, applicationId),
+          eq(chefKitchenApplications.chefId, chefId)
+        )
+      ).limit(1);
       if (!existing) {
         throw new Error("Application not found or access denied");
       }
@@ -13099,26 +11946,33 @@ var FirebaseStorage = class {
   async getChefApprovedKitchens(chefId) {
     try {
       console.log(`[getChefApprovedKitchens] Fetching approved kitchens for chef ${chefId}`);
-      const approvedApps = await db.select().from(chefKitchenApplications).where(and(eq(chefKitchenApplications.chefId, chefId), eq(chefKitchenApplications.status, "approved")));
+      const approvedApps = await db.select().from(chefKitchenApplications).where(
+        and(
+          eq(chefKitchenApplications.chefId, chefId),
+          eq(chefKitchenApplications.status, "approved")
+        )
+      );
       console.log(`[getChefApprovedKitchens] Found ${approvedApps.length} approved applications for chef ${chefId}`);
-      const enrichedApps = await Promise.all(approvedApps.map(async (app3) => {
-        const location = await this.getLocationById(app3.locationId);
-        if (!location) {
-          console.warn(`[getChefApprovedKitchens] Location ${app3.locationId} not found for application ${app3.id}`);
-          return null;
-        }
-        return {
-          id: location.id,
-          name: location.name,
-          address: location.address,
-          logoUrl: location.logoUrl || location.logo_url || void 0,
-          brandImageUrl: location.brandImageUrl || location.brand_image_url || void 0,
-          applicationId: app3.id,
-          approvedAt: app3.reviewedAt ? app3.reviewedAt.toISOString() : null,
-          // Keep locationId for backward compatibility
-          locationId: app3.locationId
-        };
-      }));
+      const enrichedApps = await Promise.all(
+        approvedApps.map(async (app3) => {
+          const location = await this.getLocationById(app3.locationId);
+          if (!location) {
+            console.warn(`[getChefApprovedKitchens] Location ${app3.locationId} not found for application ${app3.id}`);
+            return null;
+          }
+          return {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+            logoUrl: location.logoUrl || location.logo_url || void 0,
+            brandImageUrl: location.brandImageUrl || location.brand_image_url || void 0,
+            applicationId: app3.id,
+            approvedAt: app3.reviewedAt ? app3.reviewedAt.toISOString() : null,
+            // Keep locationId for backward compatibility
+            locationId: app3.locationId
+          };
+        })
+      );
       const validApps = enrichedApps.filter((app3) => app3 !== null);
       console.log(`[getChefApprovedKitchens] Returning ${validApps.length} valid approved locations`);
       return validApps;
@@ -13130,7 +11984,7 @@ var FirebaseStorage = class {
 };
 var firebaseStorage = new FirebaseStorage();
 
-// dist/server/firebase-auth-middleware.js
+// server/firebase-auth-middleware.ts
 async function verifyFirebaseAuth(req, res, next) {
   try {
     if (res.headersSent) {
@@ -13305,7 +12159,7 @@ function requireManager(req, res, next) {
   next();
 }
 
-// dist/server/firebase-user-sync.js
+// server/firebase-user-sync.ts
 async function syncFirebaseUserToNeon(params) {
   const { uid, email, emailVerified, displayName, role } = params;
   const isGoogleUser = emailVerified === true;
@@ -13414,7 +12268,7 @@ async function syncFirebaseUserToNeon(params) {
   }
 }
 
-// dist/server/storage.js
+// server/storage.ts
 init_schema();
 init_db();
 import connectPg from "connect-pg-simple";
@@ -13423,6 +12277,17 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 var MemoryStore = createMemoryStore(session);
 var MemStorage = class {
+  users;
+  applications;
+  deliveryPartnerApplications;
+  videoProgress;
+  // key: userId-videoId
+  microlearningCompletions;
+  // key: userId
+  userCurrentId;
+  applicationCurrentId;
+  deliveryPartnerApplicationCurrentId;
+  sessionStore;
   // TypeScript fixes for instagramId and twitterId
   constructor() {
     this.users = /* @__PURE__ */ new Map();
@@ -13470,7 +12335,9 @@ var MemStorage = class {
     return this.users.get(id);
   }
   async getUserByUsername(username) {
-    return Array.from(this.users.values()).find((user) => user.username === username);
+    return Array.from(this.users.values()).find(
+      (user) => user.username === username
+    );
   }
   async getUserByFirebaseUid(firebaseUid) {
     return void 0;
@@ -13479,20 +12346,16 @@ var MemStorage = class {
     return this.getUser(userId);
   }
   async getUserByGoogleId(googleId) {
-    if (!googleId)
-      return void 0;
+    if (!googleId) return void 0;
     for (const user of Array.from(this.users.values())) {
-      if (user.googleId === googleId)
-        return user;
+      if (user.googleId === googleId) return user;
     }
     return void 0;
   }
   async getUserByFacebookId(facebookId) {
-    if (!facebookId)
-      return void 0;
+    if (!facebookId) return void 0;
     for (const user of Array.from(this.users.values())) {
-      if (user.facebookId === facebookId)
-        return user;
+      if (user.facebookId === facebookId) return user;
     }
     return void 0;
   }
@@ -13536,7 +12399,9 @@ var MemStorage = class {
     return this.applications.get(id);
   }
   async getApplicationsByUserId(userId) {
-    return Array.from(this.applications.values()).filter((application) => application.userId === userId);
+    return Array.from(this.applications.values()).filter(
+      (application) => application.userId === userId
+    );
   }
   async createApplication(insertApplication) {
     const id = this.applicationCurrentId++;
@@ -13581,8 +12446,7 @@ var MemStorage = class {
     return updatedApplication;
   }
   async getUserByOAuthId(provider, oauthId) {
-    if (!oauthId)
-      return void 0;
+    if (!oauthId) return void 0;
     if (provider === "google") {
       return this.getUserByGoogleId(oauthId);
     } else if (provider === "facebook") {
@@ -13692,7 +12556,9 @@ var MemStorage = class {
     return this.deliveryPartnerApplications.get(id);
   }
   async getDeliveryPartnerApplicationsByUserId(userId) {
-    return Array.from(this.deliveryPartnerApplications.values()).filter((application) => application.userId === userId);
+    return Array.from(this.deliveryPartnerApplications.values()).filter(
+      (application) => application.userId === userId
+    );
   }
   async createDeliveryPartnerApplication(insertApplication) {
     const id = this.deliveryPartnerApplicationCurrentId++;
@@ -13802,7 +12668,10 @@ var MemStorage = class {
   }
   async setUserHasSeenWelcome(userId) {
     try {
-      await pool.query("UPDATE users SET has_seen_welcome = true WHERE id = $1", [userId]);
+      await pool.query(
+        "UPDATE users SET has_seen_welcome = true WHERE id = $1",
+        [userId]
+      );
     } catch (error) {
       console.error("Error setting has_seen_welcome:", error);
       throw new Error("Failed to set has_seen_welcome");
@@ -13810,6 +12679,7 @@ var MemStorage = class {
   }
 };
 var DatabaseStorage = class {
+  sessionStore;
   constructor() {
     const PostgresSessionStore = connectPg(session);
     this.sessionStore = new PostgresSessionStore({
@@ -13862,14 +12732,12 @@ var DatabaseStorage = class {
     }
   }
   async getUserByGoogleId(googleId) {
-    if (!googleId)
-      return void 0;
+    if (!googleId) return void 0;
     const [user] = await db.select().from(users).where(eq2(users.googleId, googleId));
     return user || void 0;
   }
   async getUserByFacebookId(facebookId) {
-    if (!facebookId)
-      return void 0;
+    if (!facebookId) return void 0;
     const [user] = await db.select().from(users).where(eq2(users.facebookId, facebookId));
     return user || void 0;
   }
@@ -13882,19 +12750,22 @@ var DatabaseStorage = class {
     }
     if (pool && insertUser.firebaseUid) {
       try {
-        const result = await pool.query("INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *", [
-          insertUser.username,
-          insertUser.password,
-          insertUser.role || "chef",
-          insertUser.googleId || null,
-          insertUser.facebookId || null,
-          insertUser.firebaseUid,
-          insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
-          insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
-          insertUser.isChef || false,
-          insertUser.isDeliveryPartner || false,
-          insertUser.isManager || false
-        ]);
+        const result = await pool.query(
+          "INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
+          [
+            insertUser.username,
+            insertUser.password,
+            insertUser.role || "chef",
+            insertUser.googleId || null,
+            insertUser.facebookId || null,
+            insertUser.firebaseUid,
+            insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
+            insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
+            insertUser.isChef || false,
+            insertUser.isDeliveryPartner || false,
+            insertUser.isManager || false
+          ]
+        );
         return result.rows[0];
       } catch (error) {
         console.error("Error creating user with firebase_uid:", error);
@@ -13952,8 +12823,7 @@ var DatabaseStorage = class {
     return updatedApplication || void 0;
   }
   async getUserByOAuthId(provider, oauthId) {
-    if (!oauthId)
-      return void 0;
+    if (!oauthId) return void 0;
     if (provider === "google") {
       return this.getUserByGoogleId(oauthId);
     } else if (provider === "facebook") {
@@ -14121,7 +12991,10 @@ var DatabaseStorage = class {
   }
   async setUserHasSeenWelcome(userId) {
     try {
-      await pool.query("UPDATE users SET has_seen_welcome = true WHERE id = $1", [userId]);
+      await pool.query(
+        "UPDATE users SET has_seen_welcome = true WHERE id = $1",
+        [userId]
+      );
     } catch (error) {
       console.error("Error setting has_seen_welcome:", error);
       throw new Error("Failed to set has_seen_welcome");
@@ -14219,7 +13092,7 @@ function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false, isChef
   return subdomain === requiredSubdomain;
 }
 
-// dist/server/firebase-routes.js
+// server/firebase-routes.ts
 function registerFirebaseRoutes(app3) {
   async function getAuthenticatedUserFromSession(req) {
     if (req.isAuthenticated?.() && req.user) {
@@ -14415,7 +13288,10 @@ function registerFirebaseRoutes(app3) {
           const hashedPassword = await bcrypt2.hash(newPassword, 12);
           const { pool: pool3 } = await Promise.resolve().then(() => (init_db(), db_exports));
           if (pool3) {
-            await pool3.query("UPDATE users SET password = $1 WHERE firebase_uid = $2", [hashedPassword, userRecord.uid]);
+            await pool3.query(
+              "UPDATE users SET password = $1 WHERE firebase_uid = $2",
+              [hashedPassword, userRecord.uid]
+            );
             console.log(`\u2705 Password hash updated in Neon DB for user: ${neonUser.id}`);
           }
         }
@@ -14522,16 +13398,25 @@ function registerFirebaseRoutes(app3) {
       let stripeConnectOnboardingStatus = null;
       if (pool) {
         try {
-          const chefAppResult = await pool.query("SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [req.neonUser.id]);
+          const chefAppResult = await pool.query(
+            "SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+            [req.neonUser.id]
+          );
           if (chefAppResult.rows.length > 0 && chefAppResult.rows[0].full_name) {
             userFullName = chefAppResult.rows[0].full_name;
           } else {
-            const deliveryAppResult = await pool.query("SELECT full_name FROM delivery_partner_applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [req.neonUser.id]);
+            const deliveryAppResult = await pool.query(
+              "SELECT full_name FROM delivery_partner_applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+              [req.neonUser.id]
+            );
             if (deliveryAppResult.rows.length > 0 && deliveryAppResult.rows[0].full_name) {
               userFullName = deliveryAppResult.rows[0].full_name;
             }
           }
-          const stripeResult = await pool.query("SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1", [req.neonUser.id]);
+          const stripeResult = await pool.query(
+            "SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1",
+            [req.neonUser.id]
+          );
           if (stripeResult.rows.length > 0) {
             stripeConnectAccountId = stripeResult.rows[0].stripe_connect_account_id || null;
             stripeConnectOnboardingStatus = stripeResult.rows[0].stripe_connect_onboarding_status || null;
@@ -14627,71 +13512,76 @@ function registerFirebaseRoutes(app3) {
       res.status(500).json({ error: "Failed to update welcome status" });
     }
   });
-  app3.post("/api/firebase/applications", upload.fields([
-    { name: "foodSafetyLicense", maxCount: 1 },
-    { name: "foodEstablishmentCert", maxCount: 1 }
-  ]), requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      console.log(`\u{1F4DD} POST /api/firebase/applications - User ${req.neonUser.id} submitting chef application`);
-      const files = req.files;
-      let foodSafetyLicenseUrl;
-      let foodEstablishmentCertUrl;
-      if (files) {
-        if (files["foodSafetyLicense"]?.[0]) {
-          try {
-            foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicense"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded food safety license: ${foodSafetyLicenseUrl}`);
-          } catch (uploadError) {
-            console.error("\u274C Failed to upload food safety license:", uploadError);
+  app3.post(
+    "/api/firebase/applications",
+    upload.fields([
+      { name: "foodSafetyLicense", maxCount: 1 },
+      { name: "foodEstablishmentCert", maxCount: 1 }
+    ]),
+    requireFirebaseAuthWithUser,
+    async (req, res) => {
+      try {
+        console.log(`\u{1F4DD} POST /api/firebase/applications - User ${req.neonUser.id} submitting chef application`);
+        const files = req.files;
+        let foodSafetyLicenseUrl;
+        let foodEstablishmentCertUrl;
+        if (files) {
+          if (files["foodSafetyLicense"]?.[0]) {
+            try {
+              foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicense"][0], req.neonUser.id, "documents");
+              console.log(`\u2705 Uploaded food safety license: ${foodSafetyLicenseUrl}`);
+            } catch (uploadError) {
+              console.error("\u274C Failed to upload food safety license:", uploadError);
+            }
+          }
+          if (files["foodEstablishmentCert"]?.[0]) {
+            try {
+              foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCert"][0], req.neonUser.id, "documents");
+              console.log(`\u2705 Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
+            } catch (uploadError) {
+              console.error("\u274C Failed to upload food establishment cert:", uploadError);
+            }
           }
         }
-        if (files["foodEstablishmentCert"]?.[0]) {
-          try {
-            foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCert"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
-          } catch (uploadError) {
-            console.error("\u274C Failed to upload food establishment cert:", uploadError);
-          }
+        const applicationData = {
+          ...req.body,
+          userId: req.neonUser.id,
+          // This is the Neon user ID from the middleware
+          // Use uploaded file URLs if available, otherwise use provided URLs
+          foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || void 0,
+          foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || void 0
+        };
+        if (applicationData.foodSafetyLicenseUrl) {
+          applicationData.foodSafetyLicenseStatus = "pending";
         }
-      }
-      const applicationData = {
-        ...req.body,
-        userId: req.neonUser.id,
-        // This is the Neon user ID from the middleware
-        // Use uploaded file URLs if available, otherwise use provided URLs
-        foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || void 0,
-        foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || void 0
-      };
-      if (applicationData.foodSafetyLicenseUrl) {
-        applicationData.foodSafetyLicenseStatus = "pending";
-      }
-      if (applicationData.foodEstablishmentCertUrl) {
-        applicationData.foodEstablishmentCertStatus = "pending";
-      }
-      const parsedData = insertApplicationSchema.safeParse(applicationData);
-      if (!parsedData.success) {
-        const validationError = fromZodError(parsedData.error);
-        console.log("\u274C Validation failed:", validationError.details);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
+        if (applicationData.foodEstablishmentCertUrl) {
+          applicationData.foodEstablishmentCertStatus = "pending";
+        }
+        const parsedData = insertApplicationSchema.safeParse(applicationData);
+        if (!parsedData.success) {
+          const validationError = fromZodError(parsedData.error);
+          console.log("\u274C Validation failed:", validationError.details);
+          return res.status(400).json({
+            message: "Validation error",
+            errors: validationError.details
+          });
+        }
+        console.log(`\u{1F4DD} Creating application: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id}`);
+        const application = await firebaseStorage.createApplication(parsedData.data);
+        res.json({
+          success: true,
+          application,
+          message: "Application submitted successfully"
+        });
+      } catch (error) {
+        console.error("Error creating application:", error);
+        res.status(500).json({
+          error: "Failed to create application",
+          message: error instanceof Error ? error.message : "Unknown error"
         });
       }
-      console.log(`\u{1F4DD} Creating application: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id}`);
-      const application = await firebaseStorage.createApplication(parsedData.data);
-      res.json({
-        success: true,
-        application,
-        message: "Application submitted successfully"
-      });
-    } catch (error) {
-      console.error("Error creating application:", error);
-      res.status(500).json({
-        error: "Failed to create application",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
     }
-  });
+  );
   app3.get("/api/firebase/applications/my", requireFirebaseAuthWithUser, async (req, res) => {
     try {
       const userId = req.neonUser.id;
@@ -14703,16 +13593,16 @@ function registerFirebaseRoutes(app3) {
         role: req.neonUser.role,
         isChef: req.neonUser.isChef
       });
-      const applications3 = await firebaseStorage.getApplicationsByUserId(userId);
-      console.log(`[APPLICATIONS] Retrieved ${applications3.length} applications for user ${userId}`);
-      if (applications3.length > 0) {
+      const applications2 = await firebaseStorage.getApplicationsByUserId(userId);
+      console.log(`[APPLICATIONS] Retrieved ${applications2.length} applications for user ${userId}`);
+      if (applications2.length > 0) {
         console.log(`[APPLICATIONS] First application sample:`, {
-          id: applications3[0].id,
-          userId: applications3[0].userId,
-          status: applications3[0].status
+          id: applications2[0].id,
+          userId: applications2[0].userId,
+          status: applications2[0].status
         });
       }
-      res.json(applications3);
+      res.json(applications2);
     } catch (error) {
       console.error("Error getting user applications:", error);
       res.status(500).json({ error: "Failed to get applications" });
@@ -14720,9 +13610,9 @@ function registerFirebaseRoutes(app3) {
   });
   app3.get("/api/firebase/admin/applications", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
     try {
-      const applications3 = await firebaseStorage.getAllApplications();
+      const applications2 = await firebaseStorage.getAllApplications();
       console.log(`\u{1F451} Admin ${req.firebaseUser.uid} requested all applications`);
-      res.json(applications3);
+      res.json(applications2);
     } catch (error) {
       console.error("Error getting all applications:", error);
       res.status(500).json({ error: "Failed to get applications" });
@@ -14733,7 +13623,7 @@ function registerFirebaseRoutes(app3) {
       const userId = req.neonUser.id;
       const firebaseUid = req.firebaseUser.uid;
       console.log(`\u{1F3E0} Dashboard request: Firebase UID ${firebaseUid} \u2192 Neon User ID ${userId}`);
-      const [applications3, microlearningProgress] = await Promise.all([
+      const [applications2, microlearningProgress] = await Promise.all([
         firebaseStorage.getApplicationsByUserId(userId),
         firebaseStorage.getMicrolearningProgress(userId)
       ]);
@@ -14744,7 +13634,7 @@ function registerFirebaseRoutes(app3) {
           role: req.neonUser.role,
           firebaseUid
         },
-        applications: applications3,
+        applications: applications2,
         microlearningProgress
       });
     } catch (error) {
@@ -14754,8 +13644,8 @@ function registerFirebaseRoutes(app3) {
   });
   app3.post("/api/firebase/delivery-partner-applications", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const { insertDeliveryPartnerApplicationSchema: insertDeliveryPartnerApplicationSchema3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const parsedData = insertDeliveryPartnerApplicationSchema3.safeParse(req.body);
+      const { insertDeliveryPartnerApplicationSchema: insertDeliveryPartnerApplicationSchema2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const parsedData = insertDeliveryPartnerApplicationSchema2.safeParse(req.body);
       if (!parsedData.success) {
         const validationError = fromZodError(parsedData.error);
         return res.status(400).json({
@@ -14785,9 +13675,9 @@ function registerFirebaseRoutes(app3) {
   });
   app3.get("/api/firebase/delivery-partner-applications/my", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const applications3 = await firebaseStorage.getDeliveryPartnerApplicationsByUserId(req.neonUser.id);
-      console.log(`\u{1F4CB} Retrieved ${applications3.length} delivery partner applications: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id}`);
-      res.json(applications3);
+      const applications2 = await firebaseStorage.getDeliveryPartnerApplicationsByUserId(req.neonUser.id);
+      console.log(`\u{1F4CB} Retrieved ${applications2.length} delivery partner applications: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id}`);
+      res.json(applications2);
     } catch (error) {
       console.error("Error getting user delivery partner applications:", error);
       res.status(500).json({ error: "Failed to get delivery partner applications" });
@@ -14795,9 +13685,9 @@ function registerFirebaseRoutes(app3) {
   });
   app3.get("/api/firebase/admin/delivery-partner-applications", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
     try {
-      const applications3 = await firebaseStorage.getAllDeliveryPartnerApplications();
+      const applications2 = await firebaseStorage.getAllDeliveryPartnerApplications();
       console.log(`\u{1F451} Admin ${req.firebaseUser.uid} requested all delivery partner applications`);
-      res.json(applications3);
+      res.json(applications2);
     } catch (error) {
       console.error("Error getting all delivery partner applications:", error);
       res.status(500).json({ error: "Failed to get delivery partner applications" });
@@ -14852,7 +13742,12 @@ function registerFirebaseRoutes(app3) {
       });
     }
   });
-  app3.post("/api/upload", upload.single("file"), requireFirebaseAuthWithUser, handleFileUpload);
+  app3.post(
+    "/api/upload",
+    upload.single("file"),
+    requireFirebaseAuthWithUser,
+    handleFileUpload
+  );
   app3.post("/api/firebase/microlearning/progress", requireFirebaseAuthWithUser, async (req, res) => {
     try {
       const { videoId, progress, completed } = req.body;
@@ -15255,7 +14150,31 @@ function registerFirebaseRoutes(app3) {
   app3.post("/api/admin/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
     try {
       console.log(`\u{1F525} POST /api/admin/send-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
-      const { email, customEmails, emailMode, promoCode, customMessage, message, promoCodeLabel, greeting, recipientType, designSystem, isPremium, sections, orderButton, header, footer, usageSteps, emailContainer, subject, previewText, promoStyle, promoCodeStyling, buttonText, orderUrl } = req.body;
+      const {
+        email,
+        customEmails,
+        emailMode,
+        promoCode,
+        customMessage,
+        message,
+        promoCodeLabel,
+        greeting,
+        recipientType,
+        designSystem,
+        isPremium,
+        sections,
+        orderButton,
+        header,
+        footer,
+        usageSteps,
+        emailContainer,
+        subject,
+        previewText,
+        promoStyle,
+        promoCodeStyling,
+        buttonText,
+        orderUrl
+      } = req.body;
       const messageContent = customMessage || message;
       if (emailMode === "custom") {
         if (!customEmails || !Array.isArray(customEmails) || customEmails.length === 0) {
@@ -15457,7 +14376,26 @@ function registerFirebaseRoutes(app3) {
   app3.post("/api/test-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
     try {
       console.log(`\u{1F525} POST /api/test-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
-      const { email, promoCode, customMessage, message, promoCodeLabel, greeting, designSystem, isPremium, sections, orderButton, header, footer, usageSteps, emailContainer, subject, previewText, promoStyle, promoCodeStyling } = req.body;
+      const {
+        email,
+        promoCode,
+        customMessage,
+        message,
+        promoCodeLabel,
+        greeting,
+        designSystem,
+        isPremium,
+        sections,
+        orderButton,
+        header,
+        footer,
+        usageSteps,
+        emailContainer,
+        subject,
+        previewText,
+        promoStyle,
+        promoCodeStyling
+      } = req.body;
       const messageContent = customMessage || message;
       console.log(`\u{1F525} Admin ${req.neonUser?.username} testing promo email`);
       const { sendEmail: sendEmail2, generatePromoCodeEmail: generatePromoCodeEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
@@ -15562,122 +14500,147 @@ function registerFirebaseRoutes(app3) {
       });
     }
   });
-  app3.post("/api/preview-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
-    try {
-      console.log(`\u{1F525} POST /api/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
-      const { promoCode, customMessage, message, promoCodeLabel, greeting, designSystem, isPremium, sections, orderButton, header, footer, usageSteps, emailContainer, subject, previewText, promoStyle, promoCodeStyling, buttonText, orderUrl } = req.body;
-      const messageContent = customMessage || message;
-      if (!promoCode || !messageContent) {
-        return res.status(400).json({
-          error: "Missing required fields",
-          message: "Promo code and message are required for preview"
+  app3.post(
+    "/api/preview-promo-email",
+    requireFirebaseAuthWithUser,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        console.log(`\u{1F525} POST /api/preview-promo-email - Firebase UID: ${req.firebaseUser?.uid}, Neon User ID: ${req.neonUser?.id}`);
+        const {
+          promoCode,
+          customMessage,
+          message,
+          promoCodeLabel,
+          greeting,
+          designSystem,
+          isPremium,
+          sections,
+          orderButton,
+          header,
+          footer,
+          usageSteps,
+          emailContainer,
+          subject,
+          previewText,
+          promoStyle,
+          promoCodeStyling,
+          buttonText,
+          orderUrl
+        } = req.body;
+        const messageContent = customMessage || message;
+        if (!promoCode || !messageContent) {
+          return res.status(400).json({
+            error: "Missing required fields",
+            message: "Promo code and message are required for preview"
+          });
+        }
+        console.log(`\u{1F525} Admin ${req.neonUser?.username} previewing promo email`);
+        const { generatePromoCodeEmail: generatePromoCodeEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+        const emailContent = generatePromoCodeEmail2({
+          email: "preview@example.com",
+          // Dummy email for preview
+          promoCode: promoCode.trim(),
+          customMessage: messageContent.trim(),
+          message: messageContent.trim(),
+          // Also pass as message for compatibility
+          greeting,
+          promoStyle: promoStyle || { colorTheme: "green", borderStyle: "dashed" },
+          promoCodeStyling,
+          designSystem,
+          isPremium: isPremium || false,
+          sections: sections || [],
+          orderButton: orderButton || {
+            text: buttonText || "Get Started",
+            url: orderUrl || "https://localcooks.ca",
+            styling: {
+              backgroundColor: "#F51042",
+              color: "#ffffff",
+              fontSize: "16px",
+              fontWeight: "600",
+              padding: "12px 24px",
+              borderRadius: "8px",
+              textAlign: "center"
+            }
+          },
+          header: header || {
+            title: "Local Cooks Header",
+            subtitle: "Premium Quality Food Subheader",
+            styling: {
+              backgroundColor: "linear-gradient(135deg, #F51042 0%, #FF5470 100%)",
+              titleColor: "#ffffff",
+              subtitleColor: "#ffffff",
+              titleFontSize: "32px",
+              subtitleFontSize: "18px",
+              padding: "24px",
+              borderRadius: "0px",
+              textAlign: "center"
+            }
+          },
+          footer: footer || {
+            mainText: "Thank you for being part of the Local Cooks community!",
+            contactText: "Questions? Contact us at support@localcooks.com",
+            copyrightText: "\xA9 2024 Local Cooks. All rights reserved.",
+            showContact: true,
+            showCopyright: true,
+            styling: {
+              backgroundColor: "#f8fafc",
+              textColor: "#64748b",
+              linkColor: "#F51042",
+              fontSize: "14px",
+              padding: "24px 32px",
+              textAlign: "center",
+              borderColor: "#e2e8f0"
+            }
+          },
+          usageSteps: usageSteps || {
+            title: "\u{1F680} How to use your promo code:",
+            steps: [
+              `Visit our website: <a href="${orderUrl || "https://localcooks.ca"}" style="color: #1d4ed8;">${orderUrl || "https://localcooks.ca"}</a>`,
+              "Browse our amazing local cooks and their delicious offerings",
+              "Apply your promo code during checkout",
+              "Enjoy your special offer!"
+            ],
+            enabled: true,
+            styling: {
+              backgroundColor: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+              borderColor: "#93c5fd",
+              titleColor: "#1d4ed8",
+              textColor: "#1e40af",
+              linkColor: "#1d4ed8",
+              padding: "20px",
+              borderRadius: "8px"
+            }
+          },
+          emailContainer: emailContainer || {
+            maxWidth: "600px",
+            backgroundColor: "#f1f5f9",
+            borderRadius: "12px",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.08)"
+          },
+          dividers: {
+            enabled: true,
+            style: "solid",
+            color: "#e2e8f0",
+            thickness: "1px",
+            margin: "24px 0",
+            opacity: "1"
+          },
+          subject,
+          previewText,
+          promoCodeLabel
+        });
+        res.setHeader("Content-Type", "text/html");
+        return res.status(200).send(emailContent.html || "<p>No HTML content generated</p>");
+      } catch (error) {
+        console.error("\u{1F525} Error generating promo email preview:", error);
+        return res.status(500).json({
+          error: "Internal server error",
+          message: "An error occurred while generating email preview"
         });
       }
-      console.log(`\u{1F525} Admin ${req.neonUser?.username} previewing promo email`);
-      const { generatePromoCodeEmail: generatePromoCodeEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-      const emailContent = generatePromoCodeEmail2({
-        email: "preview@example.com",
-        // Dummy email for preview
-        promoCode: promoCode.trim(),
-        customMessage: messageContent.trim(),
-        message: messageContent.trim(),
-        // Also pass as message for compatibility
-        greeting,
-        promoStyle: promoStyle || { colorTheme: "green", borderStyle: "dashed" },
-        promoCodeStyling,
-        designSystem,
-        isPremium: isPremium || false,
-        sections: sections || [],
-        orderButton: orderButton || {
-          text: buttonText || "Get Started",
-          url: orderUrl || "https://localcooks.ca",
-          styling: {
-            backgroundColor: "#F51042",
-            color: "#ffffff",
-            fontSize: "16px",
-            fontWeight: "600",
-            padding: "12px 24px",
-            borderRadius: "8px",
-            textAlign: "center"
-          }
-        },
-        header: header || {
-          title: "Local Cooks Header",
-          subtitle: "Premium Quality Food Subheader",
-          styling: {
-            backgroundColor: "linear-gradient(135deg, #F51042 0%, #FF5470 100%)",
-            titleColor: "#ffffff",
-            subtitleColor: "#ffffff",
-            titleFontSize: "32px",
-            subtitleFontSize: "18px",
-            padding: "24px",
-            borderRadius: "0px",
-            textAlign: "center"
-          }
-        },
-        footer: footer || {
-          mainText: "Thank you for being part of the Local Cooks community!",
-          contactText: "Questions? Contact us at support@localcooks.com",
-          copyrightText: "\xA9 2024 Local Cooks. All rights reserved.",
-          showContact: true,
-          showCopyright: true,
-          styling: {
-            backgroundColor: "#f8fafc",
-            textColor: "#64748b",
-            linkColor: "#F51042",
-            fontSize: "14px",
-            padding: "24px 32px",
-            textAlign: "center",
-            borderColor: "#e2e8f0"
-          }
-        },
-        usageSteps: usageSteps || {
-          title: "\u{1F680} How to use your promo code:",
-          steps: [
-            `Visit our website: <a href="${orderUrl || "https://localcooks.ca"}" style="color: #1d4ed8;">${orderUrl || "https://localcooks.ca"}</a>`,
-            "Browse our amazing local cooks and their delicious offerings",
-            "Apply your promo code during checkout",
-            "Enjoy your special offer!"
-          ],
-          enabled: true,
-          styling: {
-            backgroundColor: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-            borderColor: "#93c5fd",
-            titleColor: "#1d4ed8",
-            textColor: "#1e40af",
-            linkColor: "#1d4ed8",
-            padding: "20px",
-            borderRadius: "8px"
-          }
-        },
-        emailContainer: emailContainer || {
-          maxWidth: "600px",
-          backgroundColor: "#f1f5f9",
-          borderRadius: "12px",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.08)"
-        },
-        dividers: {
-          enabled: true,
-          style: "solid",
-          color: "#e2e8f0",
-          thickness: "1px",
-          margin: "24px 0",
-          opacity: "1"
-        },
-        subject,
-        previewText,
-        promoCodeLabel
-      });
-      res.setHeader("Content-Type", "text/html");
-      return res.status(200).send(emailContent.html || "<p>No HTML content generated</p>");
-    } catch (error) {
-      console.error("\u{1F525} Error generating promo email preview:", error);
-      return res.status(500).json({
-        error: "Internal server error",
-        message: "An error occurred while generating email preview"
-      });
     }
-  });
+  );
   const vehicleCache = {
     makes: null,
     makesByType: /* @__PURE__ */ new Map(),
@@ -15733,7 +14696,9 @@ function registerFirebaseRoutes(app3) {
           "BETA",
           "TM RACING"
         ];
-        return !excludedMakes.some((excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase()));
+        return !excludedMakes.some(
+          (excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase())
+        );
       });
       const formattedMakes = fourWheeledMakes.map((make) => ({
         id: make.Make_ID,
@@ -16001,77 +14966,82 @@ function registerFirebaseRoutes(app3) {
       });
     }
   });
-  app3.post("/api/firebase/chef/kitchen-applications", upload.fields([
-    { name: "foodSafetyLicenseFile", maxCount: 1 },
-    { name: "foodEstablishmentCertFile", maxCount: 1 }
-  ]), requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      console.log(`\u{1F373} POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser.id} submitting kitchen application`);
-      const files = req.files;
-      let foodSafetyLicenseUrl;
-      let foodEstablishmentCertUrl;
-      if (files) {
-        if (files["foodSafetyLicenseFile"]?.[0]) {
-          try {
-            foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicenseFile"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded food safety license: ${foodSafetyLicenseUrl}`);
-          } catch (uploadError) {
-            console.error("\u274C Failed to upload food safety license:", uploadError);
+  app3.post(
+    "/api/firebase/chef/kitchen-applications",
+    upload.fields([
+      { name: "foodSafetyLicenseFile", maxCount: 1 },
+      { name: "foodEstablishmentCertFile", maxCount: 1 }
+    ]),
+    requireFirebaseAuthWithUser,
+    async (req, res) => {
+      try {
+        console.log(`\u{1F373} POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser.id} submitting kitchen application`);
+        const files = req.files;
+        let foodSafetyLicenseUrl;
+        let foodEstablishmentCertUrl;
+        if (files) {
+          if (files["foodSafetyLicenseFile"]?.[0]) {
+            try {
+              foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicenseFile"][0], req.neonUser.id, "documents");
+              console.log(`\u2705 Uploaded food safety license: ${foodSafetyLicenseUrl}`);
+            } catch (uploadError) {
+              console.error("\u274C Failed to upload food safety license:", uploadError);
+            }
+          }
+          if (files["foodEstablishmentCertFile"]?.[0]) {
+            try {
+              foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCertFile"][0], req.neonUser.id, "documents");
+              console.log(`\u2705 Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
+            } catch (uploadError) {
+              console.error("\u274C Failed to upload food establishment cert:", uploadError);
+            }
           }
         }
-        if (files["foodEstablishmentCertFile"]?.[0]) {
-          try {
-            foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCertFile"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
-          } catch (uploadError) {
-            console.error("\u274C Failed to upload food establishment cert:", uploadError);
-          }
+        const formData = {
+          chefId: req.neonUser.id,
+          locationId: parseInt(req.body.locationId),
+          fullName: req.body.fullName,
+          email: req.body.email,
+          phone: req.body.phone,
+          kitchenPreference: req.body.kitchenPreference,
+          businessDescription: req.body.businessDescription || void 0,
+          cookingExperience: req.body.cookingExperience || void 0,
+          foodSafetyLicense: req.body.foodSafetyLicense,
+          foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || void 0,
+          foodEstablishmentCert: req.body.foodEstablishmentCert,
+          foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || void 0
+        };
+        const parsedData = insertChefKitchenApplicationSchema.safeParse(formData);
+        if (!parsedData.success) {
+          const validationError = fromZodError(parsedData.error);
+          console.log("\u274C Validation failed:", validationError.details);
+          return res.status(400).json({
+            error: "Validation error",
+            message: validationError.message,
+            details: validationError.details
+          });
         }
-      }
-      const formData = {
-        chefId: req.neonUser.id,
-        locationId: parseInt(req.body.locationId),
-        fullName: req.body.fullName,
-        email: req.body.email,
-        phone: req.body.phone,
-        kitchenPreference: req.body.kitchenPreference,
-        businessDescription: req.body.businessDescription || void 0,
-        cookingExperience: req.body.cookingExperience || void 0,
-        foodSafetyLicense: req.body.foodSafetyLicense,
-        foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || void 0,
-        foodEstablishmentCert: req.body.foodEstablishmentCert,
-        foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || void 0
-      };
-      const parsedData = insertChefKitchenApplicationSchema.safeParse(formData);
-      if (!parsedData.success) {
-        const validationError = fromZodError(parsedData.error);
-        console.log("\u274C Validation failed:", validationError.details);
-        return res.status(400).json({
-          error: "Validation error",
-          message: validationError.message,
-          details: validationError.details
+        const location = await firebaseStorage.getLocationById(parsedData.data.locationId);
+        if (!location) {
+          return res.status(404).json({ error: "Kitchen location not found" });
+        }
+        const application = await firebaseStorage.createChefKitchenApplication(parsedData.data);
+        console.log(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
+        res.status(201).json({
+          success: true,
+          application,
+          message: "Kitchen application submitted successfully. The kitchen manager will review your application.",
+          isResubmission: application.createdAt < application.updatedAt
+        });
+      } catch (error) {
+        console.error("Error creating kitchen application:", error);
+        res.status(500).json({
+          error: "Failed to submit kitchen application",
+          message: error instanceof Error ? error.message : "Unknown error"
         });
       }
-      const location = await firebaseStorage.getLocationById(parsedData.data.locationId);
-      if (!location) {
-        return res.status(404).json({ error: "Kitchen location not found" });
-      }
-      const application = await firebaseStorage.createChefKitchenApplication(parsedData.data);
-      console.log(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
-      res.status(201).json({
-        success: true,
-        application,
-        message: "Kitchen application submitted successfully. The kitchen manager will review your application.",
-        isResubmission: application.createdAt < application.updatedAt
-      });
-    } catch (error) {
-      console.error("Error creating kitchen application:", error);
-      res.status(500).json({
-        error: "Failed to submit kitchen application",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
     }
-  });
+  );
   app3.get("/api/firebase/chef/kitchen-applications", requireFirebaseAuthWithUser, async (req, res) => {
     try {
       const chefId = req.neonUser.id;
@@ -16083,28 +15053,30 @@ function registerFirebaseRoutes(app3) {
         role: req.neonUser.role,
         isChef: req.neonUser.isChef
       });
-      const applications3 = await firebaseStorage.getChefKitchenApplicationsByChefId(chefId);
-      console.log(`[KITCHEN APPLICATIONS] Retrieved ${applications3.length} kitchen applications for chef ${chefId}`);
-      if (applications3.length > 0) {
+      const applications2 = await firebaseStorage.getChefKitchenApplicationsByChefId(chefId);
+      console.log(`[KITCHEN APPLICATIONS] Retrieved ${applications2.length} kitchen applications for chef ${chefId}`);
+      if (applications2.length > 0) {
         console.log(`[KITCHEN APPLICATIONS] First application sample:`, {
-          id: applications3[0].id,
-          chefId: applications3[0].chefId,
-          locationId: applications3[0].locationId,
-          status: applications3[0].status
+          id: applications2[0].id,
+          chefId: applications2[0].chefId,
+          locationId: applications2[0].locationId,
+          status: applications2[0].status
         });
       }
-      const enrichedApplications = await Promise.all(applications3.map(async (app4) => {
-        const location = await firebaseStorage.getLocationById(app4.locationId);
-        return {
-          ...app4,
-          location: location ? {
-            id: location.id,
-            name: location.name,
-            address: location.address,
-            city: location.city
-          } : null
-        };
-      }));
+      const enrichedApplications = await Promise.all(
+        applications2.map(async (app4) => {
+          const location = await firebaseStorage.getLocationById(app4.locationId);
+          return {
+            ...app4,
+            location: location ? {
+              id: location.id,
+              name: location.name,
+              address: location.address,
+              city: location.city
+            } : null
+          };
+        })
+      );
       res.json(enrichedApplications);
     } catch (error) {
       console.error("Error getting chef kitchen applications:", error);
@@ -16192,60 +15164,65 @@ function registerFirebaseRoutes(app3) {
       });
     }
   });
-  app3.patch("/api/firebase/chef/kitchen-applications/:id/documents", upload.fields([
-    { name: "foodSafetyLicenseFile", maxCount: 1 },
-    { name: "foodEstablishmentCertFile", maxCount: 1 }
-  ]), requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      const applicationId = parseInt(req.params.id);
-      if (isNaN(applicationId)) {
-        return res.status(400).json({ error: "Invalid application ID" });
-      }
-      console.log(`\u{1F373} PATCH /api/firebase/chef/kitchen-applications/${applicationId}/documents - Chef ${req.neonUser.id}`);
-      const existing = await firebaseStorage.getChefKitchenApplicationById(applicationId);
-      if (!existing || existing.chefId !== req.neonUser.id) {
-        return res.status(403).json({ error: "Application not found or access denied" });
-      }
-      const files = req.files;
-      const updateData = { id: applicationId };
-      if (files) {
-        if (files["foodSafetyLicenseFile"]?.[0]) {
-          try {
-            updateData.foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicenseFile"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded updated food safety license: ${updateData.foodSafetyLicenseUrl}`);
-          } catch (uploadError) {
-            console.error("\u274C Failed to upload food safety license:", uploadError);
+  app3.patch(
+    "/api/firebase/chef/kitchen-applications/:id/documents",
+    upload.fields([
+      { name: "foodSafetyLicenseFile", maxCount: 1 },
+      { name: "foodEstablishmentCertFile", maxCount: 1 }
+    ]),
+    requireFirebaseAuthWithUser,
+    async (req, res) => {
+      try {
+        const applicationId = parseInt(req.params.id);
+        if (isNaN(applicationId)) {
+          return res.status(400).json({ error: "Invalid application ID" });
+        }
+        console.log(`\u{1F373} PATCH /api/firebase/chef/kitchen-applications/${applicationId}/documents - Chef ${req.neonUser.id}`);
+        const existing = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+        if (!existing || existing.chefId !== req.neonUser.id) {
+          return res.status(403).json({ error: "Application not found or access denied" });
+        }
+        const files = req.files;
+        const updateData = { id: applicationId };
+        if (files) {
+          if (files["foodSafetyLicenseFile"]?.[0]) {
+            try {
+              updateData.foodSafetyLicenseUrl = await uploadToBlob(files["foodSafetyLicenseFile"][0], req.neonUser.id, "documents");
+              console.log(`\u2705 Uploaded updated food safety license: ${updateData.foodSafetyLicenseUrl}`);
+            } catch (uploadError) {
+              console.error("\u274C Failed to upload food safety license:", uploadError);
+            }
+          }
+          if (files["foodEstablishmentCertFile"]?.[0]) {
+            try {
+              updateData.foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCertFile"][0], req.neonUser.id, "documents");
+              console.log(`\u2705 Uploaded updated food establishment cert: ${updateData.foodEstablishmentCertUrl}`);
+            } catch (uploadError) {
+              console.error("\u274C Failed to upload food establishment cert:", uploadError);
+            }
           }
         }
-        if (files["foodEstablishmentCertFile"]?.[0]) {
-          try {
-            updateData.foodEstablishmentCertUrl = await uploadToBlob(files["foodEstablishmentCertFile"][0], req.neonUser.id, "documents");
-            console.log(`\u2705 Uploaded updated food establishment cert: ${updateData.foodEstablishmentCertUrl}`);
-          } catch (uploadError) {
-            console.error("\u274C Failed to upload food establishment cert:", uploadError);
-          }
-        }
+        const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
+        res.json({
+          success: true,
+          application: updatedApplication,
+          message: "Documents updated successfully. They will be reviewed by the manager."
+        });
+      } catch (error) {
+        console.error("Error updating kitchen application documents:", error);
+        res.status(500).json({
+          error: "Failed to update documents",
+          message: error instanceof Error ? error.message : "Unknown error"
+        });
       }
-      const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
-      res.json({
-        success: true,
-        application: updatedApplication,
-        message: "Documents updated successfully. They will be reviewed by the manager."
-      });
-    } catch (error) {
-      console.error("Error updating kitchen application documents:", error);
-      res.status(500).json({
-        error: "Failed to update documents",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
     }
-  });
+  );
   app3.get("/api/manager/kitchen-applications", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
     try {
       const user = req.neonUser;
       console.log(`\u{1F468}\u200D\u{1F373} GET /api/manager/kitchen-applications - Manager ${user.id}`);
-      const applications3 = await firebaseStorage.getChefKitchenApplicationsForManager(user.id);
-      res.json(applications3);
+      const applications2 = await firebaseStorage.getChefKitchenApplicationsForManager(user.id);
+      res.json(applications2);
     } catch (error) {
       console.error("Error getting kitchen applications for manager:", error);
       res.status(500).json({ error: "Failed to get applications" });
@@ -16263,8 +15240,8 @@ function registerFirebaseRoutes(app3) {
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "Access denied to this location" });
       }
-      const applications3 = await firebaseStorage.getChefKitchenApplicationsByLocationId(locationId);
-      res.json(applications3);
+      const applications2 = await firebaseStorage.getChefKitchenApplicationsByLocationId(locationId);
+      res.json(applications2);
     } catch (error) {
       console.error("Error getting kitchen applications for location:", error);
       res.status(500).json({ error: "Failed to get applications" });
@@ -16290,11 +15267,19 @@ function registerFirebaseRoutes(app3) {
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "Access denied to this application" });
       }
-      const updatedApplication = await firebaseStorage.updateChefKitchenApplicationStatus({ id: applicationId, status, feedback }, user.id);
+      const updatedApplication = await firebaseStorage.updateChefKitchenApplicationStatus(
+        { id: applicationId, status, feedback },
+        user.id
+      );
       console.log(`\u2705 Application ${applicationId} ${status} by Manager ${user.id}`);
       if (status === "approved" && updatedApplication) {
         try {
-          const existingAccess = await db.select().from(chefLocationAccess).where(and3(eq3(chefLocationAccess.chefId, application.chefId), eq3(chefLocationAccess.locationId, application.locationId)));
+          const existingAccess = await db.select().from(chefLocationAccess).where(
+            and3(
+              eq3(chefLocationAccess.chefId, application.chefId),
+              eq3(chefLocationAccess.locationId, application.locationId)
+            )
+          );
           if (existingAccess.length === 0) {
             await db.insert(chefLocationAccess).values({
               chefId: application.chefId,
@@ -16348,10 +15333,8 @@ function registerFirebaseRoutes(app3) {
         return res.status(403).json({ error: "Access denied to this application" });
       }
       const updateData = { id: applicationId };
-      if (foodSafetyLicenseStatus)
-        updateData.foodSafetyLicenseStatus = foodSafetyLicenseStatus;
-      if (foodEstablishmentCertStatus)
-        updateData.foodEstablishmentCertStatus = foodEstablishmentCertStatus;
+      if (foodSafetyLicenseStatus) updateData.foodSafetyLicenseStatus = foodSafetyLicenseStatus;
+      if (foodEstablishmentCertStatus) updateData.foodEstablishmentCertStatus = foodEstablishmentCertStatus;
       const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
       res.json({
         success: true,
@@ -16419,8 +15402,8 @@ function registerFirebaseRoutes(app3) {
       }
       const progress = await firebaseStorage.getMicrolearningProgress(userId);
       const completionStatus = await firebaseStorage.getMicrolearningCompletion(userId);
-      const applications3 = await firebaseStorage.getApplicationsByUserId(userId);
-      const hasApproval = applications3.some((app4) => app4.status === "approved");
+      const applications2 = await firebaseStorage.getApplicationsByUserId(userId);
+      const hasApproval = applications2.some((app4) => app4.status === "approved");
       const isAdmin = req.neonUser.role === "admin";
       const isCompleted = completionStatus?.confirmed || false;
       const accessLevel = isAdmin || hasApproval || isCompleted ? "full" : "limited";
@@ -16440,13 +15423,13 @@ function registerFirebaseRoutes(app3) {
   });
   app3.post("/api/firebase/microlearning/complete", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const { userId, completionDate, videoProgress: videoProgress3 } = req.body;
+      const { userId, completionDate, videoProgress: videoProgress2 } = req.body;
       const currentUserId = req.neonUser.id;
       if (currentUserId !== userId && req.neonUser.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
-      const applications3 = await firebaseStorage.getApplicationsByUserId(userId);
-      const hasApproval = applications3.some((app4) => app4.status === "approved");
+      const applications2 = await firebaseStorage.getApplicationsByUserId(userId);
+      const hasApproval = applications2.some((app4) => app4.status === "approved");
       const isAdmin = req.neonUser.role === "admin";
       if (!hasApproval && !isAdmin) {
         return res.status(403).json({
@@ -16479,7 +15462,7 @@ function registerFirebaseRoutes(app3) {
         "howto-wound-care",
         "howto-inspection-prep"
       ];
-      const completedVideos = videoProgress3.filter((v) => v.completed).map((v) => v.videoId);
+      const completedVideos = videoProgress2.filter((v) => v.completed).map((v) => v.videoId);
       const allRequired = requiredVideos.every((videoId) => completedVideos.includes(videoId));
       if (!allRequired) {
         return res.status(400).json({
@@ -16494,7 +15477,7 @@ function registerFirebaseRoutes(app3) {
       const completionData = {
         userId,
         completedAt: new Date(completionDate),
-        videoProgress: videoProgress3,
+        videoProgress: videoProgress2,
         confirmed: true,
         certificateGenerated: false
       };
@@ -16509,7 +15492,12 @@ function registerFirebaseRoutes(app3) {
       res.status(500).json({ message: "Failed to complete microlearning" });
     }
   });
-  app3.post("/api/firebase/upload-file", upload.single("file"), requireFirebaseAuthWithUser, handleFileUpload);
+  app3.post(
+    "/api/firebase/upload-file",
+    upload.single("file"),
+    requireFirebaseAuthWithUser,
+    handleFileUpload
+  );
   console.log("\u{1F525} Firebase authentication routes registered successfully");
   console.log("\u2728 Session-free architecture active - JWT tokens only");
   console.log("\u{1F697} NHTSA Vehicle API endpoints registered successfully");
@@ -16517,7 +15505,7 @@ function registerFirebaseRoutes(app3) {
   console.log("\u{1F373} Chef kitchen application endpoints registered successfully");
 }
 
-// dist/server/routes.js
+// server/routes.ts
 init_schema();
 import fs3 from "fs";
 import { createServer } from "http";
@@ -16525,7 +15513,7 @@ import passport from "passport";
 import path2 from "path";
 import { fromZodError as fromZodError2 } from "zod-validation-error";
 
-// dist/server/alwaysFoodSafeAPI.js
+// server/alwaysFoodSafeAPI.ts
 async function submitToAlwaysFoodSafe(submission) {
   const apiKey = process.env.ALWAYS_FOOD_SAFE_API_KEY;
   const apiUrl = process.env.ALWAYS_FOOD_SAFE_API_URL || "https://api.alwaysfoodsafe.com";
@@ -16584,16 +15572,16 @@ function isAlwaysFoodSafeConfigured() {
   return !!(process.env.ALWAYS_FOOD_SAFE_API_KEY && process.env.ALWAYS_FOOD_SAFE_API_URL);
 }
 
-// dist/server/auth.js
+// server/auth.ts
 function setupAuth(app3) {
   console.log("\u2705 Session-based auth removed - Using Firebase Auth only");
   console.log("\u2705 All OAuth strategies removed - Firebase Auth handles all authentication");
 }
 
-// dist/server/routes.js
+// server/routes.ts
 init_email();
 
-// dist/server/sms.js
+// server/sms.ts
 import twilio from "twilio";
 var getSMSConfig = () => {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -16601,12 +15589,9 @@ var getSMSConfig = () => {
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
   if (!accountSid || !authToken || !fromNumber) {
     const missing = [];
-    if (!accountSid)
-      missing.push("TWILIO_ACCOUNT_SID");
-    if (!authToken)
-      missing.push("TWILIO_AUTH_TOKEN");
-    if (!fromNumber)
-      missing.push("TWILIO_PHONE_NUMBER");
+    if (!accountSid) missing.push("TWILIO_ACCOUNT_SID");
+    if (!authToken) missing.push("TWILIO_AUTH_TOKEN");
+    if (!fromNumber) missing.push("TWILIO_PHONE_NUMBER");
     console.warn("\u26A0\uFE0F Twilio configuration is missing. SMS functionality will be disabled.");
     console.warn(`   Missing variables: ${missing.join(", ")}`);
     console.warn("   Please set these environment variables to enable SMS functionality.");
@@ -16629,11 +15614,9 @@ var getSMSConfig = () => {
   };
 };
 var formatPhoneNumber = (phone) => {
-  if (!phone)
-    return null;
+  if (!phone) return null;
   const trimmed = phone.trim();
-  if (!trimmed)
-    return null;
+  if (!trimmed) return null;
   const cleaned = trimmed.replace(/[^\d+]/g, "");
   if (cleaned.startsWith("+")) {
     const digitsAfterPlus = cleaned.substring(1);
@@ -16765,11 +15748,11 @@ var sendSMS = async (to, message, options) => {
   }
 };
 var generateManagerBookingSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   return `New kitchen booking from ${data.chefName}:
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}
 
 Please check your dashboard to confirm or manage this booking.
@@ -16777,11 +15760,11 @@ Please check your dashboard to confirm or manage this booking.
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 var generateManagerPortalBookingSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   return `New kitchen booking from portal user ${data.portalUserName}:
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}
 
 Please check your dashboard to confirm or manage this booking.
@@ -16789,11 +15772,11 @@ Please check your dashboard to confirm or manage this booking.
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 var generateChefBookingConfirmationSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   return `Your kitchen booking has been confirmed!
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}
 
 See you there!
@@ -16801,13 +15784,13 @@ See you there!
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 var generateChefBookingCancellationSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   const reasonText = data.reason ? `
 Reason: ${data.reason}` : "";
   return `Your kitchen booking has been cancelled.
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}${reasonText}
 
 Please contact the manager if you have questions.
@@ -16815,11 +15798,11 @@ Please contact the manager if you have questions.
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 var generatePortalUserBookingConfirmationSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   return `Your kitchen booking has been confirmed!
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}
 
 See you there!
@@ -16827,13 +15810,13 @@ See you there!
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 var generatePortalUserBookingCancellationSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   const reasonText = data.reason ? `
 Reason: ${data.reason}` : "";
   return `Your kitchen booking has been cancelled.
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}${reasonText}
 
 Please contact the manager if you have questions.
@@ -16841,11 +15824,11 @@ Please contact the manager if you have questions.
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 var generateManagerBookingCancellationSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   return `Chef ${data.chefName} has cancelled their booking:
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}
 
 Please check your dashboard for details.
@@ -16853,11 +15836,11 @@ Please check your dashboard for details.
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 var generateChefSelfCancellationSMS = (data) => {
-  const date3 = new Date(data.bookingDate).toLocaleDateString();
+  const date2 = new Date(data.bookingDate).toLocaleDateString();
   return `Your kitchen booking has been cancelled:
 
 Kitchen: ${data.kitchenName}
-Date: ${date3}
+Date: ${date2}
 Time: ${data.startTime} - ${data.endTime}
 
 If you need to book again, please visit the dashboard.
@@ -16865,10 +15848,10 @@ If you need to book again, please visit the dashboard.
 We've also sent you an email. If not found, please check your spam folder.`;
 };
 
-// dist/server/routes.js
+// server/routes.ts
 init_phone_utils();
 
-// dist/server/passwordUtils.js
+// server/passwordUtils.ts
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import bcrypt from "bcryptjs";
@@ -16890,7 +15873,7 @@ async function comparePasswords(password, hash) {
   }
 }
 
-// dist/server/routes.js
+// server/routes.ts
 init_firebase_admin();
 init_db();
 init_schema();
@@ -16915,8 +15898,7 @@ async function getAuthenticatedUser(req) {
   return null;
 }
 function normalizeImageUrl(url, req) {
-  if (!url)
-    return null;
+  if (!url) return null;
   if (url.startsWith("http://") || url.startsWith("https://")) {
     return url;
   }
@@ -17020,168 +16002,172 @@ async function registerRoutes(app3) {
       res.redirect("/login?error=internal_error");
     }
   );
-  app3.post("/api/applications", upload.fields([
-    { name: "foodSafetyLicense", maxCount: 1 },
-    { name: "foodEstablishmentCert", maxCount: 1 }
-  ]), async (req, res) => {
-    try {
-      if (!req.isAuthenticated()) {
-        if (req.files) {
-          const files2 = req.files;
-          Object.values(files2).flat().forEach((file) => {
-            try {
-              fs3.unlinkSync(file.path);
-            } catch (e) {
-              console.error("Error cleaning up file:", e);
-            }
-          });
-        }
-        return res.status(401).json({ message: "You must be logged in to submit an application" });
-      }
-      const parsedData = insertApplicationSchema.safeParse(req.body);
-      if (!parsedData.success) {
-        if (req.files) {
-          const files2 = req.files;
-          Object.values(files2).flat().forEach((file) => {
-            try {
-              fs3.unlinkSync(file.path);
-            } catch (e) {
-              console.error("Error cleaning up file:", e);
-            }
-          });
-        }
-        const validationError = fromZodError2(parsedData.error);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
-        });
-      }
-      const applicationData = {
-        ...parsedData.data,
-        userId: req.user.id,
-        phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone
-        // Ensure normalization
-      };
-      console.log("=== APPLICATION SUBMISSION WITH DOCUMENTS ===");
-      console.log("Request details:", {
-        method: req.method,
-        contentType: req.headers["content-type"],
-        hasFiles: !!req.files,
-        fileKeys: req.files ? Object.keys(req.files) : [],
-        bodyKeys: Object.keys(req.body || {}),
-        bodyData: {
-          foodSafetyLicense: req.body.foodSafetyLicense,
-          foodEstablishmentCert: req.body.foodEstablishmentCert,
-          foodSafetyLicenseUrl: req.body.foodSafetyLicenseUrl,
-          foodEstablishmentCertUrl: req.body.foodEstablishmentCertUrl,
-          userId: req.body.userId
-        }
-      });
-      console.log("Form data:", {
-        foodSafetyLicense: applicationData.foodSafetyLicense,
-        foodEstablishmentCert: applicationData.foodEstablishmentCert,
-        hasFiles: !!req.files,
-        fileKeys: req.files ? Object.keys(req.files) : []
-      });
-      const files = req.files;
-      if (files) {
-        const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-        if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-          console.log("\u{1F4C4} Uploading food safety license file...");
-          if (isProduction2) {
-            applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user.id);
-          } else {
-            applicationData.foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
-          }
-          console.log("\u2705 Food safety license uploaded:", applicationData.foodSafetyLicenseUrl);
-        }
-        if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-          console.log("\u{1F4C4} Uploading food establishment cert file...");
-          if (isProduction2) {
-            applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user.id);
-          } else {
-            applicationData.foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
-          }
-          console.log("\u2705 Food establishment cert uploaded:", applicationData.foodEstablishmentCertUrl);
-        }
-      }
-      if (req.body.foodSafetyLicenseUrl && !applicationData.foodSafetyLicenseUrl) {
-        applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-        console.log("\u{1F4C4} Using provided food safety license URL:", applicationData.foodSafetyLicenseUrl);
-      }
-      if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
-        applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
-        console.log("\u{1F4C4} Using provided food establishment cert URL:", applicationData.foodEstablishmentCertUrl);
-      }
-      if (applicationData.foodSafetyLicenseUrl) {
-        applicationData.foodSafetyLicenseStatus = "pending";
-        console.log("\u2705 Food safety license document provided, status set to pending");
-      }
-      if (applicationData.foodEstablishmentCertUrl) {
-        applicationData.foodEstablishmentCertStatus = "pending";
-        console.log("\u2705 Food establishment cert document provided, status set to pending");
-      }
-      console.log("Final application data:", {
-        userId: applicationData.userId,
-        hasDocuments: !!(applicationData.foodSafetyLicenseUrl || applicationData.foodEstablishmentCertUrl),
-        documentUrls: {
-          foodSafetyLicense: applicationData.foodSafetyLicenseUrl || null,
-          foodEstablishmentCert: applicationData.foodEstablishmentCertUrl || null
-        }
-      });
-      const application = await storage2.createApplication(applicationData);
-      const fullApplication = await storage2.getApplicationById(application.id);
-      console.log("\u2705 Application created successfully:", {
-        id: fullApplication?.id,
-        hasDocuments: !!(fullApplication?.foodSafetyLicenseUrl || fullApplication?.foodEstablishmentCertUrl)
-      });
+  app3.post(
+    "/api/applications",
+    upload.fields([
+      { name: "foodSafetyLicense", maxCount: 1 },
+      { name: "foodEstablishmentCert", maxCount: 1 }
+    ]),
+    async (req, res) => {
       try {
-        if (fullApplication && fullApplication.email) {
-          const hasDocuments = !!(fullApplication.foodSafetyLicenseUrl || fullApplication.foodEstablishmentCertUrl);
-          if (hasDocuments) {
-            const emailContent = generateApplicationWithDocumentsEmail({
-              fullName: fullApplication.fullName || "Applicant",
-              email: fullApplication.email
+        if (!req.isAuthenticated()) {
+          if (req.files) {
+            const files2 = req.files;
+            Object.values(files2).flat().forEach((file) => {
+              try {
+                fs3.unlinkSync(file.path);
+              } catch (e) {
+                console.error("Error cleaning up file:", e);
+              }
             });
-            await sendEmail(emailContent, {
-              trackingId: `app_with_docs_${fullApplication.id}_${Date.now()}`
-            });
-            console.log(`Application with documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
-          } else {
-            const emailContent = generateApplicationWithoutDocumentsEmail({
-              fullName: fullApplication.fullName || "Applicant",
-              email: fullApplication.email
-            });
-            await sendEmail(emailContent, {
-              trackingId: `app_no_docs_${fullApplication.id}_${Date.now()}`
-            });
-            console.log(`Application without documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
           }
-        } else {
-          console.warn(`Cannot send new application email: Application record not found or missing email.`);
+          return res.status(401).json({ message: "You must be logged in to submit an application" });
         }
-      } catch (emailError) {
-        console.error("Error sending new application email:", emailError);
-      }
-      console.log("=== APPLICATION SUBMISSION COMPLETE ===");
-      return res.status(201).json(application);
-    } catch (error) {
-      console.error("Error creating application:", error);
-      if (req.files) {
-        const files = req.files;
-        Object.values(files).flat().forEach((file) => {
-          try {
-            if (file.path) {
-              fs3.unlinkSync(file.path);
-            }
-          } catch (e) {
-            console.error("Error cleaning up file:", e);
+        const parsedData = insertApplicationSchema.safeParse(req.body);
+        if (!parsedData.success) {
+          if (req.files) {
+            const files2 = req.files;
+            Object.values(files2).flat().forEach((file) => {
+              try {
+                fs3.unlinkSync(file.path);
+              } catch (e) {
+                console.error("Error cleaning up file:", e);
+              }
+            });
+          }
+          const validationError = fromZodError2(parsedData.error);
+          return res.status(400).json({
+            message: "Validation error",
+            errors: validationError.details
+          });
+        }
+        const applicationData = {
+          ...parsedData.data,
+          userId: req.user.id,
+          phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone
+          // Ensure normalization
+        };
+        console.log("=== APPLICATION SUBMISSION WITH DOCUMENTS ===");
+        console.log("Request details:", {
+          method: req.method,
+          contentType: req.headers["content-type"],
+          hasFiles: !!req.files,
+          fileKeys: req.files ? Object.keys(req.files) : [],
+          bodyKeys: Object.keys(req.body || {}),
+          bodyData: {
+            foodSafetyLicense: req.body.foodSafetyLicense,
+            foodEstablishmentCert: req.body.foodEstablishmentCert,
+            foodSafetyLicenseUrl: req.body.foodSafetyLicenseUrl,
+            foodEstablishmentCertUrl: req.body.foodEstablishmentCertUrl,
+            userId: req.body.userId
           }
         });
+        console.log("Form data:", {
+          foodSafetyLicense: applicationData.foodSafetyLicense,
+          foodEstablishmentCert: applicationData.foodEstablishmentCert,
+          hasFiles: !!req.files,
+          fileKeys: req.files ? Object.keys(req.files) : []
+        });
+        const files = req.files;
+        if (files) {
+          const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+          if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
+            console.log("\u{1F4C4} Uploading food safety license file...");
+            if (isProduction2) {
+              applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user.id);
+            } else {
+              applicationData.foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
+            }
+            console.log("\u2705 Food safety license uploaded:", applicationData.foodSafetyLicenseUrl);
+          }
+          if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
+            console.log("\u{1F4C4} Uploading food establishment cert file...");
+            if (isProduction2) {
+              applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user.id);
+            } else {
+              applicationData.foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
+            }
+            console.log("\u2705 Food establishment cert uploaded:", applicationData.foodEstablishmentCertUrl);
+          }
+        }
+        if (req.body.foodSafetyLicenseUrl && !applicationData.foodSafetyLicenseUrl) {
+          applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
+          console.log("\u{1F4C4} Using provided food safety license URL:", applicationData.foodSafetyLicenseUrl);
+        }
+        if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
+          applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+          console.log("\u{1F4C4} Using provided food establishment cert URL:", applicationData.foodEstablishmentCertUrl);
+        }
+        if (applicationData.foodSafetyLicenseUrl) {
+          applicationData.foodSafetyLicenseStatus = "pending";
+          console.log("\u2705 Food safety license document provided, status set to pending");
+        }
+        if (applicationData.foodEstablishmentCertUrl) {
+          applicationData.foodEstablishmentCertStatus = "pending";
+          console.log("\u2705 Food establishment cert document provided, status set to pending");
+        }
+        console.log("Final application data:", {
+          userId: applicationData.userId,
+          hasDocuments: !!(applicationData.foodSafetyLicenseUrl || applicationData.foodEstablishmentCertUrl),
+          documentUrls: {
+            foodSafetyLicense: applicationData.foodSafetyLicenseUrl || null,
+            foodEstablishmentCert: applicationData.foodEstablishmentCertUrl || null
+          }
+        });
+        const application = await storage2.createApplication(applicationData);
+        const fullApplication = await storage2.getApplicationById(application.id);
+        console.log("\u2705 Application created successfully:", {
+          id: fullApplication?.id,
+          hasDocuments: !!(fullApplication?.foodSafetyLicenseUrl || fullApplication?.foodEstablishmentCertUrl)
+        });
+        try {
+          if (fullApplication && fullApplication.email) {
+            const hasDocuments = !!(fullApplication.foodSafetyLicenseUrl || fullApplication.foodEstablishmentCertUrl);
+            if (hasDocuments) {
+              const emailContent = generateApplicationWithDocumentsEmail({
+                fullName: fullApplication.fullName || "Applicant",
+                email: fullApplication.email
+              });
+              await sendEmail(emailContent, {
+                trackingId: `app_with_docs_${fullApplication.id}_${Date.now()}`
+              });
+              console.log(`Application with documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+            } else {
+              const emailContent = generateApplicationWithoutDocumentsEmail({
+                fullName: fullApplication.fullName || "Applicant",
+                email: fullApplication.email
+              });
+              await sendEmail(emailContent, {
+                trackingId: `app_no_docs_${fullApplication.id}_${Date.now()}`
+              });
+              console.log(`Application without documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
+            }
+          } else {
+            console.warn(`Cannot send new application email: Application record not found or missing email.`);
+          }
+        } catch (emailError) {
+          console.error("Error sending new application email:", emailError);
+        }
+        console.log("=== APPLICATION SUBMISSION COMPLETE ===");
+        return res.status(201).json(application);
+      } catch (error) {
+        console.error("Error creating application:", error);
+        if (req.files) {
+          const files = req.files;
+          Object.values(files).flat().forEach((file) => {
+            try {
+              if (file.path) {
+                fs3.unlinkSync(file.path);
+              }
+            } catch (e) {
+              console.error("Error cleaning up file:", e);
+            }
+          });
+        }
+        return res.status(500).json({ message: "Internal server error" });
       }
-      return res.status(500).json({ message: "Internal server error" });
     }
-  });
+  );
   app3.get("/api/applications", async (req, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });
@@ -17190,8 +16176,8 @@ async function registerRoutes(app3) {
       return res.status(403).json({ message: "Access denied. Admin role required." });
     }
     try {
-      const applications3 = await storage2.getAllApplications();
-      return res.status(200).json(applications3);
+      const applications2 = await storage2.getAllApplications();
+      return res.status(200).json(applications2);
     } catch (error) {
       console.error("Error fetching applications:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -17203,8 +16189,8 @@ async function registerRoutes(app3) {
     }
     try {
       const userId = req.user.id;
-      const applications3 = await storage2.getApplicationsByUserId(userId);
-      return res.status(200).json(applications3);
+      const applications2 = await storage2.getApplicationsByUserId(userId);
+      return res.status(200).json(applications2);
     } catch (error) {
       console.error("Error fetching user applications:", error);
       return res.status(500).json({ message: "Internal server error" });
@@ -17627,7 +16613,7 @@ async function registerRoutes(app3) {
         `;
       }
       const result = await pool.query(query, params);
-      const users3 = result.rows.map((user) => ({
+      const users2 = result.rows.map((user) => ({
         id: user.id,
         username: user.username,
         email: user.email,
@@ -17636,7 +16622,7 @@ async function registerRoutes(app3) {
         displayText: `${user.full_name} (${user.email})`
         // For dropdown display
       }));
-      res.status(200).json({ users: users3 });
+      res.status(200).json({ users: users2 });
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ error: "Failed to fetch users" });
@@ -17913,141 +16899,145 @@ async function registerRoutes(app3) {
       return res.status(500).json({ message: "Internal server error" });
     }
   });
-  app3.patch("/api/applications/:id/documents", (req, res, next) => {
-    const contentType = req.get("Content-Type") || "";
-    if (contentType.includes("multipart/form-data")) {
-      const fileUploadMiddleware = upload.fields([
-        { name: "foodSafetyLicense", maxCount: 1 },
-        { name: "foodEstablishmentCert", maxCount: 1 }
-      ]);
-      fileUploadMiddleware(req, res, next);
-    } else {
-      next();
-    }
-  }, async (req, res) => {
-    try {
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      const applicationId = parseInt(req.params.id);
-      if (isNaN(applicationId)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-      const application = await storage2.getApplicationById(applicationId);
-      if (!application) {
-        if (req.files) {
-          const files = req.files;
-          Object.values(files).flat().forEach((file) => {
-            try {
-              fs3.unlinkSync(file.path);
-            } catch (e) {
-              console.error("Error cleaning up file:", e);
-            }
-          });
-        }
-        return res.status(404).json({ message: "Application not found" });
-      }
-      if (application.userId !== req.user.id && req.user.role !== "admin") {
-        if (req.files) {
-          const files = req.files;
-          Object.values(files).flat().forEach((file) => {
-            try {
-              fs3.unlinkSync(file.path);
-            } catch (e) {
-              console.error("Error cleaning up file:", e);
-            }
-          });
-        }
-        return res.status(403).json({ message: "Access denied" });
-      }
-      if (application.status === "cancelled" || application.status === "rejected") {
-        if (req.files) {
-          const files = req.files;
-          Object.values(files).flat().forEach((file) => {
-            try {
-              fs3.unlinkSync(file.path);
-            } catch (e) {
-              console.error("Error cleaning up file:", e);
-            }
-          });
-        }
-        return res.status(400).json({
-          message: "Document uploads are not permitted for cancelled or rejected applications",
-          applicationStatus: application.status
-        });
-      }
-      const updateData = {
-        id: applicationId
-      };
+  app3.patch(
+    "/api/applications/:id/documents",
+    (req, res, next) => {
       const contentType = req.get("Content-Type") || "";
-      const isFileUpload = contentType.includes("multipart/form-data");
-      if (isFileUpload) {
-        const files = req.files;
-        const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-        if (files && files.foodSafetyLicense && files.foodSafetyLicense[0]) {
-          if (!isProduction2 && application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith("/api/files/")) {
-            const oldFilename = application.foodSafetyLicenseUrl.split("/").pop();
-            if (oldFilename) {
-              const oldFilePath = path2.join(process.cwd(), "uploads", "documents", oldFilename);
-              deleteFile(oldFilePath);
-            }
-          }
-          if (isProduction2) {
-            updateData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user.id);
-          } else {
-            const filename = files.foodSafetyLicense[0].filename;
-            updateData.foodSafetyLicenseUrl = getFileUrl(filename);
-          }
-        }
-        if (files && files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
-          if (!isProduction2 && application.foodEstablishmentCertUrl && application.foodEstablishmentCertUrl.startsWith("/api/files/")) {
-            const oldFilename = application.foodEstablishmentCertUrl.split("/").pop();
-            if (oldFilename) {
-              const oldFilePath = path2.join(process.cwd(), "uploads", "documents", oldFilename);
-              deleteFile(oldFilePath);
-            }
-          }
-          if (isProduction2) {
-            updateData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user.id);
-          } else {
-            const filename = files.foodEstablishmentCert[0].filename;
-            updateData.foodEstablishmentCertUrl = getFileUrl(filename);
-          }
-        }
-        if (req.body.foodSafetyLicenseUrl && !updateData.foodSafetyLicenseUrl) {
-          updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-        }
-        if (req.body.foodEstablishmentCertUrl && !updateData.foodEstablishmentCertUrl) {
-          updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
-        }
+      if (contentType.includes("multipart/form-data")) {
+        const fileUploadMiddleware = upload.fields([
+          { name: "foodSafetyLicense", maxCount: 1 },
+          { name: "foodEstablishmentCert", maxCount: 1 }
+        ]);
+        fileUploadMiddleware(req, res, next);
       } else {
-        if (req.body.foodSafetyLicenseUrl) {
-          updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-        }
-        if (req.body.foodEstablishmentCertUrl) {
-          updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
-        }
+        next();
       }
-      const updatedApplication = await storage2.updateApplicationDocuments(updateData);
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Failed to update application documents" });
-      }
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error updating application documents:", error);
-      if (req.files) {
-        const files = req.files;
-        Object.values(files).flat().forEach((file) => {
-          try {
-            fs3.unlinkSync(file.path);
-          } catch (e) {
-            console.error("Error cleaning up file:", e);
+    },
+    async (req, res) => {
+      try {
+        if (!req.isAuthenticated()) {
+          return res.status(401).json({ message: "Not authenticated" });
+        }
+        const applicationId = parseInt(req.params.id);
+        if (isNaN(applicationId)) {
+          return res.status(400).json({ message: "Invalid application ID" });
+        }
+        const application = await storage2.getApplicationById(applicationId);
+        if (!application) {
+          if (req.files) {
+            const files = req.files;
+            Object.values(files).flat().forEach((file) => {
+              try {
+                fs3.unlinkSync(file.path);
+              } catch (e) {
+                console.error("Error cleaning up file:", e);
+              }
+            });
           }
-        });
+          return res.status(404).json({ message: "Application not found" });
+        }
+        if (application.userId !== req.user.id && req.user.role !== "admin") {
+          if (req.files) {
+            const files = req.files;
+            Object.values(files).flat().forEach((file) => {
+              try {
+                fs3.unlinkSync(file.path);
+              } catch (e) {
+                console.error("Error cleaning up file:", e);
+              }
+            });
+          }
+          return res.status(403).json({ message: "Access denied" });
+        }
+        if (application.status === "cancelled" || application.status === "rejected") {
+          if (req.files) {
+            const files = req.files;
+            Object.values(files).flat().forEach((file) => {
+              try {
+                fs3.unlinkSync(file.path);
+              } catch (e) {
+                console.error("Error cleaning up file:", e);
+              }
+            });
+          }
+          return res.status(400).json({
+            message: "Document uploads are not permitted for cancelled or rejected applications",
+            applicationStatus: application.status
+          });
+        }
+        const updateData = {
+          id: applicationId
+        };
+        const contentType = req.get("Content-Type") || "";
+        const isFileUpload = contentType.includes("multipart/form-data");
+        if (isFileUpload) {
+          const files = req.files;
+          const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+          if (files && files.foodSafetyLicense && files.foodSafetyLicense[0]) {
+            if (!isProduction2 && application.foodSafetyLicenseUrl && application.foodSafetyLicenseUrl.startsWith("/api/files/")) {
+              const oldFilename = application.foodSafetyLicenseUrl.split("/").pop();
+              if (oldFilename) {
+                const oldFilePath = path2.join(process.cwd(), "uploads", "documents", oldFilename);
+                deleteFile(oldFilePath);
+              }
+            }
+            if (isProduction2) {
+              updateData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user.id);
+            } else {
+              const filename = files.foodSafetyLicense[0].filename;
+              updateData.foodSafetyLicenseUrl = getFileUrl(filename);
+            }
+          }
+          if (files && files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
+            if (!isProduction2 && application.foodEstablishmentCertUrl && application.foodEstablishmentCertUrl.startsWith("/api/files/")) {
+              const oldFilename = application.foodEstablishmentCertUrl.split("/").pop();
+              if (oldFilename) {
+                const oldFilePath = path2.join(process.cwd(), "uploads", "documents", oldFilename);
+                deleteFile(oldFilePath);
+              }
+            }
+            if (isProduction2) {
+              updateData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user.id);
+            } else {
+              const filename = files.foodEstablishmentCert[0].filename;
+              updateData.foodEstablishmentCertUrl = getFileUrl(filename);
+            }
+          }
+          if (req.body.foodSafetyLicenseUrl && !updateData.foodSafetyLicenseUrl) {
+            updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
+          }
+          if (req.body.foodEstablishmentCertUrl && !updateData.foodEstablishmentCertUrl) {
+            updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+          }
+        } else {
+          if (req.body.foodSafetyLicenseUrl) {
+            updateData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
+          }
+          if (req.body.foodEstablishmentCertUrl) {
+            updateData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
+          }
+        }
+        const updatedApplication = await storage2.updateApplicationDocuments(updateData);
+        if (!updatedApplication) {
+          return res.status(404).json({ message: "Failed to update application documents" });
+        }
+        return res.status(200).json(updatedApplication);
+      } catch (error) {
+        console.error("Error updating application documents:", error);
+        if (req.files) {
+          const files = req.files;
+          Object.values(files).flat().forEach((file) => {
+            try {
+              fs3.unlinkSync(file.path);
+            } catch (e) {
+              console.error("Error cleaning up file:", e);
+            }
+          });
+        }
+        return res.status(500).json({ message: "Internal server error" });
       }
-      return res.status(500).json({ message: "Internal server error" });
     }
-  });
+  );
   app3.patch("/api/applications/:id/document-verification", async (req, res) => {
     try {
       if (!req.isAuthenticated()) {
@@ -18094,10 +17084,8 @@ async function registerRoutes(app3) {
           const foodEstablishmentApproved = !hasFoodEstablishmentCert || updatedApplication.foodEstablishmentCertStatus === "approved";
           if (foodSafetyApproved && foodEstablishmentApproved) {
             const approvedDocuments = [];
-            if (hasFoodSafetyLicense)
-              approvedDocuments.push("Food Safety License");
-            if (hasFoodEstablishmentCert)
-              approvedDocuments.push("Food Establishment Certificate");
+            if (hasFoodSafetyLicense) approvedDocuments.push("Food Safety License");
+            if (hasFoodEstablishmentCert) approvedDocuments.push("Food Establishment Certificate");
             const emailContent = generateChefAllDocumentsApprovedEmail({
               fullName: updatedApplication.fullName || "Applicant",
               email: updatedApplication.email,
@@ -18123,8 +17111,8 @@ async function registerRoutes(app3) {
   });
   const hasApprovedApplication = async (userId) => {
     try {
-      const applications3 = await storage2.getApplicationsByUserId(userId);
-      return applications3.some((app4) => app4.status === "approved");
+      const applications2 = await storage2.getApplicationsByUserId(userId);
+      return applications2.some((app4) => app4.status === "approved");
     } catch (error) {
       console.error("Error checking application status:", error);
       return false;
@@ -18208,7 +17196,7 @@ async function registerRoutes(app3) {
       if (!req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const { userId, completionDate, videoProgress: videoProgress3 } = req.body;
+      const { userId, completionDate, videoProgress: videoProgress2 } = req.body;
       if (req.user.id !== userId && req.user.role !== "admin") {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -18247,7 +17235,7 @@ async function registerRoutes(app3) {
         "howto-wound-care",
         "howto-inspection-prep"
       ];
-      const completedVideos = videoProgress3.filter((v) => v.completed).map((v) => v.videoId);
+      const completedVideos = videoProgress2.filter((v) => v.completed).map((v) => v.videoId);
       const allRequired = requiredVideos.every((videoId) => completedVideos.includes(videoId));
       if (!allRequired) {
         return res.status(400).json({
@@ -18262,7 +17250,7 @@ async function registerRoutes(app3) {
       const completionData = {
         userId,
         completedAt: new Date(completionDate),
-        videoProgress: videoProgress3,
+        videoProgress: videoProgress2,
         confirmed: true,
         certificateGenerated: false
       };
@@ -18276,7 +17264,7 @@ async function registerRoutes(app3) {
             email: `${user.username}@localcooks.ca`,
             // Placeholder email since User type doesn't have email
             completionDate: new Date(completionDate),
-            videoProgress: videoProgress3
+            videoProgress: videoProgress2
           });
         } catch (afsError) {
           console.error("Always Food Safe API error:", afsError);
@@ -18394,7 +17382,10 @@ async function registerRoutes(app3) {
         return res.status(400).json({ message: "Verification token is required" });
       }
       const { pool: pool3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const result = await pool3.query("SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()", [token]);
+      const result = await pool3.query(
+        "SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()",
+        [token]
+      );
       if (result.rows.length === 0) {
         return res.status(400).json({ message: "Invalid or expired verification token" });
       }
@@ -18422,7 +17413,32 @@ async function registerRoutes(app3) {
         console.log(`Promo email request - User ${req.user.id} is not admin (role: ${req.user.role})`);
         return res.status(403).json({ error: "Admin access required" });
       }
-      const { email, customEmails, emailMode, recipients, promoCode, promoCodeLabel, message, customMessage, greeting, buttonText, orderUrl, subject, previewText, designSystem, isPremium, sections, header, footer, usageSteps, emailContainer, dividers, promoCodeStyling, promoStyle, customDesign } = req.body;
+      const {
+        email,
+        customEmails,
+        emailMode,
+        recipients,
+        promoCode,
+        promoCodeLabel,
+        message,
+        customMessage,
+        greeting,
+        buttonText,
+        orderUrl,
+        subject,
+        previewText,
+        designSystem,
+        isPremium,
+        sections,
+        header,
+        footer,
+        usageSteps,
+        emailContainer,
+        dividers,
+        promoCodeStyling,
+        promoStyle,
+        customDesign
+      } = req.body;
       const messageContent = customMessage || message;
       console.log("Promo email request - Auth info:", {
         sessionUserId: req.user?.id,
@@ -18431,7 +17447,9 @@ async function registerRoutes(app3) {
       });
       let targetEmails = [];
       if (recipients && Array.isArray(recipients) && recipients.length > 0) {
-        targetEmails = recipients.map((recipient) => typeof recipient === "string" ? recipient : recipient.email).filter(Boolean);
+        targetEmails = recipients.map(
+          (recipient) => typeof recipient === "string" ? recipient : recipient.email
+        ).filter(Boolean);
       } else if (emailMode === "custom" && customEmails && Array.isArray(customEmails)) {
         targetEmails = customEmails;
       } else if (email) {
@@ -18606,7 +17624,17 @@ async function registerRoutes(app3) {
         console.log(`Test email request - User ${req.user.id} is not admin (role: ${req.user.role})`);
         return res.status(403).json({ error: "Admin access required" });
       }
-      const { email, subject, previewText, sections, header, footer, usageSteps, emailContainer, customDesign } = req.body;
+      const {
+        email,
+        subject,
+        previewText,
+        sections,
+        header,
+        footer,
+        usageSteps,
+        emailContainer,
+        customDesign
+      } = req.body;
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
       }
@@ -18740,7 +17768,7 @@ async function registerRoutes(app3) {
   });
   app3.post("/api/unsubscribe", async (req, res) => {
     try {
-      const { email, reason, feedback, timestamp: timestamp3 } = req.body;
+      const { email, reason, feedback, timestamp: timestamp2 } = req.body;
       if (!email) {
         return res.status(400).json({
           success: false,
@@ -18775,7 +17803,7 @@ async function registerRoutes(app3) {
               <div style="margin: 20px 0;">
                 <h3 style="color: #374151; margin-bottom: 10px;">Request Details:</h3>
                 <ul style="color: #6b7280; line-height: 1.6;">
-                  <li><strong>Timestamp:</strong> ${new Date(timestamp3).toLocaleString()}</li>
+                  <li><strong>Timestamp:</strong> ${new Date(timestamp2).toLocaleString()}</li>
                   <li><strong>Reason:</strong> ${reason || "Not specified"}</li>
                   ${feedback ? `<li><strong>Feedback:</strong> ${feedback}</li>` : ""}
                 </ul>
@@ -18802,7 +17830,7 @@ async function registerRoutes(app3) {
           New unsubscribe request received:
           
           Email: ${email}
-          Timestamp: ${new Date(timestamp3).toLocaleString()}
+          Timestamp: ${new Date(timestamp2).toLocaleString()}
           Reason: ${reason || "Not specified"}
           ${feedback ? `Feedback: ${feedback}` : ""}
           
@@ -18951,7 +17979,9 @@ async function registerRoutes(app3) {
           "BETA",
           "TM RACING"
         ];
-        return !excludedMakes.some((excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase()));
+        return !excludedMakes.some(
+          (excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase())
+        );
       });
       const formattedMakes = fourWheeledMakes.map((make) => ({
         id: make.Make_ID,
@@ -19099,7 +18129,9 @@ async function registerRoutes(app3) {
           "BETA",
           "TM RACING"
         ];
-        return !excludedMakes.some((excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase()));
+        return !excludedMakes.some(
+          (excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase())
+        );
       });
       const formattedMakes = fourWheeledMakes.map((make) => ({
         id: make.Make_ID,
@@ -19177,7 +18209,9 @@ async function registerRoutes(app3) {
           "BETA",
           "TM RACING"
         ];
-        return !excludedMakes.some((excluded) => make.MakeName.toUpperCase().includes(excluded) || excluded.includes(make.MakeName.toUpperCase()));
+        return !excludedMakes.some(
+          (excluded) => make.MakeName.toUpperCase().includes(excluded) || excluded.includes(make.MakeName.toUpperCase())
+        );
       });
       const formattedMakes = fourWheeledMakes.map((make) => ({
         id: make.MakeId,
@@ -19402,8 +18436,7 @@ async function registerRoutes(app3) {
           const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeIdYear/${makeId}/${year}?format=json`, {
             signal: AbortSignal.timeout(5e3)
           });
-          if (!response.ok)
-            return false;
+          if (!response.ok) return false;
           const data = await response.json();
           return data && data.Results && data.Results.length > 0;
         } catch {
@@ -19433,10 +18466,12 @@ async function registerRoutes(app3) {
         1995,
         1990,
         1985
-      ].filter((year, index, arr) => (
-        // Remove duplicates and keep only reasonable years
-        arr.indexOf(year) === index && year >= 1980 && year <= currentPlusOne
-      )).sort((a, b) => b - a);
+      ].filter(
+        (year, index, arr) => (
+          // Remove duplicates and keep only reasonable years
+          arr.indexOf(year) === index && year >= 1980 && year <= currentPlusOne
+        )
+      ).sort((a, b) => b - a);
       let earliestFoundYear = currentPlusOne;
       let latestFoundYear = 0;
       let foundCount = 0;
@@ -19524,9 +18559,9 @@ async function registerRoutes(app3) {
         return res.status(400).json({ error: "Minimum booking window hours must be between 0 and 168 hours" });
       }
       const { db: db3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const { locations: locations3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { locations: locations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: eq5, and: and5, sql } = await import("drizzle-orm");
-      const locationResults = await db3.select().from(locations3).where(and5(eq5(locations3.id, locationIdNum), eq5(locations3.managerId, user.id)));
+      const locationResults = await db3.select().from(locations2).where(and5(eq5(locations2.id, locationIdNum), eq5(locations2.managerId, user.id)));
       const location = locationResults[0];
       if (!location) {
         console.error("[PUT] Location not found or access denied:", {
@@ -19620,7 +18655,7 @@ async function registerRoutes(app3) {
       console.log("[PUT] Updates object logoUrl value:", updates.logoUrl);
       console.log("[PUT] Updates object has logo_url?", "logo_url" in updates);
       console.log("[PUT] Updates object logo_url value:", updates.logo_url);
-      const updatedResults = await db3.update(locations3).set(updates).where(eq5(locations3.id, locationIdNum)).returning();
+      const updatedResults = await db3.update(locations2).set(updates).where(eq5(locations2.id, locationIdNum)).returning();
       console.log("[PUT] Updated location from DB (full object):", JSON.stringify(updatedResults[0], null, 2));
       console.log("[PUT] Updated location logoUrl (camelCase):", updatedResults[0].logoUrl);
       console.log("[PUT] Updated location logo_url (snake_case):", updatedResults[0].logo_url);
@@ -19689,15 +18724,15 @@ async function registerRoutes(app3) {
   app3.get("/api/manager/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
     try {
       const user = req.neonUser;
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      console.log("[GET] /api/manager/locations - Raw locations from DB:", locations3.map((loc) => ({
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      console.log("[GET] /api/manager/locations - Raw locations from DB:", locations2.map((loc) => ({
         id: loc.id,
         name: loc.name,
         logoUrl: loc.logoUrl,
         logo_url: loc.logo_url,
         allKeys: Object.keys(loc)
       })));
-      const mappedLocations = locations3.map((loc) => ({
+      const mappedLocations = locations2.map((loc) => ({
         ...loc,
         notificationEmail: loc.notificationEmail || loc.notification_email || null,
         notificationPhone: loc.notificationPhone || loc.notification_phone || null,
@@ -19714,12 +18749,15 @@ async function registerRoutes(app3) {
         kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt || loc.kitchen_license_approved_at || null,
         kitchenLicenseFeedback: loc.kitchenLicenseFeedback || loc.kitchen_license_feedback || null
       }));
-      console.log("[GET] /api/manager/locations - Mapped locations:", mappedLocations.map((loc) => ({
-        id: loc.id,
-        name: loc.name,
-        logoUrl: loc.logoUrl,
-        notificationEmail: loc.notificationEmail || "not set"
-      })));
+      console.log(
+        "[GET] /api/manager/locations - Mapped locations:",
+        mappedLocations.map((loc) => ({
+          id: loc.id,
+          name: loc.name,
+          logoUrl: loc.logoUrl,
+          notificationEmail: loc.notificationEmail || "not set"
+        }))
+      );
       res.json(mappedLocations);
     } catch (error) {
       console.error("Error fetching locations:", error);
@@ -19776,19 +18814,24 @@ async function registerRoutes(app3) {
       if (isNaN(locationId) || locationId <= 0) {
         return res.status(400).json({ error: "Invalid location ID" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this location" });
       }
-      const { name, address, notificationEmail, notificationPhone, kitchenLicenseUrl, kitchenLicenseStatus, kitchenLicenseExpiry } = req.body;
+      const {
+        name,
+        address,
+        notificationEmail,
+        notificationPhone,
+        kitchenLicenseUrl,
+        kitchenLicenseStatus,
+        kitchenLicenseExpiry
+      } = req.body;
       const updates = {};
-      if (name !== void 0)
-        updates.name = name;
-      if (address !== void 0)
-        updates.address = address;
-      if (notificationEmail !== void 0)
-        updates.notificationEmail = notificationEmail || null;
+      if (name !== void 0) updates.name = name;
+      if (address !== void 0) updates.address = address;
+      if (notificationEmail !== void 0) updates.notificationEmail = notificationEmail || null;
       if (notificationPhone !== void 0) {
         if (notificationPhone && notificationPhone.trim() !== "") {
           const normalized = normalizePhoneForStorage(notificationPhone);
@@ -19857,15 +18900,21 @@ async function registerRoutes(app3) {
       if (stepId === void 0 || stepId === null) {
         return res.status(400).json({ error: "stepId is required" });
       }
-      const result = await pool.query("SELECT manager_onboarding_steps_completed FROM users WHERE id = $1", [user.id]);
+      const result = await pool.query(
+        "SELECT manager_onboarding_steps_completed FROM users WHERE id = $1",
+        [user.id]
+      );
       const currentSteps = result.rows[0]?.manager_onboarding_steps_completed || {};
       const updatedSteps = {
         ...currentSteps,
         [`step_${stepId}`]: true
       };
-      await pool.query(`UPDATE users 
+      await pool.query(
+        `UPDATE users 
          SET manager_onboarding_steps_completed = $1 
-         WHERE id = $2`, [JSON.stringify(updatedSteps), user.id]);
+         WHERE id = $2`,
+        [JSON.stringify(updatedSteps), user.id]
+      );
       res.json({ success: true, stepsCompleted: updatedSteps });
     } catch (error) {
       console.error("Error tracking onboarding step:", error);
@@ -19879,10 +18928,13 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database not available" });
       }
-      await pool.query(`UPDATE users 
+      await pool.query(
+        `UPDATE users 
          SET manager_onboarding_completed = $1, 
              manager_onboarding_skipped = $2 
-         WHERE id = $3`, [!skipped, !!skipped, user.id]);
+         WHERE id = $3`,
+        [!skipped, !!skipped, user.id]
+      );
       res.json({ success: true });
     } catch (error) {
       console.error("Error completing onboarding:", error);
@@ -19899,7 +18951,10 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const userResult = await pool.query("SELECT stripe_connect_account_id FROM users WHERE id = $1", [managerId]);
+      const userResult = await pool.query(
+        "SELECT stripe_connect_account_id FROM users WHERE id = $1",
+        [managerId]
+      );
       if (userResult.rows[0]?.stripe_connect_account_id) {
         return res.status(400).json({
           error: "Stripe Connect account already exists",
@@ -19913,7 +18968,10 @@ async function registerRoutes(app3) {
         country: "CA"
         // Canada
       });
-      await pool.query("UPDATE users SET stripe_connect_account_id = $1, stripe_connect_onboarding_status = $2 WHERE id = $3", [accountId, "in_progress", managerId]);
+      await pool.query(
+        "UPDATE users SET stripe_connect_account_id = $1, stripe_connect_onboarding_status = $2 WHERE id = $3",
+        [accountId, "in_progress", managerId]
+      );
       res.json({ accountId });
     } catch (error) {
       console.error("Error creating Connect account:", error);
@@ -19926,7 +18984,10 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const userResult = await pool.query("SELECT stripe_connect_account_id FROM users WHERE id = $1", [managerId]);
+      const userResult = await pool.query(
+        "SELECT stripe_connect_account_id FROM users WHERE id = $1",
+        [managerId]
+      );
       if (!userResult.rows[0]?.stripe_connect_account_id) {
         return res.status(400).json({ error: "Stripe Connect account not found. Please create one first." });
       }
@@ -19942,7 +19003,11 @@ async function registerRoutes(app3) {
         baseUrl = "http://localhost:5173";
       }
       const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-      const { url } = await createAccountLink2(accountId, `${baseUrl}/manager/stripe-connect/refresh`, `${baseUrl}/manager/stripe-connect/return`);
+      const { url } = await createAccountLink2(
+        accountId,
+        `${baseUrl}/manager/stripe-connect/refresh`,
+        `${baseUrl}/manager/stripe-connect/return`
+      );
       res.json({ url });
     } catch (error) {
       console.error("Error creating onboarding link:", error);
@@ -19955,7 +19020,10 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const userResult = await pool.query("SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1", [managerId]);
+      const userResult = await pool.query(
+        "SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1",
+        [managerId]
+      );
       if (!userResult.rows[0]?.stripe_connect_account_id) {
         return res.json({
           hasAccount: false,
@@ -19968,9 +19036,15 @@ async function registerRoutes(app3) {
       const ready = await isAccountReady2(accountId);
       const isComplete = ready || accountStatus.detailsSubmitted && accountStatus.chargesEnabled;
       if (isComplete && userResult.rows[0].stripe_connect_onboarding_status !== "complete") {
-        await pool.query("UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2", ["complete", managerId]);
+        await pool.query(
+          "UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2",
+          ["complete", managerId]
+        );
       } else if (!isComplete && userResult.rows[0].stripe_connect_onboarding_status === "complete") {
-        await pool.query("UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2", ["in_progress", managerId]);
+        await pool.query(
+          "UPDATE users SET stripe_connect_onboarding_status = $1 WHERE id = $2",
+          ["in_progress", managerId]
+        );
       }
       res.json({
         hasAccount: true,
@@ -19990,7 +19064,10 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const userResult = await pool.query("SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1", [managerId]);
+      const userResult = await pool.query(
+        "SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1",
+        [managerId]
+      );
       if (!userResult.rows[0]?.stripe_connect_account_id) {
         return res.status(400).json({ error: "Stripe Connect account not found. Please create a Stripe Connect account first." });
       }
@@ -20008,7 +19085,11 @@ async function registerRoutes(app3) {
           baseUrl = "http://localhost:5173";
         }
         const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-        const { url: url2 } = await createAccountLink2(accountId, `${baseUrl}/manager/stripe-connect/refresh`, `${baseUrl}/manager/stripe-connect/return`);
+        const { url: url2 } = await createAccountLink2(
+          accountId,
+          `${baseUrl}/manager/stripe-connect/refresh`,
+          `${baseUrl}/manager/stripe-connect/return`
+        );
         return { url: url2 };
       };
       const { isAccountReady: isAccountReady2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
@@ -20039,7 +19120,11 @@ async function registerRoutes(app3) {
             baseUrl = "http://localhost:5173";
           }
           const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-          const { url } = await createAccountLink2(accountId, `${baseUrl}/manager/stripe-connect/refresh`, `${baseUrl}/manager/stripe-connect/return`);
+          const { url } = await createAccountLink2(
+            accountId,
+            `${baseUrl}/manager/stripe-connect/refresh`,
+            `${baseUrl}/manager/stripe-connect/return`
+          );
           return res.json({
             url,
             requiresOnboarding: true,
@@ -20158,7 +19243,11 @@ async function registerRoutes(app3) {
       if (chargeId) {
         updateParams.stripeChargeId = chargeId;
       }
-      const updatedTransaction = await updateTransactionBySessionId2(session2.id, updateParams, pool);
+      const updatedTransaction = await updateTransactionBySessionId2(
+        session2.id,
+        updateParams,
+        pool
+      );
       if (updatedTransaction) {
         console.log(`[Webhook] Updated transaction for Checkout session ${session2.id}:`, {
           paymentIntentId,
@@ -20419,7 +19508,13 @@ async function registerRoutes(app3) {
         }
       }
       const { getCompleteRevenueMetrics: getCompleteRevenueMetrics2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-      const metrics = await getCompleteRevenueMetrics2(managerId, pool, startDate ? new Date(startDate) : void 0, endDate ? new Date(endDate) : void 0, locationId ? parseInt(locationId) : void 0);
+      const metrics = await getCompleteRevenueMetrics2(
+        managerId,
+        pool,
+        startDate ? new Date(startDate) : void 0,
+        endDate ? new Date(endDate) : void 0,
+        locationId ? parseInt(locationId) : void 0
+      );
       if (!metrics) {
         console.error(`[Revenue] getCompleteRevenueMetrics returned null/undefined for manager ${managerId}`);
         return res.status(500).json({ error: "Failed to calculate revenue metrics" });
@@ -20467,11 +19562,21 @@ async function registerRoutes(app3) {
       let revenueByLocation;
       try {
         const { getRevenueByLocationFromTransactions: getRevenueByLocationFromTransactions2 } = await Promise.resolve().then(() => (init_revenue_service_v2(), revenue_service_v2_exports));
-        revenueByLocation = await getRevenueByLocationFromTransactions2(managerId, pool, startDate ? new Date(startDate) : void 0, endDate ? new Date(endDate) : void 0);
+        revenueByLocation = await getRevenueByLocationFromTransactions2(
+          managerId,
+          pool,
+          startDate ? new Date(startDate) : void 0,
+          endDate ? new Date(endDate) : void 0
+        );
       } catch (error) {
         console.warn("[Revenue] Falling back to legacy getRevenueByLocation:", error);
         const { getRevenueByLocation: getRevenueByLocation2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-        revenueByLocation = await getRevenueByLocation2(managerId, pool, startDate ? new Date(startDate) : void 0, endDate ? new Date(endDate) : void 0);
+        revenueByLocation = await getRevenueByLocation2(
+          managerId,
+          pool,
+          startDate ? new Date(startDate) : void 0,
+          endDate ? new Date(endDate) : void 0
+        );
       }
       res.json(revenueByLocation.map((loc) => ({
         ...loc,
@@ -20597,11 +19702,21 @@ async function registerRoutes(app3) {
       let revenueByDate;
       try {
         const { getRevenueByDateFromTransactions: getRevenueByDateFromTransactions2 } = await Promise.resolve().then(() => (init_revenue_service_v2(), revenue_service_v2_exports));
-        revenueByDate = await getRevenueByDateFromTransactions2(managerId, pool, start, end);
+        revenueByDate = await getRevenueByDateFromTransactions2(
+          managerId,
+          pool,
+          start,
+          end
+        );
       } catch (error) {
         console.warn("[Revenue] Falling back to legacy getRevenueByDate:", error);
         const { getRevenueByDate: getRevenueByDate2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-        revenueByDate = await getRevenueByDate2(managerId, pool, start, end);
+        revenueByDate = await getRevenueByDate2(
+          managerId,
+          pool,
+          start,
+          end
+        );
       }
       res.json({
         period,
@@ -20699,7 +19814,15 @@ async function registerRoutes(app3) {
       if (!usePaymentTransactions) {
         console.log("[Revenue] Using legacy getTransactionHistory method");
         const { getTransactionHistory: getTransactionHistory2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-        transactions = await getTransactionHistory2(managerId, pool, startDate ? new Date(startDate) : void 0, endDate ? new Date(endDate) : void 0, locationId ? parseInt(locationId) : void 0, parseInt(limit), parseInt(offset));
+        transactions = await getTransactionHistory2(
+          managerId,
+          pool,
+          startDate ? new Date(startDate) : void 0,
+          endDate ? new Date(endDate) : void 0,
+          locationId ? parseInt(locationId) : void 0,
+          parseInt(limit),
+          parseInt(offset)
+        );
       }
       if (paymentStatus) {
         transactions = transactions.filter((t) => t.paymentStatus === paymentStatus);
@@ -20866,7 +19989,16 @@ async function registerRoutes(app3) {
         WHERE eb.kitchen_booking_id = $1
       `, [bookingId]);
       const { generateInvoicePDF: generateInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
-      const pdfBuffer = await generateInvoicePDF2(booking, chef, { name: booking.kitchen_name }, { name: booking.location_name }, storageResult.rows, equipmentResult.rows, booking.payment_intent_id, pool);
+      const pdfBuffer = await generateInvoicePDF2(
+        booking,
+        chef,
+        { name: booking.kitchen_name },
+        { name: booking.location_name },
+        storageResult.rows,
+        equipmentResult.rows,
+        booking.payment_intent_id,
+        pool
+      );
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="invoice-${bookingId}.pdf"`);
       res.send(pdfBuffer);
@@ -20882,7 +20014,10 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const userResult = await pool.query("SELECT stripe_connect_account_id FROM users WHERE id = $1", [managerId]);
+      const userResult = await pool.query(
+        "SELECT stripe_connect_account_id FROM users WHERE id = $1",
+        [managerId]
+      );
       if (!userResult.rows[0]?.stripe_connect_account_id) {
         return res.json({
           payouts: [],
@@ -20920,7 +20055,10 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const userResult = await pool.query("SELECT stripe_connect_account_id FROM users WHERE id = $1", [managerId]);
+      const userResult = await pool.query(
+        "SELECT stripe_connect_account_id FROM users WHERE id = $1",
+        [managerId]
+      );
       if (!userResult.rows[0]?.stripe_connect_account_id) {
         return res.status(404).json({ error: "No Stripe Connect account linked" });
       }
@@ -20934,7 +20072,12 @@ async function registerRoutes(app3) {
       const periodStart = new Date(payoutDate);
       periodStart.setDate(periodStart.getDate() - 7);
       const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-      const transactions = await getBalanceTransactions2(accountId, periodStart, payoutDate, 100);
+      const transactions = await getBalanceTransactions2(
+        accountId,
+        periodStart,
+        payoutDate,
+        100
+      );
       const bookingsResult = await pool.query(`
         SELECT 
           kb.id,
@@ -21009,7 +20152,10 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const userResult = await pool.query("SELECT id, username, stripe_connect_account_id FROM users WHERE id = $1", [managerId]);
+      const userResult = await pool.query(
+        "SELECT id, username, stripe_connect_account_id FROM users WHERE id = $1",
+        [managerId]
+      );
       if (!userResult.rows[0]?.stripe_connect_account_id) {
         return res.status(404).json({ error: "No Stripe Connect account linked" });
       }
@@ -21048,9 +20194,22 @@ async function registerRoutes(app3) {
         ORDER BY kb.booking_date DESC
       `, [managerId, periodStart.toISOString().split("T")[0], payoutDate.toISOString().split("T")[0]]);
       const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-      const transactions = await getBalanceTransactions2(accountId, periodStart, payoutDate, 100);
+      const transactions = await getBalanceTransactions2(
+        accountId,
+        periodStart,
+        payoutDate,
+        100
+      );
       const { generatePayoutStatementPDF: generatePayoutStatementPDF2 } = await Promise.resolve().then(() => (init_payout_statement_service(), payout_statement_service_exports));
-      const pdfBuffer = await generatePayoutStatementPDF2(managerId, manager.username || "Manager", manager.email || "", payout, transactions, bookingsResult.rows, pool);
+      const pdfBuffer = await generatePayoutStatementPDF2(
+        managerId,
+        manager.username || "Manager",
+        manager.email || "",
+        payout,
+        transactions,
+        bookingsResult.rows,
+        pool
+      );
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="payout-statement-${payoutId.substring(3)}.pdf"`);
       res.send(pdfBuffer);
@@ -21066,13 +20225,13 @@ async function registerRoutes(app3) {
       if (isNaN(locationId) || locationId <= 0) {
         return res.status(400).json({ error: "Invalid location ID" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this location" });
       }
-      const kitchens3 = await firebaseStorage.getKitchensByLocation(locationId);
-      res.json(kitchens3);
+      const kitchens2 = await firebaseStorage.getKitchensByLocation(locationId);
+      res.json(kitchens2);
     } catch (error) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
@@ -21089,8 +20248,8 @@ async function registerRoutes(app3) {
       if (isNaN(locationIdNum) || locationIdNum <= 0) {
         return res.status(400).json({ error: "Invalid location ID format" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === locationIdNum);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === locationIdNum);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this location" });
       }
@@ -21128,8 +20287,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21166,8 +20325,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21267,17 +20426,15 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
       const { name, description } = req.body;
       const updates = {};
-      if (name !== void 0)
-        updates.name = name;
-      if (description !== void 0)
-        updates.description = description || null;
+      if (name !== void 0) updates.name = name;
+      if (description !== void 0) updates.description = description || null;
       const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
       console.log(`\u2705 Kitchen ${kitchenId} details updated by manager ${user.id}`);
       res.json(updated);
@@ -21297,8 +20454,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21323,8 +20480,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21345,12 +20502,9 @@ async function registerRoutes(app3) {
       if (hourlyRate !== void 0) {
         pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
       }
-      if (currency !== void 0)
-        pricing.currency = currency;
-      if (minimumBookingHours !== void 0)
-        pricing.minimumBookingHours = minimumBookingHours;
-      if (pricingModel !== void 0)
-        pricing.pricingModel = pricingModel;
+      if (currency !== void 0) pricing.currency = currency;
+      if (minimumBookingHours !== void 0) pricing.minimumBookingHours = minimumBookingHours;
+      if (pricingModel !== void 0) pricing.pricingModel = pricingModel;
       const updated = await firebaseStorage.updateKitchenPricing(kitchenId, pricing);
       console.log(`\u2705 Kitchen ${kitchenId} pricing updated by manager ${user.id}`);
       res.json(updated);
@@ -21370,8 +20524,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21397,8 +20551,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this listing" });
       }
@@ -21419,8 +20573,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21453,8 +20607,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this listing" });
       }
@@ -21481,8 +20635,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this listing" });
       }
@@ -21505,8 +20659,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21532,8 +20686,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this listing" });
       }
@@ -21554,8 +20708,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
@@ -21596,8 +20750,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this listing" });
       }
@@ -21624,8 +20778,8 @@ async function registerRoutes(app3) {
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      const locations3 = await firebaseStorage.getLocationsByManager(user.id);
-      const hasAccess = locations3.some((loc) => loc.id === kitchen.locationId);
+      const locations2 = await firebaseStorage.getLocationsByManager(user.id);
+      const hasAccess = locations2.some((loc) => loc.id === kitchen.locationId);
       if (!hasAccess) {
         return res.status(403).json({ error: "Access denied to this listing" });
       }
@@ -21727,12 +20881,15 @@ async function registerRoutes(app3) {
       if (!pool) {
         return res.status(500).json({ error: "Database not available" });
       }
-      const result = await pool.query(`SELECT 
+      const result = await pool.query(
+        `SELECT 
           COALESCE((manager_profile_data->>'profileImageUrl')::text, NULL) as "profileImageUrl",
           COALESCE((manager_profile_data->>'phone')::text, NULL) as phone,
           COALESCE((manager_profile_data->>'displayName')::text, NULL) as "displayName"
         FROM users 
-        WHERE id = $1`, [user.id]);
+        WHERE id = $1`,
+        [user.id]
+      );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: "Manager profile not found" });
       }
@@ -21773,8 +20930,7 @@ async function registerRoutes(app3) {
         console.log("Column check result:", alterError.message);
       }
       const profileUpdates = {};
-      if (displayName !== void 0)
-        profileUpdates.displayName = displayName;
+      if (displayName !== void 0) profileUpdates.displayName = displayName;
       if (phone !== void 0) {
         if (phone && phone.trim() !== "") {
           const normalized = normalizePhoneForStorage(phone);
@@ -21788,8 +20944,7 @@ async function registerRoutes(app3) {
           profileUpdates.phone = null;
         }
       }
-      if (profileImageUrl !== void 0)
-        profileUpdates.profileImageUrl = profileImageUrl;
+      if (profileImageUrl !== void 0) profileUpdates.profileImageUrl = profileImageUrl;
       if (username !== void 0 && username !== user.username) {
         const existingUser = await firebaseStorage.getUserByUsername(username);
         if (existingUser && existingUser.id !== user.id) {
@@ -21798,17 +20953,23 @@ async function registerRoutes(app3) {
         await firebaseStorage.updateUser(user.id, { username });
       }
       if (Object.keys(profileUpdates).length > 0) {
-        await pool.query(`UPDATE users 
+        await pool.query(
+          `UPDATE users 
            SET manager_profile_data = COALESCE(manager_profile_data, '{}'::jsonb) || $1::jsonb
            WHERE id = $2
-           RETURNING manager_profile_data`, [JSON.stringify(profileUpdates), user.id]);
+           RETURNING manager_profile_data`,
+          [JSON.stringify(profileUpdates), user.id]
+        );
       }
-      const result = await pool.query(`SELECT 
+      const result = await pool.query(
+        `SELECT 
           COALESCE((manager_profile_data->>'profileImageUrl')::text, NULL) as "profileImageUrl",
           COALESCE((manager_profile_data->>'phone')::text, NULL) as phone,
           COALESCE((manager_profile_data->>'displayName')::text, NULL) as "displayName"
         FROM users 
-        WHERE id = $1`, [user.id]);
+        WHERE id = $1`,
+        [user.id]
+      );
       res.json({
         profileImageUrl: result.rows[0]?.profileImageUrl || null,
         phone: result.rows[0]?.phone || null,
@@ -21832,7 +20993,7 @@ async function registerRoutes(app3) {
   app3.get("/api/manager/portal-applications", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
     try {
       const user = req.neonUser;
-      const { users: users3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { users: users2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       console.log(`[Manager Portal Applications] Fetching for manager ID: ${user.id}`);
       const managedLocations = await db.select().from(locations).where(eq4(locations.managerId, user.id));
       console.log(`[Manager Portal Applications] Found ${managedLocations.length} managed locations`);
@@ -21842,13 +21003,15 @@ async function registerRoutes(app3) {
       }
       const locationIds = managedLocations.map((loc) => loc.id);
       console.log(`[Manager Portal Applications] Location IDs: ${locationIds.join(", ")}`);
-      const applications3 = await db.select({
+      const applications2 = await db.select({
         application: portalUserApplications,
         location: locations,
-        user: users3
-      }).from(portalUserApplications).innerJoin(locations, eq4(portalUserApplications.locationId, locations.id)).innerJoin(users3, eq4(portalUserApplications.userId, users3.id)).where(inArray2(portalUserApplications.locationId, locationIds));
-      console.log(`[Manager Portal Applications] Found ${applications3.length} total applications`);
-      const formatted = applications3.map((app4) => ({
+        user: users2
+      }).from(portalUserApplications).innerJoin(locations, eq4(portalUserApplications.locationId, locations.id)).innerJoin(users2, eq4(portalUserApplications.userId, users2.id)).where(
+        inArray2(portalUserApplications.locationId, locationIds)
+      );
+      console.log(`[Manager Portal Applications] Found ${applications2.length} total applications`);
+      const formatted = applications2.map((app4) => ({
         id: app4.application.id,
         userId: app4.application.userId,
         locationId: app4.application.locationId,
@@ -21892,7 +21055,7 @@ async function registerRoutes(app3) {
       if (!status || !["approved", "rejected"].includes(status)) {
         return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
       }
-      const { users: users3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { users: users2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const applicationRecords = await db.select({
         application: portalUserApplications,
         location: locations
@@ -21913,7 +21076,12 @@ async function registerRoutes(app3) {
         reviewedAt: /* @__PURE__ */ new Date()
       }).where(eq4(portalUserApplications.id, applicationId)).returning();
       if (status === "approved") {
-        const existingAccess = await db.select().from(portalUserLocationAccess).where(and4(eq4(portalUserLocationAccess.portalUserId, application.userId), eq4(portalUserLocationAccess.locationId, application.locationId))).limit(1);
+        const existingAccess = await db.select().from(portalUserLocationAccess).where(
+          and4(
+            eq4(portalUserLocationAccess.portalUserId, application.userId),
+            eq4(portalUserLocationAccess.locationId, application.locationId)
+          )
+        ).limit(1);
         if (existingAccess.length === 0) {
           await db.insert(portalUserLocationAccess).values({
             portalUserId: application.userId,
@@ -21984,7 +21152,12 @@ If you have questions, please contact the location manager.`,
       if (!status || !["approved", "rejected"].includes(status)) {
         return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
       }
-      const updated = await firebaseStorage.updateChefLocationProfileStatus(profileId, status, user.id, reviewFeedback);
+      const updated = await firebaseStorage.updateChefLocationProfileStatus(
+        profileId,
+        status,
+        user.id,
+        reviewFeedback
+      );
       if (status === "approved") {
         try {
           const location = await firebaseStorage.getLocationById(updated.locationId);
@@ -22036,14 +21209,24 @@ If you have questions, please contact the location manager.`,
       }
       await firebaseStorage.revokeChefLocationAccess(chefId, locationId);
       try {
-        const profiles = await db.select().from(chefLocationProfiles).where(and4(eq4(chefLocationProfiles.chefId, chefId), eq4(chefLocationProfiles.locationId, locationId)));
+        const profiles = await db.select().from(chefLocationProfiles).where(
+          and4(
+            eq4(chefLocationProfiles.chefId, chefId),
+            eq4(chefLocationProfiles.locationId, locationId)
+          )
+        );
         if (profiles.length > 0) {
           await db.update(chefLocationProfiles).set({
             status: "rejected",
             reviewedBy: user.id,
             reviewedAt: /* @__PURE__ */ new Date(),
             reviewFeedback: "Access revoked by manager"
-          }).where(and4(eq4(chefLocationProfiles.chefId, chefId), eq4(chefLocationProfiles.locationId, locationId)));
+          }).where(
+            and4(
+              eq4(chefLocationProfiles.chefId, chefId),
+              eq4(chefLocationProfiles.locationId, locationId)
+            )
+          );
         }
       } catch (error) {
         console.log("Note: Could not update chef profile status:", error instanceof Error ? error.message : error);
@@ -22087,15 +21270,18 @@ If you have questions, please contact the location manager.`,
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "You don't have permission to view this booking" });
       }
-      const storageBookings3 = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
-      const equipmentBookings3 = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+      const storageBookings2 = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
+      const equipmentBookings2 = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
       const chef = booking.chefId ? await storage2.getUser(booking.chefId) : null;
       let chefFullName = null;
       let chefEmail = null;
       let chefPhone = null;
       if (chef && booking.chefId) {
         try {
-          const appResult = await pool.query("SELECT full_name, email, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [booking.chefId]);
+          const appResult = await pool.query(
+            "SELECT full_name, email, phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+            [booking.chefId]
+          );
           if (appResult.rows.length > 0) {
             chefFullName = appResult.rows[0].full_name;
             chefEmail = appResult.rows[0].email;
@@ -22116,8 +21302,8 @@ If you have questions, please contact the location manager.`,
           email: chefEmail,
           phone: chefPhone
         } : null,
-        storageBookings: storageBookings3,
-        equipmentBookings: equipmentBookings3
+        storageBookings: storageBookings2,
+        equipmentBookings: equipmentBookings2
       });
     } catch (error) {
       console.error("Error fetching booking details:", error);
@@ -22165,7 +21351,10 @@ If you have questions, please contact the location manager.`,
             if (pool && booking.chefId) {
               chefPhone = await getChefPhone(booking.chefId, pool);
               try {
-                const appResult = await pool.query("SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [booking.chefId]);
+                const appResult = await pool.query(
+                  "SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+                  [booking.chefId]
+                );
                 if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
                   chefName = appResult.rows[0].full_name;
                 }
@@ -22665,7 +21854,9 @@ If you have questions, please contact the location manager.`,
         return res.status(400).json({ error: "Invalid kitchen ID" });
       }
       const allListings = await firebaseStorage.getStorageListingsByKitchen(kitchenId);
-      const visibleListings = allListings.filter((listing) => (listing.status === "approved" || listing.status === "active") && listing.isActive === true);
+      const visibleListings = allListings.filter(
+        (listing) => (listing.status === "approved" || listing.status === "active") && listing.isActive === true
+      );
       console.log(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
       res.json(visibleListings);
     } catch (error) {
@@ -22680,7 +21871,9 @@ If you have questions, please contact the location manager.`,
         return res.status(400).json({ error: "Invalid kitchen ID" });
       }
       const allListings = await firebaseStorage.getEquipmentListingsByKitchen(kitchenId);
-      const visibleListings = allListings.filter((listing) => (listing.status === "approved" || listing.status === "active") && listing.isActive === true);
+      const visibleListings = allListings.filter(
+        (listing) => (listing.status === "approved" || listing.status === "active") && listing.isActive === true
+      );
       const includedEquipment = visibleListings.filter((l) => l.availabilityType === "included");
       const rentalEquipment = visibleListings.filter((l) => l.availabilityType === "rental");
       console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
@@ -22702,8 +21895,12 @@ If you have questions, please contact the location manager.`,
         const isActive = kitchen.isActive !== void 0 ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      const locationIdsWithKitchens = new Set(activeKitchens.map((kitchen) => kitchen.locationId || kitchen.location_id).filter(Boolean));
-      const locationsWithKitchens = allLocations.filter((location) => locationIdsWithKitchens.has(location.id));
+      const locationIdsWithKitchens = new Set(
+        activeKitchens.map((kitchen) => kitchen.locationId || kitchen.location_id).filter(Boolean)
+      );
+      const locationsWithKitchens = allLocations.filter(
+        (location) => locationIdsWithKitchens.has(location.id)
+      );
       console.log(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
       res.json(locationsWithKitchens);
     } catch (error) {
@@ -22714,11 +21911,11 @@ If you have questions, please contact the location manager.`,
   app3.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
-      const { date: date3 } = req.query;
-      if (!date3) {
+      const { date: date2 } = req.query;
+      if (!date2) {
         return res.status(400).json({ error: "Date parameter is required" });
       }
-      const bookingDate = new Date(date3);
+      const bookingDate = new Date(date2);
       if (isNaN(bookingDate.getTime())) {
         return res.status(400).json({ error: "Invalid date format" });
       }
@@ -22735,15 +21932,15 @@ If you have questions, please contact the location manager.`,
   app3.get("/api/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
-      const { date: date3 } = req.query;
-      if (!date3) {
+      const { date: date2 } = req.query;
+      if (!date2) {
         return res.status(400).json({ error: "Date parameter is required" });
       }
-      const bookingDate = new Date(date3);
+      const bookingDate = new Date(date2);
       if (isNaN(bookingDate.getTime())) {
         return res.status(400).json({ error: "Invalid date format" });
       }
-      console.log(`\u{1F50D} Fetching available slots for kitchen ${kitchenId} on ${date3}`);
+      console.log(`\u{1F50D} Fetching available slots for kitchen ${kitchenId} on ${date2}`);
       const slots = await firebaseStorage.getAvailableTimeSlots(kitchenId, bookingDate);
       console.log(`\u2705 Returning ${slots.length} available slots`);
       res.json(slots);
@@ -22769,7 +21966,10 @@ If you have questions, please contact the location manager.`,
       if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0 && pool) {
         for (const storage3 of selectedStorage) {
           try {
-            const storageResult = await pool.query(`SELECT id, pricing_model, base_price, minimum_booking_duration FROM storage_listings WHERE id = $1`, [storage3.storageListingId]);
+            const storageResult = await pool.query(
+              `SELECT id, pricing_model, base_price, minimum_booking_duration FROM storage_listings WHERE id = $1`,
+              [storage3.storageListingId]
+            );
             if (storageResult.rows.length > 0) {
               const storageListing = storageResult.rows[0];
               const basePriceCents = storageListing.base_price ? Math.round(parseFloat(String(storageListing.base_price))) : 0;
@@ -22795,7 +21995,10 @@ If you have questions, please contact the location manager.`,
       if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0 && pool) {
         for (const equipmentListingId of selectedEquipmentIds) {
           try {
-            const equipmentResult = await pool.query(`SELECT id, session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`, [equipmentListingId]);
+            const equipmentResult = await pool.query(
+              `SELECT id, session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`,
+              [equipmentListingId]
+            );
             if (equipmentResult.rows.length > 0) {
               const equipmentListing = equipmentResult.rows[0];
               const sessionRateCents = equipmentListing.session_rate ? Math.round(parseFloat(String(equipmentListing.session_rate))) : 0;
@@ -23013,7 +22216,12 @@ If you have questions, please contact the location manager.`,
         });
       }
       const bookingDateObj = new Date(bookingDate);
-      const availabilityCheck = await firebaseStorage.validateBookingAvailability(kitchenId, bookingDateObj, startTime, endTime);
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        kitchenId,
+        bookingDateObj,
+        startTime,
+        endTime
+      );
       if (!availabilityCheck.valid) {
         return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
       }
@@ -23136,7 +22344,10 @@ If you have questions, please contact the location manager.`,
         if (pool3 && selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
           for (const storage3 of selectedStorage) {
             try {
-              const storageResult = await pool3.query(`SELECT base_price, pricing_model, minimum_booking_duration FROM storage_listings WHERE id = $1`, [storage3.storageListingId]);
+              const storageResult = await pool3.query(
+                `SELECT base_price, pricing_model, minimum_booking_duration FROM storage_listings WHERE id = $1`,
+                [storage3.storageListingId]
+              );
               if (storageResult.rows.length > 0) {
                 const sl = storageResult.rows[0];
                 const basePrice = parseInt(sl.base_price || "0");
@@ -23161,7 +22372,10 @@ If you have questions, please contact the location manager.`,
         if (pool3 && selectedEquipmentIds && Array.isArray(selectedEquipmentIds)) {
           for (const equipmentId of selectedEquipmentIds) {
             try {
-              const equipmentResult = await pool3.query(`SELECT session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`, [equipmentId]);
+              const equipmentResult = await pool3.query(
+                `SELECT session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`,
+                [equipmentId]
+              );
               if (equipmentResult.rows.length > 0) {
                 const eq5 = equipmentResult.rows[0];
                 expectedTotal += parseInt(eq5.session_rate || "0") + parseInt(eq5.damage_deposit || "0");
@@ -23235,7 +22449,10 @@ If you have questions, please contact the location manager.`,
                 console.error(`   \u26A0\uFE0F Storage booking ${storageListingId}: End date must be after start date`);
                 continue;
               }
-              const storageResult = await pool3.query(`SELECT id, pricing_model, base_price, minimum_booking_duration, currency FROM storage_listings WHERE id = $1`, [storageListingId]);
+              const storageResult = await pool3.query(
+                `SELECT id, pricing_model, base_price, minimum_booking_duration, currency FROM storage_listings WHERE id = $1`,
+                [storageListingId]
+              );
               if (storageResult.rows.length > 0) {
                 const storageListing = storageResult.rows[0];
                 const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
@@ -23257,20 +22474,23 @@ If you have questions, please contact the location manager.`,
                 const serviceFeeBase = await calculatePlatformFeeDynamic2(totalPrice, pool3);
                 const stripeProcessingFeeCents = 30;
                 const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
-                const insertResult = await pool3.query(`INSERT INTO storage_bookings 
+                const insertResult = await pool3.query(
+                  `INSERT INTO storage_bookings 
                     (storage_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, payment_status, service_fee, currency)
                    VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, 'pending', $8, $9)
-                   RETURNING id`, [
-                  storageListingId,
-                  booking.id,
-                  chefId,
-                  startDate,
-                  endDate,
-                  totalPrice.toString(),
-                  storageListing.pricing_model,
-                  serviceFee.toString(),
-                  storageListing.currency || "CAD"
-                ]);
+                   RETURNING id`,
+                  [
+                    storageListingId,
+                    booking.id,
+                    chefId,
+                    startDate,
+                    endDate,
+                    totalPrice.toString(),
+                    storageListing.pricing_model,
+                    serviceFee.toString(),
+                    storageListing.currency || "CAD"
+                  ]
+                );
                 storageBookingsCreated.push({
                   id: insertResult.rows[0].id,
                   storageListingId,
@@ -23287,7 +22507,10 @@ If you have questions, please contact the location manager.`,
         if (selectedStorageIds && Array.isArray(selectedStorageIds) && selectedStorageIds.length > 0) {
           for (const storageListingId of selectedStorageIds) {
             try {
-              const storageResult = await pool3.query(`SELECT id, pricing_model, base_price, currency FROM storage_listings WHERE id = $1`, [storageListingId]);
+              const storageResult = await pool3.query(
+                `SELECT id, pricing_model, base_price, currency FROM storage_listings WHERE id = $1`,
+                [storageListingId]
+              );
               if (storageResult.rows.length > 0) {
                 const storageListing = storageResult.rows[0];
                 const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
@@ -23302,20 +22525,23 @@ If you have questions, please contact the location manager.`,
                 const serviceFeeBase = await calcFee2(totalPrice, pool3);
                 const stripeProcessingFeeCents = 30;
                 const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
-                const insertResult = await pool3.query(`INSERT INTO storage_bookings 
+                const insertResult = await pool3.query(
+                  `INSERT INTO storage_bookings 
                     (storage_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, payment_status, service_fee, currency)
                    VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, 'pending', $8, $9)
-                   RETURNING id`, [
-                  storageListingId,
-                  booking.id,
-                  chefId,
-                  bookingStartDateTime,
-                  bookingEndDateTime,
-                  totalPrice.toString(),
-                  storageListing.pricing_model,
-                  serviceFee.toString(),
-                  storageListing.currency || "CAD"
-                ]);
+                   RETURNING id`,
+                  [
+                    storageListingId,
+                    booking.id,
+                    chefId,
+                    bookingStartDateTime,
+                    bookingEndDateTime,
+                    totalPrice.toString(),
+                    storageListing.pricing_model,
+                    serviceFee.toString(),
+                    storageListing.currency || "CAD"
+                  ]
+                );
                 storageBookingsCreated.push({
                   id: insertResult.rows[0].id,
                   storageListingId,
@@ -23332,8 +22558,11 @@ If you have questions, please contact the location manager.`,
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds)) {
           for (const equipmentListingId of selectedEquipmentIds) {
             try {
-              const equipmentResult = await pool3.query(`SELECT id, availability_type, session_rate, damage_deposit, currency 
-                 FROM equipment_listings WHERE id = $1`, [equipmentListingId]);
+              const equipmentResult = await pool3.query(
+                `SELECT id, availability_type, session_rate, damage_deposit, currency 
+                 FROM equipment_listings WHERE id = $1`,
+                [equipmentListingId]
+              );
               if (equipmentResult.rows.length > 0) {
                 const equipmentListing = equipmentResult.rows[0];
                 if (equipmentListing.availability_type === "included") {
@@ -23347,22 +22576,25 @@ If you have questions, please contact the location manager.`,
                 const serviceFeeBase = await calcEquipFee2(totalPrice, pool3);
                 const stripeProcessingFeeCents = 30;
                 const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
-                const insertResult = await pool3.query(`INSERT INTO equipment_bookings 
+                const insertResult = await pool3.query(
+                  `INSERT INTO equipment_bookings 
                     (equipment_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, damage_deposit, payment_status, service_fee, currency)
                    VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, 'pending', $9, $10)
-                   RETURNING id`, [
-                  equipmentListingId,
-                  booking.id,
-                  chefId,
-                  bookingStartDateTime,
-                  bookingEndDateTime,
-                  totalPrice.toString(),
-                  "hourly",
-                  // Equipment uses session_rate (flat fee), but pricing_model field requires a value
-                  damageDepositCents.toString(),
-                  serviceFee.toString(),
-                  equipmentListing.currency || "CAD"
-                ]);
+                   RETURNING id`,
+                  [
+                    equipmentListingId,
+                    booking.id,
+                    chefId,
+                    bookingStartDateTime,
+                    bookingEndDateTime,
+                    totalPrice.toString(),
+                    "hourly",
+                    // Equipment uses session_rate (flat fee), but pricing_model field requires a value
+                    damageDepositCents.toString(),
+                    serviceFee.toString(),
+                    equipmentListing.currency || "CAD"
+                  ]
+                );
                 equipmentBookingsCreated.push({
                   id: insertResult.rows[0].id,
                   equipmentListingId,
@@ -23456,7 +22688,10 @@ If you have questions, please contact the location manager.`,
         if (pool3 && req.user.id) {
           chefPhone = await getChefPhone(req.user.id, pool3);
           try {
-            const appResult = await pool3.query("SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1", [req.user.id]);
+            const appResult = await pool3.query(
+              "SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
+              [req.user.id]
+            );
             if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
               chefName = appResult.rows[0].full_name;
             }
@@ -23646,7 +22881,10 @@ If you have questions, please contact the location manager.`,
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
       }
-      const bookingResult = await pool.query("SELECT id, kitchen_id FROM kitchen_bookings WHERE id = $1", [bookingId]);
+      const bookingResult = await pool.query(
+        "SELECT id, kitchen_id FROM kitchen_bookings WHERE id = $1",
+        [bookingId]
+      );
       if (bookingResult.rows.length === 0) {
         return res.status(404).json({ error: "Booking not found" });
       }
@@ -23672,23 +22910,26 @@ If you have questions, please contact the location manager.`,
         }
       });
       const { createTransaction: createTransaction2 } = await Promise.resolve().then(() => (init_stripe_checkout_transactions_service(), stripe_checkout_transactions_service_exports));
-      await createTransaction2({
-        bookingId,
-        stripeSessionId: checkoutSession.sessionId,
-        customerEmail,
-        bookingAmountCents: feeCalculation.bookingPriceInCents,
-        platformFeePercentageCents: feeCalculation.percentageFeeInCents,
-        platformFeeFlatCents: feeCalculation.flatFeeInCents,
-        totalPlatformFeeCents: feeCalculation.totalPlatformFeeInCents,
-        totalCustomerChargedCents: feeCalculation.totalChargeInCents,
-        managerReceivesCents: feeCalculation.bookingPriceInCents,
-        // Manager receives the booking amount
-        metadata: {
-          booking_id: bookingId,
-          kitchen_id: booking.kitchen_id,
-          manager_account_id: managerStripeAccountId
-        }
-      }, pool);
+      await createTransaction2(
+        {
+          bookingId,
+          stripeSessionId: checkoutSession.sessionId,
+          customerEmail,
+          bookingAmountCents: feeCalculation.bookingPriceInCents,
+          platformFeePercentageCents: feeCalculation.percentageFeeInCents,
+          platformFeeFlatCents: feeCalculation.flatFeeInCents,
+          totalPlatformFeeCents: feeCalculation.totalPlatformFeeInCents,
+          totalCustomerChargedCents: feeCalculation.totalChargeInCents,
+          managerReceivesCents: feeCalculation.bookingPriceInCents,
+          // Manager receives the booking amount
+          metadata: {
+            booking_id: bookingId,
+            kitchen_id: booking.kitchen_id,
+            manager_account_id: managerStripeAccountId
+          }
+        },
+        pool
+      );
       res.json({
         sessionUrl: checkoutSession.sessionUrl,
         sessionId: checkoutSession.sessionId,
@@ -23707,8 +22948,8 @@ If you have questions, please contact the location manager.`,
   });
   app3.get("/api/chef/storage-bookings", requireChef, async (req, res) => {
     try {
-      const storageBookings3 = await firebaseStorage.getStorageBookingsByChef(req.user.id);
-      res.json(storageBookings3);
+      const storageBookings2 = await firebaseStorage.getStorageBookingsByChef(req.user.id);
+      res.json(storageBookings2);
     } catch (error) {
       console.error("Error fetching storage bookings:", error);
       res.status(500).json({ error: "Failed to fetch storage bookings" });
@@ -23796,14 +23037,14 @@ If you have questions, please contact the location manager.`,
       if (booking.chefId !== req.user.id) {
         return res.status(403).json({ error: "You don't have permission to view this booking" });
       }
-      const storageBookings3 = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
-      const equipmentBookings3 = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+      const storageBookings2 = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
+      const equipmentBookings2 = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
       const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
       res.json({
         ...booking,
         kitchen,
-        storageBookings: storageBookings3,
-        equipmentBookings: equipmentBookings3
+        storageBookings: storageBookings2,
+        equipmentBookings: equipmentBookings2
       });
     } catch (error) {
       console.error("Error fetching booking details:", error);
@@ -23825,13 +23066,16 @@ If you have questions, please contact the location manager.`,
       }
       const chef = await storage2.getUser(booking.chefId);
       const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
-      const storageBookings3 = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
-      const equipmentBookings3 = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+      const storageBookings2 = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
+      const equipmentBookings2 = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
       let location = null;
       if (kitchen && kitchen.locationId) {
         const locationId = kitchen.locationId || kitchen.location_id;
         if (pool) {
-          const locationResult = await pool.query("SELECT id, name, address FROM locations WHERE id = $1", [locationId]);
+          const locationResult = await pool.query(
+            "SELECT id, name, address FROM locations WHERE id = $1",
+            [locationId]
+          );
           if (locationResult.rows.length > 0) {
             location = locationResult.rows[0];
           }
@@ -23839,7 +23083,16 @@ If you have questions, please contact the location manager.`,
       }
       const paymentIntentId = booking.paymentIntentId || booking.payment_intent_id || null;
       const { generateInvoicePDF: generateInvoicePDF2 } = await Promise.resolve().then(() => (init_invoice_service(), invoice_service_exports));
-      const pdfBuffer = await generateInvoicePDF2(booking, chef, kitchen, location, storageBookings3, equipmentBookings3, paymentIntentId, pool);
+      const pdfBuffer = await generateInvoicePDF2(
+        booking,
+        chef,
+        kitchen,
+        location,
+        storageBookings2,
+        equipmentBookings2,
+        paymentIntentId,
+        pool
+      );
       res.setHeader("Content-Type", "application/pdf");
       const bookingDate = booking.bookingDate ? new Date(booking.bookingDate).toISOString().split("T")[0] : "unknown";
       res.setHeader("Content-Disposition", `attachment; filename="LocalCooks-Invoice-${id}-${bookingDate}.pdf"`);
@@ -23929,7 +23182,7 @@ If you have questions, please contact the location manager.`,
                   }
                 }
                 const chefPhone = await getChefPhone(booking.chefId, pool);
-                const { sendEmail: sendEmail2, generateBookingCancellationEmail: generateBookingCancellationEmail2, generateBookingCancellationNotificationEmail: generateBookingCancellationNotificationEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+                const { sendEmail: sendEmail2, generateBookingCancellationEmail: generateBookingCancellationEmail2, generateBookingCancellationNotificationEmail: generateBookingCancellationNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
                 try {
                   const chefEmail = generateBookingCancellationEmail2({
                     chefEmail: chef.username || "",
@@ -23962,7 +23215,7 @@ If you have questions, please contact the location manager.`,
                 const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
                 if (notificationEmailAddress) {
                   try {
-                    const managerEmail = generateBookingCancellationNotificationEmail2({
+                    const managerEmail = generateBookingCancellationNotificationEmail3({
                       managerEmail: notificationEmailAddress,
                       chefName: chef.username || "Chef",
                       kitchenName: kitchen.name || "Kitchen",
@@ -24028,7 +23281,10 @@ If you have questions, please contact the location manager.`,
       if (!location) {
         return res.status(404).json({ error: "Location not found" });
       }
-      const chefApp = await db.select().from(applications).where(and4(eq4(applications.userId, chefId), eq4(applications.status, "approved"))).orderBy(desc2(applications.createdAt)).limit(1);
+      const chefApp = await db.select().from(applications).where(and4(
+        eq4(applications.userId, chefId),
+        eq4(applications.status, "approved")
+      )).orderBy(desc2(applications.createdAt)).limit(1);
       const profile = await firebaseStorage.shareChefProfileWithLocation(chefId, locationId);
       if (profile && profile.status === "pending") {
         try {
@@ -24065,11 +23321,13 @@ If you have questions, please contact the location manager.`,
         return res.json([]);
       }
       const allLocations = await db.select().from(locations).where(inArray2(locations.id, locationIds));
-      const profiles = await Promise.all(locationIds.map(async (locationId) => {
-        const profile = await firebaseStorage.getChefLocationProfile(chefId, locationId);
-        const location = allLocations.find((l) => l.id === locationId);
-        return { locationId, location, profile };
-      }));
+      const profiles = await Promise.all(
+        locationIds.map(async (locationId) => {
+          const profile = await firebaseStorage.getChefLocationProfile(chefId, locationId);
+          const location = allLocations.find((l) => l.id === locationId);
+          return { locationId, location, profile };
+        })
+      );
       res.json(profiles);
     } catch (error) {
       console.error("Error getting chef profiles:", error);
@@ -24188,7 +23446,10 @@ If you have questions, please contact the location manager.`,
         return res.status(500).json({ error: "Database connection not available" });
       }
       const { startDate, endDate } = req.query;
-      const managerCountResult = await pool.query("SELECT COUNT(*)::int as total_managers FROM users WHERE role = $1", ["manager"]);
+      const managerCountResult = await pool.query(
+        "SELECT COUNT(*)::int as total_managers FROM users WHERE role = $1",
+        ["manager"]
+      );
       const totalManagers = parseInt(managerCountResult.rows[0]?.total_managers || "0");
       let bookingWhereClause = `WHERE kb.status != 'cancelled'`;
       const params = [];
@@ -24248,9 +23509,22 @@ If you have questions, please contact the location manager.`,
       }
       const { startDate, endDate } = req.query;
       const { getCompleteRevenueMetrics: getCompleteRevenueMetrics2, getRevenueByLocation: getRevenueByLocation2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-      const metrics = await getCompleteRevenueMetrics2(managerId, pool, startDate ? new Date(startDate) : void 0, endDate ? new Date(endDate) : void 0);
-      const revenueByLocation = await getRevenueByLocation2(managerId, pool, startDate ? new Date(startDate) : void 0, endDate ? new Date(endDate) : void 0);
-      const managerResult = await pool.query("SELECT id, username FROM users WHERE id = $1", [managerId]);
+      const metrics = await getCompleteRevenueMetrics2(
+        managerId,
+        pool,
+        startDate ? new Date(startDate) : void 0,
+        endDate ? new Date(endDate) : void 0
+      );
+      const revenueByLocation = await getRevenueByLocation2(
+        managerId,
+        pool,
+        startDate ? new Date(startDate) : void 0,
+        endDate ? new Date(endDate) : void 0
+      );
+      const managerResult = await pool.query(
+        "SELECT id, username FROM users WHERE id = $1",
+        [managerId]
+      );
       res.json({
         manager: managerResult.rows[0] || null,
         metrics: {
@@ -24488,7 +23762,8 @@ If you have questions, please contact the location manager.`,
       console.log("\u{1F50D} GET /api/admin/managers - DB available?", !!db3);
       if (pool3) {
         console.log("\u2705 Using pool query for GET /api/admin/managers");
-        const result = await pool3.query(`SELECT 
+        const result = await pool3.query(
+          `SELECT 
             u.id, 
             u.username, 
             u.role,
@@ -24506,7 +23781,9 @@ If you have questions, please contact the location manager.`,
           LEFT JOIN locations l ON l.manager_id = u.id
           WHERE u.role = $1
           GROUP BY u.id, u.username, u.role
-          ORDER BY u.username ASC`, ["manager"]);
+          ORDER BY u.username ASC`,
+          ["manager"]
+        );
         console.log("\u{1F4CA} Database query executed, rows returned:", result.rows.length);
         if (result.rows.length > 0) {
           console.log("\u{1F4CA} First row from database:", {
@@ -24525,40 +23802,40 @@ If you have questions, please contact the location manager.`,
           console.log(`\u{1F4CA} First row locations type:`, typeof result.rows[0].locations);
         }
         const managersWithEmails = result.rows.map((row) => {
-          let locations3 = row.locations;
-          console.log(`\u{1F50D} Manager ${row.id} (${row.username}): raw locations =`, typeof locations3, locations3);
+          let locations2 = row.locations;
+          console.log(`\u{1F50D} Manager ${row.id} (${row.username}): raw locations =`, typeof locations2, locations2);
           console.log(`\u{1F50D} Manager ${row.id}: row object keys:`, Object.keys(row));
-          if (locations3 === null || locations3 === void 0) {
+          if (locations2 === null || locations2 === void 0) {
             console.log(`\u26A0\uFE0F Manager ${row.id}: locations is null/undefined, using empty array`);
-            locations3 = [];
-          } else if (typeof locations3 === "string") {
+            locations2 = [];
+          } else if (typeof locations2 === "string") {
             try {
-              const trimmed = locations3.trim();
+              const trimmed = locations2.trim();
               if (trimmed === "[]" || trimmed === "" || trimmed === "null") {
-                locations3 = [];
+                locations2 = [];
                 console.log(`\u2705 Manager ${row.id}: Empty locations string converted to array`);
               } else {
-                locations3 = JSON.parse(locations3);
-                console.log(`\u2705 Manager ${row.id}: Parsed JSON string, got ${Array.isArray(locations3) ? locations3.length : "non-array"} items`);
+                locations2 = JSON.parse(locations2);
+                console.log(`\u2705 Manager ${row.id}: Parsed JSON string, got ${Array.isArray(locations2) ? locations2.length : "non-array"} items`);
               }
             } catch (e) {
-              console.error(`\u274C Error parsing locations JSON for manager ${row.id}:`, e, "Raw value:", locations3);
-              locations3 = [];
+              console.error(`\u274C Error parsing locations JSON for manager ${row.id}:`, e, "Raw value:", locations2);
+              locations2 = [];
             }
-          } else if (typeof locations3 === "object") {
-            console.log(`\u2705 Manager ${row.id}: locations is already object, isArray=${Array.isArray(locations3)}`);
+          } else if (typeof locations2 === "object") {
+            console.log(`\u2705 Manager ${row.id}: locations is already object, isArray=${Array.isArray(locations2)}`);
           }
-          if (!Array.isArray(locations3)) {
-            console.warn(`\u26A0\uFE0F Manager ${row.id} locations is not an array after processing:`, typeof locations3, locations3);
-            if (locations3 && typeof locations3 === "object" && "0" in locations3) {
-              locations3 = Object.values(locations3);
+          if (!Array.isArray(locations2)) {
+            console.warn(`\u26A0\uFE0F Manager ${row.id} locations is not an array after processing:`, typeof locations2, locations2);
+            if (locations2 && typeof locations2 === "object" && "0" in locations2) {
+              locations2 = Object.values(locations2);
             } else {
-              locations3 = [];
+              locations2 = [];
             }
           }
-          console.log(`\u2705 Manager ${row.id} (${row.username}) FINAL: ${locations3.length} location(s):`, JSON.stringify(locations3, null, 2));
-          const notificationEmails = locations3.map((loc) => loc.notificationEmail || loc.notification_email).filter((email) => email && email.trim() !== "");
-          const mappedLocations = locations3.map((loc) => {
+          console.log(`\u2705 Manager ${row.id} (${row.username}) FINAL: ${locations2.length} location(s):`, JSON.stringify(locations2, null, 2));
+          const notificationEmails = locations2.map((loc) => loc.notificationEmail || loc.notification_email).filter((email) => email && email.trim() !== "");
+          const mappedLocations = locations2.map((loc) => {
             const locationId = loc.locationId || loc.location_id || loc.id;
             const locationName = loc.locationName || loc.location_name || loc.name;
             const notificationEmail = loc.notificationEmail || loc.notification_email || null;
@@ -24631,35 +23908,37 @@ If you have questions, please contact the location manager.`,
       } else {
         try {
           console.log("\u26A0\uFE0F Using Drizzle fallback for GET /api/admin/managers");
-          const { users: users3, locations: locations3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+          const { users: users2, locations: locations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
           const { eq: eq5 } = await import("drizzle-orm");
-          const managerRows = await db3.select({ id: users3.id, username: users3.username, role: users3.role }).from(users3).where(eq5(users3.role, "manager"));
+          const managerRows = await db3.select({ id: users2.id, username: users2.username, role: users2.role }).from(users2).where(eq5(users2.role, "manager"));
           console.log(`Found ${managerRows.length} managers with Drizzle`);
-          const managersWithLocations = await Promise.all(managerRows.map(async (manager) => {
-            const managerLocations = await db3.select().from(locations3).where(eq5(locations3.managerId, manager.id));
-            console.log(`Manager ${manager.id} has ${managerLocations.length} locations`);
-            const notificationEmails = managerLocations.map((loc) => loc.notificationEmail || loc.notification_email).filter((email) => email && email.trim() !== "");
-            const managerData = {
-              id: manager.id,
-              username: manager.username,
-              role: manager.role
-            };
-            managerData.locations = managerLocations.map((loc) => ({
-              locationId: loc.id,
-              locationName: loc.name,
-              notificationEmail: loc.notificationEmail || loc.notification_email || null
-            }));
-            console.log(`\u{1F4E4} Drizzle Manager ${manager.id} final structure:`, {
-              id: managerData.id,
-              username: managerData.username,
-              role: managerData.role,
-              hasLocations: "locations" in managerData,
-              locationCount: managerData.locations.length,
-              locations: managerData.locations,
-              fullJSON: JSON.stringify(managerData, null, 2)
-            });
-            return managerData;
-          }));
+          const managersWithLocations = await Promise.all(
+            managerRows.map(async (manager) => {
+              const managerLocations = await db3.select().from(locations2).where(eq5(locations2.managerId, manager.id));
+              console.log(`Manager ${manager.id} has ${managerLocations.length} locations`);
+              const notificationEmails = managerLocations.map((loc) => loc.notificationEmail || loc.notification_email).filter((email) => email && email.trim() !== "");
+              const managerData = {
+                id: manager.id,
+                username: manager.username,
+                role: manager.role
+              };
+              managerData.locations = managerLocations.map((loc) => ({
+                locationId: loc.id,
+                locationName: loc.name,
+                notificationEmail: loc.notificationEmail || loc.notification_email || null
+              }));
+              console.log(`\u{1F4E4} Drizzle Manager ${manager.id} final structure:`, {
+                id: managerData.id,
+                username: managerData.username,
+                role: managerData.role,
+                hasLocations: "locations" in managerData,
+                locationCount: managerData.locations.length,
+                locations: managerData.locations,
+                fullJSON: JSON.stringify(managerData, null, 2)
+              });
+              return managerData;
+            })
+          );
           console.log("\u{1F4E4} Drizzle fallback returning", managersWithLocations.length, "managers");
           if (managersWithLocations.length > 0) {
             console.log("\u{1F4E4} Drizzle managersWithLocations[0] FULL:", JSON.stringify(managersWithLocations[0], null, 2));
@@ -24696,7 +23975,10 @@ If you have questions, please contact the location manager.`,
       const hashedNewPassword = await hashPassword(newPassword);
       const { pool: pool3 } = await Promise.resolve().then(() => (init_db(), db_exports));
       if (pool3) {
-        await pool3.query("UPDATE users SET password = $1 WHERE id = $2", [hashedNewPassword, user.id]);
+        await pool3.query(
+          "UPDATE users SET password = $1 WHERE id = $2",
+          [hashedNewPassword, user.id]
+        );
       } else {
         const memUser = await storage2.getUser(user.id);
         if (memUser) {
@@ -24721,16 +24003,16 @@ If you have questions, please contact the location manager.`,
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
-      const locations3 = await firebaseStorage.getAllLocations();
-      console.log(`\u{1F4CD} GET /api/admin/locations - Found ${locations3.length} locations in database`);
-      if (locations3.length > 0) {
+      const locations2 = await firebaseStorage.getAllLocations();
+      console.log(`\u{1F4CD} GET /api/admin/locations - Found ${locations2.length} locations in database`);
+      if (locations2.length > 0) {
         console.log(`\u{1F4CD} First location:`, {
-          id: locations3[0].id,
-          name: locations3[0].name,
-          managerId: locations3[0].managerId || locations3[0].manager_id
+          id: locations2[0].id,
+          name: locations2[0].name,
+          managerId: locations2[0].managerId || locations2[0].manager_id
         });
       }
-      const mappedLocations = locations3.map((loc) => ({
+      const mappedLocations = locations2.map((loc) => ({
         ...loc,
         managerId: loc.managerId || loc.manager_id || null,
         notificationEmail: loc.notificationEmail || loc.notification_email || null,
@@ -24824,8 +24106,8 @@ If you have questions, please contact the location manager.`,
       if (isNaN(locationId) || locationId <= 0) {
         return res.status(400).json({ error: "Invalid location ID" });
       }
-      const kitchens3 = await firebaseStorage.getKitchensByLocation(locationId);
-      res.json(kitchens3);
+      const kitchens2 = await firebaseStorage.getKitchensByLocation(locationId);
+      res.json(kitchens2);
     } catch (error) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
@@ -24904,14 +24186,10 @@ If you have questions, please contact the location manager.`,
         managerIdNum = null;
       }
       const updates = {};
-      if (name !== void 0)
-        updates.name = name;
-      if (address !== void 0)
-        updates.address = address;
-      if (managerIdNum !== void 0)
-        updates.managerId = managerIdNum;
-      if (notificationEmail !== void 0)
-        updates.notificationEmail = notificationEmail || null;
+      if (name !== void 0) updates.name = name;
+      if (address !== void 0) updates.address = address;
+      if (managerIdNum !== void 0) updates.managerId = managerIdNum;
+      if (notificationEmail !== void 0) updates.notificationEmail = notificationEmail || null;
       if (notificationPhone !== void 0) {
         if (notificationPhone && notificationPhone.trim() !== "") {
           const normalized = normalizePhoneForStorage(notificationPhone);
@@ -25141,19 +24419,17 @@ If you have questions, please contact the location manager.`,
         }
         updates.username = username;
       }
-      if (role !== void 0)
-        updates.role = role;
-      if (isManager !== void 0)
-        updates.isManager = isManager;
+      if (role !== void 0) updates.role = role;
+      if (isManager !== void 0) updates.isManager = isManager;
       const updated = await firebaseStorage.updateUser(managerId, updates);
       if (!updated) {
         return res.status(404).json({ error: "Failed to update manager" });
       }
       if (locationNotificationEmails && Array.isArray(locationNotificationEmails)) {
         const { db: db3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-        const { locations: locations4 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { locations: locations3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { eq: eq6 } = await import("drizzle-orm");
-        const managedLocations2 = await db3.select().from(locations4).where(eq6(locations4.managerId, managerId));
+        const managedLocations2 = await db3.select().from(locations3).where(eq6(locations3.managerId, managerId));
         for (const emailUpdate of locationNotificationEmails) {
           if (emailUpdate.locationId && emailUpdate.notificationEmail !== void 0) {
             const locationId = parseInt(emailUpdate.locationId.toString());
@@ -25163,18 +24439,18 @@ If you have questions, please contact the location manager.`,
                 console.warn(`Invalid email format for location ${locationId}: ${email}`);
                 continue;
               }
-              await db3.update(locations4).set({
+              await db3.update(locations3).set({
                 notificationEmail: email || null,
                 updatedAt: /* @__PURE__ */ new Date()
-              }).where(eq6(locations4.id, locationId));
+              }).where(eq6(locations3.id, locationId));
               console.log(`\u2705 Updated notification email for location ${locationId}: ${email || "null"}`);
             }
           }
         }
       }
-      const { locations: locations3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+      const { locations: locations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: eq5 } = await import("drizzle-orm");
-      const managedLocations = await db.select().from(locations3).where(eq5(locations3.managerId, managerId));
+      const managedLocations = await db.select().from(locations2).where(eq5(locations2.managerId, managerId));
       const notificationEmails = managedLocations.map((loc) => loc.notificationEmail || loc.notification_email).filter((email) => email && email.trim() !== "");
       const response = {
         ...updated,
@@ -25264,9 +24540,9 @@ If you have questions, please contact the location manager.`,
         }
         const getPortalUserLocation = async () => {
           try {
-            const { portalUserLocationAccess: portalUserLocationAccess3 } = await Promise.resolve().then(() => (init_schema2(), schema_exports2));
+            const { portalUserLocationAccess: portalUserLocationAccess2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { eq: eq5 } = await import("drizzle-orm");
-            const accessRecords = await db.select().from(portalUserLocationAccess3).where(eq5(portalUserLocationAccess3.portalUserId, portalUser.id));
+            const accessRecords = await db.select().from(portalUserLocationAccess2).where(eq5(portalUserLocationAccess2.portalUserId, portalUser.id));
             if (accessRecords.length > 0) {
               return accessRecords[0].locationId;
             }
@@ -25326,7 +24602,12 @@ If you have questions, please contact the location manager.`,
       }
       let existingApplications = [];
       try {
-        existingApplications = await db.select().from(portalUserApplications).where(and4(eq4(portalUserApplications.userId, user.id), eq4(portalUserApplications.locationId, parseInt(locationId))));
+        existingApplications = await db.select().from(portalUserApplications).where(
+          and4(
+            eq4(portalUserApplications.userId, user.id),
+            eq4(portalUserApplications.locationId, parseInt(locationId))
+          )
+        );
       } catch (dbError) {
         console.error("Error checking existing applications:", dbError);
         if (dbError.message && dbError.message.includes("does not exist")) {
@@ -25448,9 +24729,9 @@ Please log in to your manager dashboard to review and approve this application.`
       }
       const accessRecords = await db.select().from(portalUserLocationAccess).where(eq4(portalUserLocationAccess.portalUserId, user.id)).limit(1);
       if (accessRecords.length === 0) {
-        const applications3 = await db.select().from(portalUserApplications).where(eq4(portalUserApplications.userId, user.id)).limit(1);
-        if (applications3.length > 0) {
-          const app4 = applications3[0];
+        const applications2 = await db.select().from(portalUserApplications).where(eq4(portalUserApplications.userId, user.id)).limit(1);
+        if (applications2.length > 0) {
+          const app4 = applications2[0];
           return res.status(403).json({
             error: "Access denied. Your application is pending approval by the location manager.",
             applicationStatus: app4.status,
@@ -25473,14 +24754,14 @@ Please log in to your manager dashboard to review and approve this application.`
   app3.get("/api/portal/my-location", requirePortalUser, async (req, res) => {
     try {
       const userId = req.user.id;
-      const { portalUserLocationAccess: portalUserLocationAccess3, locations: locations3 } = await Promise.resolve().then(() => (init_schema2(), schema_exports2));
+      const { portalUserLocationAccess: portalUserLocationAccess2, locations: locations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: eq5 } = await import("drizzle-orm");
-      const accessRecords = await db.select().from(portalUserLocationAccess3).where(eq5(portalUserLocationAccess3.portalUserId, userId)).limit(1);
+      const accessRecords = await db.select().from(portalUserLocationAccess2).where(eq5(portalUserLocationAccess2.portalUserId, userId)).limit(1);
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
       const locationId = accessRecords[0].locationId;
-      const locationRecords = await db.select().from(locations3).where(eq5(locations3.id, locationId)).limit(1);
+      const locationRecords = await db.select().from(locations2).where(eq5(locations2.id, locationId)).limit(1);
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
@@ -25517,9 +24798,9 @@ Please log in to your manager dashboard to review and approve this application.`
           status: "approved"
         });
       }
-      const applications3 = await db.select().from(portalUserApplications).where(eq4(portalUserApplications.userId, user.id)).orderBy(desc2(portalUserApplications.createdAt)).limit(1);
-      if (applications3.length > 0) {
-        const app4 = applications3[0];
+      const applications2 = await db.select().from(portalUserApplications).where(eq4(portalUserApplications.userId, user.id)).orderBy(desc2(portalUserApplications.createdAt)).limit(1);
+      if (applications2.length > 0) {
+        const app4 = applications2[0];
         return res.json({
           hasAccess: false,
           status: app4.status,
@@ -25541,14 +24822,14 @@ Please log in to your manager dashboard to review and approve this application.`
   app3.get("/api/portal/locations", requirePortalUser, async (req, res) => {
     try {
       const userId = req.user.id;
-      const { portalUserLocationAccess: portalUserLocationAccess3, locations: locations3 } = await Promise.resolve().then(() => (init_schema2(), schema_exports2));
+      const { portalUserLocationAccess: portalUserLocationAccess2, locations: locations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: eq5 } = await import("drizzle-orm");
-      const accessRecords = await db.select().from(portalUserLocationAccess3).where(eq5(portalUserLocationAccess3.portalUserId, userId)).limit(1);
+      const accessRecords = await db.select().from(portalUserLocationAccess2).where(eq5(portalUserLocationAccess2.portalUserId, userId)).limit(1);
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
       const locationId = accessRecords[0].locationId;
-      const locationRecords = await db.select().from(locations3).where(eq5(locations3.id, locationId)).limit(1);
+      const locationRecords = await db.select().from(locations2).where(eq5(locations2.id, locationId)).limit(1);
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
@@ -25570,14 +24851,14 @@ Please log in to your manager dashboard to review and approve this application.`
     try {
       const userId = req.user.id;
       const locationSlug = req.params.locationSlug;
-      const { portalUserLocationAccess: portalUserLocationAccess3, locations: locations3 } = await Promise.resolve().then(() => (init_schema2(), schema_exports2));
+      const { portalUserLocationAccess: portalUserLocationAccess2, locations: locations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: eq5 } = await import("drizzle-orm");
-      const accessRecords = await db.select().from(portalUserLocationAccess3).where(eq5(portalUserLocationAccess3.portalUserId, userId)).limit(1);
+      const accessRecords = await db.select().from(portalUserLocationAccess2).where(eq5(portalUserLocationAccess2.portalUserId, userId)).limit(1);
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
       const userLocationId = accessRecords[0].locationId;
-      const locationRecords = await db.select().from(locations3).where(eq5(locations3.id, userLocationId)).limit(1);
+      const locationRecords = await db.select().from(locations2).where(eq5(locations2.id, userLocationId)).limit(1);
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
@@ -25615,8 +24896,8 @@ Please log in to your manager dashboard to review and approve this application.`
       if (slug !== locationSlug) {
         return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
       }
-      const kitchens3 = await firebaseStorage.getKitchensByLocation(userLocationId);
-      const publicKitchens = kitchens3.filter((kitchen) => kitchen.isActive !== false).map((kitchen) => ({
+      const kitchens2 = await firebaseStorage.getKitchensByLocation(userLocationId);
+      const publicKitchens = kitchens2.filter((kitchen) => kitchen.isActive !== false).map((kitchen) => ({
         id: kitchen.id,
         name: kitchen.name,
         description: kitchen.description,
@@ -25632,21 +24913,21 @@ Please log in to your manager dashboard to review and approve this application.`
     try {
       const userId = req.user.id;
       const kitchenId = parseInt(req.params.kitchenId);
-      const date3 = req.query.date;
+      const date2 = req.query.date;
       if (isNaN(kitchenId) || kitchenId <= 0) {
         return res.status(400).json({ error: "Invalid kitchen ID" });
       }
-      if (!date3) {
+      if (!date2) {
         return res.status(400).json({ error: "Date parameter is required" });
       }
-      const { portalUserLocationAccess: portalUserLocationAccess3, kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema2(), schema_exports2));
+      const { portalUserLocationAccess: portalUserLocationAccess2, kitchens: kitchens2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: eq5 } = await import("drizzle-orm");
-      const accessRecords = await db.select().from(portalUserLocationAccess3).where(eq5(portalUserLocationAccess3.portalUserId, userId)).limit(1);
+      const accessRecords = await db.select().from(portalUserLocationAccess2).where(eq5(portalUserLocationAccess2.portalUserId, userId)).limit(1);
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
       const userLocationId = accessRecords[0].locationId;
-      const kitchenRecords = await db.select().from(kitchens3).where(eq5(kitchens3.id, kitchenId)).limit(1);
+      const kitchenRecords = await db.select().from(kitchens2).where(eq5(kitchens2.id, kitchenId)).limit(1);
       if (kitchenRecords.length === 0) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
@@ -25655,7 +24936,7 @@ Please log in to your manager dashboard to review and approve this application.`
       if (kitchenLocationId !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
       }
-      const slots = await firebaseStorage.getAvailableSlots(kitchenId, date3);
+      const slots = await firebaseStorage.getAvailableSlots(kitchenId, date2);
       res.json({ slots });
     } catch (error) {
       console.error("Error fetching portal availability:", error);
@@ -25664,7 +24945,18 @@ Please log in to your manager dashboard to review and approve this application.`
   });
   app3.post("/api/public/bookings", async (req, res) => {
     try {
-      const { locationId, kitchenId, bookingDate, startTime, endTime, bookingName, bookingEmail, bookingPhone, bookingCompany, specialNotes } = req.body;
+      const {
+        locationId,
+        kitchenId,
+        bookingDate,
+        startTime,
+        endTime,
+        bookingName,
+        bookingEmail,
+        bookingPhone,
+        bookingCompany,
+        specialNotes
+      } = req.body;
       if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
         return res.status(400).json({ error: "Missing required fields" });
       }
@@ -25673,7 +24965,12 @@ Please log in to your manager dashboard to review and approve this application.`
       if (bookingDateObj < now) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
-      const availabilityCheck = await firebaseStorage.validateBookingAvailability(kitchenId, bookingDateObj, startTime, endTime);
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        kitchenId,
+        bookingDateObj,
+        startTime,
+        endTime
+      );
       if (!availabilityCheck.valid) {
         return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
       }
@@ -25754,14 +25051,25 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
   app3.post("/api/portal/bookings", requirePortalUser, async (req, res) => {
     try {
       const userId = req.user.id;
-      const { locationId, kitchenId, bookingDate, startTime, endTime, bookingName, bookingEmail, bookingPhone, bookingCompany, specialNotes } = req.body;
+      const {
+        locationId,
+        kitchenId,
+        bookingDate,
+        startTime,
+        endTime,
+        bookingName,
+        bookingEmail,
+        bookingPhone,
+        bookingCompany,
+        specialNotes
+      } = req.body;
       if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
         return res.status(400).json({ error: "Missing required fields" });
       }
-      const { portalUserLocationAccess: portalUserLocationAccess3, kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema2(), schema_exports2));
+      const { portalUserLocationAccess: portalUserLocationAccess2, kitchens: kitchens2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
       const { eq: eq5 } = await import("drizzle-orm");
       const { db: db3 } = await Promise.resolve().then(() => (init_db(), db_exports));
-      const accessRecords = await db3.select().from(portalUserLocationAccess3).where(eq5(portalUserLocationAccess3.portalUserId, userId)).limit(1);
+      const accessRecords = await db3.select().from(portalUserLocationAccess2).where(eq5(portalUserLocationAccess2.portalUserId, userId)).limit(1);
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
@@ -25769,7 +25077,7 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
       if (parseInt(locationId) !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
       }
-      const kitchenRecords = await db3.select().from(kitchens3).where(eq5(kitchens3.id, parseInt(kitchenId))).limit(1);
+      const kitchenRecords = await db3.select().from(kitchens2).where(eq5(kitchens2.id, parseInt(kitchenId))).limit(1);
       if (kitchenRecords.length === 0) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
@@ -25783,7 +25091,12 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
       if (bookingDateObj < now) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
-      const availabilityCheck = await firebaseStorage.validateBookingAvailability(parseInt(kitchenId), bookingDateObj, startTime, endTime);
+      const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        parseInt(kitchenId),
+        bookingDateObj,
+        startTime,
+        endTime
+      );
       if (!availabilityCheck.valid) {
         return res.status(400).json({ error: availabilityCheck.error || "Time slot not available" });
       }
@@ -25925,9 +25238,9 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         }
         try {
           const { db: db4, pool: pool4 } = await Promise.resolve().then(() => (init_db(), db_exports));
-          const { locations: locations3 } = await Promise.resolve().then(() => (init_schema2(), schema_exports2));
+          const { locations: locations2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
           const { eq: eq6 } = await import("drizzle-orm");
-          const locationRecord = await db4.select().from(locations3).where(eq6(locations3.id, userLocationId)).limit(1);
+          const locationRecord = await db4.select().from(locations2).where(eq6(locations2.id, userLocationId)).limit(1);
           const locationData = locationRecord[0];
           const managerPhone = await getManagerPhone(locationData, locationData?.managerId, pool4);
           if (managerPhone) {
@@ -25965,9 +25278,9 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
   });
   app3.get("/api/public/kitchens", async (req, res) => {
     try {
-      const kitchens3 = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      console.log(`[API] /api/public/kitchens - Found ${kitchens3.length} total kitchens`);
-      const activeKitchens = kitchens3.filter((kitchen) => {
+      const kitchens2 = await firebaseStorage.getAllKitchensWithLocationAndManager();
+      console.log(`[API] /api/public/kitchens - Found ${kitchens2.length} total kitchens`);
+      const activeKitchens = kitchens2.filter((kitchen) => {
         const isActive = kitchen.isActive !== void 0 ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
@@ -26014,11 +25327,17 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         const isActive = kitchen.isActive !== void 0 ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      const locationIdsWithKitchens = new Set(activeKitchens.map((kitchen) => kitchen.locationId || kitchen.location_id).filter(Boolean));
+      const locationIdsWithKitchens = new Set(
+        activeKitchens.map((kitchen) => kitchen.locationId || kitchen.location_id).filter(Boolean)
+      );
       const locationsWithKitchens = allLocations.filter((location) => locationIdsWithKitchens.has(location.id)).map((location) => {
-        const kitchenCount = activeKitchens.filter((kitchen) => (kitchen.locationId || kitchen.location_id) === location.id).length;
+        const kitchenCount = activeKitchens.filter(
+          (kitchen) => (kitchen.locationId || kitchen.location_id) === location.id
+        ).length;
         const kitchenLicenseStatus = location.kitchenLicenseStatus || location.kitchen_license_status || "pending";
-        const locationKitchens = activeKitchens.filter((kitchen) => (kitchen.locationId || kitchen.location_id) === location.id);
+        const locationKitchens = activeKitchens.filter(
+          (kitchen) => (kitchen.locationId || kitchen.location_id) === location.id
+        );
         if (locationKitchens.length > 0) {
           console.log(`[API] Debug - Location ${location.id} (${location.name}) kitchens data structure:`, {
             kitchenCount: locationKitchens.length,
@@ -26064,12 +25383,15 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
           }
         }
         if (!featuredKitchenImage && locationKitchens.length > 0) {
-          console.warn(`[API] No kitchen image found for location ${location.id} (${location.name}). Kitchens checked:`, locationKitchens.map((k) => ({
-            id: k.id,
-            name: k.name,
-            imageUrl: k.imageUrl || k.image_url || "none",
-            galleryImagesCount: (k.galleryImages || k.gallery_images || []).length
-          })));
+          console.warn(
+            `[API] No kitchen image found for location ${location.id} (${location.name}). Kitchens checked:`,
+            locationKitchens.map((k) => ({
+              id: k.id,
+              name: k.name,
+              imageUrl: k.imageUrl || k.image_url || "none",
+              galleryImagesCount: (k.galleryImages || k.gallery_images || []).length
+            }))
+          );
         }
         const normalizedLogoUrl = normalizeImageUrl(location.logoUrl || location.logo_url || null, req);
         const normalizedBrandImageUrl = normalizeImageUrl(location.brandImageUrl || location.brand_image_url || null, req);
@@ -26119,7 +25441,9 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         return kitchenLocationId === locationId && isActive !== false;
       }).map((kitchen) => {
         const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || kitchen.image_url || null, req);
-        const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img) => normalizeImageUrl(img, req)).filter((url) => url !== null);
+        const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map(
+          (img) => normalizeImageUrl(img, req)
+        ).filter((url) => url !== null);
         const normalizedLocationBrandImageUrl2 = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
         const normalizedLocationLogoUrl2 = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
         return {
@@ -26158,7 +25482,7 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
   app3.get("/api/public/kitchens/:kitchenId/availability-preview", async (req, res) => {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
-      const date3 = req.query.date;
+      const date2 = req.query.date;
       if (isNaN(kitchenId)) {
         return res.status(400).json({ error: "Invalid kitchen ID" });
       }
@@ -26166,8 +25490,8 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
       const operatingDays = Array.from(new Set(availabilities.map((a) => a.dayOfWeek)));
       const sampleSlots = [];
       let dayOfWeek = (/* @__PURE__ */ new Date()).getDay();
-      if (date3) {
-        const [year, month, day] = date3.split("-").map(Number);
+      if (date2) {
+        const [year, month, day] = date2.split("-").map(Number);
         dayOfWeek = new Date(year, month - 1, day).getDay();
       }
       const dayAvailability = availabilities.find((a) => a.dayOfWeek === dayOfWeek);
@@ -26216,7 +25540,14 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
       if (!db) {
         return res.status(500).json({ error: "Database not available" });
       }
-      const [chefCountResult, applicationCountResult, approvedApplicationCountResult, deliveryPartnerCountResult, locationCountResult, kitchenCountResult] = await Promise.all([
+      const [
+        chefCountResult,
+        applicationCountResult,
+        approvedApplicationCountResult,
+        deliveryPartnerCountResult,
+        locationCountResult,
+        kitchenCountResult
+      ] = await Promise.all([
         db.select().from(users).where(eq4(users.isChef, true)),
         db.select().from(applications),
         db.select().from(applications).where(eq4(applications.status, "approved")),
@@ -26281,7 +25612,10 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         return res.status(500).json({ error: "Database not available" });
       }
       console.log("\u{1F504} Admin migration login attempt for:", username);
-      const userResult = await pool.query("SELECT * FROM users WHERE username = $1 AND role = $2", [username, "admin"]);
+      const userResult = await pool.query(
+        "SELECT * FROM users WHERE username = $1 AND role = $2",
+        [username, "admin"]
+      );
       if (userResult.rows.length === 0) {
         return res.status(401).json({ error: "Incorrect username or password" });
       }
@@ -26367,7 +25701,10 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
           role: "admin",
           isAdmin: true
         });
-        await pool.query("UPDATE users SET firebase_uid = $1 WHERE id = $2", [firebaseUser.uid, admin2.id]);
+        await pool.query(
+          "UPDATE users SET firebase_uid = $1 WHERE id = $2",
+          [firebaseUser.uid, admin2.id]
+        );
         console.log("\u2705 Admin migration complete:", {
           neonUserId: admin2.id,
           firebaseUid: firebaseUser.uid,
@@ -26412,7 +25749,10 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         return res.status(500).json({ error: "Database not available" });
       }
       console.log("\u{1F504} Manager migration login attempt for:", username);
-      const userResult = await pool.query("SELECT * FROM users WHERE username = $1 AND role = $2", [username, "manager"]);
+      const userResult = await pool.query(
+        "SELECT * FROM users WHERE username = $1 AND role = $2",
+        [username, "manager"]
+      );
       if (userResult.rows.length === 0) {
         return res.status(401).json({ error: "Incorrect username or password" });
       }
@@ -26498,7 +25838,10 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
           role: "manager",
           isManager: true
         });
-        await pool.query("UPDATE users SET firebase_uid = $1 WHERE id = $2", [firebaseUser.uid, manager.id]);
+        await pool.query(
+          "UPDATE users SET firebase_uid = $1 WHERE id = $2",
+          [firebaseUser.uid, manager.id]
+        );
         console.log("\u2705 Manager migration complete:", {
           neonUserId: manager.id,
           firebaseUid: firebaseUser.uid,
@@ -26596,7 +25939,10 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         return res.status(404).json({ error: "Location not found" });
       }
       try {
-        const managerResult = await pool.query("SELECT u.username, u.firebase_uid FROM users u INNER JOIN locations l ON l.manager_id = u.id WHERE l.id = $1", [locationId]);
+        const managerResult = await pool.query(
+          "SELECT u.username, u.firebase_uid FROM users u INNER JOIN locations l ON l.manager_id = u.id WHERE l.id = $1",
+          [locationId]
+        );
         if (managerResult.rows.length > 0) {
           const manager = managerResult.rows[0];
           const location = updateResult.rows[0];
@@ -26650,10 +25996,13 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
       const resetTokenExpiry = /* @__PURE__ */ new Date();
       resetTokenExpiry.setHours(resetTokenExpiry.getHours() + 1);
       try {
-        await pool.query(`INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) 
+        await pool.query(
+          `INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) 
            VALUES ($1, $2, $3, NOW()) 
            ON CONFLICT (user_id) 
-           DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()`, [manager.id, resetToken, resetTokenExpiry]);
+           DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()`,
+          [manager.id, resetToken, resetTokenExpiry]
+        );
         console.log(`\u2705 Password reset token stored for manager: ${manager.id}`);
       } catch (dbError) {
         console.error("Error storing password reset token:", dbError);
@@ -26727,9 +26076,15 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
       const manager = result.rows[0];
       const hashedPassword = await hashPassword(newPassword);
       try {
-        await pool.query("UPDATE users SET password = $1 WHERE id = $2", [hashedPassword, manager.id]);
+        await pool.query(
+          "UPDATE users SET password = $1 WHERE id = $2",
+          [hashedPassword, manager.id]
+        );
         console.log(`\u2705 Password updated for manager: ${manager.id}`);
-        await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [manager.id]);
+        await pool.query(
+          "DELETE FROM password_reset_tokens WHERE user_id = $1",
+          [manager.id]
+        );
         console.log(`\u2705 Reset token cleared for manager: ${manager.id}`);
       } catch (dbError) {
         console.error("Error updating password:", dbError);
@@ -26822,7 +26177,7 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
   return httpServer;
 }
 
-// dist/server/vite.js
+// server/vite.ts
 import express from "express";
 import fs4 from "fs";
 import { nanoid } from "nanoid";
@@ -26867,9 +26222,17 @@ async function setupVite(app3, server) {
     }
     const url = req.originalUrl;
     try {
-      const clientTemplate = path3.resolve(import.meta.dirname, "..", "client", "index.html");
+      const clientTemplate = path3.resolve(
+        import.meta.dirname,
+        "..",
+        "client",
+        "index.html"
+      );
       let template = await fs4.promises.readFile(clientTemplate, "utf-8");
-      template = template.replace(`src="/src/main.tsx"`, `src="/src/main.tsx?v=${nanoid()}"`);
+      template = template.replace(
+        `src="/src/main.tsx"`,
+        `src="/src/main.tsx?v=${nanoid()}"`
+      );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
     } catch (e) {
@@ -26881,7 +26244,9 @@ async function setupVite(app3, server) {
 function serveStatic(app3) {
   const distPath = path3.resolve(import.meta.dirname, "public");
   if (!fs4.existsSync(distPath)) {
-    throw new Error(`Could not find the build directory: ${distPath}, make sure to build the client first`);
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`
+    );
   }
   app3.use(express.static(distPath));
   app3.use("*", (_req, res) => {
@@ -26889,7 +26254,7 @@ function serveStatic(app3) {
   });
 }
 
-// dist/server/index.js
+// server/index.ts
 var app2 = express2();
 app2.set("env", process.env.NODE_ENV || "development");
 app2.use(express2.json({ limit: "12mb" }));
@@ -26921,8 +26286,7 @@ app2.use((req, res, next) => {
 });
 var routesInitialized = false;
 var initPromise = (async () => {
-  if (routesInitialized)
-    return;
+  if (routesInitialized) return;
   try {
     log("[INIT] Starting route registration...");
     await registerRoutes(app2);
