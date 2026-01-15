@@ -453,11 +453,17 @@ export default function ManagerRevenueDashboard({
 
   const getPaymentStatusBadge = (status: string) => {
     const colors: Record<string, { bg: string; text: string; label: string; tooltip?: string }> = {
-      paid: { 
-        bg: 'bg-emerald-100', 
-        text: 'text-emerald-700', 
+      paid: {
+        bg: 'bg-emerald-100',
+        text: 'text-emerald-700',
         label: 'Paid',
         tooltip: 'Payment has been processed and is in your Stripe Connect account or ready for payout'
+      },
+      pending: {
+        bg: 'bg-amber-100',
+        text: 'text-amber-700',
+        label: 'Pending',
+        tooltip: 'Payment is pending and will be processed after the cancellation period expires'
       },
       processing: {
         bg: 'bg-blue-100',
@@ -470,7 +476,7 @@ export default function ManagerRevenueDashboard({
       partially_refunded: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Partially Refunded' },
       canceled: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Canceled' },
     };
-    const color = colors[status] || colors.pending;
+    const color = colors[status] || colors.pending || { bg: 'bg-gray-100', text: 'text-gray-700', label: status || 'Unknown' };
     const badge = (
       <Badge className={`${color.bg} ${color.text} border-0 font-medium`}>
         {color.label}

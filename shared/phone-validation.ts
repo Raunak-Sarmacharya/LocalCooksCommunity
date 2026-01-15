@@ -32,7 +32,9 @@ export const normalizePhoneNumber = (phone: string | null | undefined): string |
       if (digitsAfterPlus.length === 10) {
         return `+1${digitsAfterPlus}`;
       }
-      return cleaned; // International number, return as is
+      // For international numbers, return as is (but we'll validate North American only)
+      // For now, only accept North American numbers
+      return null;
     }
     return null;
   }
@@ -47,15 +49,9 @@ export const normalizePhoneNumber = (phone: string | null | undefined): string |
   
   // If it has 10 digits, assume North American number (US/Canada) and add +1
   if (digitsOnly.length === 10) {
-    // Validate that it's a valid North American number format
-    // First digit should be 2-9 (area code), fourth digit should be 2-9 (exchange code)
-    const firstDigit = parseInt(digitsOnly[0]);
-    const fourthDigit = parseInt(digitsOnly[3]);
-    
-    if (firstDigit >= 2 && firstDigit <= 9 && fourthDigit >= 2 && fourthDigit <= 9) {
-      return `+1${digitsOnly}`;
-    }
-    return null;
+    // More lenient validation - just check that we have 10 digits
+    // Area code and exchange code validation will happen in isValidNorthAmericanPhone
+    return `+1${digitsOnly}`;
   }
   
   return null;
@@ -63,9 +59,19 @@ export const normalizePhoneNumber = (phone: string | null | undefined): string |
 
 /**
  * Validates if a phone number is in valid North American format
+ * Can accept either a raw phone string or an already-normalized string
  */
 export const isValidNorthAmericanPhone = (phone: string | null | undefined): boolean => {
-  const normalized = normalizePhoneNumber(phone);
+  if (!phone) return false;
+  
+  // If already normalized (starts with +1), validate directly
+  let normalized: string | null;
+  if (phone.startsWith('+1') && phone.length === 12) {
+    normalized = phone;
+  } else {
+    normalized = normalizePhoneNumber(phone);
+  }
+  
   if (!normalized) return false;
   
   // Must start with +1 and have exactly 12 characters total (+1 + 10 digits)
@@ -76,13 +82,18 @@ export const isValidNorthAmericanPhone = (phone: string | null | undefined): boo
   // Extract the 10-digit number after +1
   const digits = normalized.substring(2);
   
-  // Validate area code (first 3 digits) - must start with 2-9
-  const areaCode = parseInt(digits[0]);
-  if (areaCode < 2 || areaCode > 9) return false;
+  // Must have exactly 10 digits
+  if (digits.length !== 10 || !/^\d{10}$/.test(digits)) {
+    return false;
+  }
   
-  // Validate exchange code (4th digit) - must start with 2-9
-  const exchangeCode = parseInt(digits[3]);
-  if (exchangeCode < 2 || exchangeCode > 9) return false;
+  // Validate area code (first 3 digits) - first digit must be 2-9
+  const areaCodeFirstDigit = parseInt(digits[0]);
+  if (areaCodeFirstDigit < 2 || areaCodeFirstDigit > 9) return false;
+  
+  // Validate exchange code (4th digit, which is digits[3]) - must be 2-9
+  const exchangeCodeFirstDigit = parseInt(digits[3]);
+  if (exchangeCodeFirstDigit < 2 || exchangeCodeFirstDigit > 9) return false;
   
   return true;
 };

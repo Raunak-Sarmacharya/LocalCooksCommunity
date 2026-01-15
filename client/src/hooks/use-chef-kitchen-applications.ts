@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChefKitchenApplication } from "@shared/schema";
+import { useFirebaseAuth } from "./use-auth";
 
 // Types for kitchen applications
 interface KitchenApplicationWithLocation extends ChefKitchenApplication {
@@ -56,6 +57,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
  */
 export function useChefKitchenApplications() {
   const queryClient = useQueryClient();
+  const { user } = useFirebaseAuth();
 
   // Get all kitchen applications for the chef
   const applicationsQuery = useQuery<KitchenApplicationWithLocation[], Error>({
@@ -76,6 +78,7 @@ export function useChefKitchenApplications() {
 
       return await response.json();
     },
+    enabled: !!user, // Only fetch when user is authenticated
     retry: 1,
     staleTime: 30000, // Cache for 30 seconds
   });
@@ -324,6 +327,8 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
  * These are locations where the chef can make bookings
  */
 export function useChefApprovedKitchens() {
+  const { user } = useFirebaseAuth();
+  
   const approvedQuery = useQuery<
     Array<{
       id: number;
@@ -353,6 +358,7 @@ export function useChefApprovedKitchens() {
 
       return await response.json();
     },
+    enabled: !!user, // Only fetch when user is authenticated
     retry: 1,
     staleTime: 30000,
   });

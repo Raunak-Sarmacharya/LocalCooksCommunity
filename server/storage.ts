@@ -614,13 +614,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
-    // Note: The schema doesn't include firebase_uid, but the actual database has it
-    // We'll use a raw query to access it
-    if (!pool) return undefined;
-    
     try {
-      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
-      return result.rows[0] || undefined;
+      // Use Drizzle ORM to ensure proper camelCase mapping (is_chef -> isChef)
+      const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
+      return user || undefined;
     } catch (error) {
       console.error('Error getting user by firebase_uid:', error);
       return undefined;
@@ -628,14 +625,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUserFirebaseUid(userId: number, firebaseUid: string): Promise<User | undefined> {
-    if (!pool) return undefined;
-    
     try {
-      const result = await pool.query(
-        'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
-        [firebaseUid, userId]
-      );
-      return result.rows[0] || undefined;
+      // Use Drizzle ORM to ensure proper camelCase mapping (is_chef -> isChef)
+      const [updated] = await db
+        .update(users)
+        .set({ firebaseUid })
+        .where(eq(users.id, userId))
+        .returning();
+      return updated || undefined;
     } catch (error) {
       console.error('Error updating user firebase_uid:', error);
       return undefined;

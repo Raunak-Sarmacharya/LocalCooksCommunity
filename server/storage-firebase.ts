@@ -37,11 +37,10 @@ export class FirebaseStorage {
   }
 
   async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
-    if (!pool) return undefined;
-    
     try {
-      const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
-      return result.rows[0] || undefined;
+      // Use Drizzle ORM to ensure proper camelCase mapping (is_chef -> isChef)
+      const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
+      return user || undefined;
     } catch (error) {
       console.error('Error getting user by firebase_uid:', error);
       return undefined;
@@ -49,14 +48,14 @@ export class FirebaseStorage {
   }
 
   async updateUserFirebaseUid(userId: number, firebaseUid: string): Promise<User | undefined> {
-    if (!pool) return undefined;
-    
     try {
-      const result = await pool.query(
-        'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
-        [firebaseUid, userId]
-      );
-      return result.rows[0] || undefined;
+      // Use Drizzle ORM to ensure proper camelCase mapping (is_chef -> isChef)
+      const [updated] = await db
+        .update(users)
+        .set({ firebaseUid })
+        .where(eq(users.id, userId))
+        .returning();
+      return updated || undefined;
     } catch (error) {
       console.error('Error updating user firebase_uid:', error);
       return undefined;
@@ -192,7 +191,12 @@ export class FirebaseStorage {
   }
 
   async getApplicationsByUserId(userId: number): Promise<Application[]> {
-    return await db.select().from(applications).where(eq(applications.userId, userId));
+    console.log(`[STORAGE] getApplicationsByUserId called with userId: ${userId}`);
+    console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
+    
+    const results = await db.select().from(applications).where(eq(applications.userId, userId));
+    console.log(`[STORAGE] Found ${results.length} applications for user ${userId}`);
+    return results;
   }
 
   async createApplication(insertApplication: InsertApplication): Promise<Application> {
@@ -564,7 +568,17 @@ export class FirebaseStorage {
   }
 
 
-  async updateLocation(id: number, updates: { name?: string; address?: string; managerId?: number; notificationEmail?: string | null; notificationPhone?: string | null }): Promise<any> {
+  async updateLocation(id: number, updates: { 
+    name?: string; 
+    address?: string; 
+    managerId?: number; 
+    notificationEmail?: string | null; 
+    notificationPhone?: string | null;
+    kitchenLicenseUrl?: string | null;
+    kitchenLicenseStatus?: string | null;
+    kitchenLicenseExpiry?: string | null;
+    kitchenLicenseUploadedAt?: Date | null;
+  }): Promise<any> {
     try {
       // Import phone normalization utility
       const { normalizePhoneForStorage } = await import('./phone-utils');
@@ -737,6 +751,24 @@ export class FirebaseStorage {
         const locationBrandImageUrl = location ? ((location as any).brandImageUrl || (location as any).brand_image_url || null) : null;
         const locationLogoUrl = location ? ((location as any).logoUrl || (location as any).logo_url || null) : null;
         
+        // Extract and format pricing fields
+        // hourlyRate is stored in cents, convert to dollars for frontend
+        const hourlyRateCents = (kitchen as any).hourlyRate;
+        const hourlyRate = hourlyRateCents !== null && hourlyRateCents !== undefined 
+          ? (typeof hourlyRateCents === 'string' ? parseFloat(hourlyRateCents) : hourlyRateCents) / 100 
+          : null;
+        
+        // Extract amenities (stored as JSONB, should be array)
+        const amenities = (kitchen as any).amenities || [];
+        // Ensure amenities is an array
+        const amenitiesArray = Array.isArray(amenities) ? amenities : [];
+        
+        // Extract other kitchen fields
+        const currency = (kitchen as any).currency || 'CAD';
+        const minimumBookingHours = (kitchen as any).minimumBookingHours || (kitchen as any).minimum_booking_hours || 1;
+        const pricingModel = (kitchen as any).pricingModel || (kitchen as any).pricing_model || 'hourly';
+        const isActive = (kitchen as any).isActive !== undefined ? (kitchen as any).isActive : (kitchen as any).is_active;
+        
         return {
           ...kitchen,
           // Helpful flattened fields for clients that don't handle nested objects reliably
@@ -748,6 +780,13 @@ export class FirebaseStorage {
           galleryImages: kitchenGalleryImages,
           locationBrandImageUrl: locationBrandImageUrl,
           locationLogoUrl: locationLogoUrl,
+          // Format pricing fields for frontend
+          hourlyRate: hourlyRate, // Now in dollars, not cents
+          currency: currency,
+          minimumBookingHours: minimumBookingHours,
+          pricingModel: pricingModel,
+          amenities: amenitiesArray, // Ensure it's always an array
+          isActive: isActive,
           location: location ? {
             id: (location as any).id,
             name: locName,
@@ -2292,7 +2331,6 @@ export class FirebaseStorage {
             eb.total_price::text as total_price,
             eb.pricing_model, eb.payment_status, eb.payment_intent_id,
             eb.damage_deposit::text as damage_deposit,
-            eb.damage_deposit_status,
             eb.service_fee::text as service_fee,
             eb.currency, eb.created_at, eb.updated_at,
             el.equipment_type, el.brand, el.model, el.availability_type
@@ -2316,7 +2354,6 @@ export class FirebaseStorage {
           paymentStatus: row.payment_status,
           paymentIntentId: row.payment_intent_id,
           damageDeposit: row.damage_deposit ? parseFloat(row.damage_deposit) / 100 : 0, // Convert cents to dollars
-          damageDepositStatus: row.damage_deposit_status,
           serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0, // Convert cents to dollars
           currency: row.currency,
           createdAt: row.created_at,
@@ -2359,7 +2396,6 @@ export class FirebaseStorage {
             eb.total_price::text as total_price,
             eb.pricing_model, eb.payment_status, eb.payment_intent_id,
             eb.damage_deposit::text as damage_deposit,
-            eb.damage_deposit_status,
             eb.service_fee::text as service_fee,
             eb.currency, eb.created_at, eb.updated_at,
             el.equipment_type, el.brand, el.model, el.availability_type, el.kitchen_id,
@@ -2385,7 +2421,6 @@ export class FirebaseStorage {
           paymentStatus: row.payment_status,
           paymentIntentId: row.payment_intent_id,
           damageDeposit: row.damage_deposit ? parseFloat(row.damage_deposit) / 100 : 0,
-          damageDepositStatus: row.damage_deposit_status,
           serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0,
           currency: row.currency,
           createdAt: row.created_at,
@@ -2409,7 +2444,7 @@ export class FirebaseStorage {
   /**
    * Update equipment booking status
    */
-  async updateEquipmentBookingStatus(id: number, status: string, paymentStatus?: string, damageDepositStatus?: string): Promise<any> {
+  async updateEquipmentBookingStatus(id: number, status: string, paymentStatus?: string): Promise<any> {
     try {
       const updateData: any = {
         status: status as any,
@@ -2418,10 +2453,6 @@ export class FirebaseStorage {
       
       if (paymentStatus) {
         updateData.paymentStatus = paymentStatus as any;
-      }
-      
-      if (damageDepositStatus) {
-        updateData.damageDepositStatus = damageDepositStatus as any;
       }
       
       const result = await db.update(equipmentBookings)
@@ -2920,8 +2951,11 @@ export class FirebaseStorage {
 
   async getBookingsByChef(chefId: number): Promise<any[]> {
     try {
+      console.log(`[STORAGE] getBookingsByChef called with chefId: ${chefId}`);
+      console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
+      
       // Join with kitchens and locations to get cancellation policy
-      return await db
+      const results = await db
         .select({
           booking: kitchenBookings,
           kitchen: kitchens,
@@ -2931,17 +2965,23 @@ export class FirebaseStorage {
         .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
         .innerJoin(locations, eq(kitchens.locationId, locations.id))
         .where(eq(kitchenBookings.chefId, chefId))
-        .orderBy(asc(kitchenBookings.bookingDate))
-        .then(results => results.map(r => ({
-          ...r.booking,
-          kitchen: r.kitchen,
-          location: {
-            id: r.location.id,
-            name: r.location.name,
-            cancellationPolicyHours: r.location.cancellationPolicyHours,
-            cancellationPolicyMessage: r.location.cancellationPolicyMessage,
-          },
-        })));
+        .orderBy(asc(kitchenBookings.bookingDate));
+      
+      console.log(`[STORAGE] Raw query returned ${results.length} results`);
+      
+      const mappedResults = results.map(r => ({
+        ...r.booking,
+        kitchen: r.kitchen,
+        location: {
+          id: r.location.id,
+          name: r.location.name,
+          cancellationPolicyHours: r.location.cancellationPolicyHours,
+          cancellationPolicyMessage: r.location.cancellationPolicyMessage,
+        },
+      }));
+      
+      console.log(`[STORAGE] Mapped ${mappedResults.length} bookings for chef ${chefId}`);
+      return mappedResults;
     } catch (error) {
       console.error('Error getting bookings by chef:', error);
       throw error;
@@ -4025,11 +4065,24 @@ export class FirebaseStorage {
    */
   async getChefKitchenApplicationsByChefId(chefId: number): Promise<ChefKitchenApplication[]> {
     try {
+      console.log(`[STORAGE] getChefKitchenApplicationsByChefId called with chefId: ${chefId}`);
+      console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
+      
       const applications = await db
         .select()
         .from(chefKitchenApplications)
         .where(eq(chefKitchenApplications.chefId, chefId))
         .orderBy(desc(chefKitchenApplications.createdAt));
+
+      console.log(`[STORAGE] Found ${applications.length} kitchen applications for chef ${chefId}`);
+      if (applications.length > 0) {
+        console.log(`[STORAGE] First kitchen application sample:`, {
+          id: applications[0].id,
+          chefId: applications[0].chefId,
+          locationId: applications[0].locationId,
+          status: applications[0].status
+        });
+      }
       
       return applications;
     } catch (error) {
@@ -4343,6 +4396,8 @@ export class FirebaseStorage {
    */
   async getChefApprovedKitchens(chefId: number): Promise<any[]> {
     try {
+      console.log(`[getChefApprovedKitchens] Fetching approved kitchens for chef ${chefId}`);
+      
       const approvedApps = await db
         .select()
         .from(chefKitchenApplications)
@@ -4353,25 +4408,37 @@ export class FirebaseStorage {
           )
         );
       
-      // Enrich with location details
+      console.log(`[getChefApprovedKitchens] Found ${approvedApps.length} approved applications for chef ${chefId}`);
+      
+      // Enrich with location details - return flat structure for frontend
       const enrichedApps = await Promise.all(
         approvedApps.map(async (app) => {
           const location = await this.getLocationById(app.locationId);
+          if (!location) {
+            console.warn(`[getChefApprovedKitchens] Location ${app.locationId} not found for application ${app.id}`);
+            return null;
+          }
+          
+          // Return flat structure matching frontend expectations
           return {
+            id: (location as any).id,
+            name: (location as any).name,
+            address: (location as any).address,
+            logoUrl: (location as any).logoUrl || (location as any).logo_url || undefined,
+            brandImageUrl: (location as any).brandImageUrl || (location as any).brand_image_url || undefined,
             applicationId: app.id,
+            approvedAt: app.reviewedAt ? app.reviewedAt.toISOString() : null,
+            // Keep locationId for backward compatibility
             locationId: app.locationId,
-            location: location ? {
-              id: (location as any).id,
-              name: (location as any).name,
-              address: (location as any).address,
-              city: (location as any).city,
-            } : null,
-            approvedAt: app.reviewedAt,
           };
         })
       );
       
-      return enrichedApps;
+      // Filter out any null entries (locations that weren't found)
+      const validApps = enrichedApps.filter((app): app is NonNullable<typeof app> => app !== null);
+      console.log(`[getChefApprovedKitchens] Returning ${validApps.length} valid approved locations`);
+      
+      return validApps;
     } catch (error) {
       console.error('Error getting chef approved kitchens:', error);
       return [];

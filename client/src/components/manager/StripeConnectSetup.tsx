@@ -40,6 +40,8 @@ export default function StripeConnectSetup() {
   });
 
   const hasStripeAccount = !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id;
+  const onboardingStatus = userProfile?.stripeConnectOnboardingStatus || userProfile?.stripe_connect_onboarding_status;
+  const isOnboardingComplete = onboardingStatus === 'complete';
 
   // Fetch service fee rate (public endpoint - no auth required)
   const { data: serviceFeeRateData } = useQuery({
@@ -153,6 +155,7 @@ export default function StripeConnectSetup() {
   };
 
   // Get dashboard login link mutation (for completed accounts)
+  // Also handles onboarding redirect if not complete
   const getDashboardLinkMutation = useMutation({
     mutationFn: async () => {
       if (!firebaseUser) throw new Error('Not authenticated');
@@ -171,17 +174,22 @@ export default function StripeConnectSetup() {
       if (!data.url) {
         throw new Error('Dashboard link URL not provided');
       }
-      return data.url;
+      // Return both URL and whether onboarding is required
+      return { url: data.url, requiresOnboarding: data.requiresOnboarding || false };
     },
-    onSuccess: (url: string) => {
-      // Open Stripe Dashboard in a new tab
-      const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!newWindow) {
+    onSuccess: (data: { url: string; requiresOnboarding: boolean }) => {
+      // Open Stripe Dashboard or Onboarding in a new tab
+      // Note: window.open() may return null even when the tab opens successfully in some browsers,
+      // so we don't check for popup blocking to avoid false positives
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+      
+      if (data.requiresOnboarding) {
         toast({
-          title: 'Popup Blocked',
-          description: 'Please allow popups for this site to open your Stripe Dashboard, or click the button again.',
-          variant: 'destructive',
+          title: 'Opening Stripe Setup',
+          description: 'Complete your Stripe Connect setup to start receiving payments.',
         });
+        // Refresh user profile to update onboarding status after completion
+        queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
       } else {
         toast({
           title: 'Opening Dashboard',
@@ -191,8 +199,8 @@ export default function StripeConnectSetup() {
     },
     onError: (error: Error) => {
       toast({
-        title: 'Error Opening Dashboard',
-        description: error.message || 'Failed to open your Stripe Dashboard. Please try again.',
+        title: 'Error',
+        description: error.message || 'Failed to open Stripe. Please try again.',
         variant: 'destructive',
       });
     },
@@ -260,58 +268,108 @@ export default function StripeConnectSetup() {
     );
   }
 
-  // Connected - show success message and dashboard button
+  // Account created but onboarding may not be complete
   if (hasStripeAccount) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            Payment Setup Complete
-          </CardTitle>
-          <CardDescription>
-            Your Stripe account is connected and ready to receive payments.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                ✅ You'll receive payments automatically after each booking.
-                The platform service fee ({serviceFeePercentage}%) will be deducted automatically, and the remaining amount
-                will be transferred to your bank account within 2-7 business days.
-              </AlertDescription>
-            </Alert>
-            {userProfile?.stripeConnectAccountId && (
-              <div className="text-sm text-gray-600 space-y-1">
-                <p><strong>Account ID:</strong> {userProfile.stripeConnectAccountId}</p>
-              </div>
-            )}
-            <Button 
-              onClick={handleAccessDashboard}
-              className="w-full bg-[#635BFF] hover:bg-[#5851E6] text-white"
-              disabled={getDashboardLinkMutation.isPending}
-            >
-              {getDashboardLinkMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Opening Dashboard...
-                </>
-              ) : (
-                <>
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Access Your Stripe Connected Account Dashboard
-                </>
+    // Show different UI based on onboarding status
+    if (isOnboardingComplete) {
+      // Onboarding complete - show success state
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Payment Setup Complete
+            </CardTitle>
+            <CardDescription>
+              Your Stripe account is connected and ready to receive payments.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">
+                  ✅ You'll receive payments automatically after each booking.
+                  The platform service fee ({serviceFeePercentage}%) will be deducted automatically, and the remaining amount
+                  will be transferred to your bank account within 2-7 business days.
+                </AlertDescription>
+              </Alert>
+              {userProfile?.stripeConnectAccountId && (
+                <div className="text-sm text-gray-600 space-y-1">
+                  <p><strong>Account ID:</strong> {userProfile.stripeConnectAccountId}</p>
+                </div>
               )}
-            </Button>
-            <p className="text-xs text-gray-500 text-center">
-              Click to open your Stripe Express Dashboard in a new tab where you can view payments, payouts, and manage your account settings.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
+              <Button 
+                onClick={handleAccessDashboard}
+                className="w-full bg-[#635BFF] hover:bg-[#5851E6] text-white"
+                disabled={getDashboardLinkMutation.isPending}
+              >
+                {getDashboardLinkMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Opening Dashboard...
+                  </>
+                ) : (
+                  <>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Access Your Dashboard
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-gray-500 text-center">
+                Click to open your Stripe Express Dashboard in a new tab where you can view payments, payouts, and manage your account settings.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    } else {
+      // Account created but onboarding not complete - show setup needed state
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+              Complete Stripe Setup
+            </CardTitle>
+            <CardDescription>
+              Your Stripe account has been created, but you need to complete the setup process to start receiving payments.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800">
+                  ⚠️ You need to complete Stripe's onboarding process to start receiving payments.
+                  This takes about 5 minutes and includes providing business information and bank account details.
+                </AlertDescription>
+              </Alert>
+              <Button 
+                onClick={handleAccessDashboard}
+                className="w-full bg-[#635BFF] hover:bg-[#5851E6] text-white"
+                disabled={getDashboardLinkMutation.isPending}
+              >
+                {getDashboardLinkMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Opening Setup...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Setup Stripe Account
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-gray-500 text-center">
+                Click to complete your Stripe Connect setup and start receiving payments. The setup page will open in a new tab.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
   }
 
 }

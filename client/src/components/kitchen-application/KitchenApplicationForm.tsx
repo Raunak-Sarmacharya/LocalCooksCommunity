@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
+import { phoneNumberSchema } from "@shared/phone-validation";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -50,7 +51,7 @@ const kitchenApplicationSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Please enter a valid email address"),
-  phone: z.string().min(10, "Please enter a valid phone number"),
+  phone: phoneNumberSchema, // Use shared phone validation schema
   businessName: z.string().min(1, "Business name is required"),
   businessType: z.string().min(1, "Please select a business type"),
   experience: z.string().min(1, "Please select your experience level"),

@@ -288,11 +288,34 @@ export default function ApplicantDashboard() {
 
   // Helper function to determine user type and appropriate applications to display
   const getUserDisplayInfo = (applications: Application[], deliveryApplications: DeliveryPartnerApplication[], isLoading: boolean, isLoadingDelivery: boolean, error: any, deliveryError: any) => {
-    const isChef = (user as any)?.isChef;
-    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
+    const isChef = (user as any)?.isChef || user?.role === 'chef' || user?.role === 'admin';
+    const isDeliveryPartner = (user as any)?.isDeliveryPartner || user?.role === 'delivery_partner';
+    
+    console.log('[DASHBOARD] getUserDisplayInfo - Role detection:', {
+      userId: user?.uid,
+      role: user?.role,
+      isChef,
+      isDeliveryPartner,
+      rawIsChef: (user as any)?.isChef,
+      rawIsDeliveryPartner: (user as any)?.isDeliveryPartner
+    });
     
     // Roles are mutually exclusive - users can only be chef OR delivery partner
-    if (isDeliveryPartner) {
+    // IMPORTANT: Check isChef FIRST if both are true (admin can have both, but should default to chef)
+    if (isChef && !isDeliveryPartner) {
+      // Chef role (exclusive)
+      return {
+        primaryRole: 'chef',
+        applications: applications as AnyApplication[],
+        applicationFormUrl: '/apply',
+        roleName: 'Chef',
+        icon: ChefHat,
+        description: 'Start your culinary journey with Local Cooks by submitting your application.',
+        isLoading: isLoading,
+        error: error,
+        isDualRole: false
+      };
+    } else if (isDeliveryPartner && !isChef) {
       // Delivery partner role
       return {
         primaryRole: 'deliveryPartner',
@@ -306,7 +329,7 @@ export default function ApplicantDashboard() {
         isDualRole: false
       };
     } else if (isChef) {
-      // Chef role
+      // Chef role (fallback - should have been caught above, but handle dual-role case)
       return {
         primaryRole: 'chef',
         applications: applications as AnyApplication[],
@@ -316,7 +339,7 @@ export default function ApplicantDashboard() {
         description: 'Start your culinary journey with Local Cooks by submitting your application.',
         isLoading: isLoading,
         error: error,
-        isDualRole: false
+        isDualRole: isDeliveryPartner // Mark as dual if both are true
       };
     } else {
       // No role assigned yet - new user

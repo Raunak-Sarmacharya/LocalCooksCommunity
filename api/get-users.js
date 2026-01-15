@@ -1,3 +1,11 @@
+/**
+ * @deprecated This file is deprecated and will be removed in a future version.
+ * The get-users functionality has been moved to server/routes.ts as part of the unified entry point.
+ * All API requests now route through api/index.js (bundled from server/index.ts).
+ * 
+ * This file is kept temporarily for backward compatibility but should not be used.
+ * The route is now available at: GET /api/get-users (handled by server/routes.ts)
+ */
 import { Pool } from '@neondatabase/serverless';
 
 // Create database connection

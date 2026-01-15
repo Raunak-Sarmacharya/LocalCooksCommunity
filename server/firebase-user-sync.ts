@@ -104,7 +104,7 @@ export async function syncFirebaseUserToNeon(params: {
     const hasSeenWelcome = finalRole === 'admin' || finalRole === 'manager';
     
     const userData: CreateUserData = {
-      username: displayName || email,
+      username: email, // Always use email as username to ensure consistency
       password: '', // Empty for Firebase users
       role: finalRole,
       isChef: isChef, // Set correctly based on role (admin or chef)

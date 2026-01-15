@@ -533,7 +533,19 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           title="View document"
                           onClick={async (e) => {
                             const url = selectedApplication.foodSafetyLicenseUrl;
-                            if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                            if (!url) return;
+                            
+                            // If it's a local file URL, add token
+                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                              e.preventDefault();
+                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                              window.open(authenticatedUrl, '_blank');
+                              return;
+                            }
+                            
+                            // If it's an R2 URL, get presigned URL
+                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                               e.preventDefault();
                               const presignedUrl = await getPresignedUrl(url);
                               window.open(presignedUrl, '_blank');
@@ -547,8 +559,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           )}
                         </a>
                         <a
-                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || 
-                            (selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') 
+                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] ||
+                            (selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com')
                               ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodSafetyLicenseUrl)}`
                               : selectedApplication.foodSafetyLicenseUrl)}
                           download
@@ -556,7 +568,22 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           title="Download document"
                           onClick={async (e) => {
                             const url = selectedApplication.foodSafetyLicenseUrl;
-                            if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                            if (!url) return;
+                            
+                            // If it's a local file URL, add token
+                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                              e.preventDefault();
+                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                              const a = document.createElement('a');
+                              a.href = authenticatedUrl;
+                              a.download = '';
+                              a.click();
+                              return;
+                            }
+                            
+                            // If it's an R2 URL, get presigned URL
+                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                               e.preventDefault();
                               const presignedUrl = await getPresignedUrl(url);
                               const a = document.createElement('a');
@@ -594,8 +621,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     {selectedApplication.foodEstablishmentCertUrl && (
                       <div className="flex gap-2">
                         <a
-                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] || 
-                            (selectedApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') 
+                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] ||
+                            (selectedApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com')
                               ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodEstablishmentCertUrl)}`
                               : selectedApplication.foodEstablishmentCertUrl)}
                           target="_blank"
@@ -604,7 +631,19 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           title="View document"
                           onClick={async (e) => {
                             const url = selectedApplication.foodEstablishmentCertUrl;
-                            if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                            if (!url) return;
+                            
+                            // If it's a local file URL, add token
+                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                              e.preventDefault();
+                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                              window.open(authenticatedUrl, '_blank');
+                              return;
+                            }
+                            
+                            // If it's an R2 URL, get presigned URL
+                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                               e.preventDefault();
                               const presignedUrl = await getPresignedUrl(url);
                               window.open(presignedUrl, '_blank');
@@ -618,8 +657,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           )}
                         </a>
                         <a
-                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] || 
-                            (selectedApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') 
+                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] ||
+                            (selectedApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com')
                               ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodEstablishmentCertUrl)}`
                               : selectedApplication.foodEstablishmentCertUrl)}
                           download
@@ -627,7 +666,22 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           title="Download document"
                           onClick={async (e) => {
                             const url = selectedApplication.foodEstablishmentCertUrl;
-                            if (url && !presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                            if (!url) return;
+                            
+                            // If it's a local file URL, add token
+                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                              e.preventDefault();
+                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                              const a = document.createElement('a');
+                              a.href = authenticatedUrl;
+                              a.download = '';
+                              a.click();
+                              return;
+                            }
+                            
+                            // If it's an R2 URL, get presigned URL
+                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                               e.preventDefault();
                               const presignedUrl = await getPresignedUrl(url);
                               const a = document.createElement('a');

@@ -1021,16 +1021,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================
 
   // Generic file upload endpoint (for use with new upload components)
+  // Uses Firebase Auth - supports both session and Firebase authentication
   app.post("/api/upload-file", 
-    upload.single('file'), 
+    upload.single('file'),
+    optionalFirebaseAuth, // Try Firebase auth, but don't require it (supports legacy session auth too)
     async (req: Request, res: Response) => {
       try {
-        // Check if user is authenticated
-        if (!req.isAuthenticated()) {
+        // Check if user is authenticated (Firebase or session)
+        const userId = (req as any).neonUser?.id || (req as any).user?.id;
+        
+        if (!userId) {
           // Clean up uploaded file (development only)
-          if (req.file && req.file.path) {
+          if (req.file && (req.file as any).path) {
             try {
-              fs.unlinkSync(req.file.path);
+              fs.unlinkSync((req.file as any).path);
             } catch (e) {
               console.error('Error cleaning up file:', e);
             }
@@ -1048,7 +1052,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (isProduction) {
           // Upload to Cloudflare R2 in production
-          fileUrl = await uploadToBlob(req.file, req.user!.id);
+          fileUrl = await uploadToBlob(req.file, userId);
           // Extract filename from R2 URL for response
           fileName = fileUrl.split('/').pop() || req.file.originalname;
         } else {
@@ -1069,9 +1073,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("File upload error:", error);
         
         // Clean up uploaded file on error (development only)
-        if (req.file && req.file.path) {
+        if (req.file && (req.file as any).path) {
           try {
-            fs.unlinkSync(req.file.path);
+            fs.unlinkSync((req.file as any).path);
           } catch (e) {
             console.error('Error cleaning up file:', e);
           }
@@ -1085,11 +1089,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-  // IMAGE PRESIGNED URL ENDPOINT
+  // PRESIGNED URL ENDPOINTS
   // ===============================
   // Available to all authenticated Firebase users (admin, manager, chef, delivery_partner)
-  // No role restrictions - any authenticated user can access images
-  
+  // No role restrictions - any authenticated user can access files
+
+  // Get presigned URL for a document file stored in R2 bucket or local storage
+  app.post("/api/files/presigned-url", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const { fileUrl } = req.body;
+
+      if (!fileUrl || typeof fileUrl !== 'string') {
+        return res.status(400).json({ error: "fileUrl is required" });
+      }
+
+      // Check if this is a local file URL
+      if (fileUrl.startsWith('/api/files/documents/')) {
+        // Extract filename and check permissions
+        const filename = fileUrl.replace('/api/files/documents/', '');
+        const filenameParts = filename.split('_');
+        let fileUserId: number | null = null;
+        
+        if (filenameParts[0] === 'unknown') {
+          // Only admins and managers can access unknown files
+          if (user.role !== "admin" && user.role !== "manager") {
+            return res.status(403).json({ error: "Access denied" });
+          }
+        } else {
+          const userIdMatch = filenameParts[0].match(/^\d+$/);
+          if (userIdMatch) {
+            fileUserId = parseInt(userIdMatch[0]);
+          }
+        }
+        
+        // Check permissions
+        if (fileUserId !== null && user.id !== fileUserId && user.role !== "admin" && user.role !== "manager") {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        
+        // For local files, return the URL with a token query parameter
+        // The file serving route will validate the token
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          const token = await currentUser.getIdToken();
+          return res.json({ url: `${fileUrl}?token=${encodeURIComponent(token)}` });
+        }
+        
+        return res.json({ url: fileUrl });
+      }
+
+      // For R2 URLs, generate presigned URL
+      const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      if (isProduction) {
+        try {
+          const { getPresignedUrl, isR2Configured } = await import('./r2-storage');
+          if (isR2Configured()) {
+            // Extract userId from URL path to check permissions
+            const urlParts = fileUrl.split('/');
+            const fileUserIdMatch = urlParts.find(part => /^\d+$/.test(part));
+            const fileUserId = fileUserIdMatch ? parseInt(fileUserIdMatch) : null;
+            
+            // Check permissions
+            if (fileUserId && user.id !== fileUserId && user.role !== "admin" && user.role !== "manager") {
+              return res.status(403).json({ error: "Access denied" });
+            }
+            
+            const presignedUrl = await getPresignedUrl(fileUrl, 3600); // 1 hour expiry
+            return res.json({ url: presignedUrl });
+          }
+        } catch (error) {
+          console.error('Error generating presigned URL:', error);
+          return res.json({ url: fileUrl }); // Fallback to original URL
+        }
+      }
+
+      // Default: return original URL
+      return res.json({ url: fileUrl });
+    } catch (error) {
+      console.error('Error in document presigned URL endpoint:', error);
+      return res.status(500).json({
+        error: "Failed to generate presigned URL",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Get presigned URL for an image stored in R2 bucket
   app.post("/api/images/presigned-url", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
@@ -1152,14 +1238,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================
 
   // Serve uploaded document files
-  app.get("/api/files/documents/:filename", async (req: Request, res: Response) => {
+  // Supports both Firebase auth and session auth
+  // Also supports token in query string for direct file access
+  // Note: This route is used for direct file access (e.g., img tags), so cookies should be sent
+  app.get("/api/files/documents/:filename", optionalFirebaseAuth, async (req: Request, res: Response) => {
     try {
-      // Check if user is authenticated
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
+      // Check authentication - support multiple methods
+      let userId: number | null = null;
+      let userRole: string | null = null;
+      
+      // Method 1: Try Firebase auth from Authorization header (set by optionalFirebaseAuth middleware)
+      if (req.neonUser) {
+        userId = req.neonUser.id;
+        userRole = req.neonUser.role || null;
       }
+      // Method 2: Try Firebase auth from query string token (for direct file access)
+      else if (req.query.token && typeof req.query.token === 'string') {
+        try {
+          const { verifyFirebaseToken } = await import('./firebase-admin');
+          const decodedToken = await verifyFirebaseToken(req.query.token);
+          if (decodedToken) {
+            const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
+            if (neonUser) {
+              userId = neonUser.id;
+              userRole = neonUser.role || null;
+            }
+          }
+        } catch (error) {
+          console.error("Error verifying query token:", error);
+        }
+      }
+      // Method 3: Try session cookie auth (for direct file access from browser)
+      else if ((req.session as any)?.userId) {
+        try {
+          const sessionUserId = (req.session as any).userId;
+          const sessionUser = await storage.getUser(sessionUserId);
+          if (sessionUser) {
+            userId = sessionUser.id;
+            userRole = sessionUser.role;
+          }
+        } catch (error) {
+          console.error("Error loading user from session:", error);
+        }
+      }
+      // Method 4: Fall back to Passport session auth
+      else if (req.isAuthenticated && typeof req.isAuthenticated === 'function' && req.isAuthenticated() && req.user) {
+        userId = req.user.id;
+        userRole = req.user.role;
+      }
+      
+      if (!userId) {
+        // Log detailed auth info for debugging
+        console.log('[FILE ACCESS] Authentication failed for:', req.params.filename, {
+          hasNeonUser: !!req.neonUser,
+          hasQueryToken: !!req.query.token,
+          hasSession: !!(req.session as any)?.userId,
+          hasPassport: req.isAuthenticated && typeof req.isAuthenticated === 'function' ? req.isAuthenticated() : false,
+          authHeader: !!req.headers.authorization,
+          cookies: Object.keys(req.headers.cookie ? {} : {}), // Don't log cookie values for security
+          method: req.method,
+          path: req.path
+        });
+        
+        // For direct file access (like img tags), provide helpful error message
+        return res.status(401).json({ 
+          message: "Not authenticated",
+          hint: "Files must be accessed with authentication. Use the presigned URL endpoint or include an auth token."
+        });
+      }
+      
+      console.log('[FILE ACCESS] Authenticated user:', userId, 'role:', userRole, 'accessing:', req.params.filename);
 
       const filename = req.params.filename;
+      
+      // Check if this is a Cloudflare R2 URL (production)
+      const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+      
+      // If filename looks like a URL (starts with http), it's likely an R2 URL
+      // In this case, we should redirect to presigned URL instead
+      if (filename.startsWith('http://') || filename.startsWith('https://')) {
+        // This is an R2 URL, generate presigned URL
+        if (isProduction) {
+          try {
+            const { getPresignedUrl, isR2Configured } = await import('./r2-storage');
+            if (isR2Configured()) {
+              // Extract userId from URL path to check permissions
+              // R2 URLs typically have userId in the path
+              const urlParts = filename.split('/');
+              const fileUserIdMatch = urlParts.find(part => /^\d+$/.test(part));
+              const fileUserId = fileUserIdMatch ? parseInt(fileUserIdMatch) : null;
+              
+              // Check permissions
+              if (fileUserId && userId !== fileUserId && userRole !== "admin" && userRole !== "manager") {
+                return res.status(403).json({ message: "Access denied" });
+              }
+              
+              const presignedUrl = await getPresignedUrl(filename, 3600); // 1 hour expiry
+              return res.redirect(presignedUrl);
+            }
+          } catch (error) {
+            console.error("Error generating presigned URL:", error);
+            return res.status(500).json({ message: "Error accessing file" });
+          }
+        }
+      }
+      
+      // Local file serving (development)
       const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
       
       // Check if file exists
@@ -1168,11 +1352,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Extract userId from filename (format: userId_documentType_timestamp_originalname)
-      const fileUserId = parseInt(filename.split('_')[0]);
+      // Handle "unknown_" prefix for files uploaded without auth
+      const filenameParts = filename.split('_');
+      let fileUserId: number | null = null;
+      
+      // Try to parse userId from filename
+      if (filenameParts[0] === 'unknown') {
+        // File uploaded without auth - allow access for admins and managers only
+        if (userRole !== "admin" && userRole !== "manager") {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      } else {
+        // Try to parse userId from first part
+        const userIdMatch = filenameParts[0].match(/^\d+$/);
+        if (userIdMatch) {
+          fileUserId = parseInt(userIdMatch[0]);
+        }
+      }
       
       // Allow access if user owns the file, is admin, or is manager
       // Chefs can view their own files, admins and managers can view all files
-      if (req.user!.id !== fileUserId && req.user!.role !== "admin" && req.user!.role !== "manager") {
+      if (fileUserId !== null && userId !== fileUserId && userRole !== "admin" && userRole !== "manager") {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -3594,7 +3794,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied to this location" });
       }
 
-      const { name, address, notificationEmail, notificationPhone } = req.body;
+      const { 
+        name, 
+        address, 
+        notificationEmail, 
+        notificationPhone,
+        kitchenLicenseUrl,
+        kitchenLicenseStatus,
+        kitchenLicenseExpiry
+      } = req.body;
 
       const updates: any = {};
       if (name !== undefined) updates.name = name;
@@ -3614,6 +3822,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           updates.notificationPhone = null;
         }
+      }
+
+      // Handle kitchen license fields
+      if (kitchenLicenseUrl !== undefined) {
+        updates.kitchenLicenseUrl = kitchenLicenseUrl || null;
+        // Set uploaded_at timestamp when license URL is provided
+        if (kitchenLicenseUrl) {
+          updates.kitchenLicenseUploadedAt = new Date();
+          // Automatically set status to 'pending' when a new license is uploaded
+          // unless status is explicitly provided
+          if (kitchenLicenseStatus === undefined) {
+            updates.kitchenLicenseStatus = 'pending';
+          }
+        }
+      }
+      if (kitchenLicenseStatus !== undefined) {
+        // Validate status is one of the allowed values
+        if (kitchenLicenseStatus && !['pending', 'approved', 'rejected'].includes(kitchenLicenseStatus)) {
+          return res.status(400).json({ 
+            error: "Invalid kitchenLicenseStatus. Must be 'pending', 'approved', or 'rejected'" 
+          });
+        }
+        updates.kitchenLicenseStatus = kitchenLicenseStatus || null;
+      }
+      if (kitchenLicenseExpiry !== undefined) {
+        updates.kitchenLicenseExpiry = kitchenLicenseExpiry || null;
       }
 
       console.log(`💾 Updating location ${locationId} with:`, updates);
@@ -3730,7 +3964,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/manager/stripe-connect/create", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
       const managerId = req.neonUser!.id;
-      const managerEmail = req.neonUser!.username; // Use username as email
+      // Always use Firebase email to ensure we have the correct email address
+      const managerEmail = req.firebaseUser!.email || req.neonUser!.username;
+      
+      if (!managerEmail) {
+        return res.status(400).json({ error: "Email address is required for Stripe Connect account creation" });
+      }
 
       if (!pool) {
         return res.status(500).json({ error: "Database connection not available" });
@@ -3878,7 +4117,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get Stripe Dashboard login link for completed accounts
+  // If onboarding is not complete, automatically redirect to onboarding
   app.get("/api/manager/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    let accountId: string | null = null;
+    
     try {
       const managerId = req.neonUser!.id;
 
@@ -3886,25 +4128,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: "Database connection not available" });
       }
 
-      // Get Connect account ID
+      // Get Connect account ID and onboarding status
       const userResult = await pool.query(
-        'SELECT stripe_connect_account_id FROM users WHERE id = $1',
+        'SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1',
         [managerId]
       );
 
       if (!userResult.rows[0]?.stripe_connect_account_id) {
-        return res.status(400).json({ error: 'Stripe Connect account not found.' });
+        return res.status(400).json({ error: 'Stripe Connect account not found. Please create a Stripe Connect account first.' });
       }
 
-      const accountId = userResult.rows[0].stripe_connect_account_id;
-      
-      // Create dashboard login link
-      const { createDashboardLoginLink } = await import('./services/stripe-connect-service');
-      const { url } = await createDashboardLoginLink(accountId);
+      accountId = userResult.rows[0].stripe_connect_account_id;
+      const onboardingStatus = userResult.rows[0].stripe_connect_onboarding_status;
 
-      res.json({ url });
+      // Helper function to create onboarding link
+      const createOnboardingLink = async () => {
+        // Determine base URL - use same pattern as onboarding-link endpoint
+        let baseUrl: string;
+        const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+        const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+        
+        if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
+          baseUrl = process.env.BASE_URL;
+        } else if (isProduction) {
+          // In production, use the main domain (managers use kitchen subdomain but return to main)
+          baseUrl = `https://${baseDomain}`;
+        } else {
+          baseUrl = 'http://localhost:5173';
+        }
+
+        const { createAccountLink } = await import('./services/stripe-connect-service');
+        const { url } = await createAccountLink(
+          accountId!,
+          `${baseUrl}/manager/stripe-connect/refresh`,
+          `${baseUrl}/manager/stripe-connect/return`
+        );
+
+        return { url };
+      };
+
+      // Check if onboarding is complete - verify with Stripe API as well
+      const { isAccountReady } = await import('./services/stripe-connect-service');
+      const accountReady = await isAccountReady(accountId!);
+
+      // If onboarding is not complete, redirect to onboarding instead of dashboard
+      if (onboardingStatus !== 'complete' && !accountReady) {
+        const { url } = await createOnboardingLink();
+        return res.json({ 
+          url,
+          requiresOnboarding: true,
+          message: 'Please complete Stripe Connect onboarding to access your dashboard.'
+        });
+      }
+
+      // Create dashboard login link for completed accounts
+      const { createDashboardLoginLink } = await import('./services/stripe-connect-service');
+      const { url } = await createDashboardLoginLink(accountId!);
+
+      res.json({ url, requiresOnboarding: false });
     } catch (error: any) {
       console.error('Error creating dashboard login link:', error);
+      
+      // If Stripe says onboarding not complete, try to redirect to onboarding
+      if (error.message?.includes('not completed onboarding') && accountId) {
+        try {
+          // Determine base URL
+          let baseUrl: string;
+          const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+          const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+          
+          if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
+            baseUrl = process.env.BASE_URL;
+          } else if (isProduction) {
+            baseUrl = `https://${baseDomain}`;
+          } else {
+            baseUrl = 'http://localhost:5173';
+          }
+
+          const { createAccountLink } = await import('./services/stripe-connect-service');
+          const { url } = await createAccountLink(
+            accountId,
+            `${baseUrl}/manager/stripe-connect/refresh`,
+            `${baseUrl}/manager/stripe-connect/return`
+          );
+
+          return res.json({ 
+            url,
+            requiresOnboarding: true,
+            message: 'Please complete Stripe Connect onboarding to access your dashboard.'
+          });
+        } catch (onboardingError) {
+          console.error('Error creating onboarding link as fallback:', onboardingError);
+        }
+      }
+      
       res.status(500).json({ error: error.message || 'Failed to create dashboard login link' });
     }
   });
@@ -8711,7 +9028,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get chef's bookings
   app.get("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
-      const bookings = await firebaseStorage.getBookingsByChef(req.user!.id);
+      const chefId = req.user!.id;
+      console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
+      console.log(`[CHEF BOOKINGS] User object:`, { id: req.user!.id, username: req.user!.username, isChef: (req.user as any).isChef });
+      
+      const bookings = await firebaseStorage.getBookingsByChef(chefId);
+      console.log(`[CHEF BOOKINGS] Found ${bookings.length} bookings for chef ${chefId}`);
+      if (bookings.length > 0) {
+        console.log(`[CHEF BOOKINGS] First booking sample:`, {
+          id: bookings[0].id,
+          chefId: bookings[0].chefId || bookings[0].chef_id,
+          kitchenId: bookings[0].kitchenId || bookings[0].kitchen_id,
+          bookingDate: bookings[0].bookingDate || bookings[0].booking_date
+        });
+      }
       res.json(bookings);
     } catch (error) {
       console.error("Error fetching bookings:", error);
@@ -12435,6 +12765,782 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching public stats:", error);
       res.status(500).json({ error: "Failed to fetch statistics" });
+    }
+  });
+
+  // Health check endpoint
+  app.get("/api/health", async (req: Request, res: Response) => {
+    let dbStatus = 'disconnected';
+    let tables: string[] = [];
+
+    if (pool) {
+      try {
+        await pool.query('SELECT 1');
+        dbStatus = 'connected';
+
+        // Check what tables exist
+        const tableResult = await pool.query(`
+          SELECT table_name
+          FROM information_schema.tables
+          WHERE table_schema = 'public'
+        `);
+        tables = tableResult.rows.map((r: any) => r.table_name);
+      } catch (error: any) {
+        dbStatus = `error: ${error.message}`;
+      }
+    }
+
+    res.status(200).json({
+      status: 'ok',
+      dbStatus,
+      tables,
+      timestamp: new Date().toISOString(),
+      env: {
+        NODE_ENV: process.env.NODE_ENV || 'not set',
+        DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'not set',
+      },
+      session: {
+        id: (req.session as any)?.id || 'no-session',
+        active: !!(req.session as any)?.userId,
+        userId: (req.session as any)?.userId || (req as any).neonUser?.id || null
+      }
+    });
+  });
+
+  // Admin migration login - for old admins migrating to Firebase
+  app.post("/api/admin-migrate-login", async (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: 'Database not available' });
+      }
+
+      console.log('🔄 Admin migration login attempt for:', username);
+
+      // Find admin in database
+      const userResult = await pool.query(
+        'SELECT * FROM users WHERE username = $1 AND role = $2',
+        [username, 'admin']
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      const admin = userResult.rows[0];
+
+      // Verify password
+      if (!admin.password) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      const passwordMatches = await comparePasswords(password, admin.password);
+      if (!passwordMatches) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      console.log('✅ Password verified for admin:', admin.id);
+
+      // Check if admin already has Firebase account
+      if (admin.firebase_uid) {
+        console.log('✅ Admin already has Firebase UID:', admin.firebase_uid);
+        // Generate custom token for immediate login
+        const { initializeFirebaseAdmin } = await import('./firebase-admin');
+        const firebaseAdmin = initializeFirebaseAdmin();
+        
+        if (!firebaseAdmin) {
+          return res.status(500).json({ 
+            error: 'Firebase Admin not available',
+            message: 'Cannot generate login token. Please contact support.' 
+          });
+        }
+        
+        const { getAuth } = await import('firebase-admin/auth');
+        const auth = getAuth(firebaseAdmin);
+        
+        try {
+          const firebaseUser = await auth.getUser(admin.firebase_uid);
+          const customToken = await auth.createCustomToken(admin.firebase_uid);
+          
+          let email = admin.email;
+          if (!email) {
+            email = firebaseUser.email || `${admin.username}@localcooks.com`;
+          }
+          
+          console.log('✅ Returning custom token for migrated admin');
+          return res.json({
+            success: true,
+            message: 'Login successful',
+            customToken: customToken,
+            user: {
+              id: admin.id,
+              username: admin.username,
+              email: email,
+              firebaseUid: admin.firebase_uid,
+              role: 'admin'
+            }
+          });
+        } catch (firebaseError) {
+          console.error('Error getting Firebase user:', firebaseError);
+        }
+      }
+
+      // Get email for Firebase account creation
+      let email = admin.email;
+      if (!email) {
+        if (admin.username && admin.username.includes('@')) {
+          email = admin.username;
+        } else {
+          email = `${admin.username}@localcooks.com`;
+        }
+      }
+      
+      // Create Firebase account
+      const { initializeFirebaseAdmin } = await import('./firebase-admin');
+      const firebaseAdmin = initializeFirebaseAdmin();
+      
+      if (!firebaseAdmin) {
+        return res.status(500).json({ 
+          error: 'Firebase Admin not configured',
+          message: 'Cannot create Firebase account. Please contact support.' 
+        });
+      }
+      
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth(firebaseAdmin);
+      
+      let firebaseUser;
+      try {
+        try {
+          firebaseUser = await auth.getUserByEmail(email);
+          console.log('⚠️  Firebase user already exists with email:', email);
+        } catch (error) {
+          console.log('➕ Creating Firebase account for admin:', email);
+          firebaseUser = await auth.createUser({
+            email: email,
+            password: password,
+            displayName: admin.display_name || admin.username,
+            emailVerified: admin.is_verified || false,
+          });
+          console.log('✅ Firebase account created:', firebaseUser.uid);
+        }
+
+        // Set custom claims for admin role
+        await auth.setCustomUserClaims(firebaseUser.uid, {
+          role: 'admin',
+          isAdmin: true
+        });
+
+        // Link Firebase UID to Neon DB record
+        await pool.query(
+          'UPDATE users SET firebase_uid = $1 WHERE id = $2',
+          [firebaseUser.uid, admin.id]
+        );
+
+        console.log('✅ Admin migration complete:', {
+          neonUserId: admin.id,
+          firebaseUid: firebaseUser.uid,
+          email: email
+        });
+
+        // Generate Firebase custom token for immediate login
+        const customToken = await auth.createCustomToken(firebaseUser.uid);
+
+        res.json({
+          success: true,
+          message: 'Account migrated successfully. You can now use Firebase authentication.',
+          customToken: customToken,
+          user: {
+            id: admin.id,
+            username: admin.username,
+            email: email,
+            firebaseUid: firebaseUser.uid,
+            role: 'admin'
+          }
+        });
+
+      } catch (firebaseError: any) {
+        console.error('❌ Firebase account creation error:', firebaseError);
+        return res.status(500).json({ 
+          error: 'Failed to create Firebase account',
+          message: firebaseError.message || 'Unknown error occurred',
+          code: firebaseError.code
+        });
+      }
+
+    } catch (error: any) {
+      console.error('Admin migration login error:', error);
+      res.status(500).json({ 
+        error: 'Migration login failed',
+        message: error.message 
+      });
+    }
+  });
+
+  // Manager migration login - for old managers migrating to Firebase
+  app.post("/api/manager-migrate-login", async (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required' });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: 'Database not available' });
+      }
+
+      console.log('🔄 Manager migration login attempt for:', username);
+
+      // Find manager in database
+      const userResult = await pool.query(
+        'SELECT * FROM users WHERE username = $1 AND role = $2',
+        [username, 'manager']
+      );
+
+      if (userResult.rows.length === 0) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      const manager = userResult.rows[0];
+
+      // Verify password
+      if (!manager.password) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      const passwordMatches = await comparePasswords(password, manager.password);
+      if (!passwordMatches) {
+        return res.status(401).json({ error: 'Incorrect username or password' });
+      }
+
+      console.log('✅ Password verified for manager:', manager.id);
+
+      // Check if manager already has Firebase account
+      if (manager.firebase_uid) {
+        console.log('✅ Manager already has Firebase UID:', manager.firebase_uid);
+        const { initializeFirebaseAdmin } = await import('./firebase-admin');
+        const firebaseAdmin = initializeFirebaseAdmin();
+        
+        if (!firebaseAdmin) {
+          return res.status(500).json({ 
+            error: 'Firebase Admin not available',
+            message: 'Cannot generate login token. Please contact support.' 
+          });
+        }
+        
+        const { getAuth } = await import('firebase-admin/auth');
+        const auth = getAuth(firebaseAdmin);
+        
+        try {
+          const firebaseUser = await auth.getUser(manager.firebase_uid);
+          const customToken = await auth.createCustomToken(manager.firebase_uid);
+          
+          let email = manager.email;
+          if (!email) {
+            email = firebaseUser.email || `${manager.username}@localcooks.com`;
+          }
+          
+          console.log('✅ Returning custom token for migrated manager');
+          return res.json({
+            success: true,
+            message: 'Login successful',
+            customToken: customToken,
+            user: {
+              id: manager.id,
+              username: manager.username,
+              email: email,
+              firebaseUid: manager.firebase_uid,
+              role: 'manager'
+            }
+          });
+        } catch (firebaseError) {
+          console.error('Error getting Firebase user:', firebaseError);
+        }
+      }
+
+      // Get email for Firebase account creation
+      let email = manager.email;
+      if (!email) {
+        if (manager.username && manager.username.includes('@')) {
+          email = manager.username;
+        } else {
+          email = `${manager.username}@localcooks.com`;
+        }
+      }
+      
+      // Create Firebase account
+      const { initializeFirebaseAdmin } = await import('./firebase-admin');
+      const firebaseAdmin = initializeFirebaseAdmin();
+      
+      if (!firebaseAdmin) {
+        return res.status(500).json({ 
+          error: 'Firebase Admin not configured',
+          message: 'Cannot create Firebase account. Please contact support.' 
+        });
+      }
+      
+      const { getAuth } = await import('firebase-admin/auth');
+      const auth = getAuth(firebaseAdmin);
+      
+      let firebaseUser;
+      try {
+        try {
+          firebaseUser = await auth.getUserByEmail(email);
+          console.log('⚠️  Firebase user already exists with email:', email);
+        } catch (error) {
+          console.log('➕ Creating Firebase account for manager:', email);
+          firebaseUser = await auth.createUser({
+            email: email,
+            password: password,
+            displayName: manager.display_name || manager.username,
+            emailVerified: manager.is_verified || false,
+          });
+          console.log('✅ Firebase account created:', firebaseUser.uid);
+        }
+
+        // Set custom claims for manager role
+        await auth.setCustomUserClaims(firebaseUser.uid, {
+          role: 'manager',
+          isManager: true
+        });
+
+        // Link Firebase UID to Neon DB record
+        await pool.query(
+          'UPDATE users SET firebase_uid = $1 WHERE id = $2',
+          [firebaseUser.uid, manager.id]
+        );
+
+        console.log('✅ Manager migration complete:', {
+          neonUserId: manager.id,
+          firebaseUid: firebaseUser.uid,
+          email: email
+        });
+
+        // Generate Firebase custom token for immediate login
+        const customToken = await auth.createCustomToken(firebaseUser.uid);
+
+        res.json({
+          success: true,
+          message: 'Account migrated successfully. You can now use Firebase authentication.',
+          customToken: customToken,
+          user: {
+            id: manager.id,
+            username: manager.username,
+            email: email,
+            firebaseUid: firebaseUser.uid,
+            role: 'manager'
+          }
+        });
+
+      } catch (firebaseError: any) {
+        console.error('❌ Firebase account creation error:', firebaseError);
+        return res.status(500).json({ 
+          error: 'Failed to create Firebase account',
+          message: firebaseError.message || 'Unknown error occurred',
+          code: firebaseError.code
+        });
+      }
+
+    } catch (error: any) {
+      console.error('Manager migration login error:', error);
+      res.status(500).json({ 
+        error: 'Migration login failed',
+        message: error.message 
+      });
+    }
+  });
+
+  // Admin: Get all locations with pending kitchen licenses
+  app.get("/api/admin/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      if (!pool) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+
+      const result = await pool.query(`
+        SELECT 
+          l.id,
+          l.name,
+          l.address,
+          l.kitchen_license_url as "kitchenLicenseUrl",
+          l.kitchen_license_status as "kitchenLicenseStatus",
+          l.kitchen_license_feedback as "kitchenLicenseFeedback",
+          l.kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+          l.kitchen_license_expiry as "kitchenLicenseExpiry",
+          l.kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
+          u.username as "managerUsername",
+          u.id as "managerId"
+        FROM locations l
+        LEFT JOIN users u ON l.manager_id = u.id
+        WHERE l.kitchen_license_url IS NOT NULL
+          AND (l.kitchen_license_status = 'pending' OR l.kitchen_license_status IS NULL)
+        ORDER BY l.created_at DESC
+      `);
+
+      res.json(result.rows);
+    } catch (error: any) {
+      console.error("Error fetching pending licenses:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
+    }
+  });
+
+  // Admin: Approve or reject a kitchen license
+  app.put("/api/admin/locations/:locationId/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      const { status, feedback } = req.body;
+
+      if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
+      }
+
+      if (status === 'rejected' && !feedback) {
+        return res.status(400).json({ error: "Feedback is required when rejecting a license" });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+
+      // Update the license status
+      // Use separate parameters to avoid PostgreSQL type inference issues
+      // kitchen_license_status is of type document_verification_status enum ('pending', 'approved', 'rejected')
+      const isApproved = status === 'approved';
+      const updateResult = await pool.query(`
+        UPDATE locations
+        SET 
+          kitchen_license_status = $1::document_verification_status,
+          kitchen_license_feedback = $2,
+          kitchen_license_approved_at = CASE WHEN $3::boolean THEN NOW() ELSE NULL END,
+          kitchen_license_approved_by = $4
+        WHERE id = $5::integer
+        RETURNING 
+          id,
+          name,
+          kitchen_license_status as "kitchenLicenseStatus",
+          kitchen_license_feedback as "kitchenLicenseFeedback",
+          kitchen_license_approved_at as "kitchenLicenseApprovedAt"
+      `, [status, feedback || null, isApproved, req.neonUser!.id, locationId]);
+
+      if (updateResult.rows.length === 0) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      // Send email notification to manager
+      try {
+        const managerResult = await pool.query(
+          'SELECT u.username, u.firebase_uid FROM users u INNER JOIN locations l ON l.manager_id = u.id WHERE l.id = $1',
+          [locationId]
+        );
+
+        if (managerResult.rows.length > 0) {
+          const manager = managerResult.rows[0];
+          const location = updateResult.rows[0];
+
+          // TODO: Create a proper email template for license approval/rejection
+          // For now, using the basic location email template
+          const { generateLocationEmailChangedEmail } = await import('./email');
+          
+          const emailContent = generateLocationEmailChangedEmail({
+            email: manager.username,
+            locationName: location.name,
+            locationId: locationId,
+          });
+
+          await sendEmail(emailContent, {
+            trackingId: `license_${status}_${locationId}_${Date.now()}`
+          });
+
+          console.log(`✅ License ${status} notification sent to manager: ${manager.username}`);
+        }
+      } catch (emailError) {
+        console.error("Error sending license status email:", emailError);
+        // Don't fail the request if email fails
+      }
+
+      res.json(updateResult.rows[0]);
+    } catch (error: any) {
+      console.error("Error updating license status:", error);
+      res.status(500).json({ error: error.message || "Failed to update license status" });
+    }
+  });
+
+  // Manager forgot password endpoint
+  app.post("/api/manager/forgot-password", async (req: Request, res: Response) => {
+    try {
+      const { username } = req.body;
+
+      if (!username) {
+        return res.status(400).json({ message: "Username is required" });
+      }
+
+      console.log(`🔐 Manager password reset requested for username: ${username}`);
+
+      if (!pool) {
+        return res.status(500).json({ 
+          message: "Password reset service unavailable. Please try again later." 
+        });
+      }
+
+      // Find manager by username
+      const manager = await storage.getUserByUsername(username);
+
+      if (!manager) {
+        // Don't reveal if user exists or not for security
+        console.log(`❌ Manager not found: ${username}`);
+        return res.status(200).json({ 
+          message: "If an account with this username exists, you will receive a password reset link." 
+        });
+      }
+
+      // Verify user is a manager
+      if (manager.role !== 'manager') {
+        console.log(`❌ User is not a manager: ${username}, role: ${manager.role}`);
+        return res.status(200).json({ 
+          message: "If an account with this username exists, you will receive a password reset link." 
+        });
+      }
+
+      // Generate reset token
+      const crypto = await import('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetTokenExpiry = new Date();
+      resetTokenExpiry.setHours(resetTokenExpiry.getHours() + 1); // Token expires in 1 hour
+
+      // Store reset token in database
+      try {
+        await pool.query(
+          `INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) 
+           VALUES ($1, $2, $3, NOW()) 
+           ON CONFLICT (user_id) 
+           DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()`,
+          [manager.id, resetToken, resetTokenExpiry]
+        );
+        console.log(`✅ Password reset token stored for manager: ${manager.id}`);
+      } catch (dbError) {
+        console.error('Error storing password reset token:', dbError);
+        return res.status(500).json({ 
+          message: "Error processing password reset request. Please try again later." 
+        });
+      }
+
+      // Generate reset URL
+      const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
+      const baseUrl = process.env.NODE_ENV === 'production' 
+        ? `https://kitchen.${baseDomain}`
+        : (process.env.BASE_URL || 'http://localhost:5000');
+      const resetUrl = `${baseUrl}/password-reset?token=${resetToken}&role=manager`;
+
+      // Send password reset email
+      try {
+        const { generatePasswordResetEmail } = await import('./email');
+        
+        const emailContent = generatePasswordResetEmail({
+          fullName: manager.username || username,
+          email: username, // Username is the email for managers
+          resetToken: resetToken,
+          resetUrl: resetUrl
+        });
+
+        const emailSent = await sendEmail(emailContent, {
+          trackingId: `manager_password_reset_${manager.id}_${Date.now()}`
+        });
+
+        if (emailSent) {
+          console.log(`✅ Password reset email sent successfully to manager: ${username}`);
+        } else {
+          console.error(`❌ Failed to send password reset email to manager: ${username}`);
+          return res.status(500).json({ 
+            message: "Error sending password reset email. Please try again later." 
+          });
+        }
+      } catch (emailError) {
+        console.error(`❌ Error sending password reset email:`, emailError);
+        return res.status(500).json({ 
+          message: "Error sending password reset email. Please try again later." 
+        });
+      }
+
+      return res.status(200).json({ 
+        message: "If an account with this username exists, you will receive a password reset link." 
+      });
+
+    } catch (error: any) {
+      console.error("Error in manager forgot password:", error);
+      return res.status(500).json({ 
+        message: "Internal server error. Please try again later." 
+      });
+    }
+  });
+
+  // Manager reset password endpoint
+  app.post("/api/manager/reset-password", async (req: Request, res: Response) => {
+    try {
+      const { token, newPassword } = req.body;
+
+      if (!token || !newPassword) {
+        return res.status(400).json({ message: "Token and new password are required" });
+      }
+
+      // Validate password strength
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters long" });
+      }
+
+      console.log(`🔐 Manager password reset attempt with token: ${token.substring(0, 8)}...`);
+
+      if (!pool) {
+        return res.status(500).json({ 
+          message: "Password reset service unavailable. Please try again later." 
+        });
+      }
+
+      // Verify reset token and get manager
+      const result = await pool.query(`
+        SELECT u.* FROM users u 
+        JOIN password_reset_tokens prt ON u.id = prt.user_id 
+        WHERE prt.token = $1 AND prt.expires_at > NOW() AND u.role = 'manager'
+      `, [token]);
+
+      if (result.rows.length === 0) {
+        console.log(`❌ Invalid or expired reset token`);
+        return res.status(400).json({ message: "Invalid or expired reset token" });
+      }
+
+      const manager = result.rows[0];
+
+      // Hash the new password
+      const hashedPassword = await hashPassword(newPassword);
+
+      // Update password in database
+      try {
+        await pool.query(
+          'UPDATE users SET password = $1 WHERE id = $2',
+          [hashedPassword, manager.id]
+        );
+        console.log(`✅ Password updated for manager: ${manager.id}`);
+
+        // Clear reset token
+        await pool.query(
+          'DELETE FROM password_reset_tokens WHERE user_id = $1',
+          [manager.id]
+        );
+        console.log(`✅ Reset token cleared for manager: ${manager.id}`);
+      } catch (dbError) {
+        console.error('Error updating password:', dbError);
+        return res.status(500).json({ 
+          message: "Error updating password. Please try again later." 
+        });
+      }
+
+      console.log(`✅ Password successfully reset for manager: ${manager.id}`);
+      return res.status(200).json({ 
+        message: "Password reset successfully. You can now log in with your new password." 
+      });
+
+    } catch (error: any) {
+      console.error("Error in manager reset password:", error);
+      return res.status(500).json({ 
+        message: "Internal server error. Please try again later." 
+      });
+    }
+  });
+
+  // Portal user session endpoint (for portal users who use session auth)
+  app.get("/api/user-session", async (req: Request, res: Response) => {
+    try {
+      // Check if user is authenticated via session
+      if (req.isAuthenticated() && req.user) {
+        return res.json({
+          id: req.user.id,
+          username: req.user.username,
+          role: req.user.role,
+          isAuthenticated: true
+        });
+      }
+      
+      // Check for Firebase auth as fallback
+      if ((req as any).neonUser) {
+        return res.json({
+          id: (req as any).neonUser.id,
+          username: (req as any).neonUser.username,
+          role: (req as any).neonUser.role,
+          isAuthenticated: true
+        });
+      }
+      
+      // No session or Firebase auth
+      return res.status(401).json({ 
+        error: 'Session-based authentication removed. Please use /api/user/profile with Firebase token.',
+        isAuthenticated: false
+      });
+    } catch (error: any) {
+      console.error("Error getting user session:", error);
+      res.status(500).json({ error: "Failed to get user session" });
+    }
+  });
+
+  // Process payouts endpoint (for Vercel Cron jobs)
+  // This endpoint is called weekly by Vercel Cron to process payouts for managers
+  app.post("/api/process-payouts", async (req: Request, res: Response) => {
+    // Verify this is a cron request (Vercel adds Authorization header)
+    const authHeader = req.headers.authorization;
+    const cronSecret = process.env.CRON_SECRET;
+    
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      if (!pool) {
+        return res.status(500).json({ error: 'Database connection not available' });
+      }
+
+      const { processWeeklyPayouts, getPayoutSummary } = await import('./services/payout-processing-service.js');
+
+      // Get summary first
+      const summary = await getPayoutSummary(pool);
+
+      // Process payouts (dry run by default - Stripe handles automatic payouts)
+      // Set dryRun to false if you want to trigger immediate payouts
+      const results = await processWeeklyPayouts(pool, true);
+
+      const successCount = results.filter(r => r.success).length;
+      const errorCount = results.filter(r => !r.success).length;
+      const totalAmount = results.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+      console.log(`Payout processing completed: ${successCount} successful, ${errorCount} errors, $${totalAmount.toFixed(2)} total`);
+
+      res.status(200).json({
+        success: true,
+        timestamp: new Date().toISOString(),
+        summary: {
+          ...summary,
+          processedManagers: results.length,
+          successfulPayouts: successCount,
+          failedPayouts: errorCount,
+          totalAmount,
+        },
+        results: results.map(r => ({
+          managerId: r.managerId,
+          success: r.success,
+          amount: r.amount,
+          error: r.error,
+        })),
+      });
+    } catch (error: any) {
+      console.error('Error processing payouts:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to process payouts',
+        timestamp: new Date().toISOString(),
+      });
     }
   });
 

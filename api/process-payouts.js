@@ -1,4 +1,11 @@
 /**
+ * @deprecated This file is deprecated and will be removed in a future version.
+ * The process-payouts functionality has been moved to server/routes.ts as part of the unified entry point.
+ * All API requests now route through api/index.js (bundled from server/index.ts).
+ * 
+ * This file is kept temporarily for backward compatibility but should not be used.
+ * The route is now available at: POST /api/process-payouts (handled by server/routes.ts)
+ * 
  * Vercel Cron Job: Process Weekly Payouts
  * 
  * This endpoint is called weekly by Vercel Cron to process payouts for managers.

@@ -16,6 +16,11 @@ declare global {
         username: string;
         role: "admin" | "chef" | "delivery_partner" | "manager" | null;
         firebaseUid?: string;
+        isChef?: boolean;
+        isDeliveryPartner?: boolean;
+        isManager?: boolean;
+        isVerified?: boolean;
+        has_seen_welcome?: boolean;
       };
     }
   }
@@ -124,14 +129,26 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     }
 
     // Set both Firebase and Neon user info on request
+    // Include all user properties including isChef, isDeliveryPartner, isManager
     req.neonUser = {
       id: neonUser.id,
       username: neonUser.username,
       role: neonUser.role,
       firebaseUid: neonUser.firebaseUid || undefined,
+      // Include role flags - these are now properly mapped by Drizzle ORM
+      isChef: (neonUser as any).isChef || false,
+      isDeliveryPartner: (neonUser as any).isDeliveryPartner || false,
+      isManager: (neonUser as any).isManager || false,
+      isVerified: (neonUser as any).isVerified || false,
+      has_seen_welcome: (neonUser as any).has_seen_welcome || false,
     };
 
-    console.log(`🔄 Auth translation: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`);
+    console.log(`🔄 Auth translation: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`, {
+      role: neonUser.role,
+      isChef: (neonUser as any).isChef,
+      isDeliveryPartner: (neonUser as any).isDeliveryPartner,
+      isManager: (neonUser as any).isManager
+    });
 
     next();
   } catch (error) {
@@ -180,6 +197,12 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
           username: neonUser.username,
           role: neonUser.role,
           firebaseUid: neonUser.firebaseUid || undefined,
+          // Include role flags - these are now properly mapped by Drizzle ORM
+          isChef: (neonUser as any).isChef || false,
+          isDeliveryPartner: (neonUser as any).isDeliveryPartner || false,
+          isManager: (neonUser as any).isManager || false,
+          isVerified: (neonUser as any).isVerified || false,
+          has_seen_welcome: (neonUser as any).has_seen_welcome || false,
         };
       }
     }
