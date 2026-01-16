@@ -1,4 +1,3 @@
-import DeliveryPartnerDocumentUpload from "@/components/document-verification/DeliveryPartnerDocumentUpload";
 import DocumentUpload from "@/components/document-verification/DocumentUpload";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -6,8 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
-import { auth } from "@/lib/firebase";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
   CheckCircle,
@@ -15,7 +12,6 @@ import {
   Clock,
   FileText,
   Shield,
-  Truck,
   XCircle
 } from "lucide-react";
 import { Link } from "wouter";
@@ -24,144 +20,8 @@ export default function DocumentVerification() {
   const { user } = useFirebaseAuth();
   const { verification, loading } = useDocumentVerification();
   
-  // Fetch delivery partner applications for delivery partners
-  const { data: deliveryApplications = [], isLoading: isLoadingDelivery } = useQuery({
-    queryKey: ["/api/firebase/delivery-partner-applications/my"],
-    queryFn: async () => {
-      if (!user?.uid) {
-        throw new Error("User not authenticated");
-      }
-      
-      // Only fetch delivery partner applications if user is a delivery partner
-      if (!(user as any)?.isDeliveryPartner) {
-        return [];
-      }
-
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-
-      const token = await firebaseUser.getIdToken();
-      const headers: Record<string, string> = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      };
-
-      const response = await fetch("/api/firebase/delivery-partner-applications/my", {
-        credentials: 'include',
-        headers
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Account sync required. Please click 'Sync Account' below to connect your Firebase account to our database.");
-        }
-        
-        try {
-          const errorData = await response.json();
-          throw new Error(errorData.error || response.statusText);
-        } catch (parseError) {
-          throw new Error(`Server error: ${response.status} ${response.statusText}`);
-        }
-      }
-
-      const rawData = await response.json();
-      
-      // Normalize delivery partner application data
-      const normalizedData = rawData.map((app: any) => ({
-        id: app.id,
-        userId: app.user_id || app.userId,
-        fullName: app.full_name || app.fullName,
-        email: app.email,
-        phone: app.phone,
-        address: app.address,
-        city: app.city,
-        province: app.province,
-        postalCode: app.postal_code || app.postalCode,
-        vehicleType: app.vehicle_type || app.vehicleType,
-        vehicleMake: app.vehicle_make || app.vehicleMake,
-        vehicleModel: app.vehicle_model || app.vehicleModel,
-        vehicleYear: app.vehicle_year || app.vehicleYear,
-        licensePlate: app.license_plate || app.licensePlate,
-        driversLicenseUrl: app.drivers_license_url || app.driversLicenseUrl,
-        vehicleRegistrationUrl: app.vehicle_registration_url || app.vehicleRegistrationUrl,
-        insuranceUrl: app.insurance_url || app.insuranceUrl,
-        driversLicenseStatus: app.drivers_license_status || app.driversLicenseStatus,
-        vehicleRegistrationStatus: app.vehicle_registration_status || app.vehicleRegistrationStatus,
-        insuranceStatus: app.insurance_status || app.insuranceStatus,
-        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
-        documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
-        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
-        feedback: app.feedback,
-        status: app.status,
-        createdAt: app.created_at || app.createdAt,
-      }));
-
-      return normalizedData;
-    },
-    enabled: !!user && !!(user as any)?.isDeliveryPartner,
-    refetchInterval: 20000,
-    refetchIntervalInBackground: true,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-    refetchOnReconnect: true,
-    staleTime: 0,
-    gcTime: 10000,
-  });
-
-  // Get the most recent delivery partner application
-  const latestDeliveryApp = deliveryApplications.length > 0 ? deliveryApplications[0] : null;
-  
-  // Query client for invalidating queries
-  const queryClient = useQueryClient();
-  
-  // Mutation for updating delivery partner documents
-  const updateDeliveryDocumentsMutation = useMutation({
-    mutationFn: async ({ id, documentData }: { id: number; documentData: any }) => {
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-
-      const token = await firebaseUser.getIdToken();
-      const response = await fetch(`/api/firebase/delivery-partner-applications/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(documentData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || response.statusText);
-      }
-
-      return response.json();
-    },
-    onSuccess: () => {
-      // Invalidate and refetch delivery partner applications
-      queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] });
-    },
-  });
-  
-  // Determine if user is a chef or delivery partner
+  // Determine if user is a chef
   const isChef = (user as any)?.isChef;
-  const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-  
-  // Use appropriate data based on user type
-  const isChefUser = isChef && !isDeliveryPartner;
-  const isDeliveryPartnerUser = isDeliveryPartner && !isChef;
-  const isDualRole = isChef && isDeliveryPartner;
-  
-  // For dual role users, prioritize chef documents if they exist, otherwise show delivery partner
-  const shouldShowChefDocuments = isChefUser || (isDualRole && verification);
-  const shouldShowDeliveryDocuments = isDeliveryPartnerUser || (isDualRole && !verification && latestDeliveryApp);
 
   // Authentication guard
   if (!user) {
@@ -225,7 +85,7 @@ export default function DocumentVerification() {
   }
 
   // Loading state
-  if (loading || (isDeliveryPartner && isLoadingDelivery)) {
+  if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50">
         <Header />
@@ -242,83 +102,42 @@ export default function DocumentVerification() {
     );
   }
 
-  // Helper functions for document-specific logic
+  // Helper functions for chef document logic
   const hasChefDocuments = verification && (verification.foodSafetyLicenseUrl || verification.foodEstablishmentCertUrl);
-  const hasDeliveryDocuments = latestDeliveryApp && (latestDeliveryApp.driversLicenseUrl || latestDeliveryApp.vehicleRegistrationUrl || latestDeliveryApp.insuranceUrl);
-  
-  const hasDocuments = shouldShowChefDocuments ? hasChefDocuments : hasDeliveryDocuments;
+  const hasDocuments = hasChefDocuments;
 
   // Check if user is fully verified
   const isChefFullyVerified = verification && verification.foodSafetyLicenseStatus === "approved" && 
     (!verification.foodEstablishmentCertUrl || verification.foodEstablishmentCertStatus === "approved");
   
-  const isDeliveryFullyVerified = latestDeliveryApp && 
-    latestDeliveryApp.driversLicenseStatus === "approved" && 
-    latestDeliveryApp.vehicleRegistrationStatus === "approved" && 
-    latestDeliveryApp.insuranceStatus === "approved";
-  
-  const isFullyVerified = shouldShowChefDocuments ? isChefFullyVerified : isDeliveryFullyVerified;
+  const isFullyVerified = isChefFullyVerified;
 
   // Document-specific status (not application status)
   const getDocumentStatus = () => {
-    if (shouldShowChefDocuments) {
-      if (!hasChefDocuments) return "Not Started";
-      
-      const foodSafetyApproved = verification?.foodSafetyLicenseStatus === "approved";
-      const establishmentApproved = !verification?.foodEstablishmentCertUrl || verification?.foodEstablishmentCertStatus === "approved";
-      
-      if (foodSafetyApproved && establishmentApproved) return "Verified";
-      
-      const anyRejected = verification?.foodSafetyLicenseStatus === "rejected" || 
-                        verification?.foodEstablishmentCertStatus === "rejected";
-      if (anyRejected) return "Needs Attention";
-      
-      return "Under Review";
-    } else {
-      if (!hasDeliveryDocuments) return "Not Started";
-      
-      const allApproved = latestDeliveryApp?.driversLicenseStatus === "approved" && 
-                         latestDeliveryApp?.vehicleRegistrationStatus === "approved" && 
-                         latestDeliveryApp?.insuranceStatus === "approved";
-      
-      if (allApproved) return "Verified";
-      
-      const anyRejected = latestDeliveryApp?.driversLicenseStatus === "rejected" || 
-                         latestDeliveryApp?.vehicleRegistrationStatus === "rejected" || 
-                         latestDeliveryApp?.insuranceStatus === "rejected";
-      if (anyRejected) return "Needs Attention";
-      
-      return "Under Review";
-    }
+    if (!hasChefDocuments) return "Not Started";
+    
+    const foodSafetyApproved = verification?.foodSafetyLicenseStatus === "approved";
+    const establishmentApproved = !verification?.foodEstablishmentCertUrl || verification?.foodEstablishmentCertStatus === "approved";
+    
+    if (foodSafetyApproved && establishmentApproved) return "Verified";
+    
+    const anyRejected = verification?.foodSafetyLicenseStatus === "rejected" || 
+                      verification?.foodEstablishmentCertStatus === "rejected";
+    if (anyRejected) return "Needs Attention";
+    
+    return "Under Review";
   };
 
   const getVerificationStatus = () => {
-    if (shouldShowChefDocuments) {
-      if (!hasChefDocuments) return "Pending";
-      
-      const foodSafetyApproved = verification?.foodSafetyLicenseStatus === "approved";
-      const establishmentApproved = !verification?.foodEstablishmentCertUrl || verification?.foodEstablishmentCertStatus === "approved";
-      
-      if (foodSafetyApproved && establishmentApproved) return "Complete";
-      if (foodSafetyApproved && verification?.foodEstablishmentCertUrl) return "Partial";
-      
-      return "Pending";
-    } else {
-      if (!hasDeliveryDocuments) return "Pending";
-      
-      const allApproved = latestDeliveryApp?.driversLicenseStatus === "approved" && 
-                         latestDeliveryApp?.vehicleRegistrationStatus === "approved" && 
-                         latestDeliveryApp?.insuranceStatus === "approved";
-      
-      if (allApproved) return "Complete";
-      
-      const anyApproved = latestDeliveryApp?.driversLicenseStatus === "approved" || 
-                         latestDeliveryApp?.vehicleRegistrationStatus === "approved" || 
-                         latestDeliveryApp?.insuranceStatus === "approved";
-      if (anyApproved) return "Partial";
-      
-      return "Pending";
-    }
+    if (!hasChefDocuments) return "Pending";
+    
+    const foodSafetyApproved = verification?.foodSafetyLicenseStatus === "approved";
+    const establishmentApproved = !verification?.foodEstablishmentCertUrl || verification?.foodEstablishmentCertStatus === "approved";
+    
+    if (foodSafetyApproved && establishmentApproved) return "Complete";
+    if (foodSafetyApproved && verification?.foodEstablishmentCertUrl) return "Partial";
+    
+    return "Pending";
   };
 
   const getStatusBadge = (status: string): React.ReactNode => {
@@ -349,19 +168,6 @@ export default function DocumentVerification() {
     }
   };
 
-  // Handler for updating delivery partner documents
-  const handleDeliveryDocumentUpdate = async (field: string, url: string) => {
-    if (!latestDeliveryApp) return;
-    
-    try {
-      await updateDeliveryDocumentsMutation.mutateAsync({
-        id: latestDeliveryApp.id,
-        documentData: { [field]: url }
-      });
-    } catch (error) {
-      console.error('Error updating delivery partner document:', error);
-    }
-  };
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50">
@@ -375,26 +181,15 @@ export default function DocumentVerification() {
           className="bg-white rounded-3xl p-8 shadow-sm border border-gray-200/60 hover:shadow-lg transition-all duration-300 mb-8 backdrop-blur-sm"
         >
           <div className="flex items-center gap-4 mb-6">
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-              shouldShowChefDocuments 
-                ? 'bg-gradient-to-br from-orange-500 to-red-600' 
-                : 'bg-gradient-to-br from-blue-500 to-indigo-600'
-            }`}>
-              {shouldShowChefDocuments ? (
-                <ChefHat className="h-6 w-6 text-white" />
-              ) : (
-                <Truck className="h-6 w-6 text-white" />
-              )}
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-600">
+              <ChefHat className="h-6 w-6 text-white" />
             </div>
             <div className="flex-1">
               <h1 className="text-2xl font-semibold text-gray-900">
-                {shouldShowChefDocuments ? 'Chef Document Verification' : 'Delivery Partner Documents'}
+                Chef Document Verification
               </h1>
               <p className="text-gray-500">
-                {shouldShowChefDocuments 
-                  ? 'Upload and manage your chef certificates' 
-                  : 'Upload and manage your delivery documents'
-                }
+                Upload and manage your chef certificates
               </p>
             </div>
             {isFullyVerified && (
@@ -415,15 +210,8 @@ export default function DocumentVerification() {
                 <div className="flex-1">
                   <p className="text-sm text-gray-600">Documents</p>
                   <p className="font-medium text-gray-900">
-                    {shouldShowChefDocuments ? 
-                      (verification ? 
-                        (verification.foodSafetyLicenseUrl ? 1 : 0) + (verification.foodEstablishmentCertUrl ? 1 : 0) : 0
-                      ) : 
-                      (latestDeliveryApp ? 
-                        (latestDeliveryApp.driversLicenseUrl ? 1 : 0) + 
-                        (latestDeliveryApp.vehicleRegistrationUrl ? 1 : 0) + 
-                        (latestDeliveryApp.insuranceUrl ? 1 : 0) : 0
-                      )
+                    {verification ? 
+                      (verification.foodSafetyLicenseUrl ? 1 : 0) + (verification.foodEstablishmentCertUrl ? 1 : 0) : 0
                     } Uploaded
                   </p>
                 </div>
@@ -510,144 +298,7 @@ export default function DocumentVerification() {
 
                      {/* Document Upload Section */}
            <div className="pt-6 border-t border-gray-200">
-             {shouldShowChefDocuments ? (
-               <DocumentUpload forceShowForm={true} />
-             ) : (
-               <div className="space-y-6">
-                 {latestDeliveryApp ? (
-                   <>
-                     {/* Document Status Display */}
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                       {/* Driver's License */}
-                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                         <div className="flex items-center justify-between mb-3">
-                           <h4 className="font-medium text-gray-900">Driver's License</h4>
-                           {latestDeliveryApp.driversLicenseStatus && (
-                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                               latestDeliveryApp.driversLicenseStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                               latestDeliveryApp.driversLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                               'bg-red-100 text-red-800'
-                             }`}>
-                               {latestDeliveryApp.driversLicenseStatus.charAt(0).toUpperCase() + latestDeliveryApp.driversLicenseStatus.slice(1)}
-                             </span>
-                           )}
-                         </div>
-                         <div className="space-y-2">
-                           {latestDeliveryApp.driversLicenseUrl ? (
-                             <a href={latestDeliveryApp.driversLicenseUrl} target="_blank" rel="noopener noreferrer" 
-                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                               <FileText className="h-4 w-4" />
-                               View Document
-                             </a>
-                           ) : (
-                             <div className="flex items-center gap-2 text-gray-500 text-sm">
-                               <FileText className="h-4 w-4" />
-                               Not uploaded
-                             </div>
-                           )}
-                           <p className="text-xs text-gray-600">Required for delivery operations</p>
-                         </div>
-                       </div>
-                       
-                       {/* Vehicle Registration */}
-                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                         <div className="flex items-center justify-between mb-3">
-                           <h4 className="font-medium text-gray-900">Vehicle Registration</h4>
-                           {latestDeliveryApp.vehicleRegistrationStatus && (
-                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                               latestDeliveryApp.vehicleRegistrationStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                               latestDeliveryApp.vehicleRegistrationStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                               'bg-red-100 text-red-800'
-                             }`}>
-                               {latestDeliveryApp.vehicleRegistrationStatus.charAt(0).toUpperCase() + latestDeliveryApp.vehicleRegistrationStatus.slice(1)}
-                             </span>
-                           )}
-                         </div>
-                         <div className="space-y-2">
-                           {latestDeliveryApp.vehicleRegistrationUrl ? (
-                             <a href={latestDeliveryApp.vehicleRegistrationUrl} target="_blank" rel="noopener noreferrer" 
-                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                               <FileText className="h-4 w-4" />
-                               View Document
-                             </a>
-                           ) : (
-                             <div className="flex items-center gap-2 text-gray-500 text-sm">
-                               <FileText className="h-4 w-4" />
-                               Not uploaded
-                             </div>
-                           )}
-                           <p className="text-xs text-gray-600">Required for delivery operations</p>
-                         </div>
-                       </div>
-                       
-                       {/* Vehicle Insurance */}
-                       <div className="p-4 rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-gray-100/50">
-                         <div className="flex items-center justify-between mb-3">
-                           <h4 className="font-medium text-gray-900">Vehicle Insurance</h4>
-                           {latestDeliveryApp.insuranceStatus && (
-                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                               latestDeliveryApp.insuranceStatus === 'approved' ? 'bg-green-100 text-green-800' :
-                               latestDeliveryApp.insuranceStatus === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                               'bg-red-100 text-red-800'
-                             }`}>
-                               {latestDeliveryApp.insuranceStatus.charAt(0).toUpperCase() + latestDeliveryApp.insuranceStatus.slice(1)}
-                             </span>
-                           )}
-                         </div>
-                         <div className="space-y-2">
-                           {latestDeliveryApp.insuranceUrl ? (
-                             <a href={latestDeliveryApp.insuranceUrl?.includes('r2.cloudflarestorage.com') 
-                               ? `/api/files/r2-proxy?url=${encodeURIComponent(latestDeliveryApp.insuranceUrl)}`
-                               : latestDeliveryApp.insuranceUrl} 
-                               target="_blank" rel="noopener noreferrer" 
-                                className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                               <FileText className="h-4 w-4" />
-                               View Document
-                             </a>
-                           ) : (
-                             <div className="flex items-center gap-2 text-gray-500 text-sm">
-                               <FileText className="h-4 w-4" />
-                               Not uploaded
-                             </div>
-                           )}
-                           <p className="text-xs text-gray-600">Required for delivery operations</p>
-                         </div>
-                       </div>
-                       
-
-                     </div>
-                     
-                     {/* Document Upload Component */}
-                     <DeliveryPartnerDocumentUpload 
-                       application={latestDeliveryApp}
-                       onDocumentUpdate={handleDeliveryDocumentUpdate}
-                     />
-                   </>
-                 ) : (
-                   <div className="text-center py-8">
-                     <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mx-auto mb-4">
-                       <Truck className="h-8 w-8 text-blue-600" />
-                     </div>
-                     <h4 className="text-lg font-medium text-gray-900 mb-2">No Delivery Partner Application Found</h4>
-                     <p className="text-gray-600 mb-6">You need to submit a delivery partner application first to upload documents.</p>
-                     <Button asChild className="rounded-xl">
-                       <Link href="/delivery-partner-apply">
-                         <Truck className="mr-2 h-4 w-4" />
-                         Submit Delivery Partner Application
-                       </Link>
-                     </Button>
-                   </div>
-                 )}
-                 
-                 {/* Admin Feedback */}
-                 {latestDeliveryApp?.documentsAdminFeedback && (
-                   <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-xl border border-yellow-200">
-                     <p className="text-sm text-yellow-800 font-medium">Admin Feedback:</p>
-                     <p className="text-sm text-yellow-700 mt-1">{latestDeliveryApp.documentsAdminFeedback}</p>
-                   </div>
-                 )}
-               </div>
-             )}
+             <DocumentUpload forceShowForm={true} />
            </div>
         </motion.div>
       </main>

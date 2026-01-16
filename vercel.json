@@ -73,17 +73,6 @@
       "permanent": false
     },
     {
-      "source": "/delivery-partner-apply",
-      "has": [
-        {
-          "type": "host",
-          "value": "^(?!driver\\.|localcooks\\.ca$).*"
-        }
-      ],
-      "destination": "https://driver.localcooks.ca/delivery-partner-apply",
-      "permanent": false
-    },
-    {
       "source": "/portal",
       "has": [
         {

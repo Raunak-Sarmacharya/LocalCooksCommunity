@@ -117,11 +117,10 @@ export function registerFirebaseRoutes(app: Express) {
       // Validate subdomain-role matching for registration
       const subdomain = getSubdomainFromHeaders(req.headers);
       // For registration, we only have the role, not the flags yet
-      if (role && !isRoleAllowedForSubdomain(role, subdomain, false, false, false, false)) {
+      if (role && !isRoleAllowedForSubdomain(role, subdomain, false, false, false)) {
         const requiredSubdomain = role === 'chef' ? 'chef' :
                                   role === 'manager' ? 'kitchen' :
-                                  role === 'admin' ? 'admin' :
-                                  role === 'delivery_partner' ? 'driver' : null;
+                                  role === 'admin' ? 'admin' : null;
         
         return res.status(403).json({
           error: `Access denied. ${role} users must register from the ${requiredSubdomain} subdomain.`,
@@ -393,15 +392,12 @@ export function registerFirebaseRoutes(app: Express) {
       const isPortalUser = (existingUser as any).isPortalUser || (existingUser as any).is_portal_user || false;
       const isChef = (existingUser as any).isChef || (existingUser as any).is_chef || false;
       const isManager = (existingUser as any).isManager || (existingUser as any).is_manager || false;
-      const isDeliveryPartner = (existingUser as any).isDeliveryPartner || (existingUser as any).is_delivery_partner || false;
-      
-      if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser, isChef, isManager, isDeliveryPartner)) {
+      if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser, isChef, isManager)) {
         // Determine effective role for error message
-        const effectiveRole = existingUser.role || (isManager ? 'manager' : isDeliveryPartner && !isChef ? 'delivery_partner' : isChef ? 'chef' : null);
+        const effectiveRole = existingUser.role || (isManager ? 'manager' : isChef ? 'chef' : null);
         const requiredSubdomain = effectiveRole === 'chef' ? 'chef' :
                                   effectiveRole === 'manager' ? 'kitchen' :
-                                  effectiveRole === 'admin' ? 'admin' :
-                                  effectiveRole === 'delivery_partner' ? 'driver' : null;
+                                  effectiveRole === 'admin' ? 'admin' : null;
         
         return res.status(403).json({
           error: `Access denied. ${effectiveRole || 'user'} users must login from the ${requiredSubdomain} subdomain.`,
@@ -433,29 +429,20 @@ export function registerFirebaseRoutes(app: Express) {
       // req.neonUser is now populated by middleware with Neon user data
       // req.firebaseUser contains Firebase auth data
 
-      // Fetch user's full name from applications (chef or delivery partner)
+      // Fetch user's full name from applications
       let userFullName = null;
       let stripeConnectAccountId = null;
       let stripeConnectOnboardingStatus = null;
       
       if (pool) {
         try {
-          // Try chef applications first, then delivery partner applications
+          // Get full name from chef applications
           const chefAppResult = await pool.query(
             'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
             [req.neonUser!.id]
           );
           if (chefAppResult.rows.length > 0 && chefAppResult.rows[0].full_name) {
             userFullName = chefAppResult.rows[0].full_name;
-          } else {
-            // Try delivery partner applications
-            const deliveryAppResult = await pool.query(
-              'SELECT full_name FROM delivery_partner_applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-              [req.neonUser!.id]
-            );
-            if (deliveryAppResult.rows.length > 0 && deliveryAppResult.rows[0].full_name) {
-              userFullName = deliveryAppResult.rows[0].full_name;
-            }
           }
           
           // Fetch Stripe Connect account information
@@ -478,7 +465,6 @@ export function registerFirebaseRoutes(app: Express) {
         username: req.neonUser!.username,
         role: req.neonUser!.role,
         isChef: req.neonUser!.isChef,
-        isDeliveryPartner: req.neonUser!.isDeliveryPartner,
         isManager: req.neonUser!.isManager,
         rawNeonUser: req.neonUser
       });
@@ -491,7 +477,6 @@ export function registerFirebaseRoutes(app: Express) {
         is_verified: req.neonUser!.isVerified !== undefined ? req.neonUser!.isVerified : req.firebaseUser!.email_verified,
         has_seen_welcome: req.neonUser!.has_seen_welcome || false,
         isChef: req.neonUser!.isChef || false,
-        isDeliveryPartner: req.neonUser!.isDeliveryPartner || false,
         displayName: userFullName || null, // User's full name from application
         fullName: userFullName || null, // Alias for compatibility
         stripeConnectAccountId: stripeConnectAccountId, // Stripe Connect account ID
@@ -736,124 +721,20 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
-  // 🔥 Submit Delivery Partner Application (with Firebase Auth, NO SESSIONS)
-  app.post('/api/firebase/delivery-partner-applications', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
-    try {
-      // Import the delivery partner schema
-      const { insertDeliveryPartnerApplicationSchema } = await import('@shared/schema');
-      
-      // Validate the request body
-      const parsedData = insertDeliveryPartnerApplicationSchema.safeParse(req.body);
-
-      if (!parsedData.success) {
-        const validationError = fromZodError(parsedData.error);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
-        });
-      }
-
-      // Associate application with the authenticated Neon user
-      const applicationData = {
-        ...parsedData.data,
-        userId: req.neonUser!.id // This is the Neon user ID from the middleware
-      };
-
-      console.log(`🚚 Creating delivery partner application: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
-
-      const application = await firebaseStorage.createDeliveryPartnerApplication(applicationData);
-
-      res.json({
-        success: true,
-        application,
-        message: 'Delivery partner application submitted successfully'
-      });
-    } catch (error) {
-      console.error('Error creating delivery partner application:', error);
-      res.status(500).json({
-        error: 'Failed to create delivery partner application',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // 🔥 Get User's Delivery Partner Applications (with Firebase Auth, NO SESSIONS)
-  app.get('/api/firebase/delivery-partner-applications/my', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
-    try {
-      // Get delivery partner applications for the authenticated Neon user
-      const applications = await firebaseStorage.getDeliveryPartnerApplicationsByUserId(req.neonUser!.id);
-
-      console.log(`📋 Retrieved ${applications.length} delivery partner applications: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
-
-      res.json(applications);
-    } catch (error) {
-      console.error('Error getting user delivery partner applications:', error);
-      res.status(500).json({ error: 'Failed to get delivery partner applications' });
-    }
-  });
-
-  // 🔥 Admin Routes for Delivery Partner Applications (Firebase Auth + Admin Role, NO SESSIONS)
-  app.get('/api/firebase/admin/delivery-partner-applications', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
-    try {
-      const applications = await firebaseStorage.getAllDeliveryPartnerApplications();
-
-      console.log(`👑 Admin ${req.firebaseUser!.uid} requested all delivery partner applications`);
-
-      res.json(applications);
-    } catch (error) {
-      console.error('Error getting all delivery partner applications:', error);
-      res.status(500).json({ error: 'Failed to get delivery partner applications' });
-    }
-  });
-
-  // 🔥 Update User Application Type (Firebase Auth, NO SESSIONS) - DEPRECATED
-  app.post('/api/firebase/user/update-application-type', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
-    try {
-      const { applicationType } = req.body;
-
-      if (!applicationType || !['chef', 'delivery_partner'].includes(applicationType)) {
-        return res.status(400).json({
-          error: 'Invalid application type. Must be "chef" or "delivery_partner"'
-        });
-      }
-
-      console.log(`🎯 Updating application type: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id} → Type: ${applicationType}`);
-
-      await firebaseStorage.updateUserApplicationType(req.neonUser!.id, applicationType);
-
-      res.json({
-        success: true,
-        message: 'Application type updated successfully'
-      });
-    } catch (error) {
-      console.error('Error updating application type:', error);
-      res.status(500).json({
-        error: 'Failed to update application type',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
   // 🔥 Update User Roles (Firebase Auth, NO SESSIONS)
   app.post('/api/firebase/user/update-roles', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-      const { isChef, isDeliveryPartner } = req.body;
+      const { isChef } = req.body;
 
-      if (typeof isChef !== 'boolean' || typeof isDeliveryPartner !== 'boolean') {
+      if (typeof isChef !== 'boolean') {
         return res.status(400).json({
-          error: 'Invalid role data. isChef and isDeliveryPartner must be boolean values'
+          error: 'Invalid role data. isChef must be a boolean value'
         });
       }
 
-      if (!isChef && !isDeliveryPartner) {
-        return res.status(400).json({
-          error: 'User must have at least one role (chef or delivery partner)'
-        });
-      }
+      console.log(`🎯 Updating user roles: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id} → Chef: ${isChef}`);
 
-      console.log(`🎯 Updating user roles: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id} → Chef: ${isChef}, Delivery: ${isDeliveryPartner}`);
-
-      await firebaseStorage.updateUserRoles(req.neonUser!.id, { isChef, isDeliveryPartner });
+      await firebaseStorage.updateUserRoles(req.neonUser!.id, { isChef });
 
       res.json({
         success: true,
@@ -960,69 +841,6 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
-  // 🔥 Cancel Delivery Partner Application (Firebase Auth, NO SESSIONS)
-  app.patch('/api/firebase/delivery-partner-applications/:id/cancel', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-
-      // First get the application to verify ownership
-      const application = await firebaseStorage.getDeliveryPartnerApplicationById(id);
-
-      if (!application) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-
-      // Check if the application belongs to the authenticated user (unless admin)
-      if (application.userId !== req.neonUser!.id && req.neonUser!.role !== 'admin') {
-        return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
-      }
-
-      const updateData = {
-        id,
-        status: "cancelled" as const
-      };
-
-      const updatedApplication = await firebaseStorage.updateDeliveryPartnerApplicationStatus(updateData);
-
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-
-      // Send email notification about application cancellation
-      try {
-        if (updatedApplication.email) {
-          const { generateDeliveryPartnerStatusChangeEmail, sendEmail } = await import('./email');
-          
-          const emailContent = generateDeliveryPartnerStatusChangeEmail({
-            fullName: updatedApplication.fullName || "Applicant",
-            email: updatedApplication.email,
-            status: 'cancelled'
-          });
-
-          await sendEmail(emailContent, {
-            trackingId: `cancel_dp_${updatedApplication.id}_${Date.now()}`
-          });
-          
-          console.log(`Delivery partner cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send cancellation email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        // Log the error but don't fail the request
-        console.error("Error sending delivery partner cancellation email:", emailError);
-      }
-
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error cancelling delivery partner application:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
   // 🔥 Admin Cancel Application (Firebase Auth + Admin Role, NO SESSIONS)
   app.patch('/api/firebase/admin/applications/:id/cancel', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
@@ -1077,127 +895,6 @@ export function registerFirebaseRoutes(app: Express) {
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error cancelling application (admin):", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // 🔥 Cancel Delivery Partner Application (Firebase Auth, NO SESSIONS)
-  app.patch('/api/firebase/delivery-partner-applications/:id/cancel', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-
-      // First get the application to verify ownership
-      const application = await firebaseStorage.getDeliveryPartnerApplicationById(id);
-
-      if (!application) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-
-      // Check if the application belongs to the authenticated user (unless admin)
-      if (application.userId !== req.neonUser!.id && req.neonUser!.role !== 'admin') {
-        return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
-      }
-
-      const updateData = {
-        id,
-        status: "cancelled" as const
-      };
-
-      const updatedApplication = await firebaseStorage.updateDeliveryPartnerApplicationStatus(updateData);
-
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-
-      // Send email notification about application cancellation
-      try {
-        if (updatedApplication.email) {
-          const { generateDeliveryPartnerStatusChangeEmail, sendEmail } = await import('./email');
-          
-          const emailContent = generateDeliveryPartnerStatusChangeEmail({
-            fullName: updatedApplication.fullName || "Delivery Partner",
-            email: updatedApplication.email,
-            status: 'cancelled'
-          });
-
-          await sendEmail(emailContent, {
-            trackingId: `cancel_dp_${updatedApplication.id}_${Date.now()}`
-          });
-          
-          console.log(`Delivery partner cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send cancellation email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        // Log the error but don't fail the request
-        console.error("Error sending delivery partner cancellation email:", emailError);
-      }
-
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error cancelling delivery partner application:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // 🔥 Admin Cancel Delivery Partner Application (Firebase Auth + Admin Role, NO SESSIONS)
-  app.patch('/api/firebase/admin/delivery-partner-applications/:id/cancel', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id);
-
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-
-      // Get the application
-      const application = await firebaseStorage.getDeliveryPartnerApplicationById(id);
-
-      if (!application) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-
-      const updateData = {
-        id,
-        status: "cancelled" as const
-      };
-
-      const updatedApplication = await firebaseStorage.updateDeliveryPartnerApplicationStatus(updateData);
-
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-
-      // Send email notification about application cancellation
-      try {
-        if (updatedApplication.email) {
-          const { generateDeliveryPartnerStatusChangeEmail, sendEmail } = await import('./email');
-          
-          const emailContent = generateDeliveryPartnerStatusChangeEmail({
-            fullName: updatedApplication.fullName || "Applicant",
-            email: updatedApplication.email,
-            status: 'cancelled'
-          });
-
-          await sendEmail(emailContent, {
-            trackingId: `admin_cancel_dp_${updatedApplication.id}_${Date.now()}`
-          });
-          
-          console.log(`Admin delivery partner cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send admin cancellation email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        // Log the error but don't fail the request
-        console.error("Error sending admin delivery partner cancellation email:", emailError);
-      }
-
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error cancelling delivery partner application (admin):", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1936,248 +1633,6 @@ export function registerFirebaseRoutes(app: Express) {
         });
       }
     });
-
-  // 🚗 NHTSA Vehicle API Endpoints
-  
-  // Server-side caching for vehicle data
-  const vehicleCache = {
-    makes: null as any[] | null,
-    makesByType: new Map<string, any[]>(),
-    modelsByMake: new Map<string, any[]>(),
-    lastFetch: 0,
-    cacheExpiry: 10 * 60 * 1000, // 10 minutes
-  };
-
-  const isCacheValid = () => Date.now() - vehicleCache.lastFetch < vehicleCache.cacheExpiry;
-
-  // Get all vehicle makes (4-wheeled vehicles only)
-  app.get('/api/vehicles/makes', async (req: Request, res: Response) => {
-    try {
-      const { type } = req.query;
-      
-      // Check cache first
-      if (type && vehicleCache.makesByType.has(type as string) && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makesByType.get(type as string)
-        });
-      }
-      
-      if (!type && vehicleCache.makes && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makes
-        });
-      }
-
-      const response = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json');
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Filter for 4-wheeled vehicles only (exclude motorcycles, etc.)
-      const fourWheeledMakes = data.Results.filter((make: any) => {
-        // Filter out motorcycle manufacturers and other non-4-wheeled vehicles
-        const excludedMakes = [
-          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
-          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
-          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
-          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
-        ];
-        
-        return !excludedMakes.some(excluded => 
-          make.Make_Name.toUpperCase().includes(excluded) || 
-          excluded.includes(make.Make_Name.toUpperCase())
-        );
-      });
-
-      const formattedMakes = fourWheeledMakes.map((make: any) => ({
-        id: make.Make_ID,
-        name: make.Make_Name
-      }));
-
-      // Cache the results
-      if (type) {
-        vehicleCache.makesByType.set(type as string, formattedMakes);
-      } else {
-        vehicleCache.makes = formattedMakes;
-      }
-      vehicleCache.lastFetch = Date.now();
-
-      res.json({
-        success: true,
-        makes: formattedMakes
-      });
-    } catch (error) {
-      console.error('Error fetching vehicle makes:', error);
-      res.status(500).json({
-        error: 'Failed to fetch vehicle makes',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-
-
-  // Get models for a specific make using make name (more efficient)
-  app.get('/api/vehicles/models/by-name/:makeName', async (req: Request, res: Response) => {
-    try {
-      const { makeName } = req.params;
-      const decodedMakeName = decodeURIComponent(makeName);
-      
-      // Check cache first (use make name as key)
-      if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
-        return res.json({
-          success: true,
-          models: vehicleCache.modelsByMake.get(decodedMakeName)
-        });
-      }
-      
-      // Direct call to NHTSA API with make name (no need to lookup make ID)
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      console.log(`🚗 NHTSA API returned ${data.Results?.length || 0} models for make: ${decodedMakeName}`);
-      
-      // Filter for 4-wheeled vehicles only, but be much less aggressive
-      const fourWheeledModels = data.Results.filter((model: any) => {
-        // Only exclude very obvious non-4-wheeled vehicle models
-        const modelName = model.Model_Name.toUpperCase();
-        
-        // Very specific exclusions only for obvious non-4-wheeled vehicles
-        const excludedPatterns = [
-          // Motorcycle patterns
-          /MOTORCYCLE$/i,
-          /BIKE$/i,
-          /SCOOTER$/i,
-          /MOPED$/i,
-          /ATV$/i,
-          /QUAD$/i,
-          /TRIKE$/i,
-          /SIDECAR$/i,
-          
-          // Very specific motorcycle model names
-          /^HARLEY/i,
-          /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
-          /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
-          /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
-          /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
-          /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
-          /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
-          /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
-          /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
-          /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
-          /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
-          /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
-          /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
-          /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
-          /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
-          /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
-          /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
-          /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
-          /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
-          /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
-          /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
-          /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
-          /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
-        ];
-        
-        // Check if model matches any excluded patterns
-        return !excludedPatterns.some(pattern => pattern.test(modelName));
-      });
-
-      console.log(`🚗 After filtering, ${fourWheeledModels.length} models remain for make: ${decodedMakeName}`);
-      
-      const formattedModels = fourWheeledModels.map((model: any) => ({
-        id: model.Model_ID || model.Model_ID, // Use actual NHTSA ID if available
-        name: model.Model_Name
-      }));
-
-      // Cache the results
-      vehicleCache.modelsByMake.set(decodedMakeName, formattedModels);
-
-      res.json({
-        success: true,
-        models: formattedModels
-      });
-    } catch (error) {
-      console.error('Error fetching vehicle models:', error);
-      res.status(500).json({
-        error: 'Failed to fetch vehicle models',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-
-
-  // Decode VIN for additional vehicle information
-  app.get('/api/vehicles/decode-vin/:vin', async (req: Request, res: Response) => {
-    try {
-      const { vin } = req.params;
-      
-      if (!vin || vin.length < 8) {
-        return res.status(400).json({
-          error: 'Invalid VIN',
-          message: 'VIN must be at least 8 characters long'
-        });
-      }
-      
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/${vin}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Extract relevant vehicle information
-      const vehicleInfo: any = {};
-      data.Results.forEach((result: any) => {
-        if (result.Variable && result.Value) {
-          switch (result.Variable) {
-            case 'Make':
-              vehicleInfo.make = result.Value;
-              break;
-            case 'Model':
-              vehicleInfo.model = result.Value;
-              break;
-            case 'Model Year':
-              vehicleInfo.year = result.Value;
-              break;
-            case 'Vehicle Type':
-              vehicleInfo.type = result.Value;
-              break;
-            case 'Body Class':
-              vehicleInfo.bodyClass = result.Value;
-              break;
-            case 'Engine Model':
-              vehicleInfo.engine = result.Value;
-              break;
-            case 'Transmission Style':
-              vehicleInfo.transmission = result.Value;
-              break;
-          }
-        }
-      });
-      
-      res.json({
-        success: true,
-        vehicle: vehicleInfo
-      });
-    } catch (error) {
-      console.error('Error decoding VIN:', error);
-      res.status(500).json({
-        error: 'Failed to decode VIN',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
 
   // 🔥 Public Platform Settings Endpoint (for chefs to see service fee rate)
   app.get('/api/platform-settings/service-fee-rate', async (req: Request, res: Response) => {
@@ -2919,17 +2374,32 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // Firebase microlearning completion endpoint
+  // Note: :userId can be either a Neon numeric ID or a Firebase UID
   app.get('/api/firebase/microlearning/completion/:userId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-      const userId = parseInt(req.params.userId);
+      const userIdParam = req.params.userId;
       const currentUserId = req.neonUser!.id;
+      const currentFirebaseUid = req.firebaseUser!.uid;
+      
+      // Determine if the request is for the current user
+      // Support both Neon numeric ID and Firebase UID for compatibility
+      const isNumeric = !isNaN(parseInt(userIdParam));
+      const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
+      const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
+      const isAdmin = req.neonUser!.role === 'admin';
       
       // Verify user can access this completion (either their own or admin)
-      if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
+      if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: 'Access denied' });
       }
 
-      const completion = await firebaseStorage.getMicrolearningCompletion(userId);
+      // Use the current user's Neon ID for own data, or the requested ID for admin
+      const targetUserId = isOwnData ? currentUserId : requestedUserId;
+      if (!targetUserId) {
+        return res.status(400).json({ message: 'Invalid user ID' });
+      }
+
+      const completion = await firebaseStorage.getMicrolearningCompletion(targetUserId);
       
       if (!completion) {
         return res.status(404).json({ message: 'No completion found' });
@@ -2943,28 +2413,43 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // Firebase microlearning certificate endpoint
+  // Note: :userId can be either a Neon numeric ID or a Firebase UID
   app.get('/api/firebase/microlearning/certificate/:userId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-      const userId = parseInt(req.params.userId);
+      const userIdParam = req.params.userId;
       const currentUserId = req.neonUser!.id;
+      const currentFirebaseUid = req.firebaseUser!.uid;
+      
+      // Determine if the request is for the current user
+      // Support both Neon numeric ID and Firebase UID for compatibility
+      const isNumeric = !isNaN(parseInt(userIdParam));
+      const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
+      const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
+      const isAdmin = req.neonUser!.role === 'admin';
       
       // Verify user can access this certificate (either their own or admin)
-      if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
+      if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: 'Access denied' });
       }
 
-      const completion = await firebaseStorage.getMicrolearningCompletion(userId);
+      // Use the current user's Neon ID for own data, or the requested ID for admin
+      const targetUserId = isOwnData ? currentUserId : requestedUserId;
+      if (!targetUserId) {
+        return res.status(400).json({ message: 'Invalid user ID' });
+      }
+
+      const completion = await firebaseStorage.getMicrolearningCompletion(targetUserId);
       if (!completion || !completion.confirmed) {
         return res.status(404).json({ message: 'No confirmed completion found' });
       }
 
-      const user = await firebaseStorage.getUser(userId);
+      const user = await firebaseStorage.getUser(targetUserId);
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
 
       // Return certificate URL
-      const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
+      const certificateUrl = `/api/certificates/microlearning-${targetUserId}-${Date.now()}.pdf`;
 
       res.json({
         success: true,
@@ -2979,24 +2464,38 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // Firebase microlearning progress by userId (GET)
+  // Note: :userId can be either a Neon numeric ID or a Firebase UID
   app.get('/api/firebase/microlearning/progress/:userId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-      const userId = parseInt(req.params.userId);
+      const userIdParam = req.params.userId;
       const currentUserId = req.neonUser!.id;
+      const currentFirebaseUid = req.firebaseUser!.uid;
+      
+      // Determine if the request is for the current user
+      // Support both Neon numeric ID and Firebase UID for compatibility
+      const isNumeric = !isNaN(parseInt(userIdParam));
+      const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
+      const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
+      const isAdmin = req.neonUser!.role === 'admin';
       
       // Verify user can access this data (either their own or admin)
-      if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
+      if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: 'Access denied' });
       }
 
-      const progress = await firebaseStorage.getMicrolearningProgress(userId);
-      const completionStatus = await firebaseStorage.getMicrolearningCompletion(userId);
+      // Use the current user's Neon ID for own data, or the requested ID for admin
+      const targetUserId = isOwnData ? currentUserId : requestedUserId;
+      if (!targetUserId) {
+        return res.status(400).json({ message: 'Invalid user ID' });
+      }
+
+      const progress = await firebaseStorage.getMicrolearningProgress(targetUserId);
+      const completionStatus = await firebaseStorage.getMicrolearningCompletion(targetUserId);
       
       // Check if user has approved application
-      const applications = await firebaseStorage.getApplicationsByUserId(userId);
+      const applications = await firebaseStorage.getApplicationsByUserId(targetUserId);
       const hasApproval = applications.some((app: any) => app.status === 'approved');
       
-      const isAdmin = req.neonUser!.role === 'admin';
       const isCompleted = completionStatus?.confirmed || false;
       const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
 
@@ -3093,7 +2592,6 @@ export function registerFirebaseRoutes(app: Express) {
 
   console.log('🔥 Firebase authentication routes registered successfully');
   console.log('✨ Session-free architecture active - JWT tokens only');
-  console.log('🚗 NHTSA Vehicle API endpoints registered successfully');
   console.log('⚙️ Admin platform settings endpoints registered successfully');
   console.log('🍳 Chef kitchen application endpoints registered successfully');
 } 

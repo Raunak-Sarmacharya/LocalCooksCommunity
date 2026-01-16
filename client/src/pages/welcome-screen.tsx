@@ -8,14 +8,10 @@ import {
     BarChart3,
     CheckCircle,
     ChefHat,
-    Clock,
     FileText,
     GraduationCap,
     HeartHandshake,
-    MapPin,
     Rocket,
-    Shield,
-    Truck,
     Upload
 } from 'lucide-react';
 import { useState } from 'react';
@@ -109,148 +105,54 @@ export default function WelcomeScreen({ onComplete, onContinue }: WelcomeScreenP
     return 'User';
   })();
 
-  // Determine user's role(s) and customize content accordingly
-  const isChef = (user as any)?.isChef || false;
-  const isDeliveryPartner = (user as any)?.isDeliveryPartner || false;
-  
+  // Chef portal info (default)
   const getUserPortalInfo = () => {
-    if (isChef && isDeliveryPartner) {
-      // Dual role user
-      return {
-        icon: ChefHat, // Default to chef icon for dual role
-        title: 'Your Local Cooks Portal',
-        subtitle: 'Your gateway to both cooking and delivery opportunities',
-        description: 'Join our growing community as both a talented chef and reliable delivery partner.',
-        ctaText: 'Enter Your Portal'
-      };
-    } else if (isDeliveryPartner) {
-      // Pure delivery partner
-      return {
-        icon: Truck,
-        title: 'Your Delivery Partner Portal',
-        subtitle: 'Your gateway to earning through delivery',
-        description: 'Join our growing community of reliable delivery partners and start earning today.',
-        ctaText: 'Enter Your Delivery Portal'
-      };
-    } else {
-      // Chef (default) or no role yet
-      return {
-        icon: ChefHat,
-        title: 'Your Chef Portal',
-        subtitle: 'Your gateway to joining the Local Cooks community',
-        description: 'Join our growing community of talented chefs and take the first step toward sharing your culinary passion.',
-        ctaText: 'Enter Your Chef Portal'
-      };
-    }
+    return {
+      icon: ChefHat,
+      title: 'Your Chef Portal',
+      subtitle: 'Your gateway to joining the Local Cooks community',
+      description: 'Join our growing community of talented chefs and take the first step toward sharing your culinary passion.',
+      ctaText: 'Enter Your Chef Portal'
+    };
   };
 
   const portalInfo = getUserPortalInfo();
 
-  // Portal features based on user role
+  // Portal features for chefs
   const getPortalFeatures = () => {
-    if (isChef && isDeliveryPartner) {
-      // Dual role features
-      return [
-        {
-          icon: <FileText className="h-4 w-4" />,
-          title: "Submit Applications",
-          description: "Complete both chef and delivery partner applications"
-        },
-        {
-          icon: <BarChart3 className="h-4 w-4" />,
-          title: "Track Application Status", 
-          description: "Monitor progress for both your applications"
-        },
-        {
-          icon: <Upload className="h-4 w-4" />,
-          title: "Upload Required Documents",
-          description: "Submit certifications and documents for both roles"
-        },
-        {
-          icon: <GraduationCap className="h-4 w-4" />,
-          title: "Complete Training",
-          description: "Access learning materials for food safety and delivery best practices"
-        },
-        {
-          icon: <HeartHandshake className="h-4 w-4" />,
-          title: "Get Personalized Support",
-          description: "Receive guidance from our team for both roles"
-        },
-        {
-          icon: <Rocket className="h-4 w-4" />,
-          title: "Get Approval & Launch",
-          description: "Start your dual journey with Local Cooks"
-        }
-      ];
-    } else if (isDeliveryPartner) {
-      // Delivery partner features
-      return [
-        {
-          icon: <FileText className="h-4 w-4" />,
-          title: "Submit Your Application",
-          description: "Complete your delivery partner profile and vehicle information"
-        },
-        {
-          icon: <BarChart3 className="h-4 w-4" />,
-          title: "Track Application Status", 
-          description: "Monitor your progress through our review process"
-        },
-        {
-          icon: <Upload className="h-4 w-4" />,
-          title: "Upload Required Documents",
-          description: "Submit driver's license, vehicle registration, and insurance"
-        },
-        {
-          icon: <MapPin className="h-4 w-4" />,
-          title: "Set Your Delivery Zone",
-          description: "Choose your preferred delivery areas and schedule"
-        },
-        {
-          icon: <Shield className="h-4 w-4" />,
-          title: "Complete Background Check",
-          description: "Ensure safety for our community through verification"
-        },
-        {
-          icon: <Clock className="h-4 w-4" />,
-          title: "Start Earning",
-          description: "Begin accepting delivery requests and earning money"
-        }
-      ];
-    } else {
-      // Chef features (default)
-      return [
-        {
-          icon: <FileText className="h-4 w-4" />,
-          title: "Submit Your Application",
-          description: "Complete your chef profile and start the application process"
-        },
-        {
-          icon: <BarChart3 className="h-4 w-4" />,
-          title: "Track Application Status", 
-          description: "Monitor your progress through our review process"
-        },
-        {
-          icon: <Upload className="h-4 w-4" />,
-          title: "Upload Required Documents",
-          description: "Securely submit certifications and required documentation"
-        },
-        {
-          icon: <GraduationCap className="h-4 w-4" />,
-          title: "Complete Training Modules",
-          description: "Access learning materials for food safety and platform guidelines"
-        },
-        {
-          icon: <HeartHandshake className="h-4 w-4" />,
-          title: "Get Personalized Support",
-          description: "Receive guidance from our team throughout your journey"
-        },
-        {
-          icon: <Rocket className="h-4 w-4" />,
-          title: "Get Approval & Launch",
-          description: "Receive approval and start your journey with Local Cooks"
-        }
-      ];
-    }
+    // Chef features (default)
+    return [
+      {
+        icon: <FileText className="h-4 w-4" />,
+        title: "Submit Your Application",
+        description: "Complete your chef profile and start the application process"
+      },
+      {
+        icon: <BarChart3 className="h-4 w-4" />,
+        title: "Track Application Status", 
+        description: "Monitor your progress through our review process"
+      },
+      {
+        icon: <Upload className="h-4 w-4" />,
+        title: "Upload Required Documents",
+        description: "Securely submit certifications and required documentation"
+      },
+      {
+        icon: <GraduationCap className="h-4 w-4" />,
+        title: "Complete Training Modules",
+        description: "Access learning materials for food safety and platform guidelines"
+      },
+      {
+        icon: <HeartHandshake className="h-4 w-4" />,
+        title: "Get Personalized Support",
+        description: "Receive guidance from our team throughout your journey"
+      },
+      {
+        icon: <Rocket className="h-4 w-4" />,
+        title: "Get Approval & Launch",
+        description: "Receive approval and start your journey with Local Cooks"
+      }
+    ];
   };
 
   const portalFeatures = getPortalFeatures();

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
+import { auth } from "@/lib/firebase";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
 
 interface Booking {
@@ -41,10 +42,20 @@ type FilterType = "all" | "pending" | "confirmed" | "cancelled";
 type ViewType = "upcoming" | "past" | "all";
 
 async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
+  try {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const token = await currentUser.getIdToken();
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+    }
+  } catch (error) {
+    console.error('Error getting Firebase token:', error);
+  }
   return {
     'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
   };
 }
 
@@ -68,6 +79,8 @@ export default function BookingControlPanel({
   // Fetch storage bookings
   const { data: storageBookings = [], isLoading: isLoadingStorage } = useQuery({
     queryKey: ['/api/chef/storage-bookings'],
+    // Only fetch when user is authenticated
+    enabled: !!auth.currentUser,
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const response = await fetch('/api/chef/storage-bookings', {

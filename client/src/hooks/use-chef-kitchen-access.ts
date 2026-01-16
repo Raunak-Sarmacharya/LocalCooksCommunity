@@ -65,6 +65,8 @@ export function useChefProfiles() {
       
       return await response.json();
     },
+    // Only fetch when user is authenticated (has a Firebase token)
+    enabled: !!auth.currentUser,
     retry: 1, // Only retry once to prevent infinite loops
     retryDelay: 1000,
     staleTime: 30000, // Cache for 30 seconds

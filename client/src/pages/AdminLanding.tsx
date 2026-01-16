@@ -102,7 +102,7 @@ export default function AdminLanding() {
                     <CardTitle className="text-xl md:text-2xl font-bold text-[var(--color-text-primary)] group-hover:text-blue-600 transition-colors duration-300">Application Management</CardTitle>
                   </CardHeader>
                   <CardContent className="text-[var(--color-text-primary)] font-sans relative z-10">
-                    <p className="leading-relaxed text-base md:text-lg">Review and approve chef and delivery partner applications. Manage document verification.</p>
+                    <p className="leading-relaxed text-base md:text-lg">Review and approve chef applications. Manage document verification and user access.</p>
                   </CardContent>
                 </Card>
               </FadeInSection>

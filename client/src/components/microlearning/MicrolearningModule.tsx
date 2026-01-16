@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
-import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
@@ -293,43 +292,8 @@ export default function MicrolearningModule({
   const isPlayerFocused = className.includes('player-focused');
   const { user: firebaseUser } = useFirebaseAuth();
   
-  // Check for session-based auth (for admin users)
-  const { data: sessionUser } = useQuery({
-    queryKey: ["/api/user-session"],
-    queryFn: async () => {
-      try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        });
-        
-        if (!response.ok) {
-          if (response.status === 401) {
-            return null; // Not authenticated via session
-          }
-          throw new Error(`Session auth failed: ${response.status}`);
-        }
-        
-        const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
-      } catch (error) {
-        return null;
-      }
-    },
-    retry: false,
-    staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-  });
-
-  // Combine authentication - prioritize session for admin, Firebase for regular users
-  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseUser || sessionUser);
+  // Use Firebase authentication only (session auth has been removed)
+  const user = firebaseUser;
   
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);

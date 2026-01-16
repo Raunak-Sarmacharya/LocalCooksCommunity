@@ -26,9 +26,6 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
     navigate(getNavigationPath());
   };
 
-  const handleDriverClick = () => {
-    navigate('/driver-auth');
-  };
 
   const handleAnchorClick = (anchor: string) => {
     if (location === '/') {
@@ -231,14 +228,6 @@ const Footer = forwardRef<HTMLElement>((props, ref) => {
                         className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 disabled:opacity-50 disabled:cursor-not-allowed mobile-touch-target"
                       >
                         {isLoading ? "Loading..." : getApplyLinkText()}
-                      </button>
-                    </li>
-                    <li>
-                      <button 
-                        onClick={handleDriverClick}
-                        className="text-gray-300 hover:text-white transition-all duration-300 text-sm sm:text-base font-medium block w-full text-left py-2.5 sm:py-2 hover:translate-x-2 mobile-touch-target"
-                      >
-                        Apply as Delivery Partner
                       </button>
                     </li>
                     <li>

@@ -29,8 +29,6 @@ export function getSubdomainFromHostname(hostname) {
     switch (subdomain) {
       case 'chef':
         return 'chef';
-      case 'driver':
-        return 'driver';
       case 'kitchen':
         return 'kitchen';
       case 'admin':
@@ -49,8 +47,6 @@ export function getSubdomainFromHostname(hostname) {
     switch (subdomain) {
       case 'chef':
         return 'chef';
-      case 'driver':
-        return 'driver';
       case 'kitchen':
         return 'kitchen';
       case 'admin':
@@ -128,13 +124,8 @@ export function isRouteAccessibleFromSubdomain(subdomainType, routePath) {
     return subdomainType === 'chef';
   }
 
-  // Delivery partner routes - accessible from driver subdomain
-  if (routePath.startsWith('/delivery-partner-apply')) {
-    return subdomainType === 'driver';
-  }
-
   // Auth routes - accessible from all subdomains
-  if (routePath.startsWith('/auth') || routePath.startsWith('/driver-auth') || 
+  if (routePath.startsWith('/auth') || 
       routePath.startsWith('/forgot-password') || routePath.startsWith('/password-reset')) {
     return true;
   }
@@ -164,8 +155,6 @@ export function getRequiredSubdomainForRole(role) {
       return 'kitchen';
     case 'admin':
       return 'admin';
-    case 'delivery_partner':
-      return 'driver';
     default:
       return null;
   }
@@ -178,10 +167,9 @@ export function getRequiredSubdomainForRole(role) {
  * @param isPortalUser - Whether the user is a portal user (portal users can login from kitchen subdomain)
  * @param isChef - Whether the user has chef flag (for users with role: null but isChef: true)
  * @param isManager - Whether the user has manager flag
- * @param isDeliveryPartner - Whether the user has delivery partner flag
  * @returns Whether the login is allowed
  */
-export function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false, isChef = false, isManager = false, isDeliveryPartner = false) {
+export function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false, isChef = false, isManager = false) {
   // Portal users can login from kitchen subdomain
   if (isPortalUser && subdomain === 'kitchen') {
     return true;
@@ -194,8 +182,6 @@ export function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false,
   if (!effectiveRole) {
     if (isManager) {
       effectiveRole = 'manager';
-    } else if (isDeliveryPartner && !isChef) {
-      effectiveRole = 'delivery_partner';
     } else if (isChef) {
       effectiveRole = 'chef';
     }

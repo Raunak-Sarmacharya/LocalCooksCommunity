@@ -1,4 +1,4 @@
-import { applications, deliveryPartnerApplications, microlearningCompletions, users, videoProgress, type Application, type DeliveryPartnerApplication, type InsertApplication, type InsertDeliveryPartnerApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDeliveryPartnerApplicationStatus, type UpdateDeliveryPartnerDocuments, type UpdateDeliveryPartnerDocumentVerification, type UpdateDocumentVerification, type User } from "@shared/schema";
+import { applications, microlearningCompletions, users, videoProgress, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
 import connectPg from "connect-pg-simple";
 import { and, eq } from "drizzle-orm";
 import session from "express-session";
@@ -18,9 +18,8 @@ export interface IStorage {
   createUser(user: {
     username: string;
     password: string;
-    role?: "admin" | "chef" | "delivery_partner" | "manager";
+    role?: "admin" | "chef" | "manager";
     isChef?: boolean;
-    isDeliveryPartner?: boolean;
     isManager?: boolean;
     googleId?: string;
     facebookId?: string;
@@ -28,9 +27,8 @@ export interface IStorage {
   }): Promise<User>;
   createOAuthUser(user: {
     username: string;
-    role: "admin" | "chef" | "delivery_partner" | "manager";
+    role: "admin" | "chef" | "manager";
     isChef?: boolean;
-    isDeliveryPartner?: boolean;
     isManager?: boolean;
     oauth_provider: string;
     oauth_id: string;
@@ -53,16 +51,6 @@ export interface IStorage {
   updateVideoProgress(progressData: any): Promise<void>;
   createMicrolearningCompletion(completionData: any): Promise<any>;
 
-  // Delivery Partner Application-related methods
-  getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]>;
-  getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined>;
-  getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]>;
-  createDeliveryPartnerApplication(application: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication>;
-  updateDeliveryPartnerApplicationStatus(update: UpdateDeliveryPartnerApplicationStatus): Promise<DeliveryPartnerApplication | undefined>;
-  updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise<DeliveryPartnerApplication | undefined>;
-  updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDeliveryPartnerDocumentVerification): Promise<DeliveryPartnerApplication | undefined>;
-  updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined>;
-  updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<User | undefined>;
 
   // Session store for authentication
   sessionStore: session.Store;
@@ -73,24 +61,20 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private applications: Map<number, Application>;
-  private deliveryPartnerApplications: Map<number, DeliveryPartnerApplication>;
   private videoProgress: Map<string, any>; // key: userId-videoId
   private microlearningCompletions: Map<number, any>; // key: userId
   private userCurrentId: number;
   private applicationCurrentId: number;
-  private deliveryPartnerApplicationCurrentId: number;
   sessionStore: session.Store;
   // TypeScript fixes for instagramId and twitterId
 
   constructor() {
     this.users = new Map();
     this.applications = new Map();
-    this.deliveryPartnerApplications = new Map();
     this.videoProgress = new Map();
     this.microlearningCompletions = new Map();
     this.userCurrentId = 1;
     this.applicationCurrentId = 1;
-    this.deliveryPartnerApplicationCurrentId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000 // 24hrs
     });
@@ -117,7 +101,6 @@ export class MemStorage implements IStorage {
       managerOnboardingStepsCompleted: {},
       isManager: false,
       isChef: false,
-      isDeliveryPartner: false,
       isPortalUser: false,
       applicationType: null,
       stripeConnectAccountId: null,
@@ -188,7 +171,6 @@ export class MemStorage implements IStorage {
       isVerified: (insertUser as any).isVerified !== undefined ? (insertUser as any).isVerified : false,
       has_seen_welcome: (insertUser as any).has_seen_welcome !== undefined ? (insertUser as any).has_seen_welcome : false,
       isChef: insertUser.isChef || false,
-      isDeliveryPartner: insertUser.isDeliveryPartner || false,
       isManager: insertUser.isManager || false,
       isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
       applicationType: (insertUser as any).applicationType || null,
@@ -410,155 +392,6 @@ export class MemStorage implements IStorage {
     return completionData;
   }
 
-  // Delivery Partner Application-related methods
-  async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
-    return Array.from(this.deliveryPartnerApplications.values());
-  }
-
-  async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
-    return this.deliveryPartnerApplications.get(id);
-  }
-
-  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
-    return Array.from(this.deliveryPartnerApplications.values()).filter(
-      (application) => application.userId === userId
-    );
-  }
-
-  async createDeliveryPartnerApplication(insertApplication: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
-    const id = this.deliveryPartnerApplicationCurrentId++;
-    const now = new Date();
-
-    // Create application with all required delivery partner fields
-    const application: DeliveryPartnerApplication = {
-      id,
-      userId: insertApplication.userId || null,
-      fullName: insertApplication.fullName,
-      email: insertApplication.email,
-      phone: insertApplication.phone,
-      address: insertApplication.address,
-      city: insertApplication.city,
-      province: insertApplication.province,
-      postalCode: insertApplication.postalCode,
-      
-      // Vehicle details
-      vehicleType: insertApplication.vehicleType,
-      vehicleMake: insertApplication.vehicleMake,
-      vehicleModel: insertApplication.vehicleModel,
-      vehicleYear: insertApplication.vehicleYear,
-      licensePlate: insertApplication.licensePlate,
-      
-      // Document URLs
-      driversLicenseUrl: insertApplication.driversLicenseUrl || null,
-      vehicleRegistrationUrl: insertApplication.vehicleRegistrationUrl || null,
-      insuranceUrl: insertApplication.insuranceUrl || null,
-      
-      // Document verification status
-      driversLicenseStatus: "pending",
-      vehicleRegistrationStatus: "pending",
-      insuranceStatus: "pending",
-      
-      // Admin fields
-      documentsAdminFeedback: null,
-      documentsReviewedBy: null,
-      documentsReviewedAt: null,
-      
-      feedback: null,
-      status: "inReview",
-      createdAt: now,
-    };
-
-    this.deliveryPartnerApplications.set(id, application);
-    return application;
-  }
-
-  async updateDeliveryPartnerApplicationStatus(update: UpdateApplicationStatus): Promise<DeliveryPartnerApplication | undefined> {
-    const application = this.deliveryPartnerApplications.get(update.id);
-
-    if (!application) {
-      return undefined;
-    }
-
-    // Clean up documents if application is being cancelled
-    if (update.status === "cancelled") {
-      // No specific document cleanup for delivery partner applications yet
-    }
-
-    const updatedApplication: DeliveryPartnerApplication = {
-      ...application,
-      status: update.status,
-    };
-
-    this.deliveryPartnerApplications.set(update.id, updatedApplication);
-    return updatedApplication;
-  }
-
-  async updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise<DeliveryPartnerApplication | undefined> {
-    const application = this.deliveryPartnerApplications.get(update.id);
-
-    if (!application) {
-      return undefined;
-    }
-
-    const updatedApplication: DeliveryPartnerApplication = {
-      ...application,
-      ...update,
-      // Reset document status to pending when new documents are uploaded
-      ...(update.driversLicenseUrl && { driversLicenseStatus: "pending" }),
-      ...(update.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" }),
-      ...(update.insuranceUrl && { insuranceStatus: "pending" }),
-      ...(update.backgroundCheckUrl && { backgroundCheckStatus: "pending" }),
-    };
-
-    this.deliveryPartnerApplications.set(update.id, updatedApplication);
-    return updatedApplication;
-  }
-
-  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDeliveryPartnerDocumentVerification): Promise<DeliveryPartnerApplication | undefined> {
-    const application = this.deliveryPartnerApplications.get(update.id);
-
-    if (!application) {
-      return undefined;
-    }
-
-    const updatedApplication: DeliveryPartnerApplication = {
-      ...application,
-      ...update,
-      documentsReviewedAt: new Date(),
-    };
-
-    this.deliveryPartnerApplications.set(update.id, updatedApplication);
-    return updatedApplication;
-  }
-
-  async updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
-    const user = this.users.get(userId);
-    
-    if (!user) {
-      return undefined;
-    }
-
-    const updatedUser: User = {
-      ...user,
-      isVerified,
-    };
-
-    this.users.set(userId, updatedUser);
-    return updatedUser;
-  }
-
-  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<User | undefined> {
-    const user = this.users.get(userId);
-    if (!user) {
-      return undefined;
-    }
-    const updatedUser: User = {
-      ...user,
-      applicationType: applicationType,
-    };
-    this.users.set(userId, updatedUser);
-    return updatedUser;
-  }
 
   async setUserHasSeenWelcome(userId: number | string): Promise<void> {
     try {
@@ -666,7 +499,7 @@ export class DatabaseStorage implements IStorage {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *',
+          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
           [
             insertUser.username,
             insertUser.password,
@@ -677,7 +510,6 @@ export class DatabaseStorage implements IStorage {
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
             insertUser.isChef || false,
-            insertUser.isDeliveryPartner || false,
             insertUser.isManager || false
           ]
         );
@@ -708,7 +540,6 @@ export class DatabaseStorage implements IStorage {
         isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
         isChef: insertUser.isChef || false,
-        isDeliveryPartner: insertUser.isDeliveryPartner || false,
         isManager: insertUser.isManager || false,
       })
       .returning();
@@ -946,108 +777,6 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Delivery Partner Application-related methods
-  async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
-    return await db.select().from(deliveryPartnerApplications);
-  }
-
-  async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
-    const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
-    return application || undefined;
-  }
-
-  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
-    return await db.select().from(deliveryPartnerApplications).where(and(eq(deliveryPartnerApplications.userId, userId)));
-  }
-
-  async createDeliveryPartnerApplication(insertApplication: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
-    const now = new Date();
-
-    const [application] = await db
-      .insert(deliveryPartnerApplications)
-      .values({
-        ...insertApplication,
-        status: "inReview",
-        createdAt: now,
-      })
-      .returning();
-
-    return application;
-  }
-
-  async updateDeliveryPartnerApplicationStatus(update: UpdateApplicationStatus): Promise<DeliveryPartnerApplication | undefined> {
-    const { id, status } = update;
-
-    // Fetch the application before updating
-    const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
-
-    // Clean up documents if application is being cancelled
-    if (application && status === "cancelled") {
-      // No specific document cleanup for delivery partner applications yet
-    }
-
-    const [updatedApplication] = await db
-      .update(deliveryPartnerApplications)
-      .set({ status })
-      .where(eq(deliveryPartnerApplications.id, id))
-      .returning();
-
-    return updatedApplication || undefined;
-  }
-
-  async updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise<DeliveryPartnerApplication | undefined> {
-    const { id, ...updateData } = update;
-
-    const [updatedApplication] = await db
-      .update(deliveryPartnerApplications)
-      .set({
-        ...updateData,
-        // Reset document status to pending when new documents are uploaded
-        ...(updateData.driversLicenseUrl && { driversLicenseStatus: "pending" }),
-        ...(updateData.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" }),
-        ...(updateData.insuranceUrl && { insuranceStatus: "pending" }),
-        ...(updateData.backgroundCheckUrl && { backgroundCheckStatus: "pending" }),
-      })
-      .where(eq(deliveryPartnerApplications.id, id))
-      .returning();
-
-    return updatedApplication || undefined;
-  }
-
-  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<DeliveryPartnerApplication | undefined> {
-    const { id, ...updateData } = update;
-
-    const [updatedApplication] = await db
-      .update(deliveryPartnerApplications)
-      .set({
-        ...updateData,
-        documentsReviewedAt: new Date(),
-      })
-      .where(eq(deliveryPartnerApplications.id, id))
-      .returning();
-
-    return updatedApplication || undefined;
-  }
-
-  async updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
-    const [updatedUser] = await db
-      .update(users)
-      .set({ isVerified })
-      .where(eq(users.id, userId))
-      .returning();
-
-    return updatedUser || undefined;
-  }
-
-  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<User | undefined> {
-    const [updatedUser] = await db
-      .update(users)
-      .set({ applicationType })
-      .where(eq(users.id, userId))
-      .returning();
-
-    return updatedUser || undefined;
-  }
 
   async setUserHasSeenWelcome(userId: number | string): Promise<void> {
     try {

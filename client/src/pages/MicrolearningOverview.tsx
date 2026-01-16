@@ -33,44 +33,9 @@ export default function MicrolearningOverview() {
   const { showAlert } = useCustomAlerts();
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // Check for session-based auth (for admin users)
-  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
-    queryKey: ["/api/user-session"],
-    queryFn: async () => {
-      try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        });
-        
-        if (!response.ok) {
-          if (response.status === 401) {
-            return null; // Not authenticated via session
-          }
-          throw new Error(`Session auth failed: ${response.status}`);
-        }
-        
-        const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
-      } catch (error) {
-        return null;
-      }
-    },
-    retry: false,
-    staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-  });
-
-  // Combine authentication - prioritize session for admin, Firebase for regular users
-  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseUser || sessionUser);
-  const loading = firebaseLoading || sessionLoading;
+  // Use Firebase authentication only (session auth has been removed)
+  const user = firebaseUser;
+  const loading = firebaseLoading;
 
   // Redirect to login if not authenticated
   React.useEffect(() => {

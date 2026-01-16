@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { useApplicationStatus } from "@/hooks/use-application-status";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
-import { ChefHat, Clock, CreditCard, DollarSign, Route, ShoppingBag, Truck, Users } from "lucide-react";
+import { ChefHat, CreditCard, ShoppingBag, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import chefCookingImage from "../../assets/chef-cooking.png";
@@ -20,15 +20,9 @@ export default function HeroSection() {
   const [currentText, setCurrentText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // Dynamic words based on user roles
+  // Dynamic words for typewriter effect
   const getWords = () => {
-    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-    
-    if (isDeliveryPartner) {
-      return ["Delivery Partners", "Delivery", "Community"];
-    } else {
-      return ["Cooks", "Company", "Community"];
-    }
+    return ["Cooks", "Company", "Community"];
   };
   
   const words = getWords();
@@ -68,13 +62,6 @@ export default function HeroSection() {
     }
   };
 
-  const handleDeliveryPartnerClick = () => {
-    if (!user) {
-      navigate(`/driver-auth`);
-    } else {
-      navigate('/delivery-partner-apply');
-    }
-  };
 
 
   const getPrimaryButtonText = () => {
@@ -118,17 +105,7 @@ export default function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
-            {(() => {
-              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-              
-              if (user && isDeliveryPartner) {
-                return "Connecting Communities Through Fast Delivery";
-              } else if (user) {
-                return "Bringing Communities Together Through Homemade Meals";
-              } else {
-                return "Local Cooks • Local Company • Local Community";
-              }
-            })()}
+            {user ? "Bringing Communities Together Through Homemade Meals" : "Local Cooks • Local Company • Local Community"}
           </motion.h2>
 
           {/* Description with better spacing */}
@@ -138,17 +115,7 @@ export default function HeroSection() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
           >
-            {(() => {
-              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-              
-              if (user && isDeliveryPartner) {
-                return "Manage your delivery applications and start earning with flexible scheduling.";
-              } else if (user) {
-                return "Manage your chef applications and transform your culinary passion into a business.";
-              } else {
-                return "Join Local Cooks as a chef to share your culinary skills and connect communities with fresh, homemade meals.";
-              }
-            })()}
+            {user ? "Manage your chef applications and transform your culinary passion into a business." : "Join Local Cooks as a chef to share your culinary skills and connect communities with fresh, homemade meals."}
           </motion.p>
           
           {/* Benefits Grid with enhanced design */}
@@ -158,103 +125,46 @@ export default function HeroSection() {
             transition={{ duration: 0.6, delay: 0.4 }}
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-8 sm:mb-10 md:mb-12 max-w-5xl mx-auto px-2"
           >
-            {(() => {
-              const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-              
-              if (isDeliveryPartner) {
-                // Delivery partner benefits
-                return (
-                  <>
-                    <motion.div 
-                      className="flex flex-col items-center gap-2 sm:gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-2.5 sm:p-3 md:p-4 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl sm:rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <Truck className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-blue-600" />
-                      </div>
-                      <span className="text-[10px] sm:text-xs md:text-sm font-semibold text-[var(--color-text-primary)] leading-tight px-1">Flexible delivery work</span>
-                    </motion.div>
-                    <motion.div 
-                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-3 md:p-4 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <Clock className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Choose your hours</span>
-                    </motion.div>
-                    <motion.div 
-                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-3 md:p-4 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <Route className="h-6 w-6 md:h-7 md:w-7 text-yellow-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Optimized routes</span>
-                    </motion.div>
-                    <motion.div 
-                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-3 md:p-4 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <DollarSign className="h-6 w-6 md:h-7 md:w-7 text-purple-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Competitive earnings</span>
-                    </motion.div>
-                  </>
-                );
-              } else {
-                // Chef benefits (for chefs or no role)
-                return (
-                  <>
-                    <motion.div 
-                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-3 md:p-4 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <ChefHat className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Showcase your talent</span>
-                    </motion.div>
-                    <motion.div 
-                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-3 md:p-4 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <Users className="h-6 w-6 md:h-7 md:w-7 text-blue-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Expand your network</span>
-                    </motion.div>
-                    <motion.div 
-                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-3 md:p-4 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <ShoppingBag className="h-6 w-6 md:h-7 md:w-7 text-yellow-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">We handle delivery</span>
-                    </motion.div>
-                    <motion.div 
-                      className="flex flex-col items-center gap-3 text-center group cursor-pointer"
-                      whileHover={{ scale: 1.05, y: -4 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <div className="p-3 md:p-4 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
-                        <CreditCard className="h-6 w-6 md:h-7 md:w-7 text-purple-600" />
-                      </div>
-                      <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Get paid weekly</span>
-                    </motion.div>
-                  </>
-                );
-              }
-            })()}
+            <motion.div 
+              className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+              whileHover={{ scale: 1.05, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <div className="p-3 md:p-4 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                <ChefHat className="h-6 w-6 md:h-7 md:w-7 text-green-600" />
+              </div>
+              <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Showcase your talent</span>
+            </motion.div>
+            <motion.div 
+              className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+              whileHover={{ scale: 1.05, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <div className="p-3 md:p-4 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                <Users className="h-6 w-6 md:h-7 md:w-7 text-blue-600" />
+              </div>
+              <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Expand your network</span>
+            </motion.div>
+            <motion.div 
+              className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+              whileHover={{ scale: 1.05, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <div className="p-3 md:p-4 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                <ShoppingBag className="h-6 w-6 md:h-7 md:w-7 text-yellow-600" />
+              </div>
+              <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">We handle delivery</span>
+            </motion.div>
+            <motion.div 
+              className="flex flex-col items-center gap-3 text-center group cursor-pointer"
+              whileHover={{ scale: 1.05, y: -4 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <div className="p-3 md:p-4 bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl shadow-md group-hover:shadow-xl transition-all duration-300">
+                <CreditCard className="h-6 w-6 md:h-7 md:w-7 text-purple-600" />
+              </div>
+              <span className="text-xs md:text-sm font-semibold text-[var(--color-text-primary)]">Get paid weekly</span>
+            </motion.div>
           </motion.div>
           
           {/* CTA Button with enhanced design */}
