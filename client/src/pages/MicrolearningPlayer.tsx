@@ -2,7 +2,6 @@ import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import MicrolearningModule from '@/components/microlearning/MicrolearningModule';
 import { useFirebaseAuth } from "@/hooks/use-auth";
-import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, Home } from 'lucide-react';
 import React from 'react';
 import { Link, useLocation } from 'wouter';
@@ -11,44 +10,9 @@ export default function MicrolearningPlayer() {
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
   const [, navigate] = useLocation();
 
-  // Check for session-based auth (for admin users)
-  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
-    queryKey: ["/api/user-session"],
-    queryFn: async () => {
-      try {
-        const response = await fetch("/api/user-session", {
-          credentials: "include",
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        });
-        
-        if (!response.ok) {
-          if (response.status === 401) {
-            return null; // Not authenticated via session
-          }
-          throw new Error(`Session auth failed: ${response.status}`);
-        }
-        
-        const userData = await response.json();
-        return {
-          ...userData,
-          authMethod: 'session'
-        };
-      } catch (error) {
-        return null;
-      }
-    },
-    retry: false,
-    staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-  });
-
-  // Combine authentication - prioritize session for admin, Firebase for regular users
-  const user = sessionUser?.role === 'admin' ? sessionUser : (firebaseUser || sessionUser);
-  const loading = firebaseLoading || sessionLoading;
+  // Use Firebase authentication only (session auth has been removed for chef portal)
+  const user = firebaseUser;
+  const loading = firebaseLoading;
 
   // Redirect to login if not authenticated
   React.useEffect(() => {

@@ -1,9 +1,9 @@
 import type { User } from "@shared/schema";
-import { insertApplicationSchema, updateApplicationStatusSchema, updateDeliveryPartnerApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
+import { insertApplicationSchema, updateApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
 import type { Express, Request, Response } from "express";
 
 // Note: Express Request.user type is already defined by @types/passport
-// We use type assertions where needed for isChef/isDeliveryPartner properties
+// We use type assertions where needed for isChef properties
 
 // Helper function to get authenticated user (supports both session and Firebase auth)
 async function getAuthenticatedUser(req: Request): Promise<{ id: number; username: string; role: string } | null> {
@@ -34,7 +34,7 @@ import path from "path";
 import { fromZodError } from "zod-validation-error";
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerStatusChangeEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateLocationEmailChangedEmail } from "./email";
+import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateLocationEmailChangedEmail } from "./email";
 import { sendSMS, generateManagerBookingSMS, generateManagerPortalBookingSMS, generateChefBookingConfirmationSMS, generateChefBookingCancellationSMS, generatePortalUserBookingConfirmationSMS, generatePortalUserBookingCancellationSMS, generateManagerBookingCancellationSMS, generateChefSelfCancellationSMS } from "./sms";
 import { getManagerPhone, getChefPhone, getPortalUserPhone, normalizePhoneForStorage } from "./phone-utils";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
@@ -46,7 +46,7 @@ import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFire
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
 import Stripe from "stripe";
-import { eq, inArray, and, desc } from "drizzle-orm";
+import { eq, inArray, and, desc, count } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
 
@@ -56,6 +56,7 @@ import { portalUserApplications, portalUserLocationAccess } from "@shared/schema
 /**
  * Normalizes image URLs to ensure they work in both development and production.
  * Converts relative paths to absolute URLs when needed.
+ * Handles R2 custom domain URLs by converting them to API proxy URLs.
  * 
  * @param url - The image URL to normalize (can be null, undefined, or a string)
  * @param req - Express request object to get the origin/host
@@ -64,6 +65,34 @@ import { portalUserApplications, portalUserLocationAccess } from "@shared/schema
 function normalizeImageUrl(url: string | null | undefined, req: Request): string | null {
   if (!url) return null;
   
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  
+  // Helper to get origin
+  const getOrigin = (): string => {
+    let protocol: string;
+    let host: string;
+    
+    if (isProduction) {
+      protocol = (req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
+      host = req.get('x-forwarded-host') || req.get('host') || req.headers.host || '';
+      if (protocol !== 'https') protocol = 'https';
+    } else {
+      protocol = req.protocol || 'http';
+      host = req.get('host') || req.headers.host || 'localhost:5001';
+    }
+    
+    return `${protocol}://${host}`;
+  };
+  
+  // Check if this is an R2 custom domain URL (files.localcooks.ca) that needs proxying
+  // This domain doesn't have DNS configured, so we need to proxy through our API
+  if (url.startsWith('https://files.localcooks.ca/')) {
+    // Extract the path (e.g., "documents/221_file_1768267179125_cafeteria3.jpg")
+    const r2Path = url.replace('https://files.localcooks.ca/', '');
+    const origin = getOrigin();
+    return `${origin}/api/images/r2/${encodeURIComponent(r2Path)}`;
+  }
+  
   // If already an absolute URL (http:// or https://), return as-is
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url;
@@ -71,33 +100,12 @@ function normalizeImageUrl(url: string | null | undefined, req: Request): string
   
   // If it's a relative path, convert to absolute URL
   if (url.startsWith('/')) {
-    // In production (Vercel), use the x-forwarded-proto and x-forwarded-host headers
-    // In development, use req.protocol and req.get('host')
-    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-    
-    let protocol: string;
-    let host: string;
-    
-    if (isProduction) {
-      // Vercel sets these headers when behind a proxy
-      protocol = (req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
-      host = req.get('x-forwarded-host') || req.get('host') || req.headers.host || '';
-    } else {
-      protocol = req.protocol || 'http';
-      host = req.get('host') || req.headers.host || 'localhost:3000';
-    }
-    
-    // Ensure protocol is https in production
-    if (isProduction && protocol !== 'https') {
-      protocol = 'https';
-    }
-    
-    if (!host) {
+    const origin = getOrigin();
+    if (!origin || origin === '://') {
       console.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
-      return url; // Return as-is if we can't determine host
+      return url;
     }
-    
-    return `${protocol}://${host}${url}`;
+    return `${origin}${url}`;
   }
   
   // Return as-is if it doesn't match any pattern (might be a data URL or other format)
@@ -537,84 +545,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error updating application status:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  // Update delivery partner application status endpoint (admin only)
-  app.patch("/api/delivery-partner-applications/:id/status", async (req: Request, res: Response) => {
-    try {
-      // Check if user is authenticated and is an admin
-      console.log('Delivery partner status update request - Auth info:', {
-        isAuthenticated: req.isAuthenticated(),
-        userRole: req.user?.role,
-        userId: req.user?.id
-      });
-
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-
-      if (req.user!.role !== "admin") {
-        return res.status(403).json({ message: "Access denied. Admin role required." });
-      }
-
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-
-      // Check if the application exists
-      const application = await storage.getDeliveryPartnerApplicationById(id);
-      if (!application) {
-        return res.status(404).json({ message: "Delivery partner application not found" });
-      }
-
-      // Validate the request body using Zod schema
-      const parsedData = updateDeliveryPartnerApplicationStatusSchema.safeParse({
-        id,
-        ...req.body
-      });
-
-      if (!parsedData.success) {
-        const validationError = fromZodError(parsedData.error);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
-        });
-      }
-
-      // Update the application in storage
-      const updatedApplication = await storage.updateDeliveryPartnerApplicationStatus(parsedData.data);
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found or could not be updated" });
-      }
-
-      // Send email notification about status change
-      try {
-        if (updatedApplication.email) {
-          const emailContent = generateDeliveryPartnerStatusChangeEmail({
-            fullName: updatedApplication.fullName || "Delivery Partner",
-            email: updatedApplication.email,
-            status: updatedApplication.status
-          });
-
-          await sendEmail(emailContent, {
-            trackingId: `delivery_status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
-          });
-          
-          console.log(`Delivery partner status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send status change email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        // Log the error but don't fail the request
-        console.error("Error sending delivery partner status change email:", emailError);
-      }
-
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error updating delivery partner application status:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1089,9 +1019,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // R2 IMAGE PROXY ENDPOINT
+  // ===============================
+  // Public endpoint to proxy images from R2 bucket when custom domain (files.localcooks.ca) DNS is not configured
+  // This allows images to load even without the custom domain being set up
+  app.get("/api/images/r2/:path(*)", async (req: Request, res: Response) => {
+    try {
+      const r2Path = decodeURIComponent(req.params.path);
+      
+      if (!r2Path) {
+        return res.status(400).json({ error: "Path is required" });
+      }
+      
+      // Security: Only allow specific folder prefixes
+      const allowedPrefixes = ['documents/', 'images/', 'profiles/', 'kitchen-applications/'];
+      const isAllowed = allowedPrefixes.some(prefix => r2Path.startsWith(prefix));
+      
+      if (!isAllowed) {
+        console.warn(`[R2 Proxy] Blocked request for path: ${r2Path}`);
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      // Import R2 storage utilities
+      const { isR2Configured } = await import('./r2-storage');
+      
+      if (!isR2Configured()) {
+        console.error('[R2 Proxy] R2 is not configured');
+        return res.status(503).json({ error: "Storage not configured" });
+      }
+      
+      // Get the R2 bucket details from environment
+      const R2_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+      const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+      const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+      const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+      
+      if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
+        return res.status(503).json({ error: "R2 credentials not configured" });
+      }
+      
+      // Use AWS SDK to fetch the image
+      const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
+      
+      const s3Client = new S3Client({
+        region: 'auto',
+        endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: R2_ACCESS_KEY_ID,
+          secretAccessKey: R2_SECRET_ACCESS_KEY,
+        },
+      });
+      
+      const command = new GetObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: r2Path,
+      });
+      
+      const response = await s3Client.send(command);
+      
+      if (!response.Body) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      // Set appropriate headers
+      if (response.ContentType) {
+        res.setHeader('Content-Type', response.ContentType);
+      }
+      if (response.ContentLength) {
+        res.setHeader('Content-Length', response.ContentLength);
+      }
+      
+      // Cache for 1 day (public images)
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      
+      // Stream the response
+      const stream = response.Body as NodeJS.ReadableStream;
+      stream.pipe(res);
+      
+    } catch (error: any) {
+      console.error('[R2 Proxy] Error fetching file:', error);
+      
+      if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      
+      return res.status(500).json({ 
+        error: "Failed to fetch file",
+        details: error.message 
+      });
+    }
+  });
+
   // PRESIGNED URL ENDPOINTS
   // ===============================
-  // Available to all authenticated Firebase users (admin, manager, chef, delivery_partner)
+  // Available to all authenticated Firebase users (admin, manager, chef)
   // No role restrictions - any authenticated user can access files
 
   // Get presigned URL for a document file stored in R2 bucket or local storage
@@ -2761,655 +2782,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Vehicle API endpoints for NHTSA data
-  // Simple in-memory cache for vehicle data
-  const vehicleCache = {
-    makes: null,
-    modelsByMake: new Map(),
-    yearsByMake: new Map(),
-    makesByType: new Map(),
-    lastFetch: 0,
-    cacheExpiry: 24 * 60 * 60 * 1000, // 24 hours (increased from 10 minutes)
-    isPreloaded: false
-  };
-
-  const isCacheValid = () => Date.now() - vehicleCache.lastFetch < vehicleCache.cacheExpiry;
-
-  // New endpoint to preload all vehicle data at once
-  app.get('/api/vehicles/preload', async (req: Request, res: Response) => {
-    try {
-      // Check if already preloaded and cache is valid
-      if (vehicleCache.isPreloaded && isCacheValid()) {
-        return res.json({
-          success: true,
-          message: 'Vehicle data already preloaded and cached',
-          cached: true
-        });
-      }
-
-      console.log('🚗 Starting vehicle data preload...');
-      
-      // Fetch all makes first
-      const makesResponse = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json');
-      if (!makesResponse.ok) {
-        throw new Error(`NHTSA API error: ${makesResponse.status}`);
-      }
-      
-      const makesData = await makesResponse.json();
-      
-      // Filter for 4-wheeled vehicles only (exclude motorcycles, etc.)
-      const fourWheeledMakes = makesData.Results.filter((make: any) => {
-        // Filter out motorcycle manufacturers and other non-4-wheeled vehicles
-        const excludedMakes = [
-          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
-          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
-          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
-          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
-        ];
-        
-        return !excludedMakes.some(excluded => 
-          make.Make_Name.toUpperCase().includes(excluded) || 
-          excluded.includes(make.Make_Name.toUpperCase())
-        );
-      });
-
-      const formattedMakes = fourWheeledMakes.map((make: any) => ({
-        id: make.Make_ID,
-        name: make.Make_Name
-      }));
-
-      // Cache the makes
-      vehicleCache.makes = formattedMakes;
-      
-      // Preload models for the first 20 most common makes to avoid overwhelming the API
-      const commonMakes = formattedMakes.slice(0, 20);
-      console.log(`🚗 Preloading models for ${commonMakes.length} common makes...`);
-      
-      for (const make of commonMakes) {
-        try {
-          const modelsResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(make.name)}?format=json`);
-          if (modelsResponse.ok) {
-            const modelsData = await modelsResponse.json();
-            
-            // Filter for 4-wheeled vehicles only
-            const fourWheeledModels = modelsData.Results.filter((model: any) => {
-              const modelName = model.Model_Name.toUpperCase();
-              
-              // Very specific exclusions only for obvious non-4-wheeled vehicles
-              const excludedPatterns = [
-                /MOTORCYCLE$/i, /BIKE$/i, /SCOOTER$/i, /MOPED$/i, /ATV$/i, /QUAD$/i, /TRIKE$/i, /SIDECAR$/i,
-                /^HARLEY/i, /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
-                /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
-                /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
-                /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
-                /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
-                /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
-                /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
-                /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
-                /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
-                /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
-                /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
-                /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
-                /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
-                /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
-                /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
-                /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
-                /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
-                /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
-                /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
-                /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
-                /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
-                /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
-              ];
-              
-              return !excludedPatterns.some(pattern => pattern.test(modelName));
-            });
-            
-            const formattedModels = fourWheeledModels.map((model: any) => ({
-              id: model.Model_ID || model.Model_ID,
-              name: model.Model_Name
-            }));
-            
-            vehicleCache.modelsByMake.set(make.id.toString(), formattedModels);
-          }
-          
-          // Small delay to be respectful to the NHTSA API
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (error) {
-          console.warn(`⚠️ Failed to preload models for make ${make.name}:`, error);
-          // Continue with other makes
-        }
-      }
-      
-      // Set cache as preloaded
-      vehicleCache.isPreloaded = true;
-      vehicleCache.lastFetch = Date.now();
-      
-      console.log('🚗 Vehicle data preload completed successfully');
-      
-      res.json({
-        success: true,
-        message: 'Vehicle data preloaded successfully',
-        makesCount: formattedMakes.length,
-        modelsCount: Array.from(vehicleCache.modelsByMake.values()).reduce((total, models) => total + models.length, 0),
-        cached: false
-      });
-    } catch (error) {
-      console.error('Error preloading vehicle data:', error);
-      res.status(500).json({
-        error: 'Failed to preload vehicle data',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // Get all vehicle makes (4-wheeled vehicles only)
-  app.get('/api/vehicles/makes', async (req: Request, res: Response) => {
-    try {
-      const { type } = req.query;
-      
-      // Check cache first
-      if (type && vehicleCache.makesByType.has(type as string) && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makesByType.get(type as string)
-        });
-      }
-      
-      if (!type && vehicleCache.makes && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makes
-        });
-      }
-
-      // If not cached, trigger preload first
-      if (!vehicleCache.isPreloaded) {
-        console.log('🚗 Makes not cached, triggering preload...');
-        try {
-          const preloadResponse = await fetch(`${req.protocol}://${req.get('host')}/api/vehicles/preload`);
-          if (preloadResponse.ok) {
-            // Now return the cached data
-            if (type && vehicleCache.makesByType.has(type as string)) {
-              return res.json({
-                success: true,
-                makes: vehicleCache.makesByType.get(type as string)
-              });
-            }
-            
-            if (!type && vehicleCache.makes) {
-              return res.json({
-                success: true,
-                makes: vehicleCache.makes
-              });
-            }
-          }
-        } catch (preloadError) {
-          console.warn('⚠️ Preload failed, falling back to direct API call:', preloadError);
-        }
-      }
-
-      // Fallback to direct API call if preload failed
-      const response = await fetch('https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json');
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Filter for 4-wheeled vehicles only (exclude motorcycles, etc.)
-      const fourWheeledMakes = data.Results.filter((make: any) => {
-        // Filter out motorcycle manufacturers and other non-4-wheeled vehicles
-        const excludedMakes = [
-          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
-          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
-          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
-          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
-        ];
-        
-        return !excludedMakes.some(excluded => 
-          make.Make_Name.toUpperCase().includes(excluded) || 
-          excluded.includes(make.Make_Name.toUpperCase())
-        );
-      });
-
-      const formattedMakes = fourWheeledMakes.map((make: any) => ({
-        id: make.Make_ID,
-        name: make.Make_Name
-      }));
-
-      // Cache the results
-      if (type) {
-        vehicleCache.makesByType.set(type as string, formattedMakes);
-      } else {
-        vehicleCache.makes = formattedMakes;
-      }
-      vehicleCache.lastFetch = Date.now();
-
-      res.json({
-        success: true,
-        makes: formattedMakes
-      });
-    } catch (error) {
-      console.error('Error fetching vehicle makes:', error);
-      res.status(500).json({
-        error: 'Failed to fetch vehicle makes',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // Get makes for a specific vehicle type
-  app.get('/api/vehicles/makes/type/:vehicleType', async (req: Request, res: Response) => {
-    try {
-      const { vehicleType } = req.params;
-      
-      // Check cache first
-      if (vehicleCache.makesByType.has(vehicleType) && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makesByType.get(vehicleType)
-        });
-      }
-
-      // If not cached, trigger preload first
-      if (!vehicleCache.isPreloaded) {
-        console.log('🚗 Makes for type not cached, triggering preload...');
-        try {
-          const preloadResponse = await fetch(`${req.protocol}://${req.get('host')}/api/vehicles/preload`);
-          if (preloadResponse.ok && vehicleCache.makesByType.has(vehicleType)) {
-            return res.json({
-              success: true,
-              makes: vehicleCache.makesByType.get(vehicleType)
-            });
-          }
-        } catch (preloadError) {
-          console.warn('⚠️ Preload failed, falling back to direct API call:', preloadError);
-        }
-      }
-
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/${encodeURIComponent(vehicleType)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Filter for 4-wheeled vehicles only
-      const fourWheeledMakes = data.Results.filter((make: any) => {
-        const excludedMakes = [
-          'HARLEY-DAVIDSON', 'YAMAHA', 'KAWASAKI', 'SUZUKI', 'HONDA MOTORCYCLE',
-          'BMW MOTORRAD', 'DUCATI', 'TRIUMPH', 'INDIAN', 'VICTORY', 'APRILIA',
-          'KTM', 'HUSQVARNA', 'MOTO GUZZI', 'MV AGUSTA', 'BENELLI', 'NORTON',
-          'ROYAL ENFIELD', 'HUSABERG', 'GAS GAS', 'SHERCO', 'BETA', 'TM RACING'
-        ];
-        
-        return !excludedMakes.some(excluded => 
-          make.MakeName.toUpperCase().includes(excluded) || 
-          excluded.includes(make.MakeName.toUpperCase())
-        );
-      });
-
-      const formattedMakes = fourWheeledMakes.map((make: any) => ({
-        id: make.MakeId, // Preserve original NHTSA make ID
-        name: make.MakeName
-      }));
-
-      // Cache the results
-      vehicleCache.makesByType.set(vehicleType, formattedMakes);
-      vehicleCache.lastFetch = Date.now();
-
-      res.json({
-        success: true,
-        makes: formattedMakes
-      });
-    } catch (error) {
-      console.error('Error fetching makes for vehicle type:', error);
-      res.status(500).json({
-        error: 'Failed to fetch makes for vehicle type',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // Get models for a specific make using make name (more efficient)
-  app.get('/api/vehicles/models/by-name/:makeName', async (req: Request, res: Response) => {
-    try {
-      const { makeName } = req.params;
-      const decodedMakeName = decodeURIComponent(makeName);
-      
-      // Check cache first (use make name as key)
-      if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
-        return res.json({
-          success: true,
-          models: vehicleCache.modelsByMake.get(decodedMakeName)
-        });
-      }
-      
-      // Direct call to NHTSA API with make name (no need to lookup make ID)
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      // Filter for 4-wheeled vehicles only
-      const fourWheeledModels = data.Results.filter((model: any) => {
-        const modelName = model.Model_Name.toUpperCase();
-        const excludedPatterns = [
-          /MOTORCYCLE$/i, /BIKE$/i, /SCOOTER$/i, /MOPED$/i, /ATV$/i,
-          /SNOWMOBILE$/i, /WATERCRAFT$/i, /BOAT$/i, /JET.?SKI$/i
-        ];
-        return !excludedPatterns.some(pattern => pattern.test(modelName));
-      });
-
-      const formattedModels = fourWheeledModels.map((model: any) => ({
-        id: model.Model_ID,
-        name: model.Model_Name
-      }));
-
-      // Cache the results
-      vehicleCache.modelsByMake.set(decodedMakeName, formattedModels);
-
-      res.json({
-        success: true,
-        models: formattedModels
-      });
-    } catch (error) {
-      console.error('Error fetching vehicle models:', error);
-      res.status(500).json({
-        error: 'Failed to fetch vehicle models',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // Get models for a specific make (without year dependency) - LEGACY ENDPOINT
-  app.get('/api/vehicles/models/:makeId', async (req: Request, res: Response) => {
-    try {
-      const { makeId } = req.params;
-      
-      // Check cache first
-      if (vehicleCache.modelsByMake.has(makeId) && isCacheValid()) {
-        return res.json({
-          success: true,
-          models: vehicleCache.modelsByMake.get(makeId)
-        });
-      }
-      
-      // If not cached, trigger preload first
-      if (!vehicleCache.isPreloaded) {
-        console.log('🚗 Models not cached, triggering preload...');
-        try {
-          const preloadResponse = await fetch(`${req.protocol}://${req.get('host')}/api/vehicles/preload`);
-          if (preloadResponse.ok && vehicleCache.modelsByMake.has(makeId)) {
-            return res.json({
-              success: true,
-              models: vehicleCache.modelsByMake.get(makeId)
-            });
-          }
-        } catch (preloadError) {
-          console.warn('⚠️ Preload failed, falling back to direct API call:', preloadError);
-        }
-      }
-      
-      // First get the make name from our makes list
-      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
-      if (!makesResponse.ok) {
-        throw new Error(`NHTSA API error: ${makesResponse.status}`);
-      }
-      
-      const makesData = await makesResponse.json();
-      const selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
-      
-      if (!selectedMake) {
-        throw new Error('Make not found');
-      }
-      
-      // Get all models for this make (without year)
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      console.log(`🚗 NHTSA API returned ${data.Results?.length || 0} models for make: ${selectedMake.Make_Name}`);
-      
-      // Filter for 4-wheeled vehicles only, but be much less aggressive
-      const fourWheeledModels = data.Results.filter((model: any) => {
-        // Only exclude very obvious non-4-wheeled vehicle models
-        const modelName = model.Model_Name.toUpperCase();
-        
-        // Very specific exclusions only for obvious non-4-wheeled vehicles
-        const excludedPatterns = [
-          // Motorcycle patterns
-          /MOTORCYCLE$/i,
-          /BIKE$/i,
-          /SCOOTER$/i,
-          /MOPED$/i,
-          /ATV$/i,
-          /QUAD$/i,
-          /TRIKE$/i,
-          /SIDECAR$/i,
-          
-          // Very specific motorcycle model names
-          /^HARLEY/i,
-          /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
-          /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
-          /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
-          /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
-          /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
-          /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
-          /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
-          /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
-          /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
-          /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
-          /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
-          /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
-          /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
-          /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
-          /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
-          /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
-          /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
-          /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
-          /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
-          /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
-          /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
-          /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
-        ];
-        
-        // Check if model matches any excluded patterns
-        return !excludedPatterns.some(pattern => pattern.test(modelName));
-      });
-
-      console.log(`🚗 After filtering, ${fourWheeledModels.length} models remain for make: ${selectedMake.Make_Name}`);
-      
-      const formattedModels = fourWheeledModels.map((model: any) => ({
-        id: model.Model_ID || model.Model_ID, // Use actual NHTSA ID if available
-        name: model.Model_Name
-      }));
-
-      // Cache the results
-      vehicleCache.modelsByMake.set(makeId, formattedModels);
-
-      res.json({
-        success: true,
-        models: formattedModels
-      });
-    } catch (error) {
-      console.error('Error fetching vehicle models:', error);
-      res.status(500).json({
-        error: 'Failed to fetch vehicle models',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // Get available years for a specific make
-  app.get('/api/vehicles/years/:makeId', async (req: Request, res: Response) => {
-    try {
-      const { makeId } = req.params;
-      
-      // Check cache first
-      if (vehicleCache.yearsByMake.has(makeId) && isCacheValid()) {
-        return res.json({
-          success: true,
-          years: vehicleCache.yearsByMake.get(makeId)
-        });
-      }
-      
-      // Get the make name from cache or fallback to a reasonable guess
-      let selectedMake = null;
-      
-      // Try to get from our car makes cache first
-      if (vehicleCache.makesByType.has('car') && isCacheValid()) {
-        const carMakes = vehicleCache.makesByType.get('car');
-        selectedMake = carMakes?.find((make: any) => make.id === parseInt(makeId));
-      }
-      
-      // If not found in cache, try the NHTSA API (with error handling)
-      if (!selectedMake) {
-        try {
-          const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`, {
-            signal: AbortSignal.timeout(3000) // 3 second timeout
-          });
-          
-          if (makesResponse.ok) {
-            const makesData = await makesResponse.json();
-            selectedMake = makesData.Results.find((make: any) => make.Make_ID === parseInt(makeId));
-          }
-        } catch (error) {
-          console.log(`⚠️ NHTSA GetAllMakes API failed for makeId ${makeId}, using fallback`);
-        }
-      }
-      
-      // Final fallback: create a reasonable make object
-      if (!selectedMake) {
-        // Common make ID to name mappings for popular manufacturers
-        const commonMakes: { [key: number]: string } = {
-          441: 'TESLA', 448: 'TOYOTA', 460: 'FORD', 467: 'CHEVROLET', 
-          476: 'DODGE', 478: 'NISSAN', 475: 'ACURA', 515: 'LEXUS',
-          582: 'AUDI', 482: 'VOLKSWAGEN', 485: 'VOLVO', 498: 'HYUNDAI',
-          499: 'KIA', 449: 'MERCEDES-BENZ', 584: 'PORSCHE', 523: 'SUBARU'
-        };
-        
-        const makeName = commonMakes[parseInt(makeId)] || `MAKE_${makeId}`;
-        selectedMake = { Make_ID: parseInt(makeId), Make_Name: makeName };
-        console.log(`🚗 Using fallback make name: ${makeName} for ID ${makeId}`);
-      }
-      
-      // Use NHTSA API to find years that actually have vehicle models
-      const currentYear = new Date().getFullYear();
-      const makeName = selectedMake.Make_Name.toUpperCase();
-      console.log(`🚗 Finding actual model years for ${selectedMake.Make_Name} (ID: ${makeId})`);
-      
-      const years = [];
-      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      
-      // Helper function to check if a year has models
-      const hasModelsInYear = async (year: number): Promise<boolean> => {
-        try {
-          const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeIdYear/${makeId}/${year}?format=json`, {
-            signal: AbortSignal.timeout(5000)
-          });
-          
-          if (!response.ok) return false;
-          const data = await response.json();
-          return data && data.Results && data.Results.length > 0;
-        } catch {
-          return false;
-        }
-      };
-      
-      // Smart sampling strategy: Check key years and find the range
-      const currentPlusOne = currentYear + 1;
-      const testYears = [
-        // Recent years (most likely to have models)
-        currentPlusOne, currentYear, currentYear - 1, currentYear - 2, currentYear - 3,
-        // Sample years going back
-        currentYear - 5, currentYear - 10, currentYear - 15, currentYear - 20, currentYear - 25,
-        // Common milestone years
-        2020, 2015, 2010, 2005, 2000, 1995, 1990, 1985
-      ].filter((year, index, arr) => 
-        // Remove duplicates and keep only reasonable years
-        arr.indexOf(year) === index && year >= 1980 && year <= currentPlusOne
-      ).sort((a, b) => b - a); // Start with recent years
-      
-      let earliestFoundYear = currentPlusOne;
-      let latestFoundYear = 0;
-      let foundCount = 0;
-      
-      console.log(`🚗 Testing ${testYears.length} sample years for ${selectedMake.Make_Name}...`);
-      
-      // Test sample years with rate limiting
-      for (let i = 0; i < testYears.length && foundCount < 10; i++) {
-        const year = testYears[i];
-        const hasModels = await hasModelsInYear(year);
-        
-        if (hasModels) {
-          foundCount++;
-          earliestFoundYear = Math.min(earliestFoundYear, year);
-          latestFoundYear = Math.max(latestFoundYear, year);
-          console.log(`🚗 ✅ Found models for ${selectedMake.Make_Name} in ${year}`);
-        }
-        
-        // Add delay between requests to respect rate limits
-        if (i < testYears.length - 1) {
-          await delay(150); // 150ms delay
-        }
-      }
-      
-      if (foundCount > 0) {
-        // Generate the full range based on found years
-        console.log(`🚗 Found model years range: ${latestFoundYear} to ${earliestFoundYear}`);
-        
-        // Fill in the range between earliest and latest found years
-        for (let year = latestFoundYear; year >= earliestFoundYear; year--) {
-          years.push(year);
-        }
-        
-        console.log(`🚗 Generated ${years.length} years with actual models for ${selectedMake.Make_Name}`);
-      } else {
-        // Fallback: Use intelligent defaults based on manufacturer type
-        console.log(`⚠️ No model years found via API for ${selectedMake.Make_Name}, using intelligent fallback`);
-        
-        let fallbackStartYear = 1995; // Conservative default
-        
-        // Smart fallbacks based on manufacturer patterns
-        if (makeName.includes('TESLA') || makeName.includes('LUCID') || makeName.includes('RIVIAN')) {
-          fallbackStartYear = 2010; // Recent EV manufacturers
-        } else if (makeName.includes('GENESIS') || makeName.includes('SCION')) {
-          fallbackStartYear = 2000; // Recent sub-brands
-        } else if (makeName.includes('SATURN') || makeName.includes('HUMMER')) {
-          fallbackStartYear = 1990; // Newer American brands
-        }
-        
-        // Generate reasonable fallback range (last 30 years max)
-        const fallbackEndYear = Math.min(currentYear + 1, fallbackStartYear + 35);
-        for (let year = fallbackEndYear; year >= fallbackStartYear; year--) {
-          years.push(year);
-        }
-        
-        console.log(`🚗 Using fallback range: ${fallbackEndYear} to ${fallbackStartYear}`);
-      }
-
-      // Cache the results
-      vehicleCache.yearsByMake.set(makeId, years);
-
-      res.json({
-        success: true,
-        years: years
-      });
-    } catch (error) {
-      console.error('Error fetching vehicle years:', error);
-      res.status(500).json({
-        error: 'Failed to fetch vehicle years',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
 
   // ===================================
   // KITCHEN BOOKING SYSTEM - MANAGER ROUTES
@@ -7726,9 +7098,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return isActive !== false && isActive !== null;
       });
       
-      console.log(`[API] /api/chef/kitchens - Returning ${activeKitchens.length} active kitchens (all locations for marketing)`);
+      // Normalize image URLs for all kitchens
+      const normalizedKitchens = activeKitchens.map((kitchen: any) => {
+        const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || kitchen.image_url || null, req);
+        const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) => 
+          normalizeImageUrl(img, req)
+        ).filter((url: string | null): url is string => url !== null);
+        const normalizedLocationBrandImageUrl = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
+        const normalizedLocationLogoUrl = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
+        
+        return {
+          ...kitchen,
+          imageUrl: normalizedImageUrl,
+          image_url: normalizedImageUrl, // Also set snake_case for compatibility
+          galleryImages: normalizedGalleryImages,
+          gallery_images: normalizedGalleryImages, // Also set snake_case for compatibility
+          locationBrandImageUrl: normalizedLocationBrandImageUrl,
+          location_brand_image_url: normalizedLocationBrandImageUrl, // Also set snake_case for compatibility
+          locationLogoUrl: normalizedLocationLogoUrl,
+          location_logo_url: normalizedLocationLogoUrl, // Also set snake_case for compatibility
+        };
+      });
       
-      res.json(activeKitchens);
+      console.log(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
+      
+      res.json(normalizedKitchens);
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
@@ -7753,6 +7147,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error getting kitchen pricing:", error);
       res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
+    }
+  });
+
+  // Get kitchen booking policy (for chefs to see max slots per chef per day)
+  app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get kitchen to find its location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      // Get location to access default_daily_booking_limit
+      const locationId = kitchen.locationId || kitchen.location_id;
+      if (!locationId) {
+        return res.status(404).json({ error: "Location not found for this kitchen" });
+      }
+
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      // Return maxSlotsPerChef from location's default_daily_booking_limit
+      // Default to 2 if not set
+      const maxSlotsPerChef = location.default_daily_booking_limit || 
+                              location.defaultDailyBookingLimit || 
+                              2;
+
+      res.json({ maxSlotsPerChef });
+    } catch (error: any) {
+      console.error("Error getting kitchen policy:", error);
+      res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
     }
   });
 
@@ -10101,7 +9533,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all chefs from database
       // Chefs are identified by role = 'chef' OR isChef = true
-      const allUsers = await db.select().from(users);
+      // Only select the columns we need to avoid issues with missing columns
+      const allUsers = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role,
+        isChef: users.isChef,
+      }).from(users);
       const chefs = allUsers.filter(u => {
         const role = (u as any).role;
         const isChef = (u as any).isChef ?? (u as any).is_chef;
@@ -10210,7 +9648,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword,
         role: "manager",
         isChef: false,
-        isDeliveryPartner: false,
         isManager: true,
         isPortalUser: false,
         has_seen_welcome: false  // Manager must change password on first login
@@ -11299,9 +10736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const subdomain = getSubdomainFromHeaders(req.headers);
       const isChef = (portalUser as any).isChef || (portalUser as any).is_chef || false;
       const isManager = (portalUser as any).isManager || (portalUser as any).is_manager || false;
-      const isDeliveryPartner = (portalUser as any).isDeliveryPartner || (portalUser as any).is_delivery_partner || false;
-      
-      if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager, isDeliveryPartner)) {
+      if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager)) {
         console.log(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
         return res.status(403).json({ 
           error: 'Access denied. Portal users must login from the kitchen subdomain.',
@@ -11382,7 +10817,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           password: hashedPassword,
           role: "chef", // Default role, but portal user flag takes precedence
           isChef: false,
-          isDeliveryPartner: false,
           isManager: false,
           isPortalUser: true,
         });
@@ -12736,29 +12170,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get counts from database
+      // Use count queries for efficiency and to avoid selecting columns that may not exist
       const [
         chefCountResult,
         applicationCountResult,
         approvedApplicationCountResult,
-        deliveryPartnerCountResult,
         locationCountResult,
         kitchenCountResult,
       ] = await Promise.all([
-        db.select().from(users).where(eq(users.isChef, true)),
-        db.select().from(applications),
-        db.select().from(applications).where(eq(applications.status, "approved")),
-        db.select().from(users).where(eq(users.isDeliveryPartner, true)),
-        db.select().from(locations),
-        db.select().from(kitchens).where(eq(kitchens.isActive, true)),
+        db.select({ count: count() }).from(users).where(eq(users.isChef, true)),
+        db.select({ count: count() }).from(applications),
+        db.select({ count: count() }).from(applications).where(eq(applications.status, "approved")),
+        db.select({ count: count() }).from(locations),
+        db.select({ count: count() }).from(kitchens).where(eq(kitchens.isActive, true)),
       ]);
 
       const stats = {
-        totalChefs: chefCountResult.length,
-        totalApplications: applicationCountResult.length,
-        approvedChefs: approvedApplicationCountResult.length,
-        totalDeliveryPartners: deliveryPartnerCountResult.length,
-        totalLocations: locationCountResult.length,
-        totalKitchens: kitchenCountResult.length,
+        totalChefs: Number(chefCountResult[0]?.count ?? 0),
+        totalApplications: Number(applicationCountResult[0]?.count ?? 0),
+        approvedChefs: Number(approvedApplicationCountResult[0]?.count ?? 0),
+        totalLocations: Number(locationCountResult[0]?.count ?? 0),
+        totalKitchens: Number(kitchenCountResult[0]?.count ?? 0),
       };
 
       res.json(stats);
@@ -13449,40 +12881,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(500).json({ 
         message: "Internal server error. Please try again later." 
       });
-    }
-  });
-
-  // Portal user session endpoint (for portal users who use session auth)
-  app.get("/api/user-session", async (req: Request, res: Response) => {
-    try {
-      // Check if user is authenticated via session
-      if (req.isAuthenticated() && req.user) {
-        return res.json({
-          id: req.user.id,
-          username: req.user.username,
-          role: req.user.role,
-          isAuthenticated: true
-        });
-      }
-      
-      // Check for Firebase auth as fallback
-      if ((req as any).neonUser) {
-        return res.json({
-          id: (req as any).neonUser.id,
-          username: (req as any).neonUser.username,
-          role: (req as any).neonUser.role,
-          isAuthenticated: true
-        });
-      }
-      
-      // No session or Firebase auth
-      return res.status(401).json({ 
-        error: 'Session-based authentication removed. Please use /api/user/profile with Firebase token.',
-        isAuthenticated: false
-      });
-    } catch (error: any) {
-      console.error("Error getting user session:", error);
-      res.status(500).json({ error: "Failed to get user session" });
     }
   });
 

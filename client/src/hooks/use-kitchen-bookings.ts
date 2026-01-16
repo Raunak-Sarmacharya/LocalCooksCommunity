@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { auth } from "@/lib/firebase";
 
 interface Booking {
   id: number;
@@ -59,6 +60,8 @@ export function useKitchenBookings() {
   // Get chef's bookings with real-time polling
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/chef/bookings"],
+    // Only fetch when user is authenticated
+    enabled: !!auth.currentUser,
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const response = await fetch("/api/chef/bookings", {
@@ -154,6 +157,8 @@ export function useKitchenBookings() {
   // Get all available kitchens
   const kitchensQuery = useQuery<Kitchen[]>({
     queryKey: ["/api/chef/kitchens"],
+    // Only fetch when user is authenticated
+    enabled: !!auth.currentUser,
     queryFn: async () => {
       const headers = await getAuthHeaders();
       

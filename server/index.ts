@@ -93,21 +93,6 @@ const initPromise = (async () => {
       server.listen(port, () => {
         log(`[LOCAL] Server running on http://localhost:${port}`);
       });
-      
-      // Warmup cache on startup (local only)
-      try {
-        log('🚗 Warming up vehicle data cache on server startup...');
-        const baseUrl = `http://localhost:${port}`;
-        const preloadResponse = await fetch(`${baseUrl}/api/vehicles/preload`);
-        if (preloadResponse.ok) {
-          const preloadData = await preloadResponse.json();
-          log(`🚗 Vehicle data cache warmed up successfully: ${preloadData.makesCount} makes, ${preloadData.modelsCount} models`);
-        } else {
-          log('⚠️ Vehicle data cache warmup failed, will load on-demand');
-        }
-      } catch (error) {
-        log('⚠️ Vehicle data cache warmup failed, will load on-demand:', String(error));
-      }
     }
   } catch (error) {
     console.error('Failed to register routes:', error);

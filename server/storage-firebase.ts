@@ -1,10 +1,8 @@
 import type {
     Application,
     ChefKitchenApplication,
-    DeliveryPartnerApplication,
     InsertApplication,
     InsertChefKitchenApplication,
-    InsertDeliveryPartnerApplication,
     InsertUser,
     UpdateApplicationDocuments,
     UpdateApplicationStatus,
@@ -13,7 +11,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, chefKitchenApplications, deliveryPartnerApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings } from "@shared/schema";
+import { applications, chefKitchenApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte, desc, isNull, or } from "drizzle-orm";
 import { db, pool } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
@@ -62,7 +60,7 @@ export class FirebaseStorage {
     }
   }
 
-  async updateUser(id: number, updates: { username?: string; role?: string; isManager?: boolean; isChef?: boolean; isDeliveryPartner?: boolean }): Promise<User | undefined> {
+  async updateUser(id: number, updates: { username?: string; role?: string; isManager?: boolean; isChef?: boolean }): Promise<User | undefined> {
     try {
       const [updated] = await db
         .update(users)
@@ -118,7 +116,7 @@ export class FirebaseStorage {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
+          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
           [
             insertUser.username,
             insertUser.password || '', // Empty password for Firebase users
@@ -131,7 +129,6 @@ export class FirebaseStorage {
             insertUser.isVerified !== undefined ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
             insertUser.isChef !== undefined ? insertUser.isChef : false,
-            insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false,
             insertUser.isManager !== undefined ? insertUser.isManager : false,
             (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false
           ]
@@ -156,7 +153,6 @@ export class FirebaseStorage {
         isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
         has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
         isChef: insertUser.isChef !== undefined ? insertUser.isChef : false,
-        isDeliveryPartner: insertUser.isDeliveryPartner !== undefined ? insertUser.isDeliveryPartner : false,
         isManager: insertUser.isManager !== undefined ? insertUser.isManager : false,
         isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
       })
@@ -341,37 +337,15 @@ export class FirebaseStorage {
     }
   }
 
-  // ===== USER APPLICATION TYPE MANAGEMENT =====
-  
-  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<void> {
-    try {
-      await db
-        .update(users)
-        .set({ applicationType })
-        .where(eq(users.id, userId));
-    } catch (error) {
-      console.error('Error updating user application type:', error);
-      throw error;
-    }
-  }
-
   // ===== USER ROLES MANAGEMENT =====
   
-  async updateUserRoles(userId: number, roles: { isChef: boolean; isDeliveryPartner: boolean }): Promise<void> {
+  async updateUserRoles(userId: number, roles: { isChef: boolean }): Promise<void> {
     try {
       // Determine the main role based on selected roles
-      let mainRole = 'chef'; // default
-      if (roles.isDeliveryPartner && !roles.isChef) {
-        mainRole = 'delivery_partner';
-      } else if (roles.isChef && roles.isDeliveryPartner) {
-        mainRole = 'chef'; // For dual roles, default to chef
-      } else if (roles.isChef) {
-        mainRole = 'chef';
-      }
+      let mainRole = roles.isChef ? 'chef' : null;
 
       console.log(`🎯 Updating user ${userId} roles:`, {
         isChef: roles.isChef,
-        isDeliveryPartner: roles.isDeliveryPartner,
         mainRole: mainRole
       });
 
@@ -379,7 +353,6 @@ export class FirebaseStorage {
         .update(users)
         .set({ 
           isChef: roles.isChef,
-          isDeliveryPartner: roles.isDeliveryPartner,
           role: mainRole as any // Update main role field too
         })
         .where(eq(users.id, userId));
@@ -387,70 +360,6 @@ export class FirebaseStorage {
       console.log(`✅ Successfully updated user ${userId} roles in database`);
     } catch (error) {
       console.error('Error updating user roles:', error);
-      throw error;
-    }
-  }
-
-  // ===== DELIVERY PARTNER APPLICATION METHODS =====
-  
-  async createDeliveryPartnerApplication(applicationData: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
-    try {
-      const [inserted] = await db
-        .insert(deliveryPartnerApplications)
-        .values(applicationData)
-        .returning();
-      
-      return inserted;
-    } catch (error) {
-      console.error('Error creating delivery partner application:', error);
-      throw error;
-    }
-  }
-
-  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
-    try {
-      return await db
-        .select()
-        .from(deliveryPartnerApplications)
-        .where(eq(deliveryPartnerApplications.userId, userId));
-    } catch (error) {
-      console.error('Error getting delivery partner applications by user ID:', error);
-      throw error;
-    }
-  }
-
-  async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
-    try {
-      return await db.select().from(deliveryPartnerApplications);
-    } catch (error) {
-      console.error('Error getting all delivery partner applications:', error);
-      throw error;
-    }
-  }
-
-  async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
-    try {
-      const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
-      return application || undefined;
-    } catch (error) {
-      console.error('Error getting delivery partner application by ID:', error);
-      throw error;
-    }
-  }
-
-  async updateDeliveryPartnerApplicationStatus(update: { id: number; status: string }): Promise<DeliveryPartnerApplication | undefined> {
-    try {
-      const { id, status } = update;
-
-      const [updatedApplication] = await db
-        .update(deliveryPartnerApplications)
-        .set({ status: status as 'inReview' | 'approved' | 'rejected' | 'cancelled' })
-        .where(eq(deliveryPartnerApplications.id, id))
-        .returning();
-
-      return updatedApplication || undefined;
-    } catch (error) {
-      console.error('Error updating delivery partner application status:', error);
       throw error;
     }
   }
@@ -724,8 +633,12 @@ export class FirebaseStorage {
       // Get all locations
       const allLocations = await db.select().from(locations);
       
-      // Get all users (managers)
-      const allUsers = await db.select().from(users);
+      // Get only the user columns we need (id, username) to avoid selecting columns
+      // that might not exist in the database (like is_delivery_partner)
+      const allUsers = await db.select({
+        id: users.id,
+        username: users.username,
+      }).from(users);
       
       // Combine the data
       const kitchensWithDetails = allKitchens.map(kitchen => {

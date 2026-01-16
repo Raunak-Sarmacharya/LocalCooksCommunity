@@ -55,7 +55,6 @@ export function useApplicationStatus() {
     id: profileUser?.id,
     role: profileUser?.role || firebaseAuth.user.role,
     isChef: profileUser?.isChef || profileUser?.is_chef || (firebaseAuth.user as any)?.isChef,
-    isDeliveryPartner: profileUser?.isDeliveryPartner || profileUser?.is_delivery_partner || (firebaseAuth.user as any)?.isDeliveryPartner,
     isManager: profileUser?.isManager || profileUser?.is_manager || (firebaseAuth.user as any)?.isManager,
   } : null);
   
@@ -65,19 +64,17 @@ export function useApplicationStatus() {
     firebaseUser: firebaseAuth.user ? { 
       role: firebaseAuth.user.role, 
       uid: firebaseAuth.user.uid,
-      isChef: (firebaseAuth.user as any)?.isChef,
-      isDeliveryPartner: (firebaseAuth.user as any)?.isDeliveryPartner
+      isChef: (firebaseAuth.user as any)?.isChef
     } : null,
     finalUser: user ? { 
       role: user.role, 
       id: user.id || user.uid,
-      isChef: (user as any)?.isChef,
-      isDeliveryPartner: (user as any)?.isDeliveryPartner
+      isChef: (user as any)?.isChef
     } : null
   });
 
   // Create a cache key that includes role data to ensure refresh when roles change
-  const userRoleKey = user ? `${user.uid || user.id}-${(user as any)?.isChef}-${(user as any)?.isDeliveryPartner}` : 'no-user';
+  const userRoleKey = user ? `${user.uid || user.id}-${(user as any)?.isChef}` : 'no-user';
 
   // Fetch user's applications to determine CTA logic
   const { data: applications = [], isLoading: applicationsLoading } = useQuery<Application[]>({
@@ -170,23 +167,17 @@ export function useApplicationStatus() {
       return "Go to Manager Dashboard";
     } else if (shouldShowStartApplication()) {
       const isChef = (user as any)?.isChef;
-      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
       const isManager = (user as any)?.isManager;
       
-      console.log('🔍 getButtonText: checking roles', { isChef, isDeliveryPartner, isManager, user });
+      console.log('🔍 getButtonText: checking roles', { isChef, isManager, user });
       
       // Manager role check - managers go to their own dashboard
       if (isManager || user.role === "manager") {
         return "Go to Manager Dashboard";
-      } else if (isDeliveryPartner && !isChef) {
-        return "Start Delivery Partner Application";
-      } else if (isChef && !isDeliveryPartner) {
+      } else if (isChef) {
         return defaultText.includes("Start") ? defaultText : "Start Chef Application";
-      } else if (isChef && isDeliveryPartner) {
-        return "Choose Application Type";
       } else {
         // Fallback: If roles are not detected but user is logged in, default to generic text
-        // This prevents getting stuck on "Select Your Role First" due to timing issues
         console.warn('⚠️ No roles detected for logged in user, using fallback text');
         return defaultText;
       }
@@ -206,23 +197,19 @@ export function useApplicationStatus() {
     } else if (user.role === "manager" || (user as any)?.isManager) {
       return "/manager/dashboard";
     } else if (shouldShowStartApplication()) {
-      // Direct to appropriate application form based on user's exclusive role
+      // Direct to appropriate application form based on user's role
       const isChef = (user as any)?.isChef;
-      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
       const isManager = (user as any)?.isManager;
       
-      console.log('🔍 getNavigationPath: checking exclusive roles', { isChef, isDeliveryPartner, isManager });
+      console.log('🔍 getNavigationPath: checking roles', { isChef, isManager });
       
       // Manager role check - managers go to their own dashboard
       if (isManager || user.role === "manager") {
         return "/manager/dashboard";
-      } else if (isDeliveryPartner && user.role !== "admin") {
-        return "/delivery-partner-apply";
       } else if (isChef && user.role !== "admin") {
         return "/apply";
       } else {
         // Fallback: If no roles detected but user is logged in, go to dashboard
-        // This prevents redirecting to auth page when user is already authenticated
         console.warn('⚠️ No roles detected for logged in user, redirecting to dashboard instead of auth');
         return "/dashboard";
       }

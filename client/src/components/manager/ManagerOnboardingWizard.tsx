@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -208,9 +208,9 @@ export default function ManagerOnboardingWizard() {
     return getVisibleIndex(actualStepId);
   };
   
-  // Track previous location count and location IDs to detect new locations
-  const [previousLocationCount, setPreviousLocationCount] = useState(0);
-  const [previousLocationIds, setPreviousLocationIds] = useState<number[]>([]);
+  // Track previous location count and location IDs to detect new locations (using refs to avoid infinite loops)
+  const previousLocationCountRef = useRef(0);
+  const previousLocationIdsRef = useRef<number[]>([]);
   const [locationOnboardingStatus, setLocationOnboardingStatus] = useState<Record<number, { hasKitchen: boolean; needsOnboarding: boolean }>>({});
   
   // Check if a location needs onboarding
@@ -279,11 +279,13 @@ export default function ManagerOnboardingWizard() {
     if (!isLoadingLocations) {
       const currentCount = locations.length;
       const currentLocationIds = locations.map(loc => loc.id);
+      const prevCount = previousLocationCountRef.current;
+      const prevIds = previousLocationIdsRef.current;
       
       // If location count increased, a new location was added
-      if (currentCount > previousLocationCount && previousLocationCount > 0) {
+      if (currentCount > prevCount && prevCount > 0) {
         // Find the new location (one that wasn't in previous list)
-        const newLocation = locations.find(loc => !previousLocationIds.includes(loc.id));
+        const newLocation = locations.find(loc => !prevIds.includes(loc.id));
         
         if (newLocation) {
           // New location was added - check if it needs onboarding
@@ -309,10 +311,11 @@ export default function ManagerOnboardingWizard() {
         }
       }
       
-      setPreviousLocationCount(currentCount);
-      setPreviousLocationIds(currentLocationIds);
+      // Update refs (doesn't trigger re-render)
+      previousLocationCountRef.current = currentCount;
+      previousLocationIdsRef.current = currentLocationIds;
     }
-  }, [locations, isLoadingLocations, previousLocationCount, previousLocationIds]);
+  }, [locations, isLoadingLocations]); // Removed refs from dependencies - they don't trigger re-renders
   
   // Check if any location needs onboarding (for initial auto-open)
   // A location needs onboarding if it doesn't have a kitchen

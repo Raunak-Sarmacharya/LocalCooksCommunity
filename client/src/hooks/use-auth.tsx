@@ -29,9 +29,8 @@ interface AuthUser {
   emailVerified: boolean;
   providers: string[];
   role?: string;
-  application_type?: 'chef' | 'delivery_partner'; // DEPRECATED: kept for backward compatibility
+  application_type?: 'chef'; // DEPRECATED: kept for backward compatibility
   isChef?: boolean;
-  isDeliveryPartner?: boolean;
   is_verified?: boolean;
   has_seen_welcome?: boolean;
   fullName?: string | null; // Optional full name for backward compatibility
@@ -83,9 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (subdomain === 'admin') {
           finalRole = 'admin';
           console.log('👑 Auto-setting role to admin based on admin subdomain');
-        } else if (subdomain === 'driver') {
-          finalRole = 'delivery_partner';
-          console.log('🚚 Auto-setting role to delivery_partner based on driver subdomain');
         } else if (subdomain === 'kitchen') {
           // Kitchen subdomain could be manager or chef - check path
           if (currentPath.includes('/manager') || currentPath.includes('manager')) {
@@ -103,9 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
             finalRole = 'admin';
             console.log('👑 Auto-setting role to admin based on admin URL path');
-          } else if (currentPath === '/driver-auth') {
-            finalRole = 'delivery_partner';
-            console.log('🚚 Auto-setting role to delivery_partner based on /driver-auth URL');
           } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
             finalRole = 'manager';
             console.log('🏢 Auto-setting role to manager based on manager URL path');
@@ -208,7 +201,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               applicationData = {
                 application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
                 isChef: userData.isChef || userData.is_chef || false,
-                isDeliveryPartner: userData.isDeliveryPartner || userData.is_delivery_partner || false,
                 is_verified: userData.is_verified,
                 has_seen_welcome: userData.has_seen_welcome
               };
@@ -269,7 +261,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role,
             application_type: applicationData?.application_type, // DEPRECATED: kept for backward compatibility
             isChef: applicationData?.isChef,
-            isDeliveryPartner: applicationData?.isDeliveryPartner,
             is_verified: applicationData?.is_verified,
             has_seen_welcome: applicationData?.has_seen_welcome,
           });
@@ -381,8 +372,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             detectedRole = 'admin';
           } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
             detectedRole = 'manager';
-          } else if (currentPath === '/driver-auth') {
-            detectedRole = 'delivery_partner';
           } else if (currentPath === '/auth') {
             detectedRole = 'chef';
           }
@@ -393,7 +382,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: displayName,
             role: detectedRole, // Set detected role instead of null
             isChef: detectedRole === 'chef' || detectedRole === 'admin',
-            isDeliveryPartner: detectedRole === 'delivery_partner' || detectedRole === 'admin',
             isManager: detectedRole === 'manager',
             isAdmin: detectedRole === 'admin', // Track admin in Firestore
             createdAt: serverTimestamp(),
@@ -443,9 +431,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                  currentPath.startsWith('/manager-login') || currentPath.startsWith('/manager/login')) {
         detectedRole = 'manager';
         console.log('🏢 Detected manager role from URL path during signup');
-      } else if (currentPath === '/driver-auth' || currentPath.startsWith('/driver-auth')) {
-        detectedRole = 'delivery_partner';
-        console.log('🚚 Detected delivery_partner role from URL path during signup');
       } else if (currentPath === '/auth' || currentPath.startsWith('/auth')) {
         detectedRole = 'chef';
         console.log('👨‍🍳 Detected chef role from URL path during signup');
@@ -461,7 +446,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error(`❌ CRITICAL: No role detected during registration!`);
         console.error(`   - Current path: ${currentPath}`);
         console.error(`   - Full URL: ${currentUrl}`);
-        throw new Error('Role detection failed. Please register from the appropriate page (admin, manager, chef, or delivery partner).');
+        throw new Error('Role detection failed. Please register from the appropriate page (admin, manager, or chef).');
       }
       
       const syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
@@ -573,9 +558,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (subdomain === 'admin') {
           detectedRole = 'admin';
           console.log('👑 Detected role: admin from admin subdomain');
-        } else if (subdomain === 'driver') {
-          detectedRole = 'delivery_partner';
-          console.log('🚚 Detected role: delivery_partner from driver subdomain');
         } else if (subdomain === 'kitchen') {
           // Kitchen subdomain could be manager or chef - check path
           if (currentPath.includes('/manager') || currentPath.includes('manager')) {
@@ -593,9 +575,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (currentPath === '/admin-login' || currentPath === '/admin/login' || currentPath === '/admin-register' || currentPath === '/admin/register') {
             detectedRole = 'admin';
             console.log('👑 Detected role: admin from URL path');
-          } else if (currentPath === '/driver-auth') {
-            detectedRole = 'delivery_partner';
-            console.log('🚚 Detected role: delivery_partner from URL path');
           } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
             detectedRole = 'manager';
             console.log('🏢 Detected role: manager from URL path');
@@ -621,7 +600,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             displayName: result.user.displayName,
             role: detectedRole || null, // Set the detected role (null if undefined)
             isChef: detectedRole === 'chef' || detectedRole === 'admin',
-            isDeliveryPartner: detectedRole === 'delivery_partner' || detectedRole === 'admin',
             isManager: detectedRole === 'manager',
             isAdmin: detectedRole === 'admin', // Track admin in Firestore (not in Neon schema)
             createdAt: serverTimestamp(),
@@ -897,7 +875,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('✅ User data refreshed from backend:', {
           role: userData.role,
           isChef: userData.isChef || userData.is_chef,
-          isDeliveryPartner: userData.isDeliveryPartner || userData.is_delivery_partner,
           is_verified: userData.is_verified,
           has_seen_welcome: userData.has_seen_welcome
         });
@@ -913,7 +890,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role: userData.role, // Don't set default role - let it be null if no role selected
           application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
           isChef: userData.isChef || userData.is_chef || false,
-          isDeliveryPartner: userData.isDeliveryPartner || userData.is_delivery_partner || false,
           is_verified: userData.is_verified,
           has_seen_welcome: userData.has_seen_welcome,
         };

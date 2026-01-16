@@ -5230,6 +5230,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get kitchen booking policy (for chefs to see max slots per chef per day)
+  app.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req: Request, res: Response) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+
+      // Get kitchen to find its location
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+
+      // Get location to access default_daily_booking_limit
+      const locationId = kitchen.locationId || kitchen.location_id;
+      if (!locationId) {
+        return res.status(404).json({ error: "Location not found for this kitchen" });
+      }
+
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+
+      // Return maxSlotsPerChef from location's default_daily_booking_limit
+      // Default to 2 if not set
+      const maxSlotsPerChef = location.default_daily_booking_limit || 
+                              location.defaultDailyBookingLimit || 
+                              2;
+
+      res.json({ maxSlotsPerChef });
+    } catch (error: any) {
+      console.error("Error getting kitchen policy:", error);
+      res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
+    }
+  });
+
   // Get ALL time slots with booking info (capacity aware)
   app.get("/api/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, res: Response) => {
     try {

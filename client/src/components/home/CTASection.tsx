@@ -17,13 +17,6 @@ export default function CTASection() {
     }
   };
 
-  const handleDeliveryPartnerClick = () => {
-    if (!user) {
-      navigate(`/driver-auth`);
-    } else {
-      navigate('/delivery-partner-apply');
-    }
-  };
 
 
   const getPrimaryButtonText = () => {
@@ -33,8 +26,6 @@ export default function CTASection() {
   const getHeadingText = () => {
     if (user?.role === "admin") {
       return "Manage Local Cooks";
-    } else if ((user as any)?.isDeliveryPartner) {
-      return "Ready to Start Delivering?";
     } else if ((user as any)?.isChef) {
       return "Ready to Start Cooking?";
     } else {
@@ -45,8 +36,6 @@ export default function CTASection() {
   const getDescriptionText = () => {
     if (user?.role === "admin") {
       return "Manage applications, users, and platform settings from your admin dashboard.";
-    } else if ((user as any)?.isDeliveryPartner) {
-      return "Manage your delivery applications and documentation.";
     } else if ((user as any)?.isChef) {
       return "Manage your chef applications and start cooking.";
     } else {

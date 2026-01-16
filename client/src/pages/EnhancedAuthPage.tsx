@@ -122,8 +122,7 @@ export default function EnhancedAuthPage() {
               is_verified: userData.is_verified,
               has_seen_welcome: userData.has_seen_welcome,
               role: userData.role,
-              isChef: userData.isChef,
-              isDeliveryPartner: userData.isDeliveryPartner
+              isChef: userData.isChef
             });
             
             setUserMeta(userData);
@@ -266,7 +265,7 @@ export default function EnhancedAuthPage() {
           return;
         } else {
           console.log('🎉 WELCOME SCREEN REQUIRED - Not redirecting yet');
-          return; // Don't redirect, show welcome screen for chefs/delivery partners
+          return; // Don't redirect, show welcome screen for chefs
         }
       }
 
@@ -280,17 +279,8 @@ export default function EnhancedAuthPage() {
           targetPath = '/admin';
         } else if (userMeta.role === 'manager') {
           targetPath = '/manager/dashboard';
-        } else if (userMeta.isDeliveryPartner && !userMeta.isChef) {
-          // Pure delivery partner - might want different default behavior
-          targetPath = '/dashboard';
-        } else if (userMeta.isChef && !userMeta.isDeliveryPartner) {
-          // Pure chef
-          targetPath = '/dashboard';
-        } else if (userMeta.isChef && userMeta.isDeliveryPartner) {
-          // Dual role - default to dashboard
-          targetPath = '/dashboard';
         } else {
-          // No roles selected yet - should not happen but fallback to dashboard
+          // Chef or default to dashboard
           targetPath = '/dashboard';
         }
       }
@@ -320,7 +310,7 @@ export default function EnhancedAuthPage() {
   // Skip welcome screen for admins and managers
   // Admins: Go straight to admin dashboard
   // Managers: Go to dashboard where ManagerOnboardingWizard will show
-  // Only show welcome screen for chefs/delivery partners
+  // Only show welcome screen for chefs
   if (!loading && !userMetaLoading && user && userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
       return <Redirect to="/admin" />;

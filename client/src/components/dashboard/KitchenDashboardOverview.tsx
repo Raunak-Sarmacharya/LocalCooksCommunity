@@ -1479,7 +1479,7 @@ function CustomerManagementPanel({ bookings, applications, onNavigate, isLoading
           ) : (
             filteredChefs.map((chef, idx) => (
               <div
-                key={chef.id || idx}
+                key={`chef-${chef.id}-${idx}`}
                 className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50/80 transition-colors duration-200 cursor-pointer group border border-transparent hover:border-gray-100"
                 onClick={() => onNavigate('applications')}
               >

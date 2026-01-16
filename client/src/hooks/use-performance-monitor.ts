@@ -32,7 +32,7 @@ export function usePerformanceMonitor() {
     
     // Log performance metrics for debugging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`🚗 Vehicle Form Performance - ${action}:`, {
+      console.log(`📊 Form Performance - ${action}:`, {
         apiCallTime: metrics.current.apiCallTime,
         userInteractionTime: metrics.current.userInteractionTime,
         totalFormTime: now - startTime.current

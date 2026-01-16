@@ -18,7 +18,6 @@ import AdminLogin from "@/pages/AdminLogin";
 import AdminRegister from "@/pages/AdminRegister";
 import AdminLoginTest from "@/pages/AdminLoginTest";
 import ManagerLogin from "@/pages/ManagerLogin";
-import PortalLogin from "@/pages/PortalLogin";
 import AuthTest from "@/pages/AuthTest";
 import EnhancedAuthPage from "@/pages/EnhancedAuthPage";
 import ForgotPasswordPage from "@/pages/ForgotPassword";
@@ -30,14 +29,11 @@ import Success from "@/pages/Success";
 import Terms from "@/pages/Terms";
 import WelcomeScreen from "@/pages/welcome-screen";
 import ChefLanding from "@/pages/ChefLanding";
-import DriverLanding from "@/pages/DriverLanding";
 import KitchenLanding from "@/pages/KitchenLanding";
 import AdminLanding from "@/pages/AdminLanding";
 
 // Lazy load larger components
 const ApplicationForm = lazy(() => import("@/pages/ApplicationForm"));
-const DeliveryPartnerApplicationForm = lazy(() => import("@/pages/DeliveryPartnerApplicationForm"));
-const DriverAuthPage = lazy(() => import("@/pages/DriverAuthPage"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const ApplicantDashboard = lazy(() => import("@/pages/ApplicantDashboard"));
 const DocumentVerification = lazy(() => import("@/pages/DocumentVerification"));
@@ -61,13 +57,8 @@ const ShareProfile = lazy(() => import("@/pages/ShareProfile"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
 const ExploreKitchens = lazy(() => import("@/pages/ExploreKitchens"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
-const ManagerBookingPortal = lazy(() => import("@/pages/ManagerBookingPortal"));
-const PortalLanding = lazy(() => import("@/pages/PortalLanding"));
-const PortalBookingPage = lazy(() => import("@/pages/PortalBookingPage"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
-const PortalRegister = lazy(() => import("@/pages/PortalRegister"));
-const PortalBookingsPage = lazy(() => import("@/pages/PortalBookingsPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 
@@ -105,9 +96,7 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
         targetSubdomain = 'admin';
       } else if (path.startsWith('/apply') || path.startsWith('/dashboard') || path.startsWith('/book-kitchen')) {
         targetSubdomain = 'chef';
-      } else if (path.startsWith('/delivery-partner-apply')) {
-        targetSubdomain = 'driver';
-      } else if (path.startsWith('/portal') || path.startsWith('/manager')) {
+      } else if (path.startsWith('/manager')) {
         targetSubdomain = 'kitchen';
       }
       
@@ -160,7 +149,7 @@ function Router() {
     // Only redirect if we're on a subdomain that's not the correct one
     // Main domain (subdomain === 'main') should never redirect
     
-    // At this point, subdomain is guaranteed to be one of: 'chef' | 'driver' | 'kitchen' | 'admin'
+    // At this point, subdomain is guaranteed to be one of: 'chef' | 'kitchen' | 'admin'
     // (not 'main' or null due to early return above)
     
     // Redirect admin routes to admin subdomain
@@ -177,14 +166,8 @@ function Router() {
       return;
     }
     
-    // Redirect delivery partner routes to driver subdomain
-    if (path.startsWith('/delivery-partner-apply') && subdomain !== 'driver') {
-      window.location.href = `https://driver.localcooks.ca${path}`;
-      return;
-    }
-    
-    // Redirect portal/manager routes to kitchen subdomain
-    if ((path.startsWith('/portal') || path.startsWith('/manager')) && 
+    // Redirect manager routes to kitchen subdomain
+    if (path.startsWith('/manager') && 
         subdomain !== 'kitchen' && subdomain !== 'admin') {
       window.location.href = `https://kitchen.localcooks.ca${path}`;
       return;
@@ -195,8 +178,6 @@ function Router() {
   const getLandingPage = () => {
     if (subdomain === 'chef') {
       return ChefLanding;
-    } else if (subdomain === 'driver') {
-      return DriverLanding;
     } else if (subdomain === 'kitchen') {
       return KitchenLanding;
     } else if (subdomain === 'admin') {
@@ -213,10 +194,8 @@ function Router() {
       <Switch>
         <Route path="/" component={LandingPage} />
         <SubdomainRoute path="/apply" component={ApplicationForm} subdomain={subdomain} />
-        <SubdomainRoute path="/delivery-partner-apply" component={DeliveryPartnerApplicationForm} subdomain={subdomain} />
         <Route path="/success" component={Success} />
         <Route path="/auth" component={EnhancedAuthPage} />
-        <Route path="/driver-auth" component={DriverAuthPage} />
 
         <Route path="/auth-test" component={AuthTest} />
         <Route path="/admin-test" component={AdminLoginTest} />
@@ -380,13 +359,6 @@ function Router() {
             </ManagerProtectedRoute>
           ) : null}
         </Route>
-        {/* Portal User Routes */}
-        <Route path="/portal/register" component={PortalRegister} />
-        <Route path="/portal/login" component={PortalLogin} />
-        <Route path="/portal/my-bookings" component={PortalBookingsPage} />
-        <Route path="/portal/book" component={PortalBookingPage} />
-        <Route path="/portal/:locationSlug" component={ManagerBookingPortal} />
-        <Route path="/portal" component={PortalLanding} />
         
         {/* Kitchen Preview Page - Public, no auth required */}
         <Route path="/kitchen-preview/:locationId" component={KitchenPreviewPage} />

@@ -1,6 +1,6 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { motion } from "framer-motion";
-import { Calendar, Camera, Clock, CreditCard, DollarSign, Medal, Megaphone, Route, Settings, TrendingUp, Truck, Wallet } from "lucide-react";
+import { Calendar, Camera, CreditCard, Medal, Megaphone, Settings, TrendingUp, Wallet } from "lucide-react";
 import foodDeliveryImage from "../../assets/food-delivery.png";
 
 const pilotBenefits = [
@@ -50,95 +50,21 @@ const chefBenefits = [
   }
 ];
 
-// Delivery partner benefits
-const deliveryBenefits = [
-  {
-    title: "Flexible Hours",
-    icon: <Clock className="h-10 w-10 text-blue-500" />,
-    description: "Choose your own schedule and work as much or as little as you want"
-  },
-  {
-    title: "Competitive Earnings",
-    icon: <DollarSign className="h-10 w-10 text-green-500" />,
-    description: "Earn competitive rates per delivery plus tips, with transparent pricing"
-  },
-  {
-    title: "Optimized Routes",
-    icon: <Route className="h-10 w-10 text-purple-500" />,
-    description: "Smart routing helps you complete more deliveries efficiently and maximize earnings"
-  },
-  {
-    title: "Vehicle Support",
-    icon: <Truck className="h-10 w-10 text-amber-500" />,
-    description: "Support for cars, SUVs, trucks, and vans – use what you already have"
-  }
-];
-
-// Dual role benefits
-const dualBenefits = [
-  {
-    title: "Dual Income Streams",
-    icon: <Wallet className="h-10 w-10 text-amber-500" />,
-    description: "Maximize earnings by both cooking delicious meals and delivering for the community"
-  },
-  {
-    title: "Complete Control",
-    icon: <Calendar className="h-10 w-10 text-blue-500" />,
-    description: "Manage both businesses from one platform with complete schedule flexibility"
-  },
-  {
-    title: "Community Connection",
-    icon: <TrendingUp className="h-10 w-10 text-green-500" />,
-    description: "Build deeper relationships as both a chef and delivery partner in your community"
-  },
-  {
-    title: "Unified Tools",
-    icon: <Settings className="h-10 w-10 text-purple-500" />,
-    description: "One dashboard to manage your chef business, delivery schedule, and all earnings"
-  }
-];
 
 export default function BenefitsSection() {
   const { user } = useFirebaseAuth();
   
-  // Determine which benefits to show based on user roles
+  // Determine which benefits to show based on user role
   const getBenefits = () => {
-    const isChef = (user as any)?.isChef;
-    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-    
-    if (isChef && isDeliveryPartner) {
-      return dualBenefits;
-    } else if (isDeliveryPartner) {
-      return deliveryBenefits;
-    } else {
-      return chefBenefits;
-    }
+    return chefBenefits;
   };
   
   const getTitle = () => {
-    const isChef = (user as any)?.isChef;
-    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-    
-    if (isChef && isDeliveryPartner) {
-      return "Benefits for Chef & Delivery Partners";
-    } else if (isDeliveryPartner) {
-      return "Benefits for Delivery Partners";
-    } else {
-      return "Benefits for Cooks";
-    }
+    return "Benefits for Cooks";
   };
   
   const getDescription = () => {
-    const isChef = (user as any)?.isChef;
-    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
-    
-    if (isChef && isDeliveryPartner) {
-      return "Maximize your potential with dual roles in our local food ecosystem";
-    } else if (isDeliveryPartner) {
-      return "Join our delivery network and earn money while serving your community";
-    } else {
-      return "Unlock your culinary potential and build a sustainable cooking business with Local Cooks";
-    }
+    return "Unlock your culinary potential and build a sustainable cooking business with Local Cooks";
   };
   
   const mainBenefits = getBenefits();

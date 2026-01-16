@@ -14,7 +14,7 @@ import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 
 export default function ManagerLogin() {
-  // Managers now use Firebase authentication (like chefs and delivery partners)
+  // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
   const { user, loading, logout, refreshUserData } = useFirebaseAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");

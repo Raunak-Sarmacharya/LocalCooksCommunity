@@ -131,7 +131,7 @@ export default function AuthPage() {
                 targetPath = '/manager/dashboard';
                 console.log('🏢 Manager user - skipping welcome screen, going to manager dashboard (wizard will show if needed)');
               } else if (userData.is_verified && !userData.has_seen_welcome) {
-                // Only show welcome screen for chefs/delivery partners
+                // Only show welcome screen for chefs
                 console.log('🎉 WELCOME SCREEN REQUIRED - User needs onboarding');
                 return; // Don't proceed with redirect, let the render logic handle welcome screen
               }
@@ -237,7 +237,7 @@ export default function AuthPage() {
   // Skip welcome screen for admins and managers
   // Admins: Go straight to admin dashboard
   // Managers: Go to dashboard where ManagerOnboardingWizard will show
-  // Only show welcome screen for chefs/delivery partners
+  // Only show welcome screen for chefs
   if (userMeta && userMeta.is_verified && !userMeta.has_seen_welcome) {
     if (userMeta.role === 'admin') {
       console.log('👑 Admin user - skipping welcome screen');
@@ -246,7 +246,7 @@ export default function AuthPage() {
       console.log('🏢 Manager user - skipping welcome screen, going to manager dashboard');
       return <Redirect to="/manager/dashboard" />;
     } else {
-      console.log('🎉 RENDERING WELCOME SCREEN for chef/delivery partner');
+      console.log('🎉 RENDERING WELCOME SCREEN for chef');
       return <WelcomeScreen onComplete={handleWelcomeContinue} />;
     }
   }

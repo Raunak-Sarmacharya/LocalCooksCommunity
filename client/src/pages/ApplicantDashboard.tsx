@@ -25,7 +25,7 @@ import {
     formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Application, DeliveryPartnerApplication } from "@shared/schema";
+import { Application } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -36,7 +36,6 @@ import {
     Clock,
     FileText,
     Shield,
-    Truck,
     Upload,
     XCircle,
     User,
@@ -53,8 +52,8 @@ import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-
 import BookingControlPanel from "@/components/booking/BookingControlPanel";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 
-// Union type for handling both application types
-type AnyApplication = Application | DeliveryPartnerApplication;
+// Type alias for application
+type AnyApplication = Application;
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: AnyApplication) => {
@@ -242,7 +241,6 @@ export default function ApplicantDashboard() {
       userId: user?.uid,
       userRole: user?.role,
       isChef: (user as any)?.isChef,
-      isDeliveryPartner: (user as any)?.isDeliveryPartner,
       localStorageUserId: localStorage.getItem('userId')
     });
   }, [user]);
@@ -254,7 +252,6 @@ export default function ApplicantDashboard() {
     const userRole = (user as any)?.role;
     const isChef = (user as any)?.isChef || false;
     const isManager = (user as any)?.isManager || false;
-    const isDeliveryPartner = (user as any)?.isDeliveryPartner || false;
     const isPortalUser = (user as any)?.isPortalUser || false;
     
     // Determine effective role
@@ -262,8 +259,6 @@ export default function ApplicantDashboard() {
     if (!effectiveRole) {
       if (isManager) {
         effectiveRole = 'manager';
-      } else if (isDeliveryPartner && !isChef) {
-        effectiveRole = 'delivery_partner';
       } else if (isChef) {
         effectiveRole = 'chef';
       }
@@ -287,23 +282,18 @@ export default function ApplicantDashboard() {
   }, [user, subdomain]);
 
   // Helper function to determine user type and appropriate applications to display
-  const getUserDisplayInfo = (applications: Application[], deliveryApplications: DeliveryPartnerApplication[], isLoading: boolean, isLoadingDelivery: boolean, error: any, deliveryError: any) => {
+  const getUserDisplayInfo = (applications: Application[], isLoading: boolean, error: any) => {
     const isChef = (user as any)?.isChef || user?.role === 'chef' || user?.role === 'admin';
-    const isDeliveryPartner = (user as any)?.isDeliveryPartner || user?.role === 'delivery_partner';
     
     console.log('[DASHBOARD] getUserDisplayInfo - Role detection:', {
       userId: user?.uid,
       role: user?.role,
       isChef,
-      isDeliveryPartner,
-      rawIsChef: (user as any)?.isChef,
-      rawIsDeliveryPartner: (user as any)?.isDeliveryPartner
+      rawIsChef: (user as any)?.isChef
     });
     
-    // Roles are mutually exclusive - users can only be chef OR delivery partner
-    // IMPORTANT: Check isChef FIRST if both are true (admin can have both, but should default to chef)
-    if (isChef && !isDeliveryPartner) {
-      // Chef role (exclusive)
+    if (isChef) {
+      // Chef role
       return {
         primaryRole: 'chef',
         applications: applications as AnyApplication[],
@@ -314,32 +304,6 @@ export default function ApplicantDashboard() {
         isLoading: isLoading,
         error: error,
         isDualRole: false
-      };
-    } else if (isDeliveryPartner && !isChef) {
-      // Delivery partner role
-      return {
-        primaryRole: 'deliveryPartner',
-        applications: deliveryApplications as AnyApplication[],
-        applicationFormUrl: '/delivery-partner-apply',
-        roleName: 'Delivery Partner',
-        icon: Truck,
-        description: 'Join our delivery team and start earning by delivering delicious meals.',
-        isLoading: isLoadingDelivery,
-        error: deliveryError,
-        isDualRole: false
-      };
-    } else if (isChef) {
-      // Chef role (fallback - should have been caught above, but handle dual-role case)
-      return {
-        primaryRole: 'chef',
-        applications: applications as AnyApplication[],
-        applicationFormUrl: '/apply',
-        roleName: 'Chef',
-        icon: ChefHat,
-        description: 'Start your culinary journey with Local Cooks by submitting your application.',
-        isLoading: isLoading,
-        error: error,
-        isDualRole: isDeliveryPartner // Mark as dual if both are true
       };
     } else {
       // No role assigned yet - new user
@@ -375,11 +339,10 @@ export default function ApplicantDashboard() {
   const getApplicationStatus = () => {
     const mostRecentApp = getMostRecentApplication();
     if (!mostRecentApp) {
-      // Check if user has any role selected
+      // Check if user has chef role selected
       const isChef = (user as any)?.isChef;
-      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
       
-      if (!isChef && !isDeliveryPartner) {
+      if (!isChef) {
         return "Select Role";
       }
       return null;
@@ -391,11 +354,10 @@ export default function ApplicantDashboard() {
   const getDocumentStatus = () => {
     const mostRecentApp = getMostRecentApplication();
     if (!mostRecentApp) {
-      // Check if user has any role selected
+      // Check if user has chef role selected
       const isChef = (user as any)?.isChef;
-      const isDeliveryPartner = (user as any)?.isDeliveryPartner;
       
-      if (!isChef && !isDeliveryPartner) {
+      if (!isChef) {
         return "Select Role";
       }
       return "No Documents Uploaded";
@@ -432,17 +394,6 @@ export default function ApplicantDashboard() {
       } else {
         // For pending, rejected, or cancelled applications
         return "Upload Required";
-      }
-    } else {
-      // Delivery partner application - different document requirements
-      const deliveryApp = mostRecentApp as DeliveryPartnerApplication;
-      
-      if (deliveryApp.status === "approved") {
-        return "Documents Verified";
-      } else if (deliveryApp.status === "inReview") {
-        return "Documents Under Review";
-      } else {
-        return "Documents Required";
       }
     }
   };
@@ -604,101 +555,8 @@ export default function ApplicantDashboard() {
     gcTime: 10000, // Keep in cache for only 10 seconds
   });
 
-  // Fetch delivery partner applications (only for users who are delivery partners)
-  const { data: deliveryApplications = [], isLoading: isLoadingDelivery, error: deliveryError } = useQuery({
-    queryKey: ["/api/firebase/delivery-partner-applications/my"],
-    queryFn: async ({ queryKey }) => {
-      if (!user?.uid) {
-        throw new Error("User not authenticated");
-      }
-      
-      // Only fetch delivery partner applications if user is a delivery partner or admin
-      if (!(user as any)?.isDeliveryPartner && user.role !== "admin") {
-        return [];
-      }
-
-      console.log('ApplicantDashboard: Fetching delivery partner applications...');
-
-      // Get Firebase token for authentication
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-
-      const token = await firebaseUser.getIdToken();
-      const headers: Record<string, string> = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      };
-
-      const response = await fetch(queryKey[0] as string, {
-        credentials: 'include',
-        headers
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Account sync required. Please click 'Sync Account' below to connect your Firebase account to our database.");
-        }
-        
-        try {
-          const errorData = await response.json();
-          throw new Error(errorData.error || response.statusText);
-        } catch (parseError) {
-          throw new Error(`Server error: ${response.status} ${response.statusText}`);
-        }
-      }
-
-      const rawData = await response.json();
-      console.log('ApplicantDashboard: Delivery partner data fetched', rawData);
-
-      // Normalize delivery partner application data
-      const normalizedData = rawData.map((app: any) => ({
-        id: app.id,
-        userId: app.user_id || app.userId,
-        fullName: app.full_name || app.fullName,
-        email: app.email,
-        phone: app.phone,
-        address: app.address,
-        city: app.city,
-        province: app.province,
-        postalCode: app.postal_code || app.postalCode,
-        vehicleType: app.vehicle_type || app.vehicleType,
-        vehicleMake: app.vehicle_make || app.vehicleMake,
-        vehicleModel: app.vehicle_model || app.vehicleModel,
-        vehicleYear: app.vehicle_year || app.vehicleYear,
-        licensePlate: app.license_plate || app.licensePlate,
-        driversLicenseUrl: app.drivers_license_url || app.driversLicenseUrl,
-        vehicleRegistrationUrl: app.vehicle_registration_url || app.vehicleRegistrationUrl,
-        insuranceUrl: app.insurance_url || app.insuranceUrl,
-        driversLicenseStatus: app.drivers_license_status || app.driversLicenseStatus,
-        vehicleRegistrationStatus: app.vehicle_registration_status || app.vehicleRegistrationStatus,
-        insuranceStatus: app.insurance_status || app.insuranceStatus,
-        documentsAdminFeedback: app.documents_admin_feedback || app.documentsAdminFeedback,
-        documentsReviewedBy: app.documents_reviewed_by || app.documentsReviewedBy,
-        documentsReviewedAt: app.documents_reviewed_at || app.documentsReviewedAt,
-        feedback: app.feedback,
-        status: app.status,
-        createdAt: app.created_at || app.createdAt,
-      }));
-
-      return normalizedData;
-    },
-    enabled: !!user && user.role !== "admin" && !!(user as any)?.isDeliveryPartner, // Only for delivery partners
-    refetchInterval: 20000, // 20 seconds
-    refetchIntervalInBackground: true,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-    refetchOnReconnect: true,
-    staleTime: 0,
-    gcTime: 10000,
-  });
-
   // Now we can safely create userDisplayInfo after the queries are defined
-  const userDisplayInfo = getUserDisplayInfo(applications, deliveryApplications, isLoading, isLoadingDelivery, error, deliveryError);
+  const userDisplayInfo = getUserDisplayInfo(applications, isLoading, error);
 
   // Set default selected application when applications load
   useEffect(() => {
@@ -1146,9 +1004,7 @@ export default function ApplicantDashboard() {
       return chefApp.foodSafetyLicenseStatus === 'approved' && 
         (!chefApp.foodEstablishmentCertUrl || chefApp.foodEstablishmentCertStatus === 'approved');
     }
-    // For delivery partner applications, check if approved
-    const deliveryApp = latestApp as DeliveryPartnerApplication;
-    return deliveryApp.status === 'approved';
+    return false;
   })();
 
   // Sync localStorage state when user changes
@@ -1193,15 +1049,10 @@ export default function ApplicantDashboard() {
           setIsSyncing(true);
           const token = await auth.currentUser?.getIdToken();
           
-          // Determine the endpoint based on application type
-          const endpoint = applicationType === 'delivery' 
-            ? `/api/firebase/delivery-partner-applications/${applicationId}/cancel`
-            : `/api/firebase/applications/${applicationId}/cancel`;
-          
-          const method = 'PATCH'; // Both endpoints use PATCH method
+          const endpoint = `/api/firebase/applications/${applicationId}/cancel`;
           
           const response = await fetch(endpoint, {
-            method,
+            method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
@@ -1209,12 +1060,7 @@ export default function ApplicantDashboard() {
           });
 
           if (response.ok) {
-            // Refresh the appropriate application data
-            if (applicationType === 'delivery') {
-              queryClient.invalidateQueries({ queryKey: ["/api/firebase/delivery-partner-applications/my"] });
-            } else {
-              queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
-            }
+            queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] });
             
             toast({
               title: "Application cancelled",
@@ -1343,12 +1189,9 @@ export default function ApplicantDashboard() {
                 <p className="text-sm sm:text-base text-gray-500 truncate">
                   {(() => {
                     const isChef = (user as any)?.isChef;
-                    const isDeliveryPartner = (user as any)?.isDeliveryPartner;
                     
                     if (isChef) {
                       return "Manage your chef applications and training progress";
-                    } else if (isDeliveryPartner) {
-                      return "Manage your delivery partner applications";
                     } else {
                       return "Select your role to get started";
                     }
@@ -1372,8 +1215,7 @@ export default function ApplicantDashboard() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-gray-500 truncate">
-                    {(user as any)?.isChef ? 'Chef Apps' : 
-                     (user as any)?.isDeliveryPartner ? 'Delivery Apps' : 'Applications'}
+                    {(user as any)?.isChef ? 'Chef Apps' : 'Applications'}
                   </p>
                   <p className="text-lg sm:text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
                 </div>
@@ -1659,10 +1501,7 @@ export default function ApplicantDashboard() {
                                 <Button 
                                   variant="outline" 
                                   className="rounded-xl border-red-200 text-red-600 hover:bg-red-50 min-h-[44px] text-sm sm:text-base"
-                                  onClick={() => handleCancelApplication(
-                                    isChefApplication(defaultApp) ? 'chef' : 'delivery',
-                                    defaultApp.id
-                                  )}
+                                  onClick={() => handleCancelApplication('chef', defaultApp.id)}
                                   disabled={isSyncing}
                                 >
                                   <XCircle className="mr-2 h-4 w-4" />
@@ -1718,7 +1557,8 @@ export default function ApplicantDashboard() {
                      {/* Bottom Row: Document Verification & Training */}
            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
              
-             {/* Document Verification Card - Show for both chefs and delivery partners */}
+             {/* Document Verification Card - Show for chefs */}
+             {((user as any)?.isChef) && (
              <motion.div 
                initial={{ opacity: 0, y: 20 }}
                animate={{ opacity: 1, y: 0 }}
@@ -1726,26 +1566,15 @@ export default function ApplicantDashboard() {
                className="bg-white rounded-3xl p-8 md:p-10 shadow-xl border border-gray-100 hover:shadow-2xl hover:border-gray-200 transition-all duration-300 backdrop-blur-sm h-full flex flex-col group relative overflow-hidden"
              >
                <div className="flex items-center gap-4 mb-6">
-                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                   (user as any)?.isChef 
-                     ? 'bg-gradient-to-br from-orange-500 to-red-600' 
-                     : 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                 }`}>
-                   {(user as any)?.isChef ? (
-                     <ChefHat className="h-6 w-6 text-white" />
-                   ) : (
-                     <Truck className="h-6 w-6 text-white" />
-                   )}
+                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+                   <ChefHat className="h-6 w-6 text-white" />
                  </div>
                  <div>
                    <h3 className="text-xl font-semibold text-gray-900">
-                     {(user as any)?.isChef ? 'Chef Document Verification' : 'Delivery Partner Documents'}
+                     Chef Document Verification
                    </h3>
                    <p className="text-sm text-gray-500">
-                     {(user as any)?.isChef 
-                       ? 'Upload and manage your chef certificates' 
-                       : 'Upload and manage your delivery documents'
-                     }
+                     Upload and manage your chef certificates
                    </p>
                  </div>
                </div>
@@ -1783,12 +1612,8 @@ export default function ApplicantDashboard() {
                      );
                    }
                    
-                   // Check if this is a chef application (has food safety properties)
-                   const isChefApp = 'foodSafetyLicenseStatus' in latestApp;
-                   
-                   if (isChefApp) {
-                     // Chef Document Verification UI
-                     const chefApp = latestApp as Application;
+                  // Chef Document Verification UI (this card is only shown for chefs)
+                  const chefApp = latestApp as Application;
                      const hasDocuments = chefApp.foodSafetyLicenseUrl || chefApp.foodEstablishmentCertUrl;
                      const isFullyVerified = chefApp.foodSafetyLicenseStatus === 'approved' && 
                        (!chefApp.foodEstablishmentCertUrl || chefApp.foodEstablishmentCertStatus === 'approved');
@@ -1885,107 +1710,10 @@ export default function ApplicantDashboard() {
                              </>
                            )}
                          </div>
-                       </div>
-                     );
-                   } else {
-                     // Delivery Partner Document Verification UI
-                     const deliveryApp = latestApp as DeliveryPartnerApplication;
-                     
-                     return (
-                       <div className="flex flex-col h-full">
-                         <div className="space-y-4 flex-1">
-                           {/* Driver's License */}
-                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
-                             <div className="flex items-center justify-between mb-3">
-                               <h4 className="font-medium text-gray-900">Driver's License</h4>
-                               {getStatusBadge(deliveryApp.driversLicenseStatus, !!deliveryApp.driversLicenseUrl)}
-                             </div>
-                             <div className="space-y-2">
-                               {deliveryApp.driversLicenseUrl ? (
-                                 <a href={deliveryApp.driversLicenseUrl} target="_blank" rel="noopener noreferrer" 
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                                   <FileText className="h-4 w-4" />
-                                   View Document
-                                 </a>
-                               ) : (
-                                 <div className="flex items-center gap-2 text-gray-500 text-sm">
-                                   <Upload className="h-4 w-4" />
-                                   Not uploaded
-                                 </div>
-                               )}
-                               <p className="text-xs text-gray-600">Required for delivery operations</p>
-                             </div>
-                           </div>
-                           
-                           {/* Vehicle Registration */}
-                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
-                             <div className="flex items-center justify-between mb-3">
-                               <h4 className="font-medium text-gray-900">Vehicle Registration</h4>
-                               {getStatusBadge(deliveryApp.vehicleRegistrationStatus, !!deliveryApp.vehicleRegistrationUrl)}
-                             </div>
-                             <div className="space-y-2">
-                               {deliveryApp.vehicleRegistrationUrl ? (
-                                 <a href={deliveryApp.vehicleRegistrationUrl} target="_blank" rel="noopener noreferrer" 
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                                   <FileText className="h-4 w-4" />
-                                   View Document
-                                 </a>
-                               ) : (
-                                 <div className="flex items-center gap-2 text-gray-500 text-sm">
-                                   <Upload className="h-4 w-4" />
-                                   Not uploaded
-                                 </div>
-                               )}
-                               <p className="text-xs text-gray-600">Required for delivery operations</p>
-                             </div>
-                           </div>
-                           
-                           {/* Insurance */}
-                           <div className="p-4 md:p-6 rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-gray-100/50 shadow-md hover:shadow-lg transition-all duration-300">
-                             <div className="flex items-center justify-between mb-3">
-                               <h4 className="font-medium text-gray-900">Vehicle Insurance</h4>
-                               {getStatusBadge(deliveryApp.insuranceStatus, !!deliveryApp.insuranceUrl)}
-                             </div>
-                             <div className="space-y-2">
-                               {deliveryApp.insuranceUrl ? (
-                                 <a href={deliveryApp.insuranceUrl} target="_blank" rel="noopener noreferrer" 
-                                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 text-sm font-medium">
-                                   <FileText className="h-4 w-4" />
-                                   View Document
-                                 </a>
-                               ) : (
-                                 <div className="flex items-center gap-2 text-gray-500 text-sm">
-                                   <Upload className="h-4 w-4" />
-                                   Not uploaded
-                                 </div>
-                               )}
-                               <p className="text-xs text-gray-600">Required for delivery operations</p>
-                             </div>
-                           </div>
-                           
-                           {/* Admin Feedback */}
-                           {deliveryApp.documentsAdminFeedback && (
-                             <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100/50 rounded-xl border border-yellow-200">
-                               <p className="text-sm text-yellow-800 font-medium">Admin Feedback:</p>
-                               <p className="text-sm text-yellow-700 mt-1">{deliveryApp.documentsAdminFeedback}</p>
-                             </div>
-                           )}
-                         </div>
-                         
-                         <div className="space-y-3 pt-4 border-t border-gray-200">
-                           <Button asChild className="w-full rounded-xl">
-                             <Link href="/document-verification">
-                               <Upload className="mr-2 h-4 w-4" />
-                               {deliveryApp.driversLicenseUrl || deliveryApp.vehicleRegistrationUrl || deliveryApp.insuranceUrl ? 'Manage Documents' : 'Upload Documents'}
-                             </Link>
-                           </Button>
-                           <p className="text-xs text-gray-500">Manage your delivery partner documents and verification status</p>
-                         </div>
-                       </div>
-                     );
-                   }
-                 })()
-               ) : (
+                      </div>
+                    );
+                })()
+              ) : (
                  <div className="flex flex-col items-center justify-center h-full text-center py-8">
                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mx-auto mb-4">
                      <Shield className="h-8 w-8 text-purple-600" />
@@ -2004,6 +1732,7 @@ export default function ApplicantDashboard() {
                  </div>
                )}
              </motion.div>
+             )}
 
              {/* Training & Certification Card - Only show for chefs */}
              {((user as any)?.isChef) && (
