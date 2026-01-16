@@ -267,6 +267,7 @@ export default function KitchenBookingCalendar() {
   });
 
   const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
+  const flatFeeCents = 30;
 
   // Calculate equipment pricing (base prices only, no service fees)
   const equipmentPricing = useMemo(() => {
@@ -309,11 +310,13 @@ export default function KitchenBookingCalendar() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee on combined subtotal (dynamic rate only, no flat fee)
+  // Calculate service fee on combined subtotal (dynamic rate + $0.30 flat fee)
   const serviceFee = useMemo(() => {
-    const percentageFee = Math.round(combinedSubtotal * serviceFeeRate * 100) / 100; // Dynamic service fee
-    return percentageFee;
-  }, [combinedSubtotal, serviceFeeRate]);
+    const subtotalCents = Math.round(combinedSubtotal * 100);
+    if (subtotalCents <= 0) return 0;
+    const percentageFeeCents = Math.round(subtotalCents * serviceFeeRate);
+    return (percentageFeeCents + flatFeeCents) / 100;
+  }, [combinedSubtotal, serviceFeeRate, flatFeeCents]);
 
   // Calculate grand total (subtotal + service fee)
   const grandTotal = useMemo(() => {
@@ -682,17 +685,11 @@ export default function KitchenBookingCalendar() {
       }
       
       const basePrice = hourlyRateDollars * durationHours;
-      const serviceFee = basePrice * serviceFeeRate; // Dynamic service fee
+      const baseCents = Math.round(basePrice * 100);
+      const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
+      const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
       const totalPrice = basePrice + serviceFee;
       
-      console.log('💰 Price calculated:', { 
-        durationHours, 
-        hourlyRateDollars, 
-        basePrice, 
-        serviceFee, 
-        totalPrice,
-        originalHourlyRate: kitchenPricing.hourlyRate
-      });
       
       setEstimatedPrice({
         basePrice,
@@ -702,7 +699,6 @@ export default function KitchenBookingCalendar() {
       });
     } else {
       // No pricing set, but still calculate duration for display
-      console.log('ℹ️ No pricing set, duration only:', durationHours);
       setEstimatedPrice({
         basePrice: 0,
         serviceFee: 0,
@@ -710,7 +706,7 @@ export default function KitchenBookingCalendar() {
         durationHours,
       });
     }
-  }, [selectedSlots, selectedKitchen, kitchenPricing, serviceFeeRate]);
+  }, [selectedSlots, selectedKitchen, kitchenPricing, serviceFeeRate, flatFeeCents]);
 
   const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
     // Don't allow selecting fully booked slots
