@@ -61,7 +61,7 @@ export default function StripeConnectSetup() {
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  const serviceFeePercentage = serviceFeeRateData?.percentage ?? '5.00';
+  const serviceFeePercentage = serviceFeeRateData?.percentage ;
 
   // Invalidate user profile query after creating account to refresh the UI
   const handleAccountCreated = () => {
@@ -294,11 +294,11 @@ export default function StripeConnectSetup() {
                   will be transferred to your bank account within 2-7 business days.
                 </AlertDescription>
               </Alert>
-              {userProfile?.stripeConnectAccountId && (
+              {/* {userProfile?.stripeConnectAccountId && (
                 <div className="text-sm text-gray-600 space-y-1">
                   <p><strong>Account ID:</strong> {userProfile.stripeConnectAccountId}</p>
                 </div>
-              )}
+              )} */}
               <Button 
                 onClick={handleAccessDashboard}
                 className="w-full bg-[#635BFF] hover:bg-[#5851E6] text-white"

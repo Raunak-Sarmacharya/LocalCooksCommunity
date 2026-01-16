@@ -32,8 +32,10 @@ export default function BookingConfirmationPage() {
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-  const serviceFeePercentage = serviceFeeRateData?.percentage ?? '5.00';
+  const serviceFeeRate = serviceFeeRateData?.rate ;
+  const serviceFeePercentage = serviceFeeRateData?.percentage ;
+  const flatFeeCents = 30;
+  const flatFeeDollars = (flatFeeCents / 100).toFixed(2);
   
   // Get query parameters from URL
   const searchParams = new URLSearchParams(window.location.search);
@@ -157,8 +159,9 @@ export default function BookingConfirmationPage() {
             // Calculate estimated price
             if (hourlyRate && selectedSlots.length > 0) {
               const basePrice = hourlyRate * selectedSlots.length;
-              const percentageFee = Math.round(basePrice * serviceFeeRate * 100) / 100; // Dynamic service fee
-              const serviceFee = percentageFee; // No flat fee
+              const baseCents = Math.round(basePrice * 100);
+              const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
+              const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
               setEstimatedPrice({
                 basePrice,
                 serviceFee,
@@ -265,15 +268,17 @@ export default function BookingConfirmationPage() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee (dynamic rate only, no flat fee)
+  // Calculate service fee (dynamic rate + $0.30 flat fee)
   const serviceFee = useMemo(() => {
-    const percentageFee = Math.round(combinedSubtotal * serviceFeeRate * 100) / 100; // Dynamic service fee
-    return percentageFee;
-  }, [combinedSubtotal, serviceFeeRate]);
+    const subtotalCents = Math.round(combinedSubtotal * 100);
+    if (subtotalCents <= 0) return 0;
+    const percentageFeeCents = Math.round(subtotalCents * serviceFeeRate);
+    return (percentageFeeCents + flatFeeCents) / 100;
+  }, [combinedSubtotal, serviceFeeRate, flatFeeCents]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
-    return combinedSubtotal + serviceFee;
+    return combinedSubtotal + serviceFee ;
   }, [combinedSubtotal, serviceFee]);
 
   // Helper functions
@@ -812,11 +817,13 @@ export default function BookingConfirmationPage() {
                             <span className="font-bold text-gray-900">${combinedSubtotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-                            <span className="text-gray-600">Service Fee ({serviceFeePercentage}%):</span>
+                            <span className="text-gray-600">
+                              {`Service Fee:`}
+                            </span>
                             <span className="font-medium text-gray-900">${serviceFee.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
                           <p className="text-xs text-gray-500 mt-1 italic">
-                            * Service fee is calculated once on the combined total
+                            {`* Service fee is calculated once on the combined total`}
                           </p>
                         </div>
                       </div>
