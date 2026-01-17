@@ -22,6 +22,7 @@ import {
   Package,
   Snowflake,
   Info,
+  FileText,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -92,6 +93,7 @@ interface LocationWithKitchens {
   kitchens: Kitchen[];
   isApproved?: boolean;
   isPending?: boolean;
+  isRejected?: boolean;
   applicationStatus?: string;
   applicationId?: number;
   kitchenLicenseStatus?: string;
@@ -139,8 +141,13 @@ export default function KitchenComparisonPage() {
   console.log('[KitchenComparisonPage] Approved locations:', approvedLocations);
   console.log('[KitchenComparisonPage] Applications:', applications);
   
-  // Get applied location IDs (all applications)
-  const appliedLocationIds = new Set(applications.map((a) => a.locationId));
+  // Get active application location IDs (inReview or approved only)
+  // Allow locations with rejected/cancelled applications so chefs can re-apply
+  const appliedLocationIds = new Set(
+    applications
+      .filter((a) => a.status === "inReview" || a.status === "approved")
+      .map((a) => a.locationId)
+  );
   const approvedLocationIds = new Set(approvedLocations.map((loc) => loc.id));
   
   console.log('[KitchenComparisonPage] Approved location IDs:', Array.from(approvedLocationIds));
@@ -148,6 +155,10 @@ export default function KitchenComparisonPage() {
   // Get pending applications (inReview status)
   const pendingApplications = applications.filter((a) => a.status === "inReview");
   const pendingLocationIds = new Set(pendingApplications.map((a) => a.locationId));
+
+  // Get rejected/cancelled applications (for re-application)
+  const rejectedApplications = applications.filter((a) => a.status === "rejected" || a.status === "cancelled");
+  const rejectedLocationIds = new Set(rejectedApplications.map((a) => a.locationId));
 
   // Fetch all public locations (for "available to apply" section)
   const { data: publicLocations, isLoading: publicLocationsLoading } = useQuery<PublicLocation[]>({
@@ -406,6 +417,58 @@ export default function KitchenComparisonPage() {
     staleTime: 60000,
   });
 
+  // Fetch kitchens for rejected application locations
+  const { data: rejectedKitchens, isLoading: rejectedKitchensLoading } = useQuery<Kitchen[]>({
+    queryKey: ["/api/chef/kitchens", rejectedLocationIds],
+    queryFn: async () => {
+      if (rejectedLocationIds.size === 0) return [];
+
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/chef/kitchens", {
+        credentials: "include",
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch kitchens");
+      }
+
+      const kitchens = await response.json();
+      console.log('[KitchenComparisonPage] Fetched kitchens for rejected locations:', kitchens.length, 'kitchens');
+      
+      // Filter to locations with rejected/cancelled applications
+      return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
+        const locationId = k.locationId ?? k.location_id;
+        return rejectedLocationIds.has(locationId);
+      }).map((k: any) => {
+        const locationId = k.locationId ?? k.location_id;
+        const location = publicLocations?.find((loc) => loc.id === locationId);
+        
+        return {
+          id: k.id,
+          name: k.name,
+          description: k.description,
+          locationId,
+          locationName: location?.name || k.locationName || k.location_name,
+          locationAddress: location?.address || k.locationAddress || k.location_address,
+          location: location ? {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+          } : k.location,
+          imageUrl: k.imageUrl || k.image_url,
+          amenities: k.amenities || [],
+          hourlyRate: k.hourlyRate,
+          currency: k.currency || 'CAD',
+          minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
+          pricingModel: k.pricingModel || k.pricing_model || 'hourly',
+        };
+      });
+    },
+    enabled: !!user && rejectedLocationIds.size > 0,
+    staleTime: 60000,
+  });
+
   // Fetch equipment and storage for pending kitchens
   const { data: pendingKitchensWithAddons } = useQuery<Kitchen[]>({
     queryKey: ["/api/chef/kitchens/pending-addons", pendingKitchens],
@@ -609,7 +672,7 @@ export default function KitchenComparisonPage() {
 
   const isLoading = locationsLoading || kitchensLoading || pricingLoading || authLoading || 
                     applicationsLoading || publicLocationsLoading || availableKitchensLoading || 
-                    pendingKitchensLoading;
+                    pendingKitchensLoading || rejectedKitchensLoading;
 
   // Group approved kitchens by location
   const approvedLocationsWithKitchens: LocationWithKitchens[] = approvedLocations.map((location) => {
@@ -657,9 +720,35 @@ export default function KitchenComparisonPage() {
       })
       .filter((loc) => loc.kitchens.length > 0);
 
+  // Group rejected application kitchens by location
+  const rejectedApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string; isRejected?: boolean })[] = 
+    (publicLocations || [])
+      .filter((loc) => rejectedLocationIds.has(loc.id))
+      .map((location) => {
+        const locationKitchens = (rejectedKitchens || []).filter(
+          (k) => k.locationId === location.id
+        );
+        const application = rejectedApplications.find((a) => a.locationId === location.id);
+
+        return {
+          id: location.id,
+          name: location.name,
+          address: location.address,
+          logoUrl: location.logoUrl || undefined,
+          brandImageUrl: location.brandImageUrl || undefined,
+          kitchens: locationKitchens,
+          isApproved: false,
+          isPending: false,
+          isRejected: true,
+          applicationStatus: application?.status,
+          applicationId: application?.id,
+        };
+      })
+      .filter((loc) => loc.kitchens.length > 0);
+
   // Group available to apply kitchens by location (not yet applied)
   const availableToApplyLocations: (LocationWithKitchens & { isApproved: boolean })[] = (publicLocations || [])
-    .filter((loc) => !appliedLocationIds.has(loc.id))
+    .filter((loc) => !appliedLocationIds.has(loc.id) && !rejectedLocationIds.has(loc.id))
     .map((location) => {
       const locationKitchens = (availableToApplyKitchens || []).filter(
         (k) => k.locationId === location.id
@@ -679,16 +768,18 @@ export default function KitchenComparisonPage() {
     })
     .filter((loc) => loc.kitchens.length > 0);
 
-  // Combine all locations into a single list: Approved, Pending, Available to Apply
+  // Combine all locations into a single list: Approved, Pending, Rejected (for re-apply), Available to Apply
   const allLocationsWithKitchens = [
     ...approvedLocationsWithKitchens,
     ...pendingApplicationLocations,
+    ...rejectedApplicationLocations,
     ...availableToApplyLocations,
   ];
   
   console.log('[KitchenComparisonPage] All locations with kitchens:', {
     approved: approvedLocationsWithKitchens.length,
     pending: pendingApplicationLocations.length,
+    rejected: rejectedApplicationLocations.length,
     availableToApply: availableToApplyLocations.length,
     total: allLocationsWithKitchens.length
   });
@@ -873,6 +964,8 @@ export default function KitchenComparisonPage() {
                           ? "bg-gradient-to-r from-blue-50 to-indigo-50" 
                           : location.isPending
                           ? "bg-gradient-to-r from-yellow-50 to-amber-50"
+                          : (location as any).isRejected
+                          ? "bg-gradient-to-r from-orange-50 to-red-50"
                           : "bg-gradient-to-r from-gray-50 to-slate-50"
                       }`}>
                         <div className="flex items-start justify-between">
@@ -895,6 +988,8 @@ export default function KitchenComparisonPage() {
                                   ? "bg-gradient-to-br from-blue-500 to-blue-600"
                                   : location.isPending
                                   ? "bg-gradient-to-br from-yellow-500 to-amber-600"
+                                  : (location as any).isRejected
+                                  ? "bg-gradient-to-br from-orange-500 to-red-600"
                                   : "bg-gradient-to-br from-gray-500 to-slate-600"
                               }`}>
                                 <Building2 className="h-8 w-8 text-white" />
@@ -917,6 +1012,11 @@ export default function KitchenComparisonPage() {
                             <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
                               <Clock className="h-3 w-3 mr-1" />
                               Pending Review
+                            </Badge>
+                          ) : (location as any).isRejected ? (
+                            <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+                              <FileText className="h-3 w-3 mr-1" />
+                              Rejected
                             </Badge>
                           ) : (
                             <Badge className={`${
@@ -944,6 +1044,8 @@ export default function KitchenComparisonPage() {
                                 ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
                                 : location.isPending
                                 ? "border-gray-200 hover:border-yellow-500 hover:shadow-md"
+                                : (location as any).isRejected
+                                ? "border-gray-200 hover:border-orange-500 hover:shadow-md"
                                 : "border-gray-200 hover:border-gray-400 hover:shadow-md"
                             }`}
                           >
@@ -1125,6 +1227,15 @@ export default function KitchenComparisonPage() {
                                 >
                                   <Clock className="mr-2 h-4 w-4" />
                                   Pending Review
+                                </Button>
+                              ) : (location as any).isRejected ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleApplyKitchen(location.id)}
+                                  className="flex-1 bg-orange-600 hover:bg-orange-700"
+                                >
+                                  <FileText className="mr-2 h-4 w-4" />
+                                  Re-apply
                                 </Button>
                               ) : (
                                 <Button

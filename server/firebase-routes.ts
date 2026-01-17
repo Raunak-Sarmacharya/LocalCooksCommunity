@@ -1,4 +1,4 @@
-import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema } from '@shared/schema';
+import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema, updateLocationRequirementsSchema } from '@shared/schema';
 import { platformSettings } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { chefLocationAccess } from '@shared/schema';
@@ -1847,6 +1847,19 @@ export function registerFirebaseRoutes(app: Express) {
           }
         }
 
+        // Parse custom fields data if provided
+        let customFieldsData: Record<string, any> | undefined;
+        if (req.body.customFieldsData) {
+          try {
+            customFieldsData = typeof req.body.customFieldsData === 'string' 
+              ? JSON.parse(req.body.customFieldsData)
+              : req.body.customFieldsData;
+          } catch (error) {
+            console.error('Error parsing customFieldsData:', error);
+            customFieldsData = undefined;
+          }
+        }
+
         // Parse and validate form data
         const formData = {
           chefId: req.neonUser!.id,
@@ -1861,6 +1874,7 @@ export function registerFirebaseRoutes(app: Express) {
           foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
           foodEstablishmentCert: req.body.foodEstablishmentCert,
           foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || undefined,
+          customFieldsData: customFieldsData || undefined,
         };
 
         // Validate with Zod schema
@@ -2370,6 +2384,97 @@ export function registerFirebaseRoutes(app: Express) {
         error: 'Failed to verify documents',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  });
+
+  // =============================================================================
+  // 📋 LOCATION REQUIREMENTS - Custom Application Requirements per Location
+  // =============================================================================
+
+  /**
+   * 🔥 Get Location Requirements (Manager)
+   * GET /api/manager/locations/:locationId/requirements
+   */
+  app.get('/api/manager/locations/:locationId/requirements', 
+    requireFirebaseAuthWithUser, 
+    requireManager, 
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.neonUser!;
+        const locationId = parseInt(req.params.locationId);
+        
+        if (isNaN(locationId)) {
+          return res.status(400).json({ error: 'Invalid location ID' });
+        }
+        
+        // Verify manager access
+        const location = await firebaseStorage.getLocationById(locationId);
+        if (!location || (location as any).managerId !== user.id) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+        res.json(requirements);
+      } catch (error) {
+        console.error('Error getting location requirements:', error);
+        res.status(500).json({ error: 'Failed to get requirements' });
+      }
+    }
+  );
+
+  /**
+   * 🔥 Update Location Requirements (Manager)
+   * PUT /api/manager/locations/:locationId/requirements
+   */
+  app.put('/api/manager/locations/:locationId/requirements',
+    requireFirebaseAuthWithUser,
+    requireManager,
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.neonUser!;
+        const locationId = parseInt(req.params.locationId);
+        
+        if (isNaN(locationId)) {
+          return res.status(400).json({ error: 'Invalid location ID' });
+        }
+        
+        // Verify manager access
+        const location = await firebaseStorage.getLocationById(locationId);
+        if (!location || (location as any).managerId !== user.id) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        const updates = updateLocationRequirementsSchema.parse(req.body);
+        const requirements = await firebaseStorage.upsertLocationRequirements(locationId, updates);
+        
+        res.json({ success: true, requirements });
+      } catch (error) {
+        console.error('Error updating location requirements:', error);
+        res.status(500).json({ 
+          error: 'Failed to update requirements',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  );
+
+  /**
+   * 🔥 Get Location Requirements (Public - for chefs)
+   * GET /api/public/locations/:locationId/requirements
+   */
+  app.get('/api/public/locations/:locationId/requirements', async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: 'Invalid location ID' });
+      }
+      
+      const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+      res.json(requirements);
+    } catch (error) {
+      console.error('Error getting location requirements:', error);
+      res.status(500).json({ error: 'Failed to get requirements' });
     }
   });
 

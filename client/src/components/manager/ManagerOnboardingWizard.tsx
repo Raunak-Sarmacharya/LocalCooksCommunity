@@ -30,12 +30,16 @@ import {
   Sparkles,
   ArrowRight,
   HelpCircle,
+  Users,
+  CreditCard,
 } from "lucide-react";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
+import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 
 interface OnboardingStep {
   id: number;
@@ -130,12 +134,24 @@ export default function ManagerOnboardingWizard() {
     },
     {
       id: 3,
+      title: "Application Requirements",
+      description: "Configure which fields are required when chefs apply to your kitchens",
+      icon: <Users className="h-6 w-6" />,
+    },
+    {
+      id: 4,
+      title: "Payment Setup",
+      description: "Connect Stripe to receive payments for bookings",
+      icon: <CreditCard className="h-6 w-6" />,
+    },
+    {
+      id: 5,
       title: "Storage Listings",
       description: "Add storage options (optional - can add later)",
       icon: <Package className="h-6 w-6" />,
     },
     {
-      id: 4,
+      id: 6,
       title: "Equipment Listings",
       description: "Add equipment options (optional - can add later)",
       icon: <Wrench className="h-6 w-6" />,
@@ -183,10 +199,31 @@ export default function ManagerOnboardingWizard() {
     selectedLocation?.kitchenLicenseStatus !== "expired" &&
     !(selectedLocation?.kitchenLicenseExpiry && new Date(selectedLocation.kitchenLicenseExpiry) < new Date());
   
+  // Check if Stripe is already connected (for step 4 - Payment Setup and completion summary)
+  const { data: userProfileForStripe } = useQuery({
+    queryKey: ["/api/user/profile/stripe", firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) return null;
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return null;
+      const response = await fetch('/api/user/profile', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+  });
+  
+  const hasStripeAccount = !!userProfileForStripe?.stripeConnectAccountId || !!userProfileForStripe?.stripe_connect_account_id;
+
   // Filter steps based on location existence
   // If location exists:
   //   - Skip Welcome (0) and Location & Contact (1) - but allow editing location/license
-  //   - Always show Create Kitchen (2), Storage (3), Equipment (4)
+  //   - Always show Create Kitchen (2), Application Requirements (3), Payment Setup (4), Storage (5), Equipment (6)
   const visibleSteps = hasExistingLocation 
     ? steps.filter(step => step.id >= 2) // Skip Welcome and Location & Contact, show Create Kitchen onwards
     : steps; // Show all steps for new locations
@@ -299,8 +336,8 @@ export default function ManagerOnboardingWizard() {
               setLocationAddress(loc.address || "");
               setNotificationEmail(loc.notificationEmail || "");
               setNotificationPhone(loc.notificationPhone || "");
-              // Start from step 3 (Create Kitchen) since location exists
-              setCurrentStep(3);
+          // Start from step 2 (Create Kitchen) since location exists
+          setCurrentStep(2);
               // Mark this location as needing onboarding
               setLocationOnboardingStatus(prev => ({
                 ...prev,
@@ -353,14 +390,9 @@ export default function ManagerOnboardingWizard() {
           setNotificationPhone(loc.notificationPhone || "");
         }
         // If location exists and we're on an early step, jump to appropriate step
-        // If license is missing, go to step 2 (License), otherwise step 3 (Create Kitchen)
+        // If location exists, go to Create Kitchen step (step 2)
         if (currentStep < 2) {
-          const loc = locations[0] as any;
-          if (!loc?.kitchenLicenseUrl || loc?.kitchenLicenseStatus === "rejected") {
-            setCurrentStep(2); // Go to license step if missing or rejected
-          } else {
-            setCurrentStep(3); // Go to kitchen step if license exists
-          }
+          setCurrentStep(2); // Go to Create Kitchen step
         }
       }
     }
@@ -470,7 +502,7 @@ export default function ManagerOnboardingWizard() {
 
   // Load storage listings when kitchen is selected and we're on storage step
   useEffect(() => {
-    if (selectedKitchenId && currentStep === 4) {
+    if (selectedKitchenId && currentStep === 5) {
       const loadStorageListings = async () => {
         setIsLoadingStorage(true);
         try {
@@ -500,7 +532,7 @@ export default function ManagerOnboardingWizard() {
         }
       };
       loadStorageListings();
-    } else if (currentStep !== 4) {
+    } else if (currentStep !== 5) {
       // Clear storage listings when not on storage step
       setExistingStorageListings([]);
     }
@@ -508,7 +540,7 @@ export default function ManagerOnboardingWizard() {
 
   // Load equipment listings when kitchen is selected and we're on equipment step
   useEffect(() => {
-    if (selectedKitchenId && currentStep === 5) {
+    if (selectedKitchenId && currentStep === 6) {
       const loadEquipmentListings = async () => {
         setIsLoadingEquipment(true);
         try {
@@ -538,7 +570,7 @@ export default function ManagerOnboardingWizard() {
         }
       };
       loadEquipmentListings();
-    } else if (currentStep !== 5) {
+    } else if (currentStep !== 6) {
       // Clear equipment listings when not on equipment step
       setExistingEquipmentListings([]);
     }
@@ -963,14 +995,22 @@ export default function ManagerOnboardingWizard() {
         setCurrentStep(3);
       }
     } else if (currentStep === 3) {
-      // Storage listings step - optional, can skip
-      await trackStepCompletion(3); // Step 3 is Storage Listings
+      // Application Requirements step
+      await trackStepCompletion(3);
       setCurrentStep(4);
     } else if (currentStep === 4) {
-      // Equipment listings step - optional, can skip
-      await trackStepCompletion(4); // Step 4 is Equipment Listings (final step)
+      // Payment Setup (Stripe Connect) step - can skip but recommended
+      await trackStepCompletion(4);
       setCurrentStep(5);
     } else if (currentStep === 5) {
+      // Storage listings step - optional, can skip
+      await trackStepCompletion(5); // Step 5 is Storage Listings
+      setCurrentStep(6);
+    } else if (currentStep === 6) {
+      // Equipment listings step - optional, can skip
+      await trackStepCompletion(6); // Step 6 is Equipment Listings
+      setCurrentStep(7);
+    } else if (currentStep === 7) {
       // Complete onboarding - this should not be reached as we use handleCompleteSetup
       // But keep it as fallback
       try {
@@ -982,9 +1022,9 @@ export default function ManagerOnboardingWizard() {
     }
   };
 
-  // Dedicated handler for completing setup on step 5
+  // Dedicated handler for completing setup on step 7
   const handleCompleteSetup = async () => {
-    if (currentStep === 5 && !completeOnboardingMutation.isPending) {
+    if (currentStep === 7 && !completeOnboardingMutation.isPending) {
       try {
         await completeOnboardingMutation.mutateAsync(false);
       } catch (error: any) {
@@ -995,8 +1035,8 @@ export default function ManagerOnboardingWizard() {
   };
 
   const handleSkip = async () => {
-    // If on step 5 (final step), complete onboarding with skipped flag
-    if (currentStep === 5) {
+    // If on step 7 (final step), complete onboarding with skipped flag
+    if (currentStep === 7) {
       if (
         window.confirm(
           "Are you sure you want to skip onboarding? You can complete it later, but bookings will be disabled until your license is approved."
@@ -1007,8 +1047,8 @@ export default function ManagerOnboardingWizard() {
       return;
     }
 
-    // If on the final visible step (but not step 5), complete onboarding
-    const finalStepId = visibleSteps.length > 0 ? visibleSteps[visibleSteps.length - 1].id : 4;
+    // If on the final visible step (but not step 7), complete onboarding
+    const finalStepId = visibleSteps.length > 0 ? visibleSteps[visibleSteps.length - 1].id : 6;
     if (currentStep === finalStepId) {
       if (
         window.confirm(
@@ -1721,7 +1761,53 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 3 && (
+          {currentStep === 3 && selectedLocationId && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Application Requirements</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Configure which fields are required when chefs apply to your kitchens. You can make fields optional to streamline the application process.
+                </p>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-900">
+                    <p className="font-semibold mb-1">Why configure this?</p>
+                    <p>By default, all fields are required. You can make certain fields optional to reduce friction for chefs applying to your kitchen. You can always change these settings later from your dashboard.</p>
+                  </div>
+                </div>
+              </div>
+
+              <LocationRequirementsSettings locationId={selectedLocationId} />
+            </div>
+          )}
+
+          {currentStep === 4 && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-1">Payment Setup</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Connect your Stripe account to receive payments directly for kitchen bookings. The platform service fee will be automatically deducted.
+                </p>
+              </div>
+              
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <Info className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-purple-900">
+                    <p className="font-semibold mb-1">Why set up payments now?</p>
+                    <p>While you can skip this step and set it up later, connecting Stripe now ensures you're ready to receive payments as soon as bookings start. The setup process takes about 5 minutes.</p>
+                  </div>
+                </div>
+              </div>
+
+              <StripeConnectSetup />
+            </div>
+          )}
+
+          {currentStep === 5 && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Storage Listings (Optional)</h3>
@@ -2078,7 +2164,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 6 && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold mb-1">Equipment Listings (Optional)</h3>
@@ -2532,7 +2618,7 @@ export default function ManagerOnboardingWizard() {
             </div>
           )}
 
-          {currentStep === 5 && (
+          {currentStep === 7 && (
             <div className="space-y-4">
               <div className="text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
@@ -2611,6 +2697,21 @@ export default function ManagerOnboardingWizard() {
                         <span className="text-gray-600">No kitchen created yet (can add later)</span>
                       </div>
                     )}
+                    {hasStripeAccount ? (
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-gray-700">Payment setup complete</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                        <span className="text-gray-600">Payment setup pending (can complete later)</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-gray-700">Application requirements configured</span>
+                    </div>
                     <div className="flex items-center gap-2">
                       <Info className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-500">Storage & equipment listings (optional - can add later)</span>
@@ -2638,7 +2739,7 @@ export default function ManagerOnboardingWizard() {
         {/* Actions */}
         <div className="bg-gradient-to-br from-[#FFE8DD]/30 to-white border-t border-rose-200/50 px-6 py-4 rounded-b-lg">
           <div className="flex items-center justify-between">
-            {currentStep === 5 ? (
+            {currentStep === 7 ? (
               <Button
                 variant="outline"
                 onClick={() => setIsOpen(false)}
@@ -2672,7 +2773,7 @@ export default function ManagerOnboardingWizard() {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (currentStep === 5) {
+                  if (currentStep === 7) {
                     handleCompleteSetup();
                   } else {
                     handleNext();
@@ -2689,7 +2790,7 @@ export default function ManagerOnboardingWizard() {
                   const currentVisibleIndex = getVisibleIndex(currentStep);
                   const finalVisibleIndex = visibleSteps.length - 1;
                   // Step 5 is always the final step, regardless of visibleSteps
-                  const isFinalStep = currentStep === 5 || currentVisibleIndex === finalVisibleIndex;
+                  const isFinalStep = currentStep === 7 || currentVisibleIndex === finalVisibleIndex;
                   
                   if (isFinalStep) {
                     return (

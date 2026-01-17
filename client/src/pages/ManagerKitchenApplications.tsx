@@ -20,7 +20,9 @@ import {
   Briefcase,
   Calendar,
   Shield,
-  Ban
+  Ban,
+  Settings,
+  ExternalLink
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
@@ -260,10 +262,41 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     <>
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Chef Applications</h1>
-        <p className="text-gray-600">
-          Review and manage chef applications to your kitchen locations.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Chef Applications</h1>
+            <p className="text-gray-600">
+              Review and manage chef applications to your kitchen locations.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              // Navigate to settings with application requirements tab
+              const url = new URL(window.location.href);
+              url.pathname = '/manager/booking-dashboard';
+              url.searchParams.set('view', 'settings');
+              url.searchParams.set('tab', 'application-requirements');
+              window.location.href = url.toString();
+            }}
+            className="flex items-center gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            Configure Application Requirements
+            <ExternalLink className="h-3 w-3" />
+          </Button>
+        </div>
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-blue-900 font-medium mb-1">Customize Application Requirements</p>
+              <p className="text-xs text-blue-700">
+                Control which fields are required when chefs apply to your kitchens. You can make fields optional to streamline the application process.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Stats */}

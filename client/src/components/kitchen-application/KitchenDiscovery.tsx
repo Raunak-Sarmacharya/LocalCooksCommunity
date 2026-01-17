@@ -90,11 +90,16 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
   const isLoading = applicationsLoading || locationsLoading;
 
-  // Filter out locations the chef has already applied to for the discover tab
-  const appliedLocationIds = new Set(applications.map((a) => a.locationId));
+  // Filter out locations the chef has active applications for (inReview or approved)
+  // Allow locations with rejected/cancelled applications to show up so chefs can re-apply
+  const activeApplicationLocationIds = new Set(
+    applications
+      .filter((a) => a.status === "inReview" || a.status === "approved")
+      .map((a) => a.locationId)
+  );
   
   const availableLocations = (publicLocations || []).filter(
-    (loc) => !appliedLocationIds.has(loc.id)
+    (loc) => !activeApplicationLocationIds.has(loc.id)
   );
 
   const filteredAvailableLocations = availableLocations.filter(
