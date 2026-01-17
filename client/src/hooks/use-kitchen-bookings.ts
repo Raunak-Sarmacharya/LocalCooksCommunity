@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useState, useEffect } from "react";
 
 interface Booking {
   id: number;
@@ -56,12 +58,30 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 export function useKitchenBookings() {
   const queryClient = useQueryClient();
+  
+  // Track auth initialization state to prevent queries from running before auth is ready
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [hasAuthUser, setHasAuthUser] = useState(false);
+
+  // Wait for Firebase auth to initialize before enabling queries
+  // onAuthStateChanged fires immediately with current auth state, then on changes
+  useEffect(() => {
+    // Set up auth state listener - this fires immediately with current state
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // Auth is ready once this callback fires (even if user is null)
+      setIsAuthReady(true);
+      setHasAuthUser(!!user);
+    });
+
+    // Cleanup listener on unmount
+    return () => unsubscribe();
+  }, []);
 
   // Get chef's bookings with real-time polling
   const bookingsQuery = useQuery<Booking[]>({
     queryKey: ["/api/chef/bookings"],
-    // Only fetch when user is authenticated
-    enabled: !!auth.currentUser,
+    // Only fetch when auth is ready and user is authenticated
+    enabled: isAuthReady && hasAuthUser,
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const response = await fetch("/api/chef/bookings", {
@@ -157,8 +177,8 @@ export function useKitchenBookings() {
   // Get all available kitchens
   const kitchensQuery = useQuery<Kitchen[]>({
     queryKey: ["/api/chef/kitchens"],
-    // Only fetch when user is authenticated
-    enabled: !!auth.currentUser,
+    // Only fetch when auth is ready and user is authenticated
+    enabled: isAuthReady && hasAuthUser,
     queryFn: async () => {
       const headers = await getAuthHeaders();
       
@@ -224,6 +244,10 @@ export function useKitchenBookings() {
       
       return normalized;
     },
+    // Add refetch options to retry when auth becomes available
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Get available time slots for a kitchen on a specific date

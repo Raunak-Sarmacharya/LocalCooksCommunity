@@ -31,6 +31,7 @@ import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
+import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -257,15 +258,46 @@ export default function ManagerBookingDashboard() {
     enabled: !!firebaseUser,
   });
 
-  const needsOnboarding =
-    userData?.role === "manager" &&
-    !userData?.manager_onboarding_completed &&
-    !userData?.manager_onboarding_skipped;
-
-  // Check if license is expired for selected location
+  // Check if license is expired for selected location (must be defined before use)
   const isLicenseExpired = selectedLocation?.kitchenLicenseExpiry 
     ? new Date(selectedLocation.kitchenLicenseExpiry) < new Date()
     : false;
+
+  // Check if Stripe is connected
+  const hasStripeAccount = !!userData?.stripeConnectAccountId || !!userData?.stripe_connect_account_id;
+  const isStripeOnboardingComplete = userData?.stripeConnectOnboardingStatus === 'complete' || userData?.stripe_connect_onboarding_status === 'complete';
+  
+  // Check if selected location has approved license
+  const hasApprovedLicense = selectedLocation?.kitchenLicenseStatus === "approved" && !isLicenseExpired;
+  
+  // Check if location has at least one kitchen
+  const { data: locationKitchens } = useQuery({
+    queryKey: ['managerKitchens', selectedLocation?.id],
+    queryFn: async () => {
+      if (!selectedLocation?.id) return [];
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/kitchens/${selectedLocation.id}`, {
+        headers,
+        credentials: "include",
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!selectedLocation?.id,
+  });
+  
+  const hasKitchens = (locationKitchens?.length || 0) > 0;
+  
+  // Determine if onboarding is needed
+  // Show banner if:
+  // 1. User is a manager AND
+  // 2. Onboarding not completed AND not skipped AND
+  // 3. (No location selected OR any of these are missing: approved license, Stripe setup, or kitchens)
+  const needsOnboarding =
+    userData?.role === "manager" &&
+    !userData?.manager_onboarding_completed &&
+    !userData?.manager_onboarding_skipped &&
+    (!selectedLocation || !hasApprovedLicense || !isStripeOnboardingComplete || !hasKitchens);
 
   // Auto-select location if only one exists
   useEffect(() => {
@@ -622,8 +654,15 @@ export default function ManagerBookingDashboard() {
                       Complete Your Setup to Activate Bookings
                     </h3>
                     <p className="text-xs sm:text-sm text-blue-700 mb-2 sm:mb-3">
-                      Finish your onboarding to start accepting bookings. Upload your kitchen license
-                      and get it approved by an admin to activate bookings.
+                      {!hasApprovedLicense && !isStripeOnboardingComplete && !hasKitchens
+                        ? "Finish your onboarding to start accepting bookings. Upload your kitchen license, connect Stripe for payments, and create at least one kitchen."
+                        : !hasApprovedLicense
+                        ? "Upload your kitchen license and get it approved by an admin to activate bookings."
+                        : !isStripeOnboardingComplete
+                        ? "Connect your Stripe account to receive payments for bookings."
+                        : !hasKitchens
+                        ? "Create at least one kitchen to start accepting bookings."
+                        : "Complete your setup to activate bookings."}
                     </p>
                   </div>
                 </div>
@@ -1750,6 +1789,17 @@ function KitchenGalleryImages({
 function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Tab state - check URL params first, then default to 'setup'
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab && ['setup', 'branding', 'notifications', 'booking-rules', 'application-requirements', 'location'].includes(tab)) {
+      return tab;
+    }
+    return 'setup';
+  });
+  
   const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
   const [cancellationMessage, setCancellationMessage] = useState(
     location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
@@ -1841,6 +1891,27 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     enabled: !!location.id,
   });
 
+
+  // Handle URL parameter changes for tab navigation (on mount and when URL changes)
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab && ['setup', 'branding', 'notifications', 'booking-rules', 'application-requirements', 'location'].includes(tab)) {
+        setActiveTab(tab);
+      }
+    };
+    
+    // Check on mount
+    handleLocationChange();
+    
+    // Listen for popstate (back/forward button)
+    window.addEventListener('popstate', handleLocationChange);
+    
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+    };
+  }, []);
 
   // Update state when location prop changes (e.g., after saving or switching tabs)
   useEffect(() => {
@@ -2186,8 +2257,133 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         </div>
 
         <div className="p-6">
-          <Tabs defaultValue="setup" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+          <Tabs 
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="w-full"
+          >
+            {/* Settings Header with Breadcrumbs */}
+            <div className="mb-6 space-y-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <span>Dashboard</span>
+                <span>/</span>
+                <span className="text-gray-900 font-medium">Settings</span>
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Location Settings</h2>
+                <p className="text-gray-600">
+                  Configure your location preferences, booking rules, application requirements, and notifications.
+                </p>
+              </div>
+            </div>
+
+            {/* Settings Quick Access Overview */}
+            <div className="mb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* 1. Setup */}
+              <div 
+                className="p-4 border border-gray-200 rounded-lg hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer bg-white"
+                onClick={() => setActiveTab('setup')}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-indigo-100 rounded-lg">
+                    <FileText className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-1">Setup</h3>
+                    <p className="text-sm text-gray-600">
+                      Upload and manage your kitchen license document (required for bookings)
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* 2. Kitchen */}
+              <div 
+                className="p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:shadow-md transition-all cursor-pointer bg-white"
+                onClick={() => setActiveTab('branding')}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <ImageIcon className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-1">Kitchen</h3>
+                    <p className="text-sm text-gray-600">
+                      Upload photos of your kitchens to help chefs see what they're booking
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* 3. Notifications */}
+              <div 
+                className="p-4 border border-gray-200 rounded-lg hover:border-purple-300 hover:shadow-md transition-all cursor-pointer bg-white"
+                onClick={() => setActiveTab('notifications')}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg">
+                    <Mail className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-1">Notifications</h3>
+                    <p className="text-sm text-gray-600">
+                      Set the email and phone number where you'll receive booking notifications
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* 4. Booking Rules */}
+              <div 
+                className="p-4 border border-gray-200 rounded-lg hover:border-orange-300 hover:shadow-md transition-all cursor-pointer bg-white"
+                onClick={() => setActiveTab('booking-rules')}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <Clock className="h-5 w-5 text-orange-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-1">Booking Rules</h3>
+                    <p className="text-sm text-gray-600">
+                      Configure cancellation policies and daily booking hour limits for chefs
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* 5. Application */}
+              <div 
+                className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all cursor-pointer bg-white"
+                onClick={() => setActiveTab('application-requirements')}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-1">Application</h3>
+                    <p className="text-sm text-gray-600">
+                      Choose which information fields are required when chefs apply to use your kitchens
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* 6. Location */}
+              <div 
+                className="p-4 border border-gray-200 rounded-lg hover:border-cyan-300 hover:shadow-md transition-all cursor-pointer bg-white"
+                onClick={() => setActiveTab('location')}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-cyan-100 rounded-lg">
+                    <Globe className="h-5 w-5 text-cyan-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-1">Location</h3>
+                    <p className="text-sm text-gray-600">
+                      View your location's timezone settings (locked to Newfoundland Time)
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
               <TabsTrigger value="setup" className="flex items-center gap-2 rounded-lg">
                 <FileText className="h-4 w-4" />
                 <span className="hidden sm:inline">Setup</span>
@@ -2203,6 +2399,10 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               <TabsTrigger value="booking-rules" className="flex items-center gap-2 rounded-lg">
                 <Clock className="h-4 w-4" />
                 <span className="hidden sm:inline">Booking Rules</span>
+              </TabsTrigger>
+              <TabsTrigger value="application-requirements" className="flex items-center gap-2 rounded-lg" title="Choose which information fields are required when chefs apply to use your kitchens">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Application</span>
               </TabsTrigger>
               <TabsTrigger value="location" className="flex items-center gap-2 rounded-lg">
                 <Globe className="h-4 w-4" />
@@ -3188,6 +3388,11 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
               </div>
             </div>
           </div>
+          </TabsContent>
+
+          {/* Application Requirements Tab */}
+          <TabsContent value="application-requirements" className="space-y-6 mt-0">
+            <LocationRequirementsSettings locationId={location.id} />
           </TabsContent>
 
           {/* Location Tab */}

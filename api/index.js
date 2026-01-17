@@ -204,7 +204,7 @@ __export(schema_exports, {
   chefKitchenProfiles: () => chefKitchenProfiles,
   chefLocationAccess: () => chefLocationAccess,
   chefLocationProfiles: () => chefLocationProfiles,
-  deliveryPartnerApplications: () => deliveryPartnerApplications,
+  customFieldSchema: () => customFieldSchema,
   documentVerificationStatusEnum: () => documentVerificationStatusEnum,
   equipmentAvailabilityTypeEnum: () => equipmentAvailabilityTypeEnum,
   equipmentBookings: () => equipmentBookings,
@@ -218,13 +218,13 @@ __export(schema_exports, {
   insertChefKitchenProfileSchema: () => insertChefKitchenProfileSchema,
   insertChefLocationAccessSchema: () => insertChefLocationAccessSchema,
   insertChefLocationProfileSchema: () => insertChefLocationProfileSchema,
-  insertDeliveryPartnerApplicationSchema: () => insertDeliveryPartnerApplicationSchema,
   insertEquipmentBookingSchema: () => insertEquipmentBookingSchema,
   insertEquipmentListingSchema: () => insertEquipmentListingSchema,
   insertKitchenAvailabilitySchema: () => insertKitchenAvailabilitySchema,
   insertKitchenBookingSchema: () => insertKitchenBookingSchema,
   insertKitchenDateOverrideSchema: () => insertKitchenDateOverrideSchema,
   insertKitchenSchema: () => insertKitchenSchema,
+  insertLocationRequirementsSchema: () => insertLocationRequirementsSchema,
   insertLocationSchema: () => insertLocationSchema,
   insertMicrolearningCompletionSchema: () => insertMicrolearningCompletionSchema,
   insertPaymentTransactionSchema: () => insertPaymentTransactionSchema,
@@ -241,6 +241,7 @@ __export(schema_exports, {
   kitchenPreferenceEnum: () => kitchenPreferenceEnum,
   kitchens: () => kitchens,
   listingStatusEnum: () => listingStatusEnum,
+  locationRequirements: () => locationRequirements,
   locations: () => locations,
   microlearningCompletions: () => microlearningCompletions,
   paymentHistory: () => paymentHistory,
@@ -261,9 +262,6 @@ __export(schema_exports, {
   updateChefKitchenApplicationStatusSchema: () => updateChefKitchenApplicationStatusSchema,
   updateChefKitchenProfileSchema: () => updateChefKitchenProfileSchema,
   updateChefLocationProfileSchema: () => updateChefLocationProfileSchema,
-  updateDeliveryPartnerApplicationStatusSchema: () => updateDeliveryPartnerApplicationStatusSchema,
-  updateDeliveryPartnerDocumentVerificationSchema: () => updateDeliveryPartnerDocumentVerificationSchema,
-  updateDeliveryPartnerDocumentsSchema: () => updateDeliveryPartnerDocumentsSchema,
   updateDocumentVerificationSchema: () => updateDocumentVerificationSchema,
   updateEquipmentBookingSchema: () => updateEquipmentBookingSchema,
   updateEquipmentBookingStatusSchema: () => updateEquipmentBookingStatusSchema,
@@ -272,6 +270,7 @@ __export(schema_exports, {
   updateKitchenBookingSchema: () => updateKitchenBookingSchema,
   updateKitchenDateOverrideSchema: () => updateKitchenDateOverrideSchema,
   updateKitchenSchema: () => updateKitchenSchema,
+  updateLocationRequirementsSchema: () => updateLocationRequirementsSchema,
   updateLocationSchema: () => updateLocationSchema,
   updatePaymentTransactionSchema: () => updatePaymentTransactionSchema,
   updatePlatformSettingSchema: () => updatePlatformSettingSchema,
@@ -280,16 +279,14 @@ __export(schema_exports, {
   updateStorageBookingStatusSchema: () => updateStorageBookingStatusSchema,
   updateStorageListingSchema: () => updateStorageListingSchema,
   updateStorageListingStatusSchema: () => updateStorageListingStatusSchema,
-  updateUserApplicationTypeSchema: () => updateUserApplicationTypeSchema,
   userRoleEnum: () => userRoleEnum,
   users: () => users,
-  vehicleTypeEnum: () => vehicleTypeEnum,
   videoProgress: () => videoProgress
 });
 import { boolean, date, integer, jsonb, numeric, pgEnum, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z as z2 } from "zod";
-var kitchenPreferenceEnum, certificationStatusEnum, applicationStatusEnum, userRoleEnum, documentVerificationStatusEnum, applicationTypeEnum, vehicleTypeEnum, bookingStatusEnum, storageTypeEnum, storagePricingModelEnum, bookingDurationUnitEnum, listingStatusEnum, equipmentCategoryEnum, equipmentConditionEnum, equipmentPricingModelEnum, equipmentAvailabilityTypeEnum, paymentStatusEnum, transactionStatusEnum, bookingTypeEnum, users, applications, deliveryPartnerApplications, insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema, insertUserSchema, microlearningCompletions, videoProgress, insertMicrolearningCompletionSchema, insertVideoProgressSchema, insertDeliveryPartnerApplicationSchema, updateDeliveryPartnerApplicationStatusSchema, updateDeliveryPartnerDocumentsSchema, updateDeliveryPartnerDocumentVerificationSchema, updateUserApplicationTypeSchema, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefLocationAccess, chefKitchenAccess, chefKitchenProfiles, chefLocationProfiles, portalUserApplications, portalUserLocationAccess, insertLocationSchema, updateLocationSchema, insertKitchenSchema, updateKitchenSchema, insertKitchenAvailabilitySchema, insertKitchenDateOverrideSchema, updateKitchenDateOverrideSchema, insertKitchenBookingSchema, updateKitchenBookingSchema, insertChefLocationAccessSchema, insertChefKitchenAccessSchema, insertChefKitchenProfileSchema, updateChefKitchenProfileSchema, insertChefLocationProfileSchema, updateChefLocationProfileSchema, insertPortalUserApplicationSchema, updatePortalUserApplicationStatusSchema, insertPortalUserLocationAccessSchema, storageListings, insertStorageListingSchema, updateStorageListingSchema, updateStorageListingStatusSchema, equipmentListings, insertEquipmentListingSchema, updateEquipmentListingSchema, updateEquipmentListingStatusSchema, storageBookings, insertStorageBookingSchema, updateStorageBookingSchema, updateStorageBookingStatusSchema, equipmentBookings, insertEquipmentBookingSchema, updateEquipmentBookingSchema, updateEquipmentBookingStatusSchema, platformSettings, insertPlatformSettingSchema, updatePlatformSettingSchema, chefKitchenApplications, insertChefKitchenApplicationSchema, updateChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema, paymentTransactions, paymentHistory, insertPaymentTransactionSchema, updatePaymentTransactionSchema;
+var kitchenPreferenceEnum, certificationStatusEnum, applicationStatusEnum, userRoleEnum, documentVerificationStatusEnum, applicationTypeEnum, bookingStatusEnum, storageTypeEnum, storagePricingModelEnum, bookingDurationUnitEnum, listingStatusEnum, equipmentCategoryEnum, equipmentConditionEnum, equipmentPricingModelEnum, equipmentAvailabilityTypeEnum, paymentStatusEnum, transactionStatusEnum, bookingTypeEnum, users, applications, insertApplicationSchema, updateApplicationStatusSchema, updateApplicationDocumentsSchema, updateDocumentVerificationSchema, insertUserSchema, microlearningCompletions, videoProgress, insertMicrolearningCompletionSchema, insertVideoProgressSchema, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefLocationAccess, chefKitchenAccess, chefKitchenProfiles, chefLocationProfiles, portalUserApplications, portalUserLocationAccess, insertLocationSchema, updateLocationSchema, insertLocationRequirementsSchema, customFieldSchema, updateLocationRequirementsSchema, insertKitchenSchema, updateKitchenSchema, insertKitchenAvailabilitySchema, insertKitchenDateOverrideSchema, updateKitchenDateOverrideSchema, insertKitchenBookingSchema, updateKitchenBookingSchema, insertChefLocationAccessSchema, insertChefKitchenAccessSchema, insertChefKitchenProfileSchema, updateChefKitchenProfileSchema, insertChefLocationProfileSchema, updateChefLocationProfileSchema, insertPortalUserApplicationSchema, updatePortalUserApplicationStatusSchema, insertPortalUserLocationAccessSchema, storageListings, insertStorageListingSchema, updateStorageListingSchema, updateStorageListingStatusSchema, equipmentListings, insertEquipmentListingSchema, updateEquipmentListingSchema, updateEquipmentListingStatusSchema, storageBookings, insertStorageBookingSchema, updateStorageBookingSchema, updateStorageBookingStatusSchema, equipmentBookings, insertEquipmentBookingSchema, updateEquipmentBookingSchema, updateEquipmentBookingStatusSchema, platformSettings, insertPlatformSettingSchema, updatePlatformSettingSchema, chefKitchenApplications, insertChefKitchenApplicationSchema, updateChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema, paymentTransactions, paymentHistory, insertPaymentTransactionSchema, updatePaymentTransactionSchema;
 var init_schema = __esm({
   "shared/schema.ts"() {
     "use strict";
@@ -297,10 +294,9 @@ var init_schema = __esm({
     kitchenPreferenceEnum = pgEnum("kitchen_preference", ["commercial", "home", "notSure"]);
     certificationStatusEnum = pgEnum("certification_status", ["yes", "no", "notSure"]);
     applicationStatusEnum = pgEnum("application_status", ["inReview", "approved", "rejected", "cancelled"]);
-    userRoleEnum = pgEnum("user_role", ["admin", "chef", "delivery_partner", "manager"]);
+    userRoleEnum = pgEnum("user_role", ["admin", "chef", "manager"]);
     documentVerificationStatusEnum = pgEnum("document_verification_status", ["pending", "approved", "rejected", "expired"]);
-    applicationTypeEnum = pgEnum("application_type", ["chef", "delivery_partner"]);
-    vehicleTypeEnum = pgEnum("vehicle_type", ["car", "suv", "truck", "van"]);
+    applicationTypeEnum = pgEnum("application_type", ["chef"]);
     bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "cancelled"]);
     storageTypeEnum = pgEnum("storage_type", ["dry", "cold", "freezer"]);
     storagePricingModelEnum = pgEnum("storage_pricing_model", ["monthly-flat", "per-cubic-foot", "hourly", "daily"]);
@@ -324,9 +320,8 @@ var init_schema = __esm({
       firebaseUid: text("firebase_uid").unique(),
       isVerified: boolean("is_verified").default(false).notNull(),
       has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
-      // Support dual roles - users can be both chef and delivery partner
+      // Support dual roles - users can be both chef and manager
       isChef: boolean("is_chef").default(false).notNull(),
-      isDeliveryPartner: boolean("is_delivery_partner").default(false).notNull(),
       isManager: boolean("is_manager").default(false).notNull(),
       isPortalUser: boolean("is_portal_user").default(false).notNull(),
       // Portal user (third-party kitchen users)
@@ -364,38 +359,6 @@ var init_schema = __esm({
       documentsAdminFeedback: text("documents_admin_feedback"),
       documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
       documentsReviewedAt: timestamp("documents_reviewed_at"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
-    });
-    deliveryPartnerApplications = pgTable("delivery_partner_applications", {
-      id: serial("id").primaryKey(),
-      userId: integer("user_id").references(() => users.id),
-      fullName: text("full_name").notNull(),
-      email: text("email").notNull(),
-      phone: text("phone").notNull(),
-      address: text("address").notNull(),
-      city: text("city").notNull(),
-      province: text("province").notNull(),
-      postalCode: text("postal_code").notNull(),
-      // Vehicle details
-      vehicleType: vehicleTypeEnum("vehicle_type").notNull(),
-      vehicleMake: text("vehicle_make").notNull(),
-      vehicleModel: text("vehicle_model").notNull(),
-      vehicleYear: integer("vehicle_year").notNull(),
-      licensePlate: text("license_plate").notNull(),
-      // Document uploads
-      driversLicenseUrl: text("drivers_license_url"),
-      vehicleRegistrationUrl: text("vehicle_registration_url"),
-      insuranceUrl: text("insurance_url"),
-      // Document verification status
-      driversLicenseStatus: documentVerificationStatusEnum("drivers_license_status").default("pending"),
-      vehicleRegistrationStatus: documentVerificationStatusEnum("vehicle_registration_status").default("pending"),
-      insuranceStatus: documentVerificationStatusEnum("insurance_status").default("pending"),
-      // Admin fields
-      documentsAdminFeedback: text("documents_admin_feedback"),
-      documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
-      documentsReviewedAt: timestamp("documents_reviewed_at"),
-      feedback: text("feedback"),
-      status: applicationStatusEnum("status").default("inReview").notNull(),
       createdAt: timestamp("created_at").defaultNow().notNull()
     });
     insertApplicationSchema = createInsertSchema(applications, {
@@ -441,12 +404,11 @@ var init_schema = __esm({
     insertUserSchema = z2.object({
       username: z2.string().min(3, "Username must be at least 3 characters"),
       password: z2.string().min(6, "Password must be at least 6 characters"),
-      role: z2.enum(["admin", "chef", "delivery_partner", "manager"]).default("chef"),
+      role: z2.enum(["admin", "chef", "manager"]).default("chef"),
       googleId: z2.string().optional(),
       facebookId: z2.string().optional(),
       firebaseUid: z2.string().optional(),
       isChef: z2.boolean().default(false),
-      isDeliveryPartner: z2.boolean().default(false),
       isManager: z2.boolean().default(false),
       isPortalUser: z2.boolean().default(false)
     });
@@ -494,60 +456,6 @@ var init_schema = __esm({
       completedAt: true,
       updatedAt: true
     });
-    insertDeliveryPartnerApplicationSchema = createInsertSchema(deliveryPartnerApplications, {
-      fullName: z2.string().min(2, "Name must be at least 2 characters"),
-      email: z2.string().email("Please enter a valid email address"),
-      phone: phoneNumberSchema,
-      address: z2.string().min(5, "Address must be at least 5 characters"),
-      city: z2.string().min(2, "City must be at least 2 characters"),
-      province: z2.string().min(2, "Province must be at least 2 characters"),
-      postalCode: z2.string().regex(/^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/, "Please enter a valid Canadian postal code"),
-      vehicleType: z2.enum(["car", "suv", "truck", "van"]),
-      vehicleMake: z2.string().min(1, "Vehicle make is required"),
-      vehicleModel: z2.string().min(1, "Vehicle model is required"),
-      vehicleYear: z2.number().min(1900).max((/* @__PURE__ */ new Date()).getFullYear() + 1, "Please enter a valid vehicle year"),
-      licensePlate: z2.string().min(1, "License plate is required"),
-      userId: z2.number().optional(),
-      // Document fields - insurance is required, others are optional during initial submission
-      driversLicenseUrl: z2.string().optional(),
-      vehicleRegistrationUrl: z2.string().optional(),
-      insuranceUrl: z2.string().min(1, "Vehicle insurance is required")
-    }).omit({
-      id: true,
-      status: true,
-      createdAt: true,
-      documentsAdminFeedback: true,
-      documentsReviewedBy: true,
-      documentsReviewedAt: true,
-      // Document status fields are managed by admin
-      driversLicenseStatus: true,
-      vehicleRegistrationStatus: true,
-      insuranceStatus: true
-    });
-    updateDeliveryPartnerApplicationStatusSchema = z2.object({
-      id: z2.number(),
-      status: z2.enum(["inReview", "approved", "rejected", "cancelled"])
-    });
-    updateDeliveryPartnerDocumentsSchema = z2.object({
-      id: z2.number(),
-      driversLicenseUrl: z2.string().optional(),
-      vehicleRegistrationUrl: z2.string().optional(),
-      insuranceUrl: z2.string().optional(),
-      backgroundCheckUrl: z2.string().optional()
-    });
-    updateDeliveryPartnerDocumentVerificationSchema = z2.object({
-      id: z2.number(),
-      driversLicenseStatus: z2.enum(["pending", "approved", "rejected"]).optional(),
-      vehicleRegistrationStatus: z2.enum(["pending", "approved", "rejected"]).optional(),
-      insuranceStatus: z2.enum(["pending", "approved", "rejected"]).optional(),
-      backgroundCheckStatus: z2.enum(["pending", "approved", "rejected"]).optional(),
-      documentsAdminFeedback: z2.string().optional(),
-      documentsReviewedBy: z2.number().optional()
-    });
-    updateUserApplicationTypeSchema = z2.object({
-      userId: z2.number(),
-      applicationType: z2.enum(["chef", "delivery_partner"])
-    });
     locations = pgTable("locations", {
       id: serial("id").primaryKey(),
       name: text("name").notNull(),
@@ -580,6 +488,36 @@ var init_schema = __esm({
       // Admin feedback on license
       kitchenLicenseExpiry: date("kitchen_license_expiry"),
       // Expiration date of the kitchen license
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
+    locationRequirements = pgTable("location_requirements", {
+      id: serial("id").primaryKey(),
+      locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
+      // Personal Information
+      requireFirstName: boolean("require_first_name").default(true).notNull(),
+      requireLastName: boolean("require_last_name").default(true).notNull(),
+      requireEmail: boolean("require_email").default(true).notNull(),
+      requirePhone: boolean("require_phone").default(true).notNull(),
+      // Business Information
+      requireBusinessName: boolean("require_business_name").default(true).notNull(),
+      requireBusinessType: boolean("require_business_type").default(true).notNull(),
+      requireExperience: boolean("require_experience").default(true).notNull(),
+      requireBusinessDescription: boolean("require_business_description").default(false).notNull(),
+      // Certifications
+      requireFoodHandlerCert: boolean("require_food_handler_cert").default(true).notNull(),
+      requireFoodHandlerExpiry: boolean("require_food_handler_expiry").default(true).notNull(),
+      requireFoodEstablishmentCert: boolean("require_food_establishment_cert").default(false).notNull(),
+      requireFoodEstablishmentExpiry: boolean("require_food_establishment_expiry").default(false).notNull(),
+      // Kitchen Usage
+      requireUsageFrequency: boolean("require_usage_frequency").default(true).notNull(),
+      requireSessionDuration: boolean("require_session_duration").default(true).notNull(),
+      // Agreements
+      requireTermsAgree: boolean("require_terms_agree").default(true).notNull(),
+      requireAccuracyAgree: boolean("require_accuracy_agree").default(true).notNull(),
+      // Custom Fields (JSONB array of field definitions)
+      customFields: jsonb("custom_fields").default([]),
+      // Array of { id, label, type, required, options?, placeholder? }
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -771,6 +709,38 @@ var init_schema = __esm({
       notificationEmail: z2.string().email("Please enter a valid email address").optional(),
       notificationPhone: optionalPhoneNumberSchema
       // Optional phone for SMS notifications
+    });
+    insertLocationRequirementsSchema = createInsertSchema(locationRequirements, {
+      locationId: z2.number()
+    }).omit({ id: true, createdAt: true, updatedAt: true });
+    customFieldSchema = z2.object({
+      id: z2.string(),
+      // Unique identifier for the field
+      label: z2.string().min(1, "Label is required"),
+      type: z2.enum(["text", "textarea", "number", "select", "checkbox", "date"]),
+      required: z2.boolean().default(false),
+      placeholder: z2.string().optional(),
+      options: z2.array(z2.string()).optional()
+      // For select fields
+    });
+    updateLocationRequirementsSchema = z2.object({
+      requireFirstName: z2.boolean().optional(),
+      requireLastName: z2.boolean().optional(),
+      requireEmail: z2.boolean().optional(),
+      requirePhone: z2.boolean().optional(),
+      requireBusinessName: z2.boolean().optional(),
+      requireBusinessType: z2.boolean().optional(),
+      requireExperience: z2.boolean().optional(),
+      requireBusinessDescription: z2.boolean().optional(),
+      requireFoodHandlerCert: z2.boolean().optional(),
+      requireFoodHandlerExpiry: z2.boolean().optional(),
+      requireFoodEstablishmentCert: z2.boolean().optional(),
+      requireFoodEstablishmentExpiry: z2.boolean().optional(),
+      requireUsageFrequency: z2.boolean().optional(),
+      requireSessionDuration: z2.boolean().optional(),
+      requireTermsAgree: z2.boolean().optional(),
+      requireAccuracyAgree: z2.boolean().optional(),
+      customFields: z2.array(customFieldSchema).optional()
     });
     insertKitchenSchema = createInsertSchema(kitchens, {
       locationId: z2.number(),
@@ -1361,6 +1331,9 @@ var init_schema = __esm({
       // Manager Review
       reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
       reviewedAt: timestamp("reviewed_at"),
+      // Custom Fields Data (JSONB object storing values for custom fields)
+      customFieldsData: jsonb("custom_fields_data").default({}),
+      // { [fieldId]: value }
       // Timestamps
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
@@ -1379,7 +1352,9 @@ var init_schema = __esm({
       foodSafetyLicenseExpiry: z2.string().optional(),
       foodEstablishmentCert: z2.enum(["yes", "no", "notSure"]),
       foodEstablishmentCertUrl: z2.string().optional(),
-      foodEstablishmentCertExpiry: z2.string().optional()
+      foodEstablishmentCertExpiry: z2.string().optional(),
+      customFieldsData: z2.record(z2.any()).optional()
+      // Custom fields data as JSON object
     }).omit({
       id: true,
       status: true,
@@ -2010,11 +1985,6 @@ __export(email_exports, {
   generateChefKitchenAccessApprovedEmail: () => generateChefKitchenAccessApprovedEmail,
   generateChefLocationAccessApprovedEmail: () => generateChefLocationAccessApprovedEmail,
   generateChefProfileRequestEmail: () => generateChefProfileRequestEmail,
-  generateDeliveryPartnerAllDocumentsApprovedEmail: () => generateDeliveryPartnerAllDocumentsApprovedEmail,
-  generateDeliveryPartnerApplicationWithDocumentsEmail: () => generateDeliveryPartnerApplicationWithDocumentsEmail,
-  generateDeliveryPartnerApplicationWithoutDocumentsEmail: () => generateDeliveryPartnerApplicationWithoutDocumentsEmail,
-  generateDeliveryPartnerDocumentStatusChangeEmail: () => generateDeliveryPartnerDocumentStatusChangeEmail,
-  generateDeliveryPartnerStatusChangeEmail: () => generateDeliveryPartnerStatusChangeEmail,
   generateDocumentStatusChangeEmail: () => generateDocumentStatusChangeEmail,
   generateDocumentUpdateEmail: () => generateDocumentUpdateEmail,
   generateEmailVerificationEmail: () => generateEmailVerificationEmail,
@@ -2192,7 +2162,7 @@ If you have any questions, contact us at ${supportEmail}
     text: textContent
   });
 }
-var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDeliveryPartnerApplicationWithDocumentsEmail, generateDeliveryPartnerApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generateDeliveryPartnerDocumentStatusChangeEmail, generateDeliveryPartnerStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateDeliveryPartnerAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail;
+var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail;
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
@@ -3121,88 +3091,6 @@ Visit: ${getWebsiteUrl()}
         html
       };
     };
-    generateDeliveryPartnerApplicationWithDocumentsEmail = (applicationData) => {
-      const supportEmail = getSupportEmail();
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Delivery Partner Application and Documents Received - Under Review</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">
-        Thank you for submitting your delivery partner application to Local Cooks! We have received both your application and your supporting documents.
-      </p>
-      <p class="message">
-        Our team will now review your application and documents together. You'll receive another email once the review is complete.
-      </p>
-      <div class="status-badge">Status: Under Review</div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
-    </div>
-  </div>
-</body>
-</html>`;
-      return {
-        to: applicationData.email,
-        subject: "Delivery Partner Application and Documents Received - Under Review",
-        html
-      };
-    };
-    generateDeliveryPartnerApplicationWithoutDocumentsEmail = (applicationData) => {
-      const supportEmail = getSupportEmail();
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Delivery Partner Application Confirmation - Next Steps</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${applicationData.fullName},</h2>
-      <p class="message">
-        Thank you for submitting your delivery partner application to Local Cooks! We have received your application and it will be reviewed soon.
-      </p>
-      <p class="message">
-        <strong>Next Steps:</strong> Please visit your dashboard to upload the required documents (Driver's License, Vehicle Registration, and Vehicle Insurance) to complete your application.
-      </p>
-      <div class="status-badge">Status: Under Review</div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${supportEmail}" class="footer-links">${supportEmail}</a>.</p>
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
-    </div>
-  </div>
-</body>
-</html>`;
-      return {
-        to: applicationData.email,
-        subject: "Delivery Partner Application Confirmation - Next Steps",
-        html
-      };
-    };
     generateDocumentStatusChangeEmail = (userData) => {
       const getSubjectLine = (documentType, status) => {
         const docName2 = documentType === "foodSafetyLicenseStatus" ? "Food Safety License" : "Food Establishment Certificate";
@@ -3298,195 +3186,6 @@ Visit: ${getWebsiteUrl()}
         to: userData.email,
         subject,
         text: generatePlainText(userData.documentType, userData.status, userData.fullName, userData.adminFeedback),
-        html
-      };
-    };
-    generateDeliveryPartnerDocumentStatusChangeEmail = (userData) => {
-      const getSubjectLine = (documentType, status) => {
-        const docName2 = documentType === "driversLicense" ? "Driver's License" : documentType === "vehicleRegistration" ? "Vehicle Registration" : "Vehicle Insurance";
-        switch (status) {
-          case "approved":
-            return `${docName2} Approved - Local Cooks Community`;
-          case "rejected":
-            return `${docName2} Update Required - Local Cooks Community`;
-          default:
-            return `${docName2} Status Update - Local Cooks Community`;
-        }
-      };
-      const subject = getSubjectLine(userData.documentType, userData.status);
-      const generatePlainText = (documentType, status, fullName, adminFeedback) => {
-        const docName2 = documentType === "driversLicense" ? "Driver's License" : documentType === "vehicleRegistration" ? "Vehicle Registration" : "Vehicle Insurance";
-        const statusMessages = {
-          approved: `Great news! Your ${docName2} has been approved.`,
-          rejected: `Your ${docName2} requires some updates before it can be approved.`,
-          pending: `Your ${docName2} is being reviewed by our team.`
-        };
-        return `Hello ${fullName},
-
-${statusMessages[status] || `Your ${docName2} status has been updated.`}
-
-Document: ${docName2}
-Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
-
-${adminFeedback ? `Admin Feedback: ${adminFeedback}
-
-` : ""}${status === "approved" ? `Access your dashboard: ${getDashboardUrl()}` : status === "rejected" ? `Please update your document and resubmit: ${getDashboardUrl()}` : ""}
-
-If you have any questions, please contact us at ${getSupportEmail()}.
-
-Best regards,
-Local Cooks Community Team
-
-Visit: ${getWebsiteUrl()}
-`;
-      };
-      const getMessage = (documentType, status) => {
-        const docName2 = documentType === "driversLicense" ? "Driver's License" : documentType === "vehicleRegistration" ? "Vehicle Registration" : "Vehicle Insurance";
-        switch (status) {
-          case "approved":
-            return `Congratulations! Your ${docName2} has been approved by our verification team. This brings you one step closer to being fully verified as a delivery partner on Local Cooks.`;
-          case "rejected":
-            return `Your ${docName2} could not be approved at this time. Please review the feedback below and upload an updated document.`;
-          case "pending":
-            return `Your ${docName2} is currently being reviewed by our verification team. We will notify you once the review is complete.`;
-          default:
-            return `Your ${docName2} status has been updated. Please check your dashboard for more details.`;
-        }
-      };
-      const message = getMessage(userData.documentType, userData.status);
-      const docName = userData.documentType === "driversLicense" ? "Driver's License" : userData.documentType === "vehicleRegistration" ? "Vehicle Registration" : "Vehicle Insurance";
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">${message}</p>
-      <div class="status-badge${userData.status === "approved" ? " approved" : userData.status === "rejected" ? " rejected" : ""}">
-        \u{1F4C4} ${docName}: ${userData.status.charAt(0).toUpperCase() + userData.status.slice(1)}
-      </div>
-      ${userData.adminFeedback ? `
-      <div class="info-box">
-        <strong>\u{1F4AC} Admin Feedback:</strong><br>
-        ${userData.adminFeedback}
-      </div>` : ""}
-      ${userData.status === "approved" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : userData.status === "rejected" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Update Document</a>` : ""}
-      <div class="divider"></div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
-    </div>
-  </div>
-</body>
-</html>`;
-      return {
-        to: userData.email,
-        subject,
-        text: generatePlainText(userData.documentType, userData.status, userData.fullName, userData.adminFeedback),
-        html
-      };
-    };
-    generateDeliveryPartnerStatusChangeEmail = (userData) => {
-      const getSubjectLine = (status) => {
-        switch (status) {
-          case "approved":
-            return "Application Approved - Local Cooks Community";
-          case "rejected":
-            return "Application Update Required - Local Cooks Community";
-          case "cancelled":
-            return "Application Cancelled - Local Cooks Community";
-          default:
-            return "Application Status Update - Local Cooks Community";
-        }
-      };
-      const subject = getSubjectLine(userData.status);
-      const generatePlainText = (status, fullName) => {
-        const statusMessages = {
-          approved: "Congratulations! Your delivery partner application has been approved.",
-          rejected: "Your delivery partner application requires some updates before it can be approved.",
-          cancelled: "Your delivery partner application has been cancelled.",
-          inReview: "Your delivery partner application is being reviewed by our team."
-        };
-        return `Hello ${fullName},
-
-${statusMessages[status] || "Your delivery partner application status has been updated."}
-
-Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
-
-${status === "approved" ? `Access your dashboard: ${getDashboardUrl()}` : status === "rejected" ? `Please update your application and resubmit: ${getDashboardUrl()}` : ""}
-
-If you have any questions, please contact us at ${getSupportEmail()}.
-
-Best regards,
-Local Cooks Community Team
-
-Visit: ${getWebsiteUrl()}
-`;
-      };
-      const getMessage = (status) => {
-        switch (status) {
-          case "approved":
-            return "Congratulations! Your delivery partner application has been approved by our team. You are now ready to start delivering for Local Cooks Community.";
-          case "rejected":
-            return "Your delivery partner application could not be approved at this time. Please review the feedback and update your application accordingly.";
-          case "cancelled":
-            return "Your delivery partner application has been cancelled. If you would like to reapply, please submit a new application.";
-          case "inReview":
-            return "Your delivery partner application is currently being reviewed by our team. We will notify you once the review is complete.";
-          default:
-            return "Your delivery partner application status has been updated. Please check your dashboard for more details.";
-        }
-      };
-      const message = getMessage(userData.status);
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">${message}</p>
-      <div class="status-badge${userData.status === "approved" ? " approved" : userData.status === "rejected" ? " rejected" : userData.status === "cancelled" ? " cancelled" : ""}">
-        \u{1F4CB} Application Status: ${userData.status.charAt(0).toUpperCase() + userData.status.slice(1)}
-      </div>
-      ${userData.status === "approved" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>` : userData.status === "rejected" ? `<a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Update Application</a>` : ""}
-      <div class="divider"></div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Thank you for your interest in <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
-    </div>
-  </div>
-</body>
-</html>`;
-      return {
-        to: userData.email,
-        subject,
-        text: generatePlainText(userData.status, userData.fullName),
         html
       };
     };
@@ -3657,8 +3356,6 @@ Visit: ${getWebsiteUrl()}
     getDashboardUrl = (userType = "chef") => {
       const baseUrl = getSubdomainUrl(userType);
       if (userType === "chef") {
-        return `${baseUrl}/auth?redirect=/dashboard`;
-      } else if (userType === "driver") {
         return `${baseUrl}/auth?redirect=/dashboard`;
       } else if (userType === "kitchen") {
         return `${baseUrl}/portal`;
@@ -4440,83 +4137,6 @@ Visit: ${getWebsiteUrl()}
       </p>
       <p class="message">
         You are now fully verified and can start using Local Cooks Community as a chef.
-      </p>
-      <div class="status-badge approved">
-        \u2705 All Documents Approved
-      </div>
-      <div class="info-box">
-        <strong>\u{1F4C4} Approved Documents:</strong><br>
-        ${userData.approvedDocuments.map((doc) => `\u2022 ${doc}`).join("<br>")}
-      </div>
-      ${userData.adminFeedback ? `
-      <div class="info-box">
-        <strong>\u{1F4AC} Admin Feedback:</strong><br>
-        ${userData.adminFeedback}
-      </div>` : ""}
-      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
-      <div class="divider"></div>
-    </div>
-    <div class="footer">
-      <p class="footer-text">Welcome to <a href="${getWebsiteUrl()}" class="footer-links">Local Cooks</a>!</p>
-      <p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p>
-      <div class="divider"></div>
-      <p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p>
-    </div>
-  </div>
-</body>
-</html>`;
-      return {
-        to: userData.email,
-        subject,
-        text: generatePlainText(userData.fullName, userData.approvedDocuments, userData.adminFeedback),
-        html
-      };
-    };
-    generateDeliveryPartnerAllDocumentsApprovedEmail = (userData) => {
-      const subject = "All Documents Approved - Welcome to Local Cooks Community!";
-      const generatePlainText = (fullName, approvedDocuments, adminFeedback) => {
-        const docList = approvedDocuments.join(", ");
-        return `Hello ${fullName},
-
-\u{1F389} Congratulations! All your submitted documents have been approved by our verification team.
-
-Approved Documents: ${docList}
-
-You are now fully verified and can start using Local Cooks Community as a delivery partner.
-
-${adminFeedback ? `Admin Feedback: ${adminFeedback}
-
-` : ""}Access your dashboard: ${getDashboardUrl()}
-
-If you have any questions, please contact us at ${getSupportEmail()}.
-
-Best regards,
-Local Cooks Community Team
-
-Visit: ${getWebsiteUrl()}
-`;
-      };
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
-  ${getUniformEmailStyles()}
-</head>
-<body>
-  <div class="email-container">
-    <div class="header">
-      <img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" />
-    </div>
-    <div class="content">
-      <h2 class="greeting">Hello ${userData.fullName},</h2>
-      <p class="message">
-        \u{1F389} <strong>Congratulations!</strong> All your submitted documents have been approved by our verification team.
-      </p>
-      <p class="message">
-        You are now fully verified and can start using Local Cooks Community as a delivery partner.
       </p>
       <div class="status-badge approved">
         \u2705 All Documents Approved
@@ -8212,8 +7832,8 @@ function calculateCheckoutFees(bookingPrice) {
   }
   const bookingPriceInCents = Math.round(bookingPrice * 100);
   const percentageFeeInCents = Math.round(bookingPrice * 0.029 * 100);
-  const flatFeeInCents = 0;
-  const totalPlatformFeeInCents = percentageFeeInCents;
+  const flatFeeInCents = 30;
+  const totalPlatformFeeInCents = percentageFeeInCents + flatFeeInCents;
   const totalChargeInCents = bookingPriceInCents + totalPlatformFeeInCents;
   return {
     bookingPriceInCents,
@@ -8818,7 +8438,7 @@ var FirebaseStorage = class {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          "INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+          "INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
           [
             insertUser.username,
             insertUser.password || "",
@@ -8832,7 +8452,6 @@ var FirebaseStorage = class {
             insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
             insertUser.isChef !== void 0 ? insertUser.isChef : false,
-            insertUser.isDeliveryPartner !== void 0 ? insertUser.isDeliveryPartner : false,
             insertUser.isManager !== void 0 ? insertUser.isManager : false,
             insertUser.isPortalUser !== void 0 ? insertUser.isPortalUser : false
           ]
@@ -8853,7 +8472,6 @@ var FirebaseStorage = class {
       isVerified: insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
       has_seen_welcome: insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
       isChef: insertUser.isChef !== void 0 ? insertUser.isChef : false,
-      isDeliveryPartner: insertUser.isDeliveryPartner !== void 0 ? insertUser.isDeliveryPartner : false,
       isManager: insertUser.isManager !== void 0 ? insertUser.isManager : false,
       isPortalUser: insertUser.isPortalUser !== void 0 ? insertUser.isPortalUser : false
     }).returning();
@@ -8992,85 +8610,22 @@ var FirebaseStorage = class {
       throw error;
     }
   }
-  // ===== USER APPLICATION TYPE MANAGEMENT =====
-  async updateUserApplicationType(userId, applicationType) {
-    try {
-      await db.update(users).set({ applicationType }).where(eq(users.id, userId));
-    } catch (error) {
-      console.error("Error updating user application type:", error);
-      throw error;
-    }
-  }
   // ===== USER ROLES MANAGEMENT =====
   async updateUserRoles(userId, roles) {
     try {
-      let mainRole = "chef";
-      if (roles.isDeliveryPartner && !roles.isChef) {
-        mainRole = "delivery_partner";
-      } else if (roles.isChef && roles.isDeliveryPartner) {
-        mainRole = "chef";
-      } else if (roles.isChef) {
-        mainRole = "chef";
-      }
+      let mainRole = roles.isChef ? "chef" : null;
       console.log(`\u{1F3AF} Updating user ${userId} roles:`, {
         isChef: roles.isChef,
-        isDeliveryPartner: roles.isDeliveryPartner,
         mainRole
       });
       await db.update(users).set({
         isChef: roles.isChef,
-        isDeliveryPartner: roles.isDeliveryPartner,
         role: mainRole
         // Update main role field too
       }).where(eq(users.id, userId));
       console.log(`\u2705 Successfully updated user ${userId} roles in database`);
     } catch (error) {
       console.error("Error updating user roles:", error);
-      throw error;
-    }
-  }
-  // ===== DELIVERY PARTNER APPLICATION METHODS =====
-  async createDeliveryPartnerApplication(applicationData) {
-    try {
-      const [inserted] = await db.insert(deliveryPartnerApplications).values(applicationData).returning();
-      return inserted;
-    } catch (error) {
-      console.error("Error creating delivery partner application:", error);
-      throw error;
-    }
-  }
-  async getDeliveryPartnerApplicationsByUserId(userId) {
-    try {
-      return await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.userId, userId));
-    } catch (error) {
-      console.error("Error getting delivery partner applications by user ID:", error);
-      throw error;
-    }
-  }
-  async getAllDeliveryPartnerApplications() {
-    try {
-      return await db.select().from(deliveryPartnerApplications);
-    } catch (error) {
-      console.error("Error getting all delivery partner applications:", error);
-      throw error;
-    }
-  }
-  async getDeliveryPartnerApplicationById(id) {
-    try {
-      const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
-      return application || void 0;
-    } catch (error) {
-      console.error("Error getting delivery partner application by ID:", error);
-      throw error;
-    }
-  }
-  async updateDeliveryPartnerApplicationStatus(update) {
-    try {
-      const { id, status } = update;
-      const [updatedApplication] = await db.update(deliveryPartnerApplications).set({ status }).where(eq(deliveryPartnerApplications.id, id)).returning();
-      return updatedApplication || void 0;
-    } catch (error) {
-      console.error("Error updating delivery partner application status:", error);
       throw error;
     }
   }
@@ -9157,6 +8712,75 @@ var FirebaseStorage = class {
       return await db.select().from(locations).where(eq(locations.managerId, managerId));
     } catch (error) {
       console.error("Error getting locations by manager:", error);
+      throw error;
+    }
+  }
+  // ===== LOCATION REQUIREMENTS MANAGEMENT =====
+  async getLocationRequirements(locationId) {
+    try {
+      const [requirements] = await db.select().from(locationRequirements).where(eq(locationRequirements.locationId, locationId));
+      return requirements || null;
+    } catch (error) {
+      console.error("Error getting location requirements:", error);
+      return null;
+    }
+  }
+  async getLocationRequirementsWithDefaults(locationId) {
+    const requirements = await this.getLocationRequirements(locationId);
+    if (requirements) {
+      return {
+        ...requirements,
+        customFields: Array.isArray(requirements.customFields) ? requirements.customFields : []
+      };
+    }
+    return {
+      id: 0,
+      locationId,
+      requireFirstName: true,
+      requireLastName: true,
+      requireEmail: true,
+      requirePhone: true,
+      requireBusinessName: true,
+      requireBusinessType: true,
+      requireExperience: true,
+      requireBusinessDescription: false,
+      requireFoodHandlerCert: true,
+      requireFoodHandlerExpiry: true,
+      requireFoodEstablishmentCert: false,
+      requireFoodEstablishmentExpiry: false,
+      requireUsageFrequency: true,
+      requireSessionDuration: true,
+      requireTermsAgree: true,
+      requireAccuracyAgree: true,
+      customFields: [],
+      createdAt: /* @__PURE__ */ new Date(),
+      updatedAt: /* @__PURE__ */ new Date()
+    };
+  }
+  async upsertLocationRequirements(locationId, updates) {
+    try {
+      const existing = await this.getLocationRequirements(locationId);
+      const processedUpdates = {
+        ...updates,
+        ...updates.customFields !== void 0 && {
+          customFields: Array.isArray(updates.customFields) ? updates.customFields : []
+        },
+        updatedAt: /* @__PURE__ */ new Date()
+      };
+      if (existing) {
+        const [updated] = await db.update(locationRequirements).set(processedUpdates).where(eq(locationRequirements.locationId, locationId)).returning();
+        return updated;
+      } else {
+        const [created] = await db.insert(locationRequirements).values({
+          locationId,
+          ...processedUpdates,
+          // Ensure customFields defaults to empty array if not provided
+          customFields: processedUpdates.customFields ?? []
+        }).returning();
+        return created;
+      }
+    } catch (error) {
+      console.error("Error upserting location requirements:", error);
       throw error;
     }
   }
@@ -9264,7 +8888,10 @@ var FirebaseStorage = class {
     try {
       const allKitchens = await db.select().from(kitchens);
       const allLocations = await db.select().from(locations);
-      const allUsers = await db.select().from(users);
+      const allUsers = await db.select({
+        id: users.id,
+        username: users.username
+      }).from(users);
       const kitchensWithDetails = allKitchens.map((kitchen) => {
         const kitchenLocationId = kitchen.locationId ?? kitchen.location_id;
         const location = allLocations.find((loc) => {
@@ -11641,6 +11268,8 @@ var FirebaseStorage = class {
         if (existing[0].status === "rejected" || existing[0].status === "cancelled") {
           const [updated] = await db.update(chefKitchenApplications).set({
             ...data,
+            // Ensure customFieldsData defaults to empty object if not provided
+            customFieldsData: data.customFieldsData ?? {},
             status: "inReview",
             // Reset to pending review
             feedback: null,
@@ -11655,6 +11284,8 @@ var FirebaseStorage = class {
       }
       const [application] = await db.insert(chefKitchenApplications).values({
         ...data,
+        // Ensure customFieldsData defaults to empty object if not provided
+        customFieldsData: data.customFieldsData ?? {},
         status: "inReview",
         createdAt: now,
         updatedAt: now
@@ -12062,7 +11693,6 @@ async function requireFirebaseAuthWithUser(req, res, next) {
       firebaseUid: neonUser.firebaseUid || void 0,
       // Include role flags - these are now properly mapped by Drizzle ORM
       isChef: neonUser.isChef || false,
-      isDeliveryPartner: neonUser.isDeliveryPartner || false,
       isManager: neonUser.isManager || false,
       isVerified: neonUser.isVerified || false,
       has_seen_welcome: neonUser.has_seen_welcome || false
@@ -12070,7 +11700,6 @@ async function requireFirebaseAuthWithUser(req, res, next) {
     console.log(`\u{1F504} Auth translation: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${neonUser.id}`, {
       role: neonUser.role,
       isChef: neonUser.isChef,
-      isDeliveryPartner: neonUser.isDeliveryPartner,
       isManager: neonUser.isManager
     });
     next();
@@ -12109,7 +11738,6 @@ async function optionalFirebaseAuth(req, res, next) {
           firebaseUid: neonUser.firebaseUid || void 0,
           // Include role flags - these are now properly mapped by Drizzle ORM
           isChef: neonUser.isChef || false,
-          isDeliveryPartner: neonUser.isDeliveryPartner || false,
           isManager: neonUser.isManager || false,
           isVerified: neonUser.isVerified || false,
           has_seen_welcome: neonUser.has_seen_welcome || false
@@ -12181,35 +11809,29 @@ async function syncFirebaseUserToNeon(params) {
     }
     let finalRole;
     let isChef = false;
-    let isDeliveryPartner = false;
     let isManager = false;
     console.log(`\u{1F50D} Role received in syncFirebaseUserToNeon: "${role}"`);
     if (!role || role === "null" || role === "undefined") {
       console.error(`\u274C ERROR: No role provided in syncFirebaseUserToNeon during registration. Cannot create user without role.`);
       console.error(`   - Received role value: ${role}`);
       console.error(`   - This should not happen - role should be detected from URL path in frontend`);
-      throw new Error("Role is required for user registration. Please register from the appropriate page (admin, manager, chef, or delivery partner).");
+      throw new Error("Role is required for user registration. Please register from the appropriate page (admin, manager, or chef).");
     }
     if (role === "admin") {
       finalRole = "admin";
       isChef = true;
-      isDeliveryPartner = true;
-      console.log(`\u{1F3AF} Admin role assignment: role="admin" \u2192 isChef=true, isDeliveryPartner=true (admin has full access)`);
+      console.log(`\u{1F3AF} Admin role assignment: role="admin" \u2192 isChef=true (admin has full access)`);
     } else if (role === "manager") {
       finalRole = "manager";
       isManager = true;
       console.log(`\u{1F3AF} Manager role assignment: role="manager" \u2192 isManager=true`);
-    } else if (role === "delivery_partner") {
-      finalRole = "delivery_partner";
-      isDeliveryPartner = true;
-      console.log(`\u{1F3AF} Delivery partner role assignment: role="delivery_partner" \u2192 isDeliveryPartner=true`);
     } else if (role === "chef") {
       finalRole = "chef";
       isChef = true;
       console.log(`\u{1F3AF} Chef role assignment: role="chef" \u2192 isChef=true`);
     } else {
       console.error(`\u274C ERROR: Unknown role value "${role}" in syncFirebaseUserToNeon`);
-      throw new Error(`Invalid role: ${role}. Valid roles are: admin, manager, chef, delivery_partner`);
+      throw new Error(`Invalid role: ${role}. Valid roles are: admin, manager, chef`);
     }
     const hasSeenWelcome = finalRole === "admin" || finalRole === "manager";
     const userData = {
@@ -12220,8 +11842,6 @@ async function syncFirebaseUserToNeon(params) {
       role: finalRole,
       isChef,
       // Set correctly based on role (admin or chef)
-      isDeliveryPartner,
-      // Set correctly based on role (admin or delivery_partner)
       isManager,
       // Set correctly for manager role
       isPortalUser: false,
@@ -12279,25 +11899,21 @@ var MemoryStore = createMemoryStore(session);
 var MemStorage = class {
   users;
   applications;
-  deliveryPartnerApplications;
   videoProgress;
   // key: userId-videoId
   microlearningCompletions;
   // key: userId
   userCurrentId;
   applicationCurrentId;
-  deliveryPartnerApplicationCurrentId;
   sessionStore;
   // TypeScript fixes for instagramId and twitterId
   constructor() {
     this.users = /* @__PURE__ */ new Map();
     this.applications = /* @__PURE__ */ new Map();
-    this.deliveryPartnerApplications = /* @__PURE__ */ new Map();
     this.videoProgress = /* @__PURE__ */ new Map();
     this.microlearningCompletions = /* @__PURE__ */ new Map();
     this.userCurrentId = 1;
     this.applicationCurrentId = 1;
-    this.deliveryPartnerApplicationCurrentId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 864e5
       // 24hrs
@@ -12321,7 +11937,6 @@ var MemStorage = class {
       managerOnboardingStepsCompleted: {},
       isManager: false,
       isChef: false,
-      isDeliveryPartner: false,
       isPortalUser: false,
       applicationType: null,
       stripeConnectAccountId: null,
@@ -12378,7 +11993,6 @@ var MemStorage = class {
       isVerified: insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
       has_seen_welcome: insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
       isChef: insertUser.isChef || false,
-      isDeliveryPartner: insertUser.isDeliveryPartner || false,
       isManager: insertUser.isManager || false,
       isPortalUser: insertUser.isPortalUser !== void 0 ? insertUser.isPortalUser : false,
       applicationType: insertUser.applicationType || null,
@@ -12548,124 +12162,6 @@ var MemStorage = class {
     this.microlearningCompletions.set(completionData.userId, completionData);
     return completionData;
   }
-  // Delivery Partner Application-related methods
-  async getAllDeliveryPartnerApplications() {
-    return Array.from(this.deliveryPartnerApplications.values());
-  }
-  async getDeliveryPartnerApplicationById(id) {
-    return this.deliveryPartnerApplications.get(id);
-  }
-  async getDeliveryPartnerApplicationsByUserId(userId) {
-    return Array.from(this.deliveryPartnerApplications.values()).filter(
-      (application) => application.userId === userId
-    );
-  }
-  async createDeliveryPartnerApplication(insertApplication) {
-    const id = this.deliveryPartnerApplicationCurrentId++;
-    const now = /* @__PURE__ */ new Date();
-    const application = {
-      id,
-      userId: insertApplication.userId || null,
-      fullName: insertApplication.fullName,
-      email: insertApplication.email,
-      phone: insertApplication.phone,
-      address: insertApplication.address,
-      city: insertApplication.city,
-      province: insertApplication.province,
-      postalCode: insertApplication.postalCode,
-      // Vehicle details
-      vehicleType: insertApplication.vehicleType,
-      vehicleMake: insertApplication.vehicleMake,
-      vehicleModel: insertApplication.vehicleModel,
-      vehicleYear: insertApplication.vehicleYear,
-      licensePlate: insertApplication.licensePlate,
-      // Document URLs
-      driversLicenseUrl: insertApplication.driversLicenseUrl || null,
-      vehicleRegistrationUrl: insertApplication.vehicleRegistrationUrl || null,
-      insuranceUrl: insertApplication.insuranceUrl || null,
-      // Document verification status
-      driversLicenseStatus: "pending",
-      vehicleRegistrationStatus: "pending",
-      insuranceStatus: "pending",
-      // Admin fields
-      documentsAdminFeedback: null,
-      documentsReviewedBy: null,
-      documentsReviewedAt: null,
-      feedback: null,
-      status: "inReview",
-      createdAt: now
-    };
-    this.deliveryPartnerApplications.set(id, application);
-    return application;
-  }
-  async updateDeliveryPartnerApplicationStatus(update) {
-    const application = this.deliveryPartnerApplications.get(update.id);
-    if (!application) {
-      return void 0;
-    }
-    if (update.status === "cancelled") {
-    }
-    const updatedApplication = {
-      ...application,
-      status: update.status
-    };
-    this.deliveryPartnerApplications.set(update.id, updatedApplication);
-    return updatedApplication;
-  }
-  async updateDeliveryPartnerApplicationDocuments(update) {
-    const application = this.deliveryPartnerApplications.get(update.id);
-    if (!application) {
-      return void 0;
-    }
-    const updatedApplication = {
-      ...application,
-      ...update,
-      // Reset document status to pending when new documents are uploaded
-      ...update.driversLicenseUrl && { driversLicenseStatus: "pending" },
-      ...update.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" },
-      ...update.insuranceUrl && { insuranceStatus: "pending" },
-      ...update.backgroundCheckUrl && { backgroundCheckStatus: "pending" }
-    };
-    this.deliveryPartnerApplications.set(update.id, updatedApplication);
-    return updatedApplication;
-  }
-  async updateDeliveryPartnerApplicationDocumentVerification(update) {
-    const application = this.deliveryPartnerApplications.get(update.id);
-    if (!application) {
-      return void 0;
-    }
-    const updatedApplication = {
-      ...application,
-      ...update,
-      documentsReviewedAt: /* @__PURE__ */ new Date()
-    };
-    this.deliveryPartnerApplications.set(update.id, updatedApplication);
-    return updatedApplication;
-  }
-  async updateDeliveryPartnerUserVerificationStatus(userId, isVerified) {
-    const user = this.users.get(userId);
-    if (!user) {
-      return void 0;
-    }
-    const updatedUser = {
-      ...user,
-      isVerified
-    };
-    this.users.set(userId, updatedUser);
-    return updatedUser;
-  }
-  async updateUserApplicationType(userId, applicationType) {
-    const user = this.users.get(userId);
-    if (!user) {
-      return void 0;
-    }
-    const updatedUser = {
-      ...user,
-      applicationType
-    };
-    this.users.set(userId, updatedUser);
-    return updatedUser;
-  }
   async setUserHasSeenWelcome(userId) {
     try {
       await pool.query(
@@ -12751,7 +12247,7 @@ var DatabaseStorage = class {
     if (pool && insertUser.firebaseUid) {
       try {
         const result = await pool.query(
-          "INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_delivery_partner, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *",
+          "INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
           [
             insertUser.username,
             insertUser.password,
@@ -12762,7 +12258,6 @@ var DatabaseStorage = class {
             insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
             insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
             insertUser.isChef || false,
-            insertUser.isDeliveryPartner || false,
             insertUser.isManager || false
           ]
         );
@@ -12788,7 +12283,6 @@ var DatabaseStorage = class {
       isVerified: insertUser.isVerified !== void 0 ? insertUser.isVerified : false,
       has_seen_welcome: insertUser.has_seen_welcome !== void 0 ? insertUser.has_seen_welcome : false,
       isChef: insertUser.isChef || false,
-      isDeliveryPartner: insertUser.isDeliveryPartner || false,
       isManager: insertUser.isManager || false
     }).returning();
     return user;
@@ -12933,62 +12427,6 @@ var DatabaseStorage = class {
       return inserted;
     }
   }
-  // Delivery Partner Application-related methods
-  async getAllDeliveryPartnerApplications() {
-    return await db.select().from(deliveryPartnerApplications);
-  }
-  async getDeliveryPartnerApplicationById(id) {
-    const [application] = await db.select().from(deliveryPartnerApplications).where(eq2(deliveryPartnerApplications.id, id));
-    return application || void 0;
-  }
-  async getDeliveryPartnerApplicationsByUserId(userId) {
-    return await db.select().from(deliveryPartnerApplications).where(and2(eq2(deliveryPartnerApplications.userId, userId)));
-  }
-  async createDeliveryPartnerApplication(insertApplication) {
-    const now = /* @__PURE__ */ new Date();
-    const [application] = await db.insert(deliveryPartnerApplications).values({
-      ...insertApplication,
-      status: "inReview",
-      createdAt: now
-    }).returning();
-    return application;
-  }
-  async updateDeliveryPartnerApplicationStatus(update) {
-    const { id, status } = update;
-    const [application] = await db.select().from(deliveryPartnerApplications).where(eq2(deliveryPartnerApplications.id, id));
-    if (application && status === "cancelled") {
-    }
-    const [updatedApplication] = await db.update(deliveryPartnerApplications).set({ status }).where(eq2(deliveryPartnerApplications.id, id)).returning();
-    return updatedApplication || void 0;
-  }
-  async updateDeliveryPartnerApplicationDocuments(update) {
-    const { id, ...updateData } = update;
-    const [updatedApplication] = await db.update(deliveryPartnerApplications).set({
-      ...updateData,
-      // Reset document status to pending when new documents are uploaded
-      ...updateData.driversLicenseUrl && { driversLicenseStatus: "pending" },
-      ...updateData.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" },
-      ...updateData.insuranceUrl && { insuranceStatus: "pending" },
-      ...updateData.backgroundCheckUrl && { backgroundCheckStatus: "pending" }
-    }).where(eq2(deliveryPartnerApplications.id, id)).returning();
-    return updatedApplication || void 0;
-  }
-  async updateDeliveryPartnerApplicationDocumentVerification(update) {
-    const { id, ...updateData } = update;
-    const [updatedApplication] = await db.update(deliveryPartnerApplications).set({
-      ...updateData,
-      documentsReviewedAt: /* @__PURE__ */ new Date()
-    }).where(eq2(deliveryPartnerApplications.id, id)).returning();
-    return updatedApplication || void 0;
-  }
-  async updateDeliveryPartnerUserVerificationStatus(userId, isVerified) {
-    const [updatedUser] = await db.update(users).set({ isVerified }).where(eq2(users.id, userId)).returning();
-    return updatedUser || void 0;
-  }
-  async updateUserApplicationType(userId, applicationType) {
-    const [updatedUser] = await db.update(users).set({ applicationType }).where(eq2(users.id, userId)).returning();
-    return updatedUser || void 0;
-  }
   async setUserHasSeenWelcome(userId) {
     try {
       await pool.query(
@@ -13016,8 +12454,6 @@ function getSubdomainFromHostname(hostname) {
     switch (subdomain) {
       case "chef":
         return "chef";
-      case "driver":
-        return "driver";
       case "kitchen":
         return "kitchen";
       case "admin":
@@ -13031,8 +12467,6 @@ function getSubdomainFromHostname(hostname) {
     switch (subdomain) {
       case "chef":
         return "chef";
-      case "driver":
-        return "driver";
       case "kitchen":
         return "kitchen";
       case "admin":
@@ -13065,13 +12499,11 @@ function getRequiredSubdomainForRole(role) {
       return "kitchen";
     case "admin":
       return "admin";
-    case "delivery_partner":
-      return "driver";
     default:
       return null;
   }
 }
-function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false, isChef = false, isManager = false, isDeliveryPartner = false) {
+function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false, isChef = false, isManager = false) {
   if (isPortalUser && subdomain === "kitchen") {
     return true;
   }
@@ -13079,8 +12511,6 @@ function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false, isChef
   if (!effectiveRole) {
     if (isManager) {
       effectiveRole = "manager";
-    } else if (isDeliveryPartner && !isChef) {
-      effectiveRole = "delivery_partner";
     } else if (isChef) {
       effectiveRole = "chef";
     }
@@ -13161,8 +12591,8 @@ function registerFirebaseRoutes(app3) {
         });
       }
       const subdomain = getSubdomainFromHeaders(req.headers);
-      if (role && !isRoleAllowedForSubdomain(role, subdomain, false, false, false, false)) {
-        const requiredSubdomain = role === "chef" ? "chef" : role === "manager" ? "kitchen" : role === "admin" ? "admin" : role === "delivery_partner" ? "driver" : null;
+      if (role && !isRoleAllowedForSubdomain(role, subdomain, false, false, false)) {
+        const requiredSubdomain = role === "chef" ? "chef" : role === "manager" ? "kitchen" : role === "admin" ? "admin" : null;
         return res.status(403).json({
           error: `Access denied. ${role} users must register from the ${requiredSubdomain} subdomain.`,
           requiredSubdomain
@@ -13365,10 +12795,9 @@ function registerFirebaseRoutes(app3) {
       const isPortalUser = existingUser.isPortalUser || existingUser.is_portal_user || false;
       const isChef = existingUser.isChef || existingUser.is_chef || false;
       const isManager = existingUser.isManager || existingUser.is_manager || false;
-      const isDeliveryPartner = existingUser.isDeliveryPartner || existingUser.is_delivery_partner || false;
-      if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser, isChef, isManager, isDeliveryPartner)) {
-        const effectiveRole = existingUser.role || (isManager ? "manager" : isDeliveryPartner && !isChef ? "delivery_partner" : isChef ? "chef" : null);
-        const requiredSubdomain = effectiveRole === "chef" ? "chef" : effectiveRole === "manager" ? "kitchen" : effectiveRole === "admin" ? "admin" : effectiveRole === "delivery_partner" ? "driver" : null;
+      if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser, isChef, isManager)) {
+        const effectiveRole = existingUser.role || (isManager ? "manager" : isChef ? "chef" : null);
+        const requiredSubdomain = effectiveRole === "chef" ? "chef" : effectiveRole === "manager" ? "kitchen" : effectiveRole === "admin" ? "admin" : null;
         return res.status(403).json({
           error: `Access denied. ${effectiveRole || "user"} users must login from the ${requiredSubdomain} subdomain.`,
           requiredSubdomain
@@ -13404,14 +12833,6 @@ function registerFirebaseRoutes(app3) {
           );
           if (chefAppResult.rows.length > 0 && chefAppResult.rows[0].full_name) {
             userFullName = chefAppResult.rows[0].full_name;
-          } else {
-            const deliveryAppResult = await pool.query(
-              "SELECT full_name FROM delivery_partner_applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1",
-              [req.neonUser.id]
-            );
-            if (deliveryAppResult.rows.length > 0 && deliveryAppResult.rows[0].full_name) {
-              userFullName = deliveryAppResult.rows[0].full_name;
-            }
           }
           const stripeResult = await pool.query(
             "SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1",
@@ -13430,7 +12851,6 @@ function registerFirebaseRoutes(app3) {
         username: req.neonUser.username,
         role: req.neonUser.role,
         isChef: req.neonUser.isChef,
-        isDeliveryPartner: req.neonUser.isDeliveryPartner,
         isManager: req.neonUser.isManager,
         rawNeonUser: req.neonUser
       });
@@ -13441,7 +12861,6 @@ function registerFirebaseRoutes(app3) {
         is_verified: req.neonUser.isVerified !== void 0 ? req.neonUser.isVerified : req.firebaseUser.email_verified,
         has_seen_welcome: req.neonUser.has_seen_welcome || false,
         isChef: req.neonUser.isChef || false,
-        isDeliveryPartner: req.neonUser.isDeliveryPartner || false,
         displayName: userFullName || null,
         // User's full name from application
         fullName: userFullName || null,
@@ -13642,94 +13061,16 @@ function registerFirebaseRoutes(app3) {
       res.status(500).json({ error: "Failed to get dashboard data" });
     }
   });
-  app3.post("/api/firebase/delivery-partner-applications", requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      const { insertDeliveryPartnerApplicationSchema: insertDeliveryPartnerApplicationSchema2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-      const parsedData = insertDeliveryPartnerApplicationSchema2.safeParse(req.body);
-      if (!parsedData.success) {
-        const validationError = fromZodError(parsedData.error);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
-        });
-      }
-      const applicationData = {
-        ...parsedData.data,
-        userId: req.neonUser.id
-        // This is the Neon user ID from the middleware
-      };
-      console.log(`\u{1F69A} Creating delivery partner application: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id}`);
-      const application = await firebaseStorage.createDeliveryPartnerApplication(applicationData);
-      res.json({
-        success: true,
-        application,
-        message: "Delivery partner application submitted successfully"
-      });
-    } catch (error) {
-      console.error("Error creating delivery partner application:", error);
-      res.status(500).json({
-        error: "Failed to create delivery partner application",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/firebase/delivery-partner-applications/my", requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      const applications2 = await firebaseStorage.getDeliveryPartnerApplicationsByUserId(req.neonUser.id);
-      console.log(`\u{1F4CB} Retrieved ${applications2.length} delivery partner applications: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id}`);
-      res.json(applications2);
-    } catch (error) {
-      console.error("Error getting user delivery partner applications:", error);
-      res.status(500).json({ error: "Failed to get delivery partner applications" });
-    }
-  });
-  app3.get("/api/firebase/admin/delivery-partner-applications", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
-    try {
-      const applications2 = await firebaseStorage.getAllDeliveryPartnerApplications();
-      console.log(`\u{1F451} Admin ${req.firebaseUser.uid} requested all delivery partner applications`);
-      res.json(applications2);
-    } catch (error) {
-      console.error("Error getting all delivery partner applications:", error);
-      res.status(500).json({ error: "Failed to get delivery partner applications" });
-    }
-  });
-  app3.post("/api/firebase/user/update-application-type", requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      const { applicationType } = req.body;
-      if (!applicationType || !["chef", "delivery_partner"].includes(applicationType)) {
-        return res.status(400).json({
-          error: 'Invalid application type. Must be "chef" or "delivery_partner"'
-        });
-      }
-      console.log(`\u{1F3AF} Updating application type: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id} \u2192 Type: ${applicationType}`);
-      await firebaseStorage.updateUserApplicationType(req.neonUser.id, applicationType);
-      res.json({
-        success: true,
-        message: "Application type updated successfully"
-      });
-    } catch (error) {
-      console.error("Error updating application type:", error);
-      res.status(500).json({
-        error: "Failed to update application type",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
   app3.post("/api/firebase/user/update-roles", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const { isChef, isDeliveryPartner } = req.body;
-      if (typeof isChef !== "boolean" || typeof isDeliveryPartner !== "boolean") {
+      const { isChef } = req.body;
+      if (typeof isChef !== "boolean") {
         return res.status(400).json({
-          error: "Invalid role data. isChef and isDeliveryPartner must be boolean values"
+          error: "Invalid role data. isChef must be a boolean value"
         });
       }
-      if (!isChef && !isDeliveryPartner) {
-        return res.status(400).json({
-          error: "User must have at least one role (chef or delivery partner)"
-        });
-      }
-      console.log(`\u{1F3AF} Updating user roles: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id} \u2192 Chef: ${isChef}, Delivery: ${isDeliveryPartner}`);
-      await firebaseStorage.updateUserRoles(req.neonUser.id, { isChef, isDeliveryPartner });
+      console.log(`\u{1F3AF} Updating user roles: Firebase UID ${req.firebaseUser.uid} \u2192 Neon User ID ${req.neonUser.id} \u2192 Chef: ${isChef}`);
+      await firebaseStorage.updateUserRoles(req.neonUser.id, { isChef });
       res.json({
         success: true,
         message: "User roles updated successfully"
@@ -13810,51 +13151,6 @@ function registerFirebaseRoutes(app3) {
       return res.status(500).json({ message: "Internal server error" });
     }
   });
-  app3.patch("/api/firebase/delivery-partner-applications/:id/cancel", requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-      const application = await firebaseStorage.getDeliveryPartnerApplicationById(id);
-      if (!application) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-      if (application.userId !== req.neonUser.id && req.neonUser.role !== "admin") {
-        return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
-      }
-      const updateData = {
-        id,
-        status: "cancelled"
-      };
-      const updatedApplication = await firebaseStorage.updateDeliveryPartnerApplicationStatus(updateData);
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-      try {
-        if (updatedApplication.email) {
-          const { generateDeliveryPartnerStatusChangeEmail: generateDeliveryPartnerStatusChangeEmail2, sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-          const emailContent = generateDeliveryPartnerStatusChangeEmail2({
-            fullName: updatedApplication.fullName || "Applicant",
-            email: updatedApplication.email,
-            status: "cancelled"
-          });
-          await sendEmail2(emailContent, {
-            trackingId: `cancel_dp_${updatedApplication.id}_${Date.now()}`
-          });
-          console.log(`Delivery partner cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send cancellation email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        console.error("Error sending delivery partner cancellation email:", emailError);
-      }
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error cancelling delivery partner application:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
   app3.patch("/api/firebase/admin/applications/:id/cancel", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -13894,93 +13190,6 @@ function registerFirebaseRoutes(app3) {
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error cancelling application (admin):", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-  app3.patch("/api/firebase/delivery-partner-applications/:id/cancel", requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-      const application = await firebaseStorage.getDeliveryPartnerApplicationById(id);
-      if (!application) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-      if (application.userId !== req.neonUser.id && req.neonUser.role !== "admin") {
-        return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
-      }
-      const updateData = {
-        id,
-        status: "cancelled"
-      };
-      const updatedApplication = await firebaseStorage.updateDeliveryPartnerApplicationStatus(updateData);
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-      try {
-        if (updatedApplication.email) {
-          const { generateDeliveryPartnerStatusChangeEmail: generateDeliveryPartnerStatusChangeEmail2, sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-          const emailContent = generateDeliveryPartnerStatusChangeEmail2({
-            fullName: updatedApplication.fullName || "Delivery Partner",
-            email: updatedApplication.email,
-            status: "cancelled"
-          });
-          await sendEmail2(emailContent, {
-            trackingId: `cancel_dp_${updatedApplication.id}_${Date.now()}`
-          });
-          console.log(`Delivery partner cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send cancellation email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        console.error("Error sending delivery partner cancellation email:", emailError);
-      }
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error cancelling delivery partner application:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-  app3.patch("/api/firebase/admin/delivery-partner-applications/:id/cancel", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-      const application = await firebaseStorage.getDeliveryPartnerApplicationById(id);
-      if (!application) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-      const updateData = {
-        id,
-        status: "cancelled"
-      };
-      const updatedApplication = await firebaseStorage.updateDeliveryPartnerApplicationStatus(updateData);
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found" });
-      }
-      try {
-        if (updatedApplication.email) {
-          const { generateDeliveryPartnerStatusChangeEmail: generateDeliveryPartnerStatusChangeEmail2, sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-          const emailContent = generateDeliveryPartnerStatusChangeEmail2({
-            fullName: updatedApplication.fullName || "Applicant",
-            email: updatedApplication.email,
-            status: "cancelled"
-          });
-          await sendEmail2(emailContent, {
-            trackingId: `admin_cancel_dp_${updatedApplication.id}_${Date.now()}`
-          });
-          console.log(`Admin delivery partner cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send admin cancellation email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        console.error("Error sending admin delivery partner cancellation email:", emailError);
-      }
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error cancelling delivery partner application (admin):", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -14641,215 +13850,6 @@ function registerFirebaseRoutes(app3) {
       }
     }
   );
-  const vehicleCache = {
-    makes: null,
-    makesByType: /* @__PURE__ */ new Map(),
-    modelsByMake: /* @__PURE__ */ new Map(),
-    lastFetch: 0,
-    cacheExpiry: 10 * 60 * 1e3
-    // 10 minutes
-  };
-  const isCacheValid = () => Date.now() - vehicleCache.lastFetch < vehicleCache.cacheExpiry;
-  app3.get("/api/vehicles/makes", async (req, res) => {
-    try {
-      const { type } = req.query;
-      if (type && vehicleCache.makesByType.has(type) && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makesByType.get(type)
-        });
-      }
-      if (!type && vehicleCache.makes && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makes
-        });
-      }
-      const response = await fetch("https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json");
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      const data = await response.json();
-      const fourWheeledMakes = data.Results.filter((make) => {
-        const excludedMakes = [
-          "HARLEY-DAVIDSON",
-          "YAMAHA",
-          "KAWASAKI",
-          "SUZUKI",
-          "HONDA MOTORCYCLE",
-          "BMW MOTORRAD",
-          "DUCATI",
-          "TRIUMPH",
-          "INDIAN",
-          "VICTORY",
-          "APRILIA",
-          "KTM",
-          "HUSQVARNA",
-          "MOTO GUZZI",
-          "MV AGUSTA",
-          "BENELLI",
-          "NORTON",
-          "ROYAL ENFIELD",
-          "HUSABERG",
-          "GAS GAS",
-          "SHERCO",
-          "BETA",
-          "TM RACING"
-        ];
-        return !excludedMakes.some(
-          (excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase())
-        );
-      });
-      const formattedMakes = fourWheeledMakes.map((make) => ({
-        id: make.Make_ID,
-        name: make.Make_Name
-      }));
-      if (type) {
-        vehicleCache.makesByType.set(type, formattedMakes);
-      } else {
-        vehicleCache.makes = formattedMakes;
-      }
-      vehicleCache.lastFetch = Date.now();
-      res.json({
-        success: true,
-        makes: formattedMakes
-      });
-    } catch (error) {
-      console.error("Error fetching vehicle makes:", error);
-      res.status(500).json({
-        error: "Failed to fetch vehicle makes",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/vehicles/models/by-name/:makeName", async (req, res) => {
-    try {
-      const { makeName } = req.params;
-      const decodedMakeName = decodeURIComponent(makeName);
-      if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
-        return res.json({
-          success: true,
-          models: vehicleCache.modelsByMake.get(decodedMakeName)
-        });
-      }
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log(`\u{1F697} NHTSA API returned ${data.Results?.length || 0} models for make: ${decodedMakeName}`);
-      const fourWheeledModels = data.Results.filter((model) => {
-        const modelName = model.Model_Name.toUpperCase();
-        const excludedPatterns = [
-          // Motorcycle patterns
-          /MOTORCYCLE$/i,
-          /BIKE$/i,
-          /SCOOTER$/i,
-          /MOPED$/i,
-          /ATV$/i,
-          /QUAD$/i,
-          /TRIKE$/i,
-          /SIDECAR$/i,
-          // Very specific motorcycle model names
-          /^HARLEY/i,
-          /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
-          /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
-          /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
-          /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
-          /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
-          /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
-          /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
-          /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
-          /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
-          /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
-          /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
-          /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
-          /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
-          /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
-          /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
-          /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
-          /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
-          /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
-          /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
-          /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
-          /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
-          /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
-        ];
-        return !excludedPatterns.some((pattern) => pattern.test(modelName));
-      });
-      console.log(`\u{1F697} After filtering, ${fourWheeledModels.length} models remain for make: ${decodedMakeName}`);
-      const formattedModels = fourWheeledModels.map((model) => ({
-        id: model.Model_ID || model.Model_ID,
-        // Use actual NHTSA ID if available
-        name: model.Model_Name
-      }));
-      vehicleCache.modelsByMake.set(decodedMakeName, formattedModels);
-      res.json({
-        success: true,
-        models: formattedModels
-      });
-    } catch (error) {
-      console.error("Error fetching vehicle models:", error);
-      res.status(500).json({
-        error: "Failed to fetch vehicle models",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/vehicles/decode-vin/:vin", async (req, res) => {
-    try {
-      const { vin } = req.params;
-      if (!vin || vin.length < 8) {
-        return res.status(400).json({
-          error: "Invalid VIN",
-          message: "VIN must be at least 8 characters long"
-        });
-      }
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVin/${vin}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      const data = await response.json();
-      const vehicleInfo = {};
-      data.Results.forEach((result) => {
-        if (result.Variable && result.Value) {
-          switch (result.Variable) {
-            case "Make":
-              vehicleInfo.make = result.Value;
-              break;
-            case "Model":
-              vehicleInfo.model = result.Value;
-              break;
-            case "Model Year":
-              vehicleInfo.year = result.Value;
-              break;
-            case "Vehicle Type":
-              vehicleInfo.type = result.Value;
-              break;
-            case "Body Class":
-              vehicleInfo.bodyClass = result.Value;
-              break;
-            case "Engine Model":
-              vehicleInfo.engine = result.Value;
-              break;
-            case "Transmission Style":
-              vehicleInfo.transmission = result.Value;
-              break;
-          }
-        }
-      });
-      res.json({
-        success: true,
-        vehicle: vehicleInfo
-      });
-    } catch (error) {
-      console.error("Error decoding VIN:", error);
-      res.status(500).json({
-        error: "Failed to decode VIN",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
   app3.get("/api/platform-settings/service-fee-rate", async (req, res) => {
     try {
       const [setting] = await db.select().from(platformSettings).where(eq3(platformSettings.key, "service_fee_rate")).limit(1);
@@ -14997,6 +13997,15 @@ function registerFirebaseRoutes(app3) {
             }
           }
         }
+        let customFieldsData;
+        if (req.body.customFieldsData) {
+          try {
+            customFieldsData = typeof req.body.customFieldsData === "string" ? JSON.parse(req.body.customFieldsData) : req.body.customFieldsData;
+          } catch (error) {
+            console.error("Error parsing customFieldsData:", error);
+            customFieldsData = void 0;
+          }
+        }
         const formData = {
           chefId: req.neonUser.id,
           locationId: parseInt(req.body.locationId),
@@ -15009,7 +14018,8 @@ function registerFirebaseRoutes(app3) {
           foodSafetyLicense: req.body.foodSafetyLicense,
           foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || void 0,
           foodEstablishmentCert: req.body.foodEstablishmentCert,
-          foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || void 0
+          foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || void 0,
+          customFieldsData: customFieldsData || void 0
         };
         const parsedData = insertChefKitchenApplicationSchema.safeParse(formData);
         if (!parsedData.success) {
@@ -15349,14 +14359,86 @@ function registerFirebaseRoutes(app3) {
       });
     }
   });
+  app3.get(
+    "/api/manager/locations/:locationId/requirements",
+    requireFirebaseAuthWithUser,
+    requireManager,
+    async (req, res) => {
+      try {
+        const user = req.neonUser;
+        const locationId = parseInt(req.params.locationId);
+        if (isNaN(locationId)) {
+          return res.status(400).json({ error: "Invalid location ID" });
+        }
+        const location = await firebaseStorage.getLocationById(locationId);
+        if (!location || location.managerId !== user.id) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+        res.json(requirements);
+      } catch (error) {
+        console.error("Error getting location requirements:", error);
+        res.status(500).json({ error: "Failed to get requirements" });
+      }
+    }
+  );
+  app3.put(
+    "/api/manager/locations/:locationId/requirements",
+    requireFirebaseAuthWithUser,
+    requireManager,
+    async (req, res) => {
+      try {
+        const user = req.neonUser;
+        const locationId = parseInt(req.params.locationId);
+        if (isNaN(locationId)) {
+          return res.status(400).json({ error: "Invalid location ID" });
+        }
+        const location = await firebaseStorage.getLocationById(locationId);
+        if (!location || location.managerId !== user.id) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        const updates = updateLocationRequirementsSchema.parse(req.body);
+        const requirements = await firebaseStorage.upsertLocationRequirements(locationId, updates);
+        res.json({ success: true, requirements });
+      } catch (error) {
+        console.error("Error updating location requirements:", error);
+        res.status(500).json({
+          error: "Failed to update requirements",
+          message: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    }
+  );
+  app3.get("/api/public/locations/:locationId/requirements", async (req, res) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+      const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+      res.json(requirements);
+    } catch (error) {
+      console.error("Error getting location requirements:", error);
+      res.status(500).json({ error: "Failed to get requirements" });
+    }
+  });
   app3.get("/api/firebase/microlearning/completion/:userId", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const userId = parseInt(req.params.userId);
+      const userIdParam = req.params.userId;
       const currentUserId = req.neonUser.id;
-      if (currentUserId !== userId && req.neonUser.role !== "admin") {
+      const currentFirebaseUid = req.firebaseUser.uid;
+      const isNumeric = !isNaN(parseInt(userIdParam));
+      const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
+      const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
+      const isAdmin = req.neonUser.role === "admin";
+      if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: "Access denied" });
       }
-      const completion = await firebaseStorage.getMicrolearningCompletion(userId);
+      const targetUserId = isOwnData ? currentUserId : requestedUserId;
+      if (!targetUserId) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      const completion = await firebaseStorage.getMicrolearningCompletion(targetUserId);
       if (!completion) {
         return res.status(404).json({ message: "No completion found" });
       }
@@ -15368,20 +14450,29 @@ function registerFirebaseRoutes(app3) {
   });
   app3.get("/api/firebase/microlearning/certificate/:userId", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const userId = parseInt(req.params.userId);
+      const userIdParam = req.params.userId;
       const currentUserId = req.neonUser.id;
-      if (currentUserId !== userId && req.neonUser.role !== "admin") {
+      const currentFirebaseUid = req.firebaseUser.uid;
+      const isNumeric = !isNaN(parseInt(userIdParam));
+      const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
+      const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
+      const isAdmin = req.neonUser.role === "admin";
+      if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: "Access denied" });
       }
-      const completion = await firebaseStorage.getMicrolearningCompletion(userId);
+      const targetUserId = isOwnData ? currentUserId : requestedUserId;
+      if (!targetUserId) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      const completion = await firebaseStorage.getMicrolearningCompletion(targetUserId);
       if (!completion || !completion.confirmed) {
         return res.status(404).json({ message: "No confirmed completion found" });
       }
-      const user = await firebaseStorage.getUser(userId);
+      const user = await firebaseStorage.getUser(targetUserId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
+      const certificateUrl = `/api/certificates/microlearning-${targetUserId}-${Date.now()}.pdf`;
       res.json({
         success: true,
         certificateUrl,
@@ -15395,16 +14486,24 @@ function registerFirebaseRoutes(app3) {
   });
   app3.get("/api/firebase/microlearning/progress/:userId", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const userId = parseInt(req.params.userId);
+      const userIdParam = req.params.userId;
       const currentUserId = req.neonUser.id;
-      if (currentUserId !== userId && req.neonUser.role !== "admin") {
+      const currentFirebaseUid = req.firebaseUser.uid;
+      const isNumeric = !isNaN(parseInt(userIdParam));
+      const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
+      const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
+      const isAdmin = req.neonUser.role === "admin";
+      if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: "Access denied" });
       }
-      const progress = await firebaseStorage.getMicrolearningProgress(userId);
-      const completionStatus = await firebaseStorage.getMicrolearningCompletion(userId);
-      const applications2 = await firebaseStorage.getApplicationsByUserId(userId);
+      const targetUserId = isOwnData ? currentUserId : requestedUserId;
+      if (!targetUserId) {
+        return res.status(400).json({ message: "Invalid user ID" });
+      }
+      const progress = await firebaseStorage.getMicrolearningProgress(targetUserId);
+      const completionStatus = await firebaseStorage.getMicrolearningCompletion(targetUserId);
+      const applications2 = await firebaseStorage.getApplicationsByUserId(targetUserId);
       const hasApproval = applications2.some((app4) => app4.status === "approved");
-      const isAdmin = req.neonUser.role === "admin";
       const isCompleted = completionStatus?.confirmed || false;
       const accessLevel = isAdmin || hasApproval || isCompleted ? "full" : "limited";
       res.json({
@@ -15500,7 +14599,6 @@ function registerFirebaseRoutes(app3) {
   );
   console.log("\u{1F525} Firebase authentication routes registered successfully");
   console.log("\u2728 Session-free architecture active - JWT tokens only");
-  console.log("\u{1F697} NHTSA Vehicle API endpoints registered successfully");
   console.log("\u2699\uFE0F Admin platform settings endpoints registered successfully");
   console.log("\u{1F373} Chef kitchen application endpoints registered successfully");
 }
@@ -15878,7 +14976,7 @@ init_firebase_admin();
 init_db();
 init_schema();
 import Stripe5 from "stripe";
-import { eq as eq4, inArray as inArray2, and as and4, desc as desc2 } from "drizzle-orm";
+import { eq as eq4, inArray as inArray2, and as and4, desc as desc2, count } from "drizzle-orm";
 init_schema();
 async function getAuthenticatedUser(req) {
   if (req.neonUser) {
@@ -15899,28 +14997,35 @@ async function getAuthenticatedUser(req) {
 }
 function normalizeImageUrl(url, req) {
   if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
-  }
-  if (url.startsWith("/")) {
-    const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+  const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+  const getOrigin = () => {
     let protocol;
     let host;
     if (isProduction2) {
       protocol = (req.get("x-forwarded-proto") || "https").split(",")[0].trim();
       host = req.get("x-forwarded-host") || req.get("host") || req.headers.host || "";
+      if (protocol !== "https") protocol = "https";
     } else {
       protocol = req.protocol || "http";
-      host = req.get("host") || req.headers.host || "localhost:3000";
+      host = req.get("host") || req.headers.host || "localhost:5001";
     }
-    if (isProduction2 && protocol !== "https") {
-      protocol = "https";
-    }
-    if (!host) {
+    return `${protocol}://${host}`;
+  };
+  if (url.startsWith("https://files.localcooks.ca/")) {
+    const r2Path = url.replace("https://files.localcooks.ca/", "");
+    const origin = getOrigin();
+    return `${origin}/api/images/r2/${encodeURIComponent(r2Path)}`;
+  }
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+  if (url.startsWith("/")) {
+    const origin = getOrigin();
+    if (!origin || origin === "://") {
       console.warn(`[normalizeImageUrl] Could not determine host for URL: ${url}`);
       return url;
     }
-    return `${protocol}://${host}${url}`;
+    return `${origin}${url}`;
   }
   return url;
 }
@@ -16268,65 +15373,6 @@ async function registerRoutes(app3) {
       return res.status(200).json(updatedApplication);
     } catch (error) {
       console.error("Error updating application status:", error);
-      return res.status(500).json({ message: "Internal server error" });
-    }
-  });
-  app3.patch("/api/delivery-partner-applications/:id/status", async (req, res) => {
-    try {
-      console.log("Delivery partner status update request - Auth info:", {
-        isAuthenticated: req.isAuthenticated(),
-        userRole: req.user?.role,
-        userId: req.user?.id
-      });
-      if (!req.isAuthenticated()) {
-        return res.status(401).json({ message: "Not authenticated" });
-      }
-      if (req.user.role !== "admin") {
-        return res.status(403).json({ message: "Access denied. Admin role required." });
-      }
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application ID" });
-      }
-      const application = await storage2.getDeliveryPartnerApplicationById(id);
-      if (!application) {
-        return res.status(404).json({ message: "Delivery partner application not found" });
-      }
-      const parsedData = updateDeliveryPartnerApplicationStatusSchema.safeParse({
-        id,
-        ...req.body
-      });
-      if (!parsedData.success) {
-        const validationError = fromZodError2(parsedData.error);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
-        });
-      }
-      const updatedApplication = await storage2.updateDeliveryPartnerApplicationStatus(parsedData.data);
-      if (!updatedApplication) {
-        return res.status(404).json({ message: "Application not found or could not be updated" });
-      }
-      try {
-        if (updatedApplication.email) {
-          const emailContent = generateDeliveryPartnerStatusChangeEmail({
-            fullName: updatedApplication.fullName || "Delivery Partner",
-            email: updatedApplication.email,
-            status: updatedApplication.status
-          });
-          await sendEmail(emailContent, {
-            trackingId: `delivery_status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
-          });
-          console.log(`Delivery partner status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-        } else {
-          console.warn(`Cannot send status change email for delivery partner application ${updatedApplication.id}: No email address found`);
-        }
-      } catch (emailError) {
-        console.error("Error sending delivery partner status change email:", emailError);
-      }
-      return res.status(200).json(updatedApplication);
-    } catch (error) {
-      console.error("Error updating delivery partner application status:", error);
       return res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -16682,6 +15728,67 @@ async function registerRoutes(app3) {
       }
     }
   );
+  app3.get("/api/images/r2/:path(*)", async (req, res) => {
+    try {
+      const r2Path = decodeURIComponent(req.params.path);
+      if (!r2Path) {
+        return res.status(400).json({ error: "Path is required" });
+      }
+      const allowedPrefixes = ["documents/", "images/", "profiles/", "kitchen-applications/"];
+      const isAllowed = allowedPrefixes.some((prefix) => r2Path.startsWith(prefix));
+      if (!isAllowed) {
+        console.warn(`[R2 Proxy] Blocked request for path: ${r2Path}`);
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const { isR2Configured: isR2Configured2 } = await Promise.resolve().then(() => (init_r2_storage(), r2_storage_exports));
+      if (!isR2Configured2()) {
+        console.error("[R2 Proxy] R2 is not configured");
+        return res.status(503).json({ error: "Storage not configured" });
+      }
+      const R2_ACCOUNT_ID2 = process.env.CLOUDFLARE_ACCOUNT_ID;
+      const R2_ACCESS_KEY_ID2 = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+      const R2_SECRET_ACCESS_KEY2 = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+      const R2_BUCKET_NAME2 = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+      if (!R2_ACCOUNT_ID2 || !R2_ACCESS_KEY_ID2 || !R2_SECRET_ACCESS_KEY2 || !R2_BUCKET_NAME2) {
+        return res.status(503).json({ error: "R2 credentials not configured" });
+      }
+      const { S3Client: S3Client2, GetObjectCommand: GetObjectCommand2 } = await import("@aws-sdk/client-s3");
+      const s3Client2 = new S3Client2({
+        region: "auto",
+        endpoint: `https://${R2_ACCOUNT_ID2}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: R2_ACCESS_KEY_ID2,
+          secretAccessKey: R2_SECRET_ACCESS_KEY2
+        }
+      });
+      const command = new GetObjectCommand2({
+        Bucket: R2_BUCKET_NAME2,
+        Key: r2Path
+      });
+      const response = await s3Client2.send(command);
+      if (!response.Body) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      if (response.ContentType) {
+        res.setHeader("Content-Type", response.ContentType);
+      }
+      if (response.ContentLength) {
+        res.setHeader("Content-Length", response.ContentLength);
+      }
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      const stream = response.Body;
+      stream.pipe(res);
+    } catch (error) {
+      console.error("[R2 Proxy] Error fetching file:", error);
+      if (error.name === "NoSuchKey" || error.$metadata?.httpStatusCode === 404) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      return res.status(500).json({
+        error: "Failed to fetch file",
+        details: error.message
+      });
+    }
+  });
   app3.post("/api/files/presigned-url", requireFirebaseAuthWithUser, async (req, res) => {
     try {
       const user = req.neonUser;
@@ -17924,603 +17031,6 @@ async function registerRoutes(app3) {
       res.status(500).json({
         success: false,
         message: "Internal server error"
-      });
-    }
-  });
-  const vehicleCache = {
-    makes: null,
-    modelsByMake: /* @__PURE__ */ new Map(),
-    yearsByMake: /* @__PURE__ */ new Map(),
-    makesByType: /* @__PURE__ */ new Map(),
-    lastFetch: 0,
-    cacheExpiry: 24 * 60 * 60 * 1e3,
-    // 24 hours (increased from 10 minutes)
-    isPreloaded: false
-  };
-  const isCacheValid = () => Date.now() - vehicleCache.lastFetch < vehicleCache.cacheExpiry;
-  app3.get("/api/vehicles/preload", async (req, res) => {
-    try {
-      if (vehicleCache.isPreloaded && isCacheValid()) {
-        return res.json({
-          success: true,
-          message: "Vehicle data already preloaded and cached",
-          cached: true
-        });
-      }
-      console.log("\u{1F697} Starting vehicle data preload...");
-      const makesResponse = await fetch("https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json");
-      if (!makesResponse.ok) {
-        throw new Error(`NHTSA API error: ${makesResponse.status}`);
-      }
-      const makesData = await makesResponse.json();
-      const fourWheeledMakes = makesData.Results.filter((make) => {
-        const excludedMakes = [
-          "HARLEY-DAVIDSON",
-          "YAMAHA",
-          "KAWASAKI",
-          "SUZUKI",
-          "HONDA MOTORCYCLE",
-          "BMW MOTORRAD",
-          "DUCATI",
-          "TRIUMPH",
-          "INDIAN",
-          "VICTORY",
-          "APRILIA",
-          "KTM",
-          "HUSQVARNA",
-          "MOTO GUZZI",
-          "MV AGUSTA",
-          "BENELLI",
-          "NORTON",
-          "ROYAL ENFIELD",
-          "HUSABERG",
-          "GAS GAS",
-          "SHERCO",
-          "BETA",
-          "TM RACING"
-        ];
-        return !excludedMakes.some(
-          (excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase())
-        );
-      });
-      const formattedMakes = fourWheeledMakes.map((make) => ({
-        id: make.Make_ID,
-        name: make.Make_Name
-      }));
-      vehicleCache.makes = formattedMakes;
-      const commonMakes = formattedMakes.slice(0, 20);
-      console.log(`\u{1F697} Preloading models for ${commonMakes.length} common makes...`);
-      for (const make of commonMakes) {
-        try {
-          const modelsResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(make.name)}?format=json`);
-          if (modelsResponse.ok) {
-            const modelsData = await modelsResponse.json();
-            const fourWheeledModels = modelsData.Results.filter((model) => {
-              const modelName = model.Model_Name.toUpperCase();
-              const excludedPatterns = [
-                /MOTORCYCLE$/i,
-                /BIKE$/i,
-                /SCOOTER$/i,
-                /MOPED$/i,
-                /ATV$/i,
-                /QUAD$/i,
-                /TRIKE$/i,
-                /SIDECAR$/i,
-                /^HARLEY/i,
-                /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
-                /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
-                /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
-                /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
-                /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
-                /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
-                /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
-                /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
-                /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
-                /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
-                /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
-                /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
-                /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
-                /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
-                /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
-                /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
-                /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
-                /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
-                /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
-                /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
-                /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
-                /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
-              ];
-              return !excludedPatterns.some((pattern) => pattern.test(modelName));
-            });
-            const formattedModels = fourWheeledModels.map((model) => ({
-              id: model.Model_ID || model.Model_ID,
-              name: model.Model_Name
-            }));
-            vehicleCache.modelsByMake.set(make.id.toString(), formattedModels);
-          }
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        } catch (error) {
-          console.warn(`\u26A0\uFE0F Failed to preload models for make ${make.name}:`, error);
-        }
-      }
-      vehicleCache.isPreloaded = true;
-      vehicleCache.lastFetch = Date.now();
-      console.log("\u{1F697} Vehicle data preload completed successfully");
-      res.json({
-        success: true,
-        message: "Vehicle data preloaded successfully",
-        makesCount: formattedMakes.length,
-        modelsCount: Array.from(vehicleCache.modelsByMake.values()).reduce((total, models) => total + models.length, 0),
-        cached: false
-      });
-    } catch (error) {
-      console.error("Error preloading vehicle data:", error);
-      res.status(500).json({
-        error: "Failed to preload vehicle data",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/vehicles/makes", async (req, res) => {
-    try {
-      const { type } = req.query;
-      if (type && vehicleCache.makesByType.has(type) && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makesByType.get(type)
-        });
-      }
-      if (!type && vehicleCache.makes && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makes
-        });
-      }
-      if (!vehicleCache.isPreloaded) {
-        console.log("\u{1F697} Makes not cached, triggering preload...");
-        try {
-          const preloadResponse = await fetch(`${req.protocol}://${req.get("host")}/api/vehicles/preload`);
-          if (preloadResponse.ok) {
-            if (type && vehicleCache.makesByType.has(type)) {
-              return res.json({
-                success: true,
-                makes: vehicleCache.makesByType.get(type)
-              });
-            }
-            if (!type && vehicleCache.makes) {
-              return res.json({
-                success: true,
-                makes: vehicleCache.makes
-              });
-            }
-          }
-        } catch (preloadError) {
-          console.warn("\u26A0\uFE0F Preload failed, falling back to direct API call:", preloadError);
-        }
-      }
-      const response = await fetch("https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json");
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      const data = await response.json();
-      const fourWheeledMakes = data.Results.filter((make) => {
-        const excludedMakes = [
-          "HARLEY-DAVIDSON",
-          "YAMAHA",
-          "KAWASAKI",
-          "SUZUKI",
-          "HONDA MOTORCYCLE",
-          "BMW MOTORRAD",
-          "DUCATI",
-          "TRIUMPH",
-          "INDIAN",
-          "VICTORY",
-          "APRILIA",
-          "KTM",
-          "HUSQVARNA",
-          "MOTO GUZZI",
-          "MV AGUSTA",
-          "BENELLI",
-          "NORTON",
-          "ROYAL ENFIELD",
-          "HUSABERG",
-          "GAS GAS",
-          "SHERCO",
-          "BETA",
-          "TM RACING"
-        ];
-        return !excludedMakes.some(
-          (excluded) => make.Make_Name.toUpperCase().includes(excluded) || excluded.includes(make.Make_Name.toUpperCase())
-        );
-      });
-      const formattedMakes = fourWheeledMakes.map((make) => ({
-        id: make.Make_ID,
-        name: make.Make_Name
-      }));
-      if (type) {
-        vehicleCache.makesByType.set(type, formattedMakes);
-      } else {
-        vehicleCache.makes = formattedMakes;
-      }
-      vehicleCache.lastFetch = Date.now();
-      res.json({
-        success: true,
-        makes: formattedMakes
-      });
-    } catch (error) {
-      console.error("Error fetching vehicle makes:", error);
-      res.status(500).json({
-        error: "Failed to fetch vehicle makes",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/vehicles/makes/type/:vehicleType", async (req, res) => {
-    try {
-      const { vehicleType } = req.params;
-      if (vehicleCache.makesByType.has(vehicleType) && isCacheValid()) {
-        return res.json({
-          success: true,
-          makes: vehicleCache.makesByType.get(vehicleType)
-        });
-      }
-      if (!vehicleCache.isPreloaded) {
-        console.log("\u{1F697} Makes for type not cached, triggering preload...");
-        try {
-          const preloadResponse = await fetch(`${req.protocol}://${req.get("host")}/api/vehicles/preload`);
-          if (preloadResponse.ok && vehicleCache.makesByType.has(vehicleType)) {
-            return res.json({
-              success: true,
-              makes: vehicleCache.makesByType.get(vehicleType)
-            });
-          }
-        } catch (preloadError) {
-          console.warn("\u26A0\uFE0F Preload failed, falling back to direct API call:", preloadError);
-        }
-      }
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/${encodeURIComponent(vehicleType)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      const data = await response.json();
-      const fourWheeledMakes = data.Results.filter((make) => {
-        const excludedMakes = [
-          "HARLEY-DAVIDSON",
-          "YAMAHA",
-          "KAWASAKI",
-          "SUZUKI",
-          "HONDA MOTORCYCLE",
-          "BMW MOTORRAD",
-          "DUCATI",
-          "TRIUMPH",
-          "INDIAN",
-          "VICTORY",
-          "APRILIA",
-          "KTM",
-          "HUSQVARNA",
-          "MOTO GUZZI",
-          "MV AGUSTA",
-          "BENELLI",
-          "NORTON",
-          "ROYAL ENFIELD",
-          "HUSABERG",
-          "GAS GAS",
-          "SHERCO",
-          "BETA",
-          "TM RACING"
-        ];
-        return !excludedMakes.some(
-          (excluded) => make.MakeName.toUpperCase().includes(excluded) || excluded.includes(make.MakeName.toUpperCase())
-        );
-      });
-      const formattedMakes = fourWheeledMakes.map((make) => ({
-        id: make.MakeId,
-        // Preserve original NHTSA make ID
-        name: make.MakeName
-      }));
-      vehicleCache.makesByType.set(vehicleType, formattedMakes);
-      vehicleCache.lastFetch = Date.now();
-      res.json({
-        success: true,
-        makes: formattedMakes
-      });
-    } catch (error) {
-      console.error("Error fetching makes for vehicle type:", error);
-      res.status(500).json({
-        error: "Failed to fetch makes for vehicle type",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/vehicles/models/by-name/:makeName", async (req, res) => {
-    try {
-      const { makeName } = req.params;
-      const decodedMakeName = decodeURIComponent(makeName);
-      if (vehicleCache.modelsByMake.has(decodedMakeName) && isCacheValid()) {
-        return res.json({
-          success: true,
-          models: vehicleCache.modelsByMake.get(decodedMakeName)
-        });
-      }
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(decodedMakeName)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      const data = await response.json();
-      const fourWheeledModels = data.Results.filter((model) => {
-        const modelName = model.Model_Name.toUpperCase();
-        const excludedPatterns = [
-          /MOTORCYCLE$/i,
-          /BIKE$/i,
-          /SCOOTER$/i,
-          /MOPED$/i,
-          /ATV$/i,
-          /SNOWMOBILE$/i,
-          /WATERCRAFT$/i,
-          /BOAT$/i,
-          /JET.?SKI$/i
-        ];
-        return !excludedPatterns.some((pattern) => pattern.test(modelName));
-      });
-      const formattedModels = fourWheeledModels.map((model) => ({
-        id: model.Model_ID,
-        name: model.Model_Name
-      }));
-      vehicleCache.modelsByMake.set(decodedMakeName, formattedModels);
-      res.json({
-        success: true,
-        models: formattedModels
-      });
-    } catch (error) {
-      console.error("Error fetching vehicle models:", error);
-      res.status(500).json({
-        error: "Failed to fetch vehicle models",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/vehicles/models/:makeId", async (req, res) => {
-    try {
-      const { makeId } = req.params;
-      if (vehicleCache.modelsByMake.has(makeId) && isCacheValid()) {
-        return res.json({
-          success: true,
-          models: vehicleCache.modelsByMake.get(makeId)
-        });
-      }
-      if (!vehicleCache.isPreloaded) {
-        console.log("\u{1F697} Models not cached, triggering preload...");
-        try {
-          const preloadResponse = await fetch(`${req.protocol}://${req.get("host")}/api/vehicles/preload`);
-          if (preloadResponse.ok && vehicleCache.modelsByMake.has(makeId)) {
-            return res.json({
-              success: true,
-              models: vehicleCache.modelsByMake.get(makeId)
-            });
-          }
-        } catch (preloadError) {
-          console.warn("\u26A0\uFE0F Preload failed, falling back to direct API call:", preloadError);
-        }
-      }
-      const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`);
-      if (!makesResponse.ok) {
-        throw new Error(`NHTSA API error: ${makesResponse.status}`);
-      }
-      const makesData = await makesResponse.json();
-      const selectedMake = makesData.Results.find((make) => make.Make_ID === parseInt(makeId));
-      if (!selectedMake) {
-        throw new Error("Make not found");
-      }
-      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(selectedMake.Make_Name)}?format=json`);
-      if (!response.ok) {
-        throw new Error(`NHTSA API error: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log(`\u{1F697} NHTSA API returned ${data.Results?.length || 0} models for make: ${selectedMake.Make_Name}`);
-      const fourWheeledModels = data.Results.filter((model) => {
-        const modelName = model.Model_Name.toUpperCase();
-        const excludedPatterns = [
-          // Motorcycle patterns
-          /MOTORCYCLE$/i,
-          /BIKE$/i,
-          /SCOOTER$/i,
-          /MOPED$/i,
-          /ATV$/i,
-          /QUAD$/i,
-          /TRIKE$/i,
-          /SIDECAR$/i,
-          // Very specific motorcycle model names
-          /^HARLEY/i,
-          /^YAMAHA\s+(R|MT|YZ|WR|XT|TW|TTR|PW|GRIZZLY|RAPTOR|WOLVERINE|KODIAK|BIG\s+BEAR)/i,
-          /^KAWASAKI\s+(NINJA|ZX|VERSYS|CONCOURS|VULCAN|CONCORDE|KLX|KX|KLR|BRUTE\s+FORCE)/i,
-          /^SUZUKI\s+(GSX|HAYABUSA|V-STROM|BURGMAN|ADDRESS|GSF|SV|DL|RM|RMZ|DR|DRZ)/i,
-          /^HONDA\s+(CBR|CB|VFR|VTR|CRF|CR|XR|TRX|RUBICON|FOREMAN|RECON|RANCHER)/i,
-          /^BMW\s+(R|S|F|G|K|HP|C|CE)/i,
-          /^DUCATI\s+(MONSTER|PANIGALE|MULTISTRADA|HYPERMOTARD|SCRAMBLER|DIAPER|STREETFIGHTER)/i,
-          /^TRIUMPH\s+(SPEED|STREET|TIGER|BONNEVILLE|SCRAMBLER|THRUXTON|ROCKET|DAYTONA)/i,
-          /^INDIAN\s+(CHIEF|SCOUT|ROADMASTER|CHALLENGER|FTR|SPRINGFIELD)/i,
-          /^VICTORY\s+(VEGAS|HAMMER|VISION|CROSS\s+COUNTRY|CROSS\s+ROADS|GUNNER)/i,
-          /^APRILIA\s+(RS|TUONO|SHIVER|MANA|CAPONORD|PEGASO|ETV|RXV|SXV)/i,
-          /^KTM\s+(RC|DUKE|ADVENTURE|EXC|SX|EXC|XC|FREERIDE)/i,
-          /^HUSQVARNA\s+(FE|FC|TC|TE|WR|YZ|CR|CRF|KX|RM|SX|EXC)/i,
-          /^MOTO\s+GUZZI\s+(V7|V9|CALIFORNIA|GRISO|STELVIO|NORGE|BREVA|BELLAGIO)/i,
-          /^MV\s+AGUSTA\s+(F3|F4|BRUTALE|DRAGSTER|RIVALE|STRADALE|TURISMO|F3|F4)/i,
-          /^BENELLI\s+(TNT|BN|TRK|LEONCINO|ZENTO|IMPERIALE|502C|752S)/i,
-          /^NORTON\s+(COMMANDO|DOMINATOR|ATLAS|MANX|INTER|ES2|16H)/i,
-          /^ROYAL\s+ENFIELD\s+(CLASSIC|BULLET|THUNDERBIRD|CONTINENTAL|HIMALAYAN|INTERCEPTOR|GT)/i,
-          /^HUSABERG\s+(FE|FC|TE|TC|WR|CR|CRF|KX|RM|SX|EXC)/i,
-          /^GAS\s+GAS\s+(EC|MC|TXT|RAGA|PAMPERA|TRIALS|ENDURO|MOTOCROSS)/i,
-          /^SHERCO\s+(SE|ST|SC|4T|2T|RACING|FACTORY|WORK|TRIALS)/i,
-          /^BETA\s+(RR|RE|RS|EVO|FACTORY|RACING|ENDURO|TRIALS|MOTOCROSS)/i,
-          /^TM\s+RACING\s+(EN|MX|SM|RACING|FACTORY|ENDURO|MOTOCROSS|SUPERMOTO)/i
-        ];
-        return !excludedPatterns.some((pattern) => pattern.test(modelName));
-      });
-      console.log(`\u{1F697} After filtering, ${fourWheeledModels.length} models remain for make: ${selectedMake.Make_Name}`);
-      const formattedModels = fourWheeledModels.map((model) => ({
-        id: model.Model_ID || model.Model_ID,
-        // Use actual NHTSA ID if available
-        name: model.Model_Name
-      }));
-      vehicleCache.modelsByMake.set(makeId, formattedModels);
-      res.json({
-        success: true,
-        models: formattedModels
-      });
-    } catch (error) {
-      console.error("Error fetching vehicle models:", error);
-      res.status(500).json({
-        error: "Failed to fetch vehicle models",
-        message: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  });
-  app3.get("/api/vehicles/years/:makeId", async (req, res) => {
-    try {
-      const { makeId } = req.params;
-      if (vehicleCache.yearsByMake.has(makeId) && isCacheValid()) {
-        return res.json({
-          success: true,
-          years: vehicleCache.yearsByMake.get(makeId)
-        });
-      }
-      let selectedMake = null;
-      if (vehicleCache.makesByType.has("car") && isCacheValid()) {
-        const carMakes = vehicleCache.makesByType.get("car");
-        selectedMake = carMakes?.find((make) => make.id === parseInt(makeId));
-      }
-      if (!selectedMake) {
-        try {
-          const makesResponse = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetAllMakes?format=json`, {
-            signal: AbortSignal.timeout(3e3)
-            // 3 second timeout
-          });
-          if (makesResponse.ok) {
-            const makesData = await makesResponse.json();
-            selectedMake = makesData.Results.find((make) => make.Make_ID === parseInt(makeId));
-          }
-        } catch (error) {
-          console.log(`\u26A0\uFE0F NHTSA GetAllMakes API failed for makeId ${makeId}, using fallback`);
-        }
-      }
-      if (!selectedMake) {
-        const commonMakes = {
-          441: "TESLA",
-          448: "TOYOTA",
-          460: "FORD",
-          467: "CHEVROLET",
-          476: "DODGE",
-          478: "NISSAN",
-          475: "ACURA",
-          515: "LEXUS",
-          582: "AUDI",
-          482: "VOLKSWAGEN",
-          485: "VOLVO",
-          498: "HYUNDAI",
-          499: "KIA",
-          449: "MERCEDES-BENZ",
-          584: "PORSCHE",
-          523: "SUBARU"
-        };
-        const makeName2 = commonMakes[parseInt(makeId)] || `MAKE_${makeId}`;
-        selectedMake = { Make_ID: parseInt(makeId), Make_Name: makeName2 };
-        console.log(`\u{1F697} Using fallback make name: ${makeName2} for ID ${makeId}`);
-      }
-      const currentYear = (/* @__PURE__ */ new Date()).getFullYear();
-      const makeName = selectedMake.Make_Name.toUpperCase();
-      console.log(`\u{1F697} Finding actual model years for ${selectedMake.Make_Name} (ID: ${makeId})`);
-      const years = [];
-      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      const hasModelsInYear = async (year) => {
-        try {
-          const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeIdYear/${makeId}/${year}?format=json`, {
-            signal: AbortSignal.timeout(5e3)
-          });
-          if (!response.ok) return false;
-          const data = await response.json();
-          return data && data.Results && data.Results.length > 0;
-        } catch {
-          return false;
-        }
-      };
-      const currentPlusOne = currentYear + 1;
-      const testYears = [
-        // Recent years (most likely to have models)
-        currentPlusOne,
-        currentYear,
-        currentYear - 1,
-        currentYear - 2,
-        currentYear - 3,
-        // Sample years going back
-        currentYear - 5,
-        currentYear - 10,
-        currentYear - 15,
-        currentYear - 20,
-        currentYear - 25,
-        // Common milestone years
-        2020,
-        2015,
-        2010,
-        2005,
-        2e3,
-        1995,
-        1990,
-        1985
-      ].filter(
-        (year, index, arr) => (
-          // Remove duplicates and keep only reasonable years
-          arr.indexOf(year) === index && year >= 1980 && year <= currentPlusOne
-        )
-      ).sort((a, b) => b - a);
-      let earliestFoundYear = currentPlusOne;
-      let latestFoundYear = 0;
-      let foundCount = 0;
-      console.log(`\u{1F697} Testing ${testYears.length} sample years for ${selectedMake.Make_Name}...`);
-      for (let i = 0; i < testYears.length && foundCount < 10; i++) {
-        const year = testYears[i];
-        const hasModels = await hasModelsInYear(year);
-        if (hasModels) {
-          foundCount++;
-          earliestFoundYear = Math.min(earliestFoundYear, year);
-          latestFoundYear = Math.max(latestFoundYear, year);
-          console.log(`\u{1F697} \u2705 Found models for ${selectedMake.Make_Name} in ${year}`);
-        }
-        if (i < testYears.length - 1) {
-          await delay(150);
-        }
-      }
-      if (foundCount > 0) {
-        console.log(`\u{1F697} Found model years range: ${latestFoundYear} to ${earliestFoundYear}`);
-        for (let year = latestFoundYear; year >= earliestFoundYear; year--) {
-          years.push(year);
-        }
-        console.log(`\u{1F697} Generated ${years.length} years with actual models for ${selectedMake.Make_Name}`);
-      } else {
-        console.log(`\u26A0\uFE0F No model years found via API for ${selectedMake.Make_Name}, using intelligent fallback`);
-        let fallbackStartYear = 1995;
-        if (makeName.includes("TESLA") || makeName.includes("LUCID") || makeName.includes("RIVIAN")) {
-          fallbackStartYear = 2010;
-        } else if (makeName.includes("GENESIS") || makeName.includes("SCION")) {
-          fallbackStartYear = 2e3;
-        } else if (makeName.includes("SATURN") || makeName.includes("HUMMER")) {
-          fallbackStartYear = 1990;
-        }
-        const fallbackEndYear = Math.min(currentYear + 1, fallbackStartYear + 35);
-        for (let year = fallbackEndYear; year >= fallbackStartYear; year--) {
-          years.push(year);
-        }
-        console.log(`\u{1F697} Using fallback range: ${fallbackEndYear} to ${fallbackStartYear}`);
-      }
-      vehicleCache.yearsByMake.set(makeId, years);
-      res.json({
-        success: true,
-        years
-      });
-    } catch (error) {
-      console.error("Error fetching vehicle years:", error);
-      res.status(500).json({
-        error: "Failed to fetch vehicle years",
-        message: error instanceof Error ? error.message : "Unknown error"
       });
     }
   });
@@ -21824,8 +20334,31 @@ If you have questions, please contact the location manager.`,
         const isActive = kitchen.isActive !== void 0 ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      console.log(`[API] /api/chef/kitchens - Returning ${activeKitchens.length} active kitchens (all locations for marketing)`);
-      res.json(activeKitchens);
+      const normalizedKitchens = activeKitchens.map((kitchen) => {
+        const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || kitchen.image_url || null, req);
+        const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map(
+          (img) => normalizeImageUrl(img, req)
+        ).filter((url) => url !== null);
+        const normalizedLocationBrandImageUrl = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
+        const normalizedLocationLogoUrl = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
+        return {
+          ...kitchen,
+          imageUrl: normalizedImageUrl,
+          image_url: normalizedImageUrl,
+          // Also set snake_case for compatibility
+          galleryImages: normalizedGalleryImages,
+          gallery_images: normalizedGalleryImages,
+          // Also set snake_case for compatibility
+          locationBrandImageUrl: normalizedLocationBrandImageUrl,
+          location_brand_image_url: normalizedLocationBrandImageUrl,
+          // Also set snake_case for compatibility
+          locationLogoUrl: normalizedLocationLogoUrl,
+          location_logo_url: normalizedLocationLogoUrl
+          // Also set snake_case for compatibility
+        };
+      });
+      console.log(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
+      res.json(normalizedKitchens);
     } catch (error) {
       console.error("Error fetching kitchens:", error);
       res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
@@ -21845,6 +20378,31 @@ If you have questions, please contact the location manager.`,
     } catch (error) {
       console.error("Error getting kitchen pricing:", error);
       res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
+    }
+  });
+  app3.get("/api/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
+    try {
+      const kitchenId = parseInt(req.params.kitchenId);
+      if (isNaN(kitchenId) || kitchenId <= 0) {
+        return res.status(400).json({ error: "Invalid kitchen ID" });
+      }
+      const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+      if (!kitchen) {
+        return res.status(404).json({ error: "Kitchen not found" });
+      }
+      const locationId = kitchen.locationId || kitchen.location_id;
+      if (!locationId) {
+        return res.status(404).json({ error: "Location not found for this kitchen" });
+      }
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location) {
+        return res.status(404).json({ error: "Location not found" });
+      }
+      const maxSlotsPerChef = location.default_daily_booking_limit || location.defaultDailyBookingLimit || 2;
+      res.json({ maxSlotsPerChef });
+    } catch (error) {
+      console.error("Error getting kitchen policy:", error);
+      res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
     }
   });
   app3.get("/api/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
@@ -23636,7 +22194,12 @@ If you have questions, please contact the location manager.`,
         console.log("[Admin Chef Access] Not admin");
         return res.status(403).json({ error: "Admin access required" });
       }
-      const allUsers = await db.select().from(users);
+      const allUsers = await db.select({
+        id: users.id,
+        username: users.username,
+        role: users.role,
+        isChef: users.isChef
+      }).from(users);
       const chefs = allUsers.filter((u) => {
         const role = u.role;
         const isChef = u.isChef ?? u.is_chef;
@@ -23719,7 +22282,6 @@ If you have questions, please contact the location manager.`,
         password: hashedPassword,
         role: "manager",
         isChef: false,
-        isDeliveryPartner: false,
         isManager: true,
         isPortalUser: false,
         has_seen_welcome: false
@@ -24525,8 +23087,7 @@ If you have questions, please contact the location manager.`,
       const subdomain = getSubdomainFromHeaders(req.headers);
       const isChef = portalUser.isChef || portalUser.is_chef || false;
       const isManager = portalUser.isManager || portalUser.is_manager || false;
-      const isDeliveryPartner = portalUser.isDeliveryPartner || portalUser.is_delivery_partner || false;
-      if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager, isDeliveryPartner)) {
+      if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager)) {
         console.log(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
         return res.status(403).json({
           error: "Access denied. Portal users must login from the kitchen subdomain.",
@@ -24589,7 +23150,6 @@ If you have questions, please contact the location manager.`,
           role: "chef",
           // Default role, but portal user flag takes precedence
           isChef: false,
-          isDeliveryPartner: false,
           isManager: false,
           isPortalUser: true
         });
@@ -25544,24 +24104,21 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         chefCountResult,
         applicationCountResult,
         approvedApplicationCountResult,
-        deliveryPartnerCountResult,
         locationCountResult,
         kitchenCountResult
       ] = await Promise.all([
-        db.select().from(users).where(eq4(users.isChef, true)),
-        db.select().from(applications),
-        db.select().from(applications).where(eq4(applications.status, "approved")),
-        db.select().from(users).where(eq4(users.isDeliveryPartner, true)),
-        db.select().from(locations),
-        db.select().from(kitchens).where(eq4(kitchens.isActive, true))
+        db.select({ count: count() }).from(users).where(eq4(users.isChef, true)),
+        db.select({ count: count() }).from(applications),
+        db.select({ count: count() }).from(applications).where(eq4(applications.status, "approved")),
+        db.select({ count: count() }).from(locations),
+        db.select({ count: count() }).from(kitchens).where(eq4(kitchens.isActive, true))
       ]);
       const stats = {
-        totalChefs: chefCountResult.length,
-        totalApplications: applicationCountResult.length,
-        approvedChefs: approvedApplicationCountResult.length,
-        totalDeliveryPartners: deliveryPartnerCountResult.length,
-        totalLocations: locationCountResult.length,
-        totalKitchens: kitchenCountResult.length
+        totalChefs: Number(chefCountResult[0]?.count ?? 0),
+        totalApplications: Number(applicationCountResult[0]?.count ?? 0),
+        approvedChefs: Number(approvedApplicationCountResult[0]?.count ?? 0),
+        totalLocations: Number(locationCountResult[0]?.count ?? 0),
+        totalKitchens: Number(kitchenCountResult[0]?.count ?? 0)
       };
       res.json(stats);
     } catch (error) {
@@ -26103,33 +24660,6 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
       });
     }
   });
-  app3.get("/api/user-session", async (req, res) => {
-    try {
-      if (req.isAuthenticated() && req.user) {
-        return res.json({
-          id: req.user.id,
-          username: req.user.username,
-          role: req.user.role,
-          isAuthenticated: true
-        });
-      }
-      if (req.neonUser) {
-        return res.json({
-          id: req.neonUser.id,
-          username: req.neonUser.username,
-          role: req.neonUser.role,
-          isAuthenticated: true
-        });
-      }
-      return res.status(401).json({
-        error: "Session-based authentication removed. Please use /api/user/profile with Firebase token.",
-        isAuthenticated: false
-      });
-    } catch (error) {
-      console.error("Error getting user session:", error);
-      res.status(500).json({ error: "Failed to get user session" });
-    }
-  });
   app3.post("/api/process-payouts", async (req, res) => {
     const authHeader = req.headers.authorization;
     const cronSecret = process.env.CRON_SECRET;
@@ -26313,19 +24843,6 @@ var initPromise = (async () => {
       server.listen(port, () => {
         log(`[LOCAL] Server running on http://localhost:${port}`);
       });
-      try {
-        log("\u{1F697} Warming up vehicle data cache on server startup...");
-        const baseUrl = `http://localhost:${port}`;
-        const preloadResponse = await fetch(`${baseUrl}/api/vehicles/preload`);
-        if (preloadResponse.ok) {
-          const preloadData = await preloadResponse.json();
-          log(`\u{1F697} Vehicle data cache warmed up successfully: ${preloadData.makesCount} makes, ${preloadData.modelsCount} models`);
-        } else {
-          log("\u26A0\uFE0F Vehicle data cache warmup failed, will load on-demand");
-        }
-      } catch (error) {
-        log("\u26A0\uFE0F Vehicle data cache warmup failed, will load on-demand:", String(error));
-      }
     }
   } catch (error) {
     console.error("Failed to register routes:", error);

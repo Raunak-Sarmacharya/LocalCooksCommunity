@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/time
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
 import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
 
 interface Booking {
@@ -75,12 +76,25 @@ export default function BookingControlPanel({
   const [sortBy, setSortBy] = useState<"date" | "kitchen" | "status">("date");
   const [groupBy, setGroupBy] = useState<"date" | "kitchen" | "none">("date");
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<number | null>(null);
+  
+  // Track auth initialization state
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [hasAuthUser, setHasAuthUser] = useState(false);
+
+  // Wait for Firebase auth to initialize
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthReady(true);
+      setHasAuthUser(!!user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Fetch storage bookings
   const { data: storageBookings = [], isLoading: isLoadingStorage } = useQuery({
     queryKey: ['/api/chef/storage-bookings'],
-    // Only fetch when user is authenticated
-    enabled: !!auth.currentUser,
+    // Only fetch when auth is ready and user is authenticated
+    enabled: isAuthReady && hasAuthUser,
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const response = await fetch('/api/chef/storage-bookings', {

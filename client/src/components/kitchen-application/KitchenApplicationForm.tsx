@@ -23,6 +23,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { useLocation } from "wouter";
 import { z } from "zod";
 import { phoneNumberSchema } from "@shared/phone-validation";
+import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -46,12 +47,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-// Schema for kitchen application form
-const kitchenApplicationSchema = z.object({
+// Base schema for kitchen application form (used as fallback)
+const baseKitchenApplicationSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Please enter a valid email address"),
-  phone: phoneNumberSchema, // Use shared phone validation schema
+  phone: phoneNumberSchema,
   businessName: z.string().min(1, "Business name is required"),
   businessType: z.string().min(1, "Please select a business type"),
   experience: z.string().min(1, "Please select your experience level"),
@@ -64,7 +65,18 @@ const kitchenApplicationSchema = z.object({
   accuracyAgree: z.boolean().refine(val => val === true, "You must certify accuracy"),
 });
 
-type KitchenApplicationFormData = z.infer<typeof kitchenApplicationSchema>;
+type KitchenApplicationFormData = z.infer<typeof baseKitchenApplicationSchema> & {
+  customFields?: Record<string, any>;
+};
+
+interface CustomField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'date';
+  required: boolean;
+  placeholder?: string;
+  options?: string[];
+}
 
 interface LocationInfo {
   id: number;
@@ -127,6 +139,16 @@ export default function KitchenApplicationForm({
   const { createApplication, refetch } = useChefKitchenApplications();
   const { application, hasApplication, refetch: refetchLocationApp } = useChefKitchenApplicationForLocation(location.id);
   
+  // Fetch location requirements
+  const { data: requirements, isLoading: isLoadingRequirements } = useQuery({
+    queryKey: [`/api/public/locations/${location.id}/requirements`],
+    queryFn: async () => {
+      const response = await fetch(`/api/public/locations/${location.id}/requirements`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+  });
+
   // File upload state
   const [foodHandlerFile, setFoodHandlerFile] = useState<File | null>(null);
   const [businessLicenseFile, setBusinessLicenseFile] = useState<File | null>(null);
@@ -138,9 +160,113 @@ export default function KitchenApplicationForm({
   const defaultFirstName = nameParts[0] || '';
   const defaultLastName = nameParts.slice(1).join(' ') || '';
 
-  const form = useForm<KitchenApplicationFormData>({
-    resolver: zodResolver(kitchenApplicationSchema),
-    defaultValues: {
+  // Dynamic schema generation based on requirements
+  const dynamicSchema = useMemo(() => {
+    if (!requirements) return baseKitchenApplicationSchema;
+    
+    const baseFields = {
+      firstName: requirements.requireFirstName 
+        ? z.string().min(1, "First name is required")
+        : z.string().optional().or(z.literal('')),
+      lastName: requirements.requireLastName
+        ? z.string().min(1, "Last name is required")
+        : z.string().optional().or(z.literal('')),
+      email: requirements.requireEmail
+        ? z.string().email("Please enter a valid email address")
+        : z.string().email().optional().or(z.literal('')),
+      phone: requirements.requirePhone
+        ? phoneNumberSchema
+        : phoneNumberSchema.optional().or(z.literal('')),
+      businessName: requirements.requireBusinessName
+        ? z.string().min(1, "Business name is required")
+        : z.string().optional().or(z.literal('')),
+      businessType: requirements.requireBusinessType
+        ? z.string().min(1, "Please select a business type")
+        : z.string().optional().or(z.literal('')),
+      experience: requirements.requireExperience
+        ? z.string().min(1, "Please select your experience level")
+        : z.string().optional().or(z.literal('')),
+      businessDescription: requirements.requireBusinessDescription
+        ? z.string().min(1, "Business description is required")
+        : z.string().optional(),
+      foodHandlerCertExpiry: requirements.requireFoodHandlerExpiry
+        ? z.string().min(1, "Certificate expiry date is required")
+        : z.string().optional(),
+      foodEstablishmentCertExpiry: requirements.requireFoodEstablishmentExpiry
+        ? z.string().min(1, "Food establishment certificate expiry is required")
+        : z.string().optional(),
+      usageFrequency: requirements.requireUsageFrequency
+        ? z.string().min(1, "Please select usage frequency")
+        : z.string().optional().or(z.literal('')),
+      sessionDuration: requirements.requireSessionDuration
+        ? z.string().min(1, "Please select session duration")
+        : z.string().optional().or(z.literal('')),
+      termsAgree: requirements.requireTermsAgree
+        ? z.boolean().refine(val => val === true, "You must agree to the terms")
+        : z.boolean().optional(),
+      accuracyAgree: requirements.requireAccuracyAgree
+        ? z.boolean().refine(val => val === true, "You must certify accuracy")
+        : z.boolean().optional(),
+    };
+
+    // Add custom fields to schema
+    const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
+    if (requirements.customFields && Array.isArray(requirements.customFields)) {
+      requirements.customFields.forEach((field: CustomField) => {
+        if (field.required) {
+          switch (field.type) {
+            case 'text':
+            case 'textarea':
+              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `${field.label} is required`);
+              break;
+            case 'number':
+              customFieldsSchema[`custom_${field.id}`] = z.number({ required_error: `${field.label} is required` });
+              break;
+            case 'select':
+              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `Please select ${field.label}`);
+              break;
+            case 'checkbox':
+              // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
+              if (field.options && field.options.length > 0) {
+                customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).min(1, `Please select at least one option for ${field.label}`);
+              } else {
+                customFieldsSchema[`custom_${field.id}`] = z.boolean().refine(val => val === true, `${field.label} is required`);
+              }
+              break;
+            case 'date':
+              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `${field.label} is required`);
+              break;
+          }
+        } else {
+          switch (field.type) {
+            case 'text':
+            case 'textarea':
+            case 'select':
+            case 'date':
+              customFieldsSchema[`custom_${field.id}`] = z.string().optional();
+              break;
+            case 'number':
+              customFieldsSchema[`custom_${field.id}`] = z.number().optional();
+              break;
+            case 'checkbox':
+              // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
+              if (field.options && field.options.length > 0) {
+                customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).optional();
+              } else {
+                customFieldsSchema[`custom_${field.id}`] = z.boolean().optional();
+              }
+              break;
+          }
+        }
+      });
+    }
+
+    return z.object({ ...baseFields, ...customFieldsSchema });
+  }, [requirements]);
+
+  // Initialize default values for custom fields
+  const getDefaultValues = useMemo(() => {
+    const defaults: any = {
       firstName: defaultFirstName,
       lastName: defaultLastName,
       email: user?.email || "",
@@ -155,9 +281,35 @@ export default function KitchenApplicationForm({
       sessionDuration: "",
       termsAgree: false,
       accuracyAgree: false,
-    },
+    };
+
+    // Add default values for custom fields
+    if (requirements?.customFields && Array.isArray(requirements.customFields)) {
+      requirements.customFields.forEach((field: CustomField) => {
+        if (field.type === 'checkbox') {
+          // Multi-checkbox (with options) defaults to empty array, single checkbox defaults to false
+          defaults[`custom_${field.id}`] = (field.options && field.options.length > 0) ? [] : false;
+        } else {
+          defaults[`custom_${field.id}`] = '';
+        }
+      });
+    }
+
+    return defaults;
+  }, [requirements, defaultFirstName, defaultLastName, user?.email]);
+
+  const form = useForm<KitchenApplicationFormData>({
+    resolver: zodResolver(dynamicSchema),
+    defaultValues: getDefaultValues,
     mode: "onChange",
   });
+
+  // Re-initialize form when requirements change
+  useEffect(() => {
+    if (requirements) {
+      form.reset(getDefaultValues);
+    }
+  }, [requirements, getDefaultValues, form]);
 
   // Watch all form values for progress calculation
   const watchedValues = useWatch({ control: form.control });
@@ -208,8 +360,8 @@ export default function KitchenApplicationForm({
   }, [sectionProgress]);
 
   const onSubmit = async (data: KitchenApplicationFormData) => {
-    // Validate file upload
-    if (!foodHandlerFile) {
+    // Validate file upload only if required
+    if (requirements?.requireFoodHandlerCert !== false && !foodHandlerFile) {
       toast({
         title: "Missing Document",
         description: "Please upload your Food Handler Certificate",
@@ -218,18 +370,20 @@ export default function KitchenApplicationForm({
       return;
     }
 
-    // Validate expiry date (must be at least 6 months from now)
-    const expiryDate = new Date(data.foodHandlerCertExpiry);
-    const sixMonthsFromNow = new Date();
-    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
-    
-    if (expiryDate < sixMonthsFromNow) {
-      toast({
-        title: "Certificate Expiring Soon",
-        description: "Your certificate must be valid for at least 6 months",
-        variant: "destructive",
-      });
-      return;
+    // Validate expiry date only if required (must be at least 6 months from now)
+    if (requirements?.requireFoodHandlerExpiry !== false && data.foodHandlerCertExpiry) {
+      const expiryDate = new Date(data.foodHandlerCertExpiry);
+      const sixMonthsFromNow = new Date();
+      sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
+      
+      if (expiryDate < sixMonthsFromNow) {
+        toast({
+          title: "Certificate Expiring Soon",
+          description: "Your certificate must be valid for at least 6 months",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -237,33 +391,37 @@ export default function KitchenApplicationForm({
     try {
       const formData = new FormData();
       
-      // Core fields
+      // Core fields (handle optional fields)
       formData.append("locationId", location.id.toString());
-      formData.append("fullName", `${data.firstName} ${data.lastName}`);
-      formData.append("email", data.email);
-      formData.append("phone", data.phone);
+      formData.append("fullName", `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'N/A');
+      formData.append("email", data.email || '');
+      formData.append("phone", data.phone || '');
       formData.append("kitchenPreference", "commercial"); // Default for new form
       
       // Business info - store in businessDescription field
       const businessInfo = JSON.stringify({
-        businessName: data.businessName,
-        businessType: data.businessType,
-        experience: data.experience,
+        businessName: data.businessName || "",
+        businessType: data.businessType || "",
+        experience: data.experience || "",
         description: data.businessDescription || "",
-        usageFrequency: data.usageFrequency,
-        sessionDuration: data.sessionDuration,
-        foodHandlerCertExpiry: data.foodHandlerCertExpiry,
+        usageFrequency: data.usageFrequency || "",
+        sessionDuration: data.sessionDuration || "",
+        foodHandlerCertExpiry: data.foodHandlerCertExpiry || null,
         foodEstablishmentCertExpiry: data.foodEstablishmentCertExpiry || null,
       });
       formData.append("businessDescription", businessInfo);
-      formData.append("cookingExperience", data.experience);
+      if (data.experience) {
+        formData.append("cookingExperience", data.experience);
+      }
       
       // Certification status
-      formData.append("foodSafetyLicense", "yes");
+      formData.append("foodSafetyLicense", foodHandlerFile ? "yes" : "no");
       formData.append("foodEstablishmentCert", businessLicenseFile ? "yes" : "no");
       
-      // Expiry dates
-      formData.append("foodSafetyLicenseExpiry", data.foodHandlerCertExpiry);
+      // Expiry dates (only if provided)
+      if (data.foodHandlerCertExpiry) {
+        formData.append("foodSafetyLicenseExpiry", data.foodHandlerCertExpiry);
+      }
       if (data.foodEstablishmentCertExpiry) {
         formData.append("foodEstablishmentCertExpiry", data.foodEstablishmentCertExpiry);
       }
@@ -274,6 +432,38 @@ export default function KitchenApplicationForm({
       }
       if (businessLicenseFile) {
         formData.append("foodEstablishmentCertFile", businessLicenseFile);
+      }
+      
+      // Custom fields data
+      const customFieldsData: Record<string, any> = {};
+      if (requirements?.customFields && Array.isArray(requirements.customFields)) {
+        requirements.customFields.forEach((field: CustomField) => {
+          const fieldKey = `custom_${field.id}`;
+          const value = data[fieldKey as keyof typeof data];
+          
+          // Handle different field types
+          if (value !== undefined && value !== null) {
+            // For checkbox with options (array), only include if array has items
+            if (field.type === 'checkbox' && field.options && field.options.length > 0) {
+              if (Array.isArray(value) && value.length > 0) {
+                customFieldsData[field.id] = value;
+              }
+            }
+            // For single checkbox (boolean), include if true
+            else if (field.type === 'checkbox' && (!field.options || field.options.length === 0)) {
+              if (value === true) {
+                customFieldsData[field.id] = value;
+              }
+            }
+            // For other fields, include if not empty string
+            else if (value !== '') {
+              customFieldsData[field.id] = value;
+            }
+          }
+        });
+      }
+      if (Object.keys(customFieldsData).length > 0) {
+        formData.append("customFieldsData", JSON.stringify(customFieldsData));
       }
       
       await createApplication.mutateAsync(formData);
@@ -370,7 +560,9 @@ export default function KitchenApplicationForm({
   }
 
   // Check if user already has an application for this location
-  if (hasApplication && application) {
+  // Only block form if application is inReview or approved
+  // Allow re-application if rejected or cancelled
+  if (hasApplication && application && (application.status === "inReview" || application.status === "approved")) {
     const statusConfig = {
       inReview: {
         icon: Clock,
@@ -383,18 +575,6 @@ export default function KitchenApplicationForm({
         color: "text-[#2BA89F] bg-[#2BA89F]/10",
         title: "Application Approved!",
         description: "You can now book kitchens at this location.",
-      },
-      rejected: {
-        icon: XCircle,
-        color: "text-red-600 bg-red-50",
-        title: "Application Rejected",
-        description: application.feedback || "Your application was not approved. You can submit a new application.",
-      },
-      cancelled: {
-        icon: AlertCircle,
-        color: "text-gray-600 bg-gray-50",
-        title: "Application Cancelled",
-        description: "Your application was cancelled. You can submit a new application.",
       },
     };
 
@@ -440,8 +620,56 @@ export default function KitchenApplicationForm({
     );
   }
 
+  // Determine if we should show re-application notice
+  const showReapplicationNotice = hasApplication && application && (application.status === "rejected" || application.status === "cancelled");
+  
+  const reapplicationStatusConfig = {
+    rejected: {
+      icon: XCircle,
+      color: "text-red-600 bg-red-50",
+      title: "Previous Application Rejected",
+      description: application?.feedback || "Your previous application was not approved.",
+    },
+    cancelled: {
+      icon: AlertCircle,
+      color: "text-gray-600 bg-gray-50",
+      title: "Previous Application Cancelled",
+      description: "Your previous application was cancelled.",
+    },
+  };
+
+  const reapplicationConfig = showReapplicationNotice && application 
+    ? reapplicationStatusConfig[application.status as "rejected" | "cancelled"]
+    : null;
+
   return (
     <div className="max-w-[700px] mx-auto">
+      {/* Re-application notice if previously rejected or cancelled */}
+      {showReapplicationNotice && reapplicationConfig && (
+        <div className="mb-6">
+          <Card className="border-0 shadow-sm bg-amber-50/50">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${reapplicationConfig.color}`}>
+                  {application?.status === "rejected" ? (
+                    <XCircle className="h-6 w-6" />
+                  ) : (
+                    <AlertCircle className="h-6 w-6" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 mb-1">{reapplicationConfig.title}</h3>
+                  <p className="text-sm text-gray-600 mb-3">{reapplicationConfig.description}</p>
+                  <p className="text-sm text-[#208D80] font-medium">
+                    You can submit a new application below with updated information.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Header */}
       <div className="text-center mb-8">
         <h1 className="text-2xl font-semibold text-gray-900 mb-2 flex items-center justify-center gap-2">
@@ -495,7 +723,8 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        First Name <span className="text-red-500">*</span>
+                        First Name {requirements?.requireFirstName !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireFirstName === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
                       <FormControl>
                         <Input {...field} className="h-11" />
@@ -510,7 +739,8 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Last Name <span className="text-red-500">*</span>
+                        Last Name {requirements?.requireLastName !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireLastName === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
                       <FormControl>
                         <Input {...field} className="h-11" />
@@ -528,7 +758,8 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Email Address <span className="text-red-500">*</span>
+                        Email Address {requirements?.requireEmail !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireEmail === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
                       <FormControl>
                         <Input type="email" {...field} className="h-11" />
@@ -544,7 +775,8 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Phone Number <span className="text-red-500">*</span>
+                        Phone Number {requirements?.requirePhone !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requirePhone === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
                       <FormControl>
                         <Input type="tel" placeholder="(709) 000-0000" {...field} className="h-11" />
@@ -574,7 +806,8 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Business Name <span className="text-red-500">*</span>
+                        Business Name {requirements?.requireBusinessName !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireBusinessName === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
                       <FormControl>
                         <Input 
@@ -597,22 +830,23 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Type of Food Business <span className="text-red-500">*</span>
+                        Type of Food Business {requirements?.requireBusinessType !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireBusinessType === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <SelectTrigger className="h-11">
                             <SelectValue placeholder="-- Select your business type --" />
                           </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {businessTypes.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                          <SelectContent>
+                            {businessTypes.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                {type.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -624,46 +858,56 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Years of Experience <span className="text-red-500">*</span>
+                        Years of Experience {requirements?.requireExperience !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireExperience === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <SelectTrigger className="h-11">
                             <SelectValue placeholder="-- Select experience level --" />
                           </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {experienceLevels.map((level) => (
-                            <SelectItem key={level.value} value={level.value}>
-                              {level.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                          <SelectContent>
+                            {experienceLevels.map((level) => (
+                              <SelectItem key={level.value} value={level.value}>
+                                {level.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="businessDescription"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">Tell Us About Your Business</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Brief description of what you prepare, your target market, etc."
-                          className="min-h-[80px] resize-none"
-                          {...field}
-                        />
-                      </FormControl>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Optional, but helps us connect you with suitable kitchen times
-                      </p>
-                    </FormItem>
-                  )}
-                />
+                {requirements?.requireBusinessDescription !== false && (
+                  <FormField
+                    control={form.control}
+                    name="businessDescription"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium">
+                          Tell Us About Your Business
+                          {requirements?.requireBusinessDescription && <span className="text-red-500">*</span>}
+                          {!requirements?.requireBusinessDescription && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                        </FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Brief description of what you prepare, your target market, etc."
+                            className="min-h-[80px] resize-none"
+                            {...field}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {requirements?.requireBusinessDescription 
+                            ? "Please provide a brief description of your food business"
+                            : "Optional, but helps us connect you with suitable kitchen times"}
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -689,128 +933,144 @@ export default function KitchenApplicationForm({
 
               <div className="space-y-6">
                 {/* Food Handler Certificate Upload */}
-                <div>
-                  <Label className="text-sm font-medium block mb-2">
-                    Food Handler Certification <span className="text-red-500">*</span>
-                  </Label>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Upload a photo or PDF of your current food handler certificate (must be valid and current)
-                  </p>
-                  
-                  <label 
-                    htmlFor="foodHandlerCert" 
-                    className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
-                      ${foodHandlerFile 
-                        ? 'border-[#2BA89F] bg-[#2BA89F]/5' 
-                        : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
-                      }`}
-                  >
-                    <FileText className={`h-5 w-5 ${foodHandlerFile ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-gray-900">
-                        {foodHandlerFile ? foodHandlerFile.name : 'Click to upload certificate'}
-                      </p>
-                      <p className="text-xs text-gray-500">PDF, JPG, PNG (max 5MB)</p>
-                    </div>
-                    {foodHandlerFile && <Check className="h-5 w-5 text-[#2BA89F] ml-auto" />}
-                  </label>
-                  <input 
-                    type="file" 
-                    id="foodHandlerCert" 
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={handleFoodHandlerFileChange}
-                    className="hidden"
-                  />
-                  
-                  {foodHandlerFile && (
-                    <div className="flex items-center gap-2 mt-2 p-2 bg-[#2BA89F]/10 rounded text-[#2BA89F] text-sm">
-                      <Check className="h-4 w-4" />
-                      Food Handler Certificate uploaded
-                    </div>
-                  )}
-                </div>
+                {requirements?.requireFoodHandlerCert !== false && (
+                  <div>
+                    <Label className="text-sm font-medium block mb-2">
+                      Food Handler Certification {requirements?.requireFoodHandlerCert && <span className="text-red-500">*</span>}
+                      {!requirements?.requireFoodHandlerCert && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                    </Label>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Upload a photo or PDF of your current food handler certificate (must be valid and current)
+                    </p>
+                    
+                    <label 
+                      htmlFor="foodHandlerCert" 
+                      className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
+                        ${foodHandlerFile 
+                          ? 'border-[#2BA89F] bg-[#2BA89F]/5' 
+                          : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
+                        }`}
+                    >
+                      <FileText className={`h-5 w-5 ${foodHandlerFile ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-gray-900">
+                          {foodHandlerFile ? foodHandlerFile.name : 'Click to upload certificate'}
+                        </p>
+                        <p className="text-xs text-gray-500">PDF, JPG, PNG (max 5MB)</p>
+                      </div>
+                      {foodHandlerFile && <Check className="h-5 w-5 text-[#2BA89F] ml-auto" />}
+                    </label>
+                    <input 
+                      type="file" 
+                      id="foodHandlerCert" 
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleFoodHandlerFileChange}
+                      className="hidden"
+                    />
+                    
+                    {foodHandlerFile && (
+                      <div className="flex items-center gap-2 mt-2 p-2 bg-[#2BA89F]/10 rounded text-[#2BA89F] text-sm">
+                        <Check className="h-4 w-4" />
+                        Food Handler Certificate uploaded
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Food Handler Expiry Date */}
-                <FormField
-                  control={form.control}
-                  name="foodHandlerCertExpiry"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">
-                        Food Handler Certificate Expiry Date <span className="text-red-500">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} className="h-11" />
-                      </FormControl>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Your certification must be valid for at least 6 months
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {requirements?.requireFoodHandlerExpiry !== false && (
+                  <FormField
+                    control={form.control}
+                    name="foodHandlerCertExpiry"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium">
+                          Food Handler Certificate Expiry Date {requirements?.requireFoodHandlerExpiry && <span className="text-red-500">*</span>}
+                          {!requirements?.requireFoodHandlerExpiry && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} className="h-11" />
+                        </FormControl>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Your certification must be valid for at least 6 months
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 {/* Food Establishment License (Optional) */}
-                <div>
-                  <Label className="text-sm font-medium block mb-2">
-                    Food Establishment License/Permit
-                  </Label>
-                  <p className="text-xs text-gray-500 mb-3">
-                    If you operate as a registered food business, upload proof of license.
-                  </p>
-                  
-                  <label 
-                    htmlFor="businessLicense" 
-                    className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
-                      ${businessLicenseFile 
-                        ? 'border-[#2BA89F] bg-[#2BA89F]/5' 
-                        : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
-                      }`}
-                  >
-                    <Upload className={`h-5 w-5 ${businessLicenseFile ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
-                    <div className="text-left">
-                      <p className="text-sm font-medium text-gray-900">
-                        {businessLicenseFile ? businessLicenseFile.name : 'Click to upload license (optional)'}
-                      </p>
-                      <p className="text-xs text-gray-500">PDF, JPG, PNG (max 5MB)</p>
-                    </div>
-                    {businessLicenseFile && <Check className="h-5 w-5 text-[#2BA89F] ml-auto" />}
-                  </label>
-                  <input 
-                    type="file" 
-                    id="businessLicense" 
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={handleBusinessLicenseFileChange}
-                    className="hidden"
-                  />
-                  
-                  {businessLicenseFile && (
-                    <div className="flex items-center gap-2 mt-2 p-2 bg-[#2BA89F]/10 rounded text-[#2BA89F] text-sm">
-                      <Check className="h-4 w-4" />
-                      Business License uploaded
-                    </div>
-                  )}
-                </div>
+                {requirements?.requireFoodEstablishmentCert !== false && (
+                  <div>
+                    <Label className="text-sm font-medium block mb-2">
+                      Food Establishment License/Permit
+                      {requirements?.requireFoodEstablishmentCert && <span className="text-red-500">*</span>}
+                      {!requirements?.requireFoodEstablishmentCert && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                    </Label>
+                    <p className="text-xs text-gray-500 mb-3">
+                      If you operate as a registered food business, upload proof of license.
+                    </p>
+                    
+                    <label 
+                      htmlFor="businessLicense" 
+                      className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
+                        ${businessLicenseFile 
+                          ? 'border-[#2BA89F] bg-[#2BA89F]/5' 
+                          : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
+                        }`}
+                    >
+                      <Upload className={`h-5 w-5 ${businessLicenseFile ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-gray-900">
+                          {businessLicenseFile ? businessLicenseFile.name : 'Click to upload license (optional)'}
+                        </p>
+                        <p className="text-xs text-gray-500">PDF, JPG, PNG (max 5MB)</p>
+                      </div>
+                      {businessLicenseFile && <Check className="h-5 w-5 text-[#2BA89F] ml-auto" />}
+                    </label>
+                    <input 
+                      type="file" 
+                      id="businessLicense" 
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleBusinessLicenseFileChange}
+                      className="hidden"
+                    />
+                    
+                    {businessLicenseFile && (
+                      <div className="flex items-center gap-2 mt-2 p-2 bg-[#2BA89F]/10 rounded text-[#2BA89F] text-sm">
+                        <Check className="h-4 w-4" />
+                        Business License uploaded
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {/* Food Establishment Expiry (optional, shown always) */}
-                <FormField
-                  control={form.control}
-                  name="foodEstablishmentCertExpiry"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">
-                        Food Establishment License Expiry Date
-                      </FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} className="h-11" />
-                      </FormControl>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Optional - Enter if you have a food establishment license
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Food Establishment Expiry */}
+                {requirements?.requireFoodEstablishmentExpiry !== false && (
+                  <FormField
+                    control={form.control}
+                    name="foodEstablishmentCertExpiry"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm font-medium">
+                          Food Establishment License Expiry Date
+                          {requirements?.requireFoodEstablishmentExpiry && <span className="text-red-500">*</span>}
+                          {!requirements?.requireFoodEstablishmentExpiry && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} className="h-11" />
+                        </FormControl>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {requirements?.requireFoodEstablishmentExpiry 
+                            ? "Enter the expiry date for your food establishment license"
+                            : "Optional - Enter if you have a food establishment license"}
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -832,22 +1092,23 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        How Often Do You Need Kitchen Space? <span className="text-red-500">*</span>
+                        How Often Do You Need Kitchen Space? {requirements?.requireUsageFrequency !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireUsageFrequency === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <SelectTrigger className="h-11">
                             <SelectValue placeholder="-- Select frequency --" />
                           </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {usageFrequencies.map((freq) => (
-                            <SelectItem key={freq.value} value={freq.value}>
-                              {freq.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                          <SelectContent>
+                            {usageFrequencies.map((freq) => (
+                              <SelectItem key={freq.value} value={freq.value}>
+                                {freq.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -859,22 +1120,23 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Typical Session Length <span className="text-red-500">*</span>
+                        Typical Session Length {requirements?.requireSessionDuration !== false && <span className="text-red-500">*</span>}
+                        {requirements?.requireSessionDuration === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <SelectTrigger className="h-11">
                             <SelectValue placeholder="-- Select duration --" />
                           </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {sessionDurations.map((dur) => (
-                            <SelectItem key={dur.value} value={dur.value}>
-                              {dur.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                          <SelectContent>
+                            {sessionDurations.map((dur) => (
+                              <SelectItem key={dur.value} value={dur.value}>
+                                {dur.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -882,6 +1144,171 @@ export default function KitchenApplicationForm({
               </div>
             </CardContent>
           </Card>
+
+          {/* CUSTOM FIELDS SECTION */}
+          {requirements?.customFields && Array.isArray(requirements.customFields) && requirements.customFields.length > 0 && (
+            <Card className="border border-gray-200 shadow-sm">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-6 pb-3 border-b-2 border-[#208D80]/10">
+                  <h3 className="font-semibold text-gray-900">Additional Information</h3>
+                </div>
+
+                <div className="space-y-4">
+                  {requirements.customFields.map((field: CustomField) => {
+                    if (!field || !field.id || !field.type) return null;
+                    
+                    const fieldName = `custom_${field.id}` as keyof KitchenApplicationFormData;
+                    return (
+                      <FormField
+                        key={field.id}
+                        control={form.control}
+                        name={fieldName}
+                        render={({ field: formField }) => {
+                          // Render the appropriate input based on field type
+                          let inputElement = null;
+                          
+                          if (field.type === 'text') {
+                            inputElement = (
+                              <Input
+                                {...formField}
+                                placeholder={field.placeholder}
+                                className="h-11"
+                                value={formField.value as string || ''}
+                              />
+                            );
+                          } else if (field.type === 'textarea') {
+                            inputElement = (
+                              <Textarea
+                                {...formField}
+                                placeholder={field.placeholder}
+                                className="min-h-[80px] resize-none"
+                                value={formField.value as string || ''}
+                              />
+                            );
+                          } else if (field.type === 'number') {
+                            inputElement = (
+                              <Input
+                                type="number"
+                                placeholder={field.placeholder}
+                                className="h-11"
+                                value={typeof formField.value === 'number' ? formField.value : (typeof formField.value === 'string' ? formField.value : '') as string | number}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  formField.onChange(val ? (isNaN(parseFloat(val)) ? undefined : parseFloat(val)) : undefined);
+                                }}
+                              />
+                            );
+                          } else if (field.type === 'select' && field.options && Array.isArray(field.options)) {
+                            inputElement = (
+                              <Select
+                                onValueChange={formField.onChange}
+                                value={formField.value as string || ''}
+                              >
+                                <SelectTrigger className="h-11">
+                                  <SelectValue placeholder={field.placeholder || `-- Select ${field.label} --`} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {field.options.map((option) => (
+                                    <SelectItem key={option} value={option}>
+                                      {option}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            );
+                          } else if (field.type === 'checkbox') {
+                            if (field.options && Array.isArray(field.options) && field.options.length > 0) {
+                              // Multi-checkbox: show multiple checkboxes for each option
+                              inputElement = (
+                                <div className="space-y-3">
+                                  {field.options.map((option) => {
+                                    const selectedValues = (formField.value as string[]) || [];
+                                    const isChecked = selectedValues.includes(option);
+                                    return (
+                                      <div key={option} className="flex items-center space-x-2">
+                                        <Checkbox
+                                          checked={isChecked}
+                                          onCheckedChange={(checked) => {
+                                            const currentValues = (formField.value as string[]) || [];
+                                            if (checked) {
+                                              formField.onChange([...currentValues, option]);
+                                            } else {
+                                              formField.onChange(currentValues.filter(v => v !== option));
+                                            }
+                                          }}
+                                          className="data-[state=checked]:bg-[#208D80] data-[state=checked]:border-[#208D80]"
+                                        />
+                                        <Label className="text-sm font-normal text-gray-700 cursor-pointer">
+                                          {option}
+                                        </Label>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            } else {
+                              // Single checkbox: show one checkbox
+                              inputElement = (
+                                <div className="flex items-center space-x-2">
+                                  <Checkbox
+                                    checked={formField.value as boolean || false}
+                                    onCheckedChange={formField.onChange}
+                                    className="data-[state=checked]:bg-[#208D80] data-[state=checked]:border-[#208D80]"
+                                  />
+                                  <Label className="text-sm font-normal text-gray-700">
+                                    {field.placeholder || `I confirm ${field.label}`}
+                                  </Label>
+                                </div>
+                              );
+                            }
+                          } else if (field.type === 'date') {
+                            inputElement = (
+                              <Input
+                                {...formField}
+                                type="date"
+                                className="h-11"
+                                value={formField.value as string || ''}
+                              />
+                            );
+                          }
+
+                          // If no input element was created, return a fallback element
+                          if (!inputElement) {
+                            return (
+                              <FormItem>
+                                <FormLabel className="text-sm font-medium">
+                                  {field.label}
+                                  {field.required && <span className="text-red-500">*</span>}
+                                </FormLabel>
+                                <FormControl>
+                                  <div className="text-sm text-gray-500">Unsupported field type: {field.type}</div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            );
+                          }
+
+                          return (
+                            <FormItem>
+                              <FormLabel className="text-sm font-medium">
+                                {field.label}
+                                {field.required && <span className="text-red-500">*</span>}
+                                {!field.required && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                              </FormLabel>
+                              <FormControl>
+                                {inputElement}
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* SECTION 5: Terms & Agreements */}
           <Card className="border border-gray-200 shadow-sm">

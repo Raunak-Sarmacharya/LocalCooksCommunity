@@ -11,7 +11,7 @@ import type {
     UpdateDocumentVerification,
     User
 } from "@shared/schema";
-import { applications, chefKitchenApplications, users, locations, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings } from "@shared/schema";
+import { applications, chefKitchenApplications, users, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings, LocationRequirements, UpdateLocationRequirements } from "@shared/schema";
 import { eq, and, inArray, asc, gte, lte, desc, isNull, or } from "drizzle-orm";
 import { db, pool } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
@@ -476,6 +476,97 @@ export class FirebaseStorage {
     }
   }
 
+  // ===== LOCATION REQUIREMENTS MANAGEMENT =====
+
+  async getLocationRequirements(locationId: number): Promise<LocationRequirements | null> {
+    try {
+      const [requirements] = await db
+        .select()
+        .from(locationRequirements)
+        .where(eq(locationRequirements.locationId, locationId));
+      return requirements || null;
+    } catch (error) {
+      console.error('Error getting location requirements:', error);
+      return null;
+    }
+  }
+
+  async getLocationRequirementsWithDefaults(locationId: number): Promise<LocationRequirements> {
+    const requirements = await this.getLocationRequirements(locationId);
+    if (requirements) {
+      // Ensure customFields is always an array
+      return {
+        ...requirements,
+        customFields: Array.isArray(requirements.customFields) ? requirements.customFields : [],
+      } as LocationRequirements;
+    }
+    
+    // Return default requirements if none configured
+    return {
+      id: 0,
+      locationId,
+      requireFirstName: true,
+      requireLastName: true,
+      requireEmail: true,
+      requirePhone: true,
+      requireBusinessName: true,
+      requireBusinessType: true,
+      requireExperience: true,
+      requireBusinessDescription: false,
+      requireFoodHandlerCert: true,
+      requireFoodHandlerExpiry: true,
+      requireFoodEstablishmentCert: false,
+      requireFoodEstablishmentExpiry: false,
+      requireUsageFrequency: true,
+      requireSessionDuration: true,
+      requireTermsAgree: true,
+      requireAccuracyAgree: true,
+      customFields: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as LocationRequirements;
+  }
+
+  async upsertLocationRequirements(
+    locationId: number,
+    updates: UpdateLocationRequirements
+  ): Promise<LocationRequirements> {
+    try {
+      const existing = await this.getLocationRequirements(locationId);
+      
+      // Ensure customFields is always an array if provided
+      const processedUpdates = {
+        ...updates,
+        ...(updates.customFields !== undefined && {
+          customFields: Array.isArray(updates.customFields) ? updates.customFields : []
+        }),
+        updatedAt: new Date()
+      };
+      
+      if (existing) {
+        const [updated] = await db
+          .update(locationRequirements)
+          .set(processedUpdates)
+          .where(eq(locationRequirements.locationId, locationId))
+          .returning();
+        return updated;
+      } else {
+        const [created] = await db
+          .insert(locationRequirements)
+          .values({ 
+            locationId, 
+            ...processedUpdates,
+            // Ensure customFields defaults to empty array if not provided
+            customFields: processedUpdates.customFields ?? []
+          })
+          .returning();
+        return created;
+      }
+    } catch (error) {
+      console.error('Error upserting location requirements:', error);
+      throw error;
+    }
+  }
 
   async updateLocation(id: number, updates: { 
     name?: string; 
@@ -3899,6 +3990,8 @@ export class FirebaseStorage {
             .update(chefKitchenApplications)
             .set({
               ...data,
+              // Ensure customFieldsData defaults to empty object if not provided
+              customFieldsData: data.customFieldsData ?? {},
               status: 'inReview', // Reset to pending review
               feedback: null, // Clear previous feedback
               reviewedBy: null,
@@ -3919,6 +4012,8 @@ export class FirebaseStorage {
         .insert(chefKitchenApplications)
         .values({
           ...data,
+          // Ensure customFieldsData defaults to empty object if not provided
+          customFieldsData: data.customFieldsData ?? {},
           status: 'inReview',
           createdAt: now,
           updatedAt: now,

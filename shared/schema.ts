@@ -256,6 +256,44 @@ export const locations = pgTable("locations", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Define location_requirements table (custom application requirements per location)
+export const locationRequirements = pgTable("location_requirements", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
+  
+  // Personal Information
+  requireFirstName: boolean("require_first_name").default(true).notNull(),
+  requireLastName: boolean("require_last_name").default(true).notNull(),
+  requireEmail: boolean("require_email").default(true).notNull(),
+  requirePhone: boolean("require_phone").default(true).notNull(),
+  
+  // Business Information
+  requireBusinessName: boolean("require_business_name").default(true).notNull(),
+  requireBusinessType: boolean("require_business_type").default(true).notNull(),
+  requireExperience: boolean("require_experience").default(true).notNull(),
+  requireBusinessDescription: boolean("require_business_description").default(false).notNull(),
+  
+  // Certifications
+  requireFoodHandlerCert: boolean("require_food_handler_cert").default(true).notNull(),
+  requireFoodHandlerExpiry: boolean("require_food_handler_expiry").default(true).notNull(),
+  requireFoodEstablishmentCert: boolean("require_food_establishment_cert").default(false).notNull(),
+  requireFoodEstablishmentExpiry: boolean("require_food_establishment_expiry").default(false).notNull(),
+  
+  // Kitchen Usage
+  requireUsageFrequency: boolean("require_usage_frequency").default(true).notNull(),
+  requireSessionDuration: boolean("require_session_duration").default(true).notNull(),
+  
+  // Agreements
+  requireTermsAgree: boolean("require_terms_agree").default(true).notNull(),
+  requireAccuracyAgree: boolean("require_accuracy_agree").default(true).notNull(),
+  
+  // Custom Fields (JSONB array of field definitions)
+  customFields: jsonb("custom_fields").default([]), // Array of { id, label, type, required, options?, placeholder? }
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Define kitchens table
 export const kitchens = pgTable("kitchens", {
   id: serial("id").primaryKey(),
@@ -422,6 +460,41 @@ export const updateLocationSchema = z.object({
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
 });
 
+// Zod schemas for location requirements
+export const insertLocationRequirementsSchema = createInsertSchema(locationRequirements, {
+  locationId: z.number(),
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Custom field definition schema
+export const customFieldSchema = z.object({
+  id: z.string(), // Unique identifier for the field
+  label: z.string().min(1, "Label is required"),
+  type: z.enum(["text", "textarea", "number", "select", "checkbox", "date"]),
+  required: z.boolean().default(false),
+  placeholder: z.string().optional(),
+  options: z.array(z.string()).optional(), // For select fields
+});
+
+export const updateLocationRequirementsSchema = z.object({
+  requireFirstName: z.boolean().optional(),
+  requireLastName: z.boolean().optional(),
+  requireEmail: z.boolean().optional(),
+  requirePhone: z.boolean().optional(),
+  requireBusinessName: z.boolean().optional(),
+  requireBusinessType: z.boolean().optional(),
+  requireExperience: z.boolean().optional(),
+  requireBusinessDescription: z.boolean().optional(),
+  requireFoodHandlerCert: z.boolean().optional(),
+  requireFoodHandlerExpiry: z.boolean().optional(),
+  requireFoodEstablishmentCert: z.boolean().optional(),
+  requireFoodEstablishmentExpiry: z.boolean().optional(),
+  requireUsageFrequency: z.boolean().optional(),
+  requireSessionDuration: z.boolean().optional(),
+  requireTermsAgree: z.boolean().optional(),
+  requireAccuracyAgree: z.boolean().optional(),
+  customFields: z.array(customFieldSchema).optional(),
+});
+
 export const insertKitchenSchema = createInsertSchema(kitchens, {
   locationId: z.number(),
   name: z.string().min(1, "Kitchen name is required"),
@@ -503,6 +576,10 @@ export const updateKitchenBookingSchema = z.object({
 export type Location = typeof locations.$inferSelect;
 export type InsertLocation = z.infer<typeof insertLocationSchema>;
 export type UpdateLocation = z.infer<typeof updateLocationSchema>;
+
+export type LocationRequirements = typeof locationRequirements.$inferSelect;
+export type InsertLocationRequirements = z.infer<typeof insertLocationRequirementsSchema>;
+export type UpdateLocationRequirements = z.infer<typeof updateLocationRequirementsSchema>;
 
 export type Kitchen = typeof kitchens.$inferSelect;
 export type InsertKitchen = z.infer<typeof insertKitchenSchema>;
@@ -1120,6 +1197,9 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
   reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
   reviewedAt: timestamp("reviewed_at"),
   
+  // Custom Fields Data (JSONB object storing values for custom fields)
+  customFieldsData: jsonb("custom_fields_data").default({}), // { [fieldId]: value }
+  
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1141,6 +1221,7 @@ export const insertChefKitchenApplicationSchema = createInsertSchema(chefKitchen
   foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
   foodEstablishmentCertUrl: z.string().optional(),
   foodEstablishmentCertExpiry: z.string().optional(),
+  customFieldsData: z.record(z.any()).optional(), // Custom fields data as JSON object
 }).omit({
   id: true,
   status: true,
