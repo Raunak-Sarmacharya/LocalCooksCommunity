@@ -1294,13 +1294,15 @@ export default function KitchenBookingCalendar() {
                               Apply to book
                             </p>
                             <p className="text-xs text-gray-500 mb-4">
-                              {!hasApplication 
+                              {!hasApplication
                                 ? "Submit an application to book this kitchen"
                                 : application?.status === 'inReview'
                                 ? "Your application is pending manager review"
                                 : application?.status === 'rejected'
                                 ? "Your application was rejected. Re-apply with updated documents"
-                                : "Application approval required"}
+                                : application?.tier4_completed_at
+                                ? "All tiers completed. You can now book kitchens."
+                                : "Complete all application tiers to book kitchens"}
                             </p>
                             <button
                               onClick={() => setLocation(`/apply-kitchen/${selectedLocationId}`)}

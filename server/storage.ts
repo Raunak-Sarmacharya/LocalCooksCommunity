@@ -1,4 +1,4 @@
-import { applications, microlearningCompletions, users, videoProgress, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
+import { applications, locationRequirements, microlearningCompletions, users, videoProgress, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
 import connectPg from "connect-pg-simple";
 import { and, eq } from "drizzle-orm";
 import session from "express-session";
@@ -44,6 +44,9 @@ export interface IStorage {
   updateApplicationDocuments(update: UpdateApplicationDocuments): Promise<Application | undefined>;
   updateApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<Application | undefined>;
   updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined>;
+
+  // Location Requirements
+  getLocationRequirements(locationId: number): Promise<any | undefined>;
 
   // Microlearning-related methods
   getMicrolearningProgress(userId: number): Promise<any[]>;
@@ -158,7 +161,7 @@ export class MemStorage implements IStorage {
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-    
+
     // Create user in memory instead of database
     const user: User = {
       id: this.userCurrentId++,
@@ -216,7 +219,7 @@ export class MemStorage implements IStorage {
       kitchenPreference: insertApplication.kitchenPreference,
       feedback: insertApplication.feedback || null,
       status: "inReview",
-      
+
       // Initialize document verification fields
       foodSafetyLicenseUrl: insertApplication.foodSafetyLicenseUrl || null,
       foodEstablishmentCertUrl: insertApplication.foodEstablishmentCertUrl || null,
@@ -225,7 +228,7 @@ export class MemStorage implements IStorage {
       documentsAdminFeedback: null,
       documentsReviewedBy: null,
       documentsReviewedAt: null,
-      
+
       createdAt: now,
     };
 
@@ -335,7 +338,7 @@ export class MemStorage implements IStorage {
 
   async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
     const user = this.users.get(userId);
-    
+
     if (!user) {
       return undefined;
     }
@@ -367,7 +370,7 @@ export class MemStorage implements IStorage {
   async updateVideoProgress(progressData: any): Promise<void> {
     const key = `${progressData.userId}-${progressData.videoId}`;
     const existingProgress = this.videoProgress.get(key);
-    
+
     // If the video was already completed, preserve the completion status and date
     // unless explicitly setting it to completed again
     if (existingProgress && existingProgress.completed && !progressData.completed) {
@@ -392,6 +395,9 @@ export class MemStorage implements IStorage {
     return completionData;
   }
 
+  async getLocationRequirements(locationId: number): Promise<any | undefined> {
+    return undefined;
+  }
 
   async setUserHasSeenWelcome(userId: number | string): Promise<void> {
     try {
@@ -494,7 +500,7 @@ export class DatabaseStorage implements IStorage {
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-    
+
     // Use raw query to include firebase_uid since it's not in the schema
     if (pool && insertUser.firebaseUid) {
       try {
@@ -519,7 +525,7 @@ export class DatabaseStorage implements IStorage {
         throw error;
       }
     }
-    
+
     // Fallback to schema-based insert without firebase_uid
     // CRITICAL: Don't default to 'chef' - role must be explicitly provided
     if (!insertUser.role) {
@@ -528,7 +534,7 @@ export class DatabaseStorage implements IStorage {
       console.error(`   - This should not happen - role should always be provided`);
       throw new Error('Role is required when creating a user. This is a programming error.');
     }
-    
+
     const [user] = await db
       .insert(users)
       .values({
@@ -701,7 +707,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateVideoProgress(progressData: any): Promise<void> {
     const { userId, videoId, progress, completed, completedAt, watchedPercentage, isRewatching } = progressData;
-    
+
     // Check if record exists
     const existingProgress = await db.select()
       .from(videoProgress)
@@ -709,7 +715,7 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     const existing = existingProgress[0];
-    
+
     // Preserve completion status - if video was already completed, keep it completed
     // unless explicitly setting it to completed again
     const finalCompleted = completed || (existing?.completed || false);
@@ -742,7 +748,7 @@ export class DatabaseStorage implements IStorage {
 
   async createMicrolearningCompletion(completionData: any): Promise<any> {
     const { userId, confirmed, certificateGenerated, videoProgress: videoProgressData } = completionData;
-    
+
     // Check if completion already exists
     const existingCompletion = await db.select()
       .from(microlearningCompletions)
@@ -789,6 +795,21 @@ export class DatabaseStorage implements IStorage {
       throw new Error('Failed to set has_seen_welcome');
     }
   }
+  async getLocationRequirements(locationId: number): Promise<any | undefined> {
+    try {
+      if (!process.env.DATABASE_URL) {
+        return undefined;
+      }
+      const [requirements] = await db
+        .select()
+        .from(locationRequirements)
+        .where(eq(locationRequirements.locationId, locationId));
+      return requirements || undefined;
+    } catch (error) {
+      console.error('Error fetching location requirements:', error);
+      return undefined;
+    }
+  }
 }
 
 // Switch from in-memory to database storage
@@ -833,8 +854,8 @@ export const storePasswordResetToken = async (userId: string, token: string, exp
 export const getUserByResetToken = async (token: string): Promise<DatabaseUser | null> => {
   try {
     const result = await pool.query(
-      `SELECT u.* FROM users u 
-       JOIN password_reset_tokens prt ON u.id = prt.user_id 
+      `SELECT u.* FROM users u
+       JOIN password_reset_tokens prt ON u.id = prt.user_id
        WHERE prt.token = $1 AND prt.expires_at > NOW()`,
       [token]
     );

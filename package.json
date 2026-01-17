@@ -168,6 +168,7 @@
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.31.1",
     "esbuild": "^0.25.0",
+    "firebase-tools": "^15.3.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.1",
