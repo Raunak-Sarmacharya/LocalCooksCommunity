@@ -28,6 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Form,
   FormControl,
@@ -138,7 +139,11 @@ export default function KitchenApplicationForm({
   const [, navigate] = useLocation();
   const { createApplication, refetch } = useChefKitchenApplications();
   const { application, hasApplication, refetch: refetchLocationApp } = useChefKitchenApplicationForLocation(location.id);
-  
+
+  // Get current tier from application or default to 1
+  const currentTier = application?.current_tier ?? 1;
+  const tierData = (application?.tier_data || {}) as Record<string, any>;
+
   // Fetch location requirements
   const { data: requirements, isLoading: isLoadingRequirements } = useQuery({
     queryKey: [`/api/public/locations/${location.id}/requirements`],
@@ -149,11 +154,25 @@ export default function KitchenApplicationForm({
     },
   });
 
-  // File upload state
+  // File upload state - initialize with existing URLs if available
   const [foodHandlerFile, setFoodHandlerFile] = useState<File | null>(null);
   const [businessLicenseFile, setBusinessLicenseFile] = useState<File | null>(null);
+  const [existingFoodHandlerUrl, setExistingFoodHandlerUrl] = useState<string | null>(application?.foodSafetyLicenseUrl || null);
+  const [existingBusinessLicenseUrl, setExistingBusinessLicenseUrl] = useState<string | null>(application?.foodEstablishmentCertUrl || null);
+  // Tier 2 file uploads
+  const [allergenPlanFile, setAllergenPlanFile] = useState<File | null>(null);
+  const [supplierListFile, setSupplierListFile] = useState<File | null>(null);
+  const [qualityControlFile, setQualityControlFile] = useState<File | null>(null);
+  const [traceabilityFile, setTraceabilityFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
+  // Tier-specific form data
+  const [tier2Data, setTier2Data] = useState({
+    insuranceAmount: (tierData as any)?.tier2?.insuranceAmount || '',
+    kitchenExperience: (tierData as any)?.tier2?.kitchenExperience || '',
+  });
+
 
   // Split user's display name into first and last
   const nameParts = user?.displayName?.split(' ') || ['', ''];
@@ -163,9 +182,9 @@ export default function KitchenApplicationForm({
   // Dynamic schema generation based on requirements
   const dynamicSchema = useMemo(() => {
     if (!requirements) return baseKitchenApplicationSchema;
-    
+
     const baseFields = {
-      firstName: requirements.requireFirstName 
+      firstName: requirements.requireFirstName
         ? z.string().min(1, "First name is required")
         : z.string().optional().or(z.literal('')),
       lastName: requirements.requireLastName
@@ -209,63 +228,71 @@ export default function KitchenApplicationForm({
         : z.boolean().optional(),
     };
 
-    // Add custom fields to schema
-    const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
-    if (requirements.customFields && Array.isArray(requirements.customFields)) {
-      requirements.customFields.forEach((field: CustomField) => {
-        if (field.required) {
-          switch (field.type) {
-            case 'text':
-            case 'textarea':
-              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `${field.label} is required`);
-              break;
-            case 'number':
-              customFieldsSchema[`custom_${field.id}`] = z.number({ required_error: `${field.label} is required` });
-              break;
-            case 'select':
-              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `Please select ${field.label}`);
-              break;
-            case 'checkbox':
-              // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
-              if (field.options && field.options.length > 0) {
-                customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).min(1, `Please select at least one option for ${field.label}`);
-              } else {
-                customFieldsSchema[`custom_${field.id}`] = z.boolean().refine(val => val === true, `${field.label} is required`);
-              }
-              break;
-            case 'date':
-              customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `${field.label} is required`);
-              break;
-          }
-        } else {
-          switch (field.type) {
-            case 'text':
-            case 'textarea':
-            case 'select':
-            case 'date':
-              customFieldsSchema[`custom_${field.id}`] = z.string().optional();
-              break;
-            case 'number':
-              customFieldsSchema[`custom_${field.id}`] = z.number().optional();
-              break;
-            case 'checkbox':
-              // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
-              if (field.options && field.options.length > 0) {
-                customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).optional();
-              } else {
-                customFieldsSchema[`custom_${field.id}`] = z.boolean().optional();
-              }
-              break;
-          }
-        }
-      });
+    // Merge custom fields based on tier
+    // For Tier 1, use tier1_custom_fields; for other tiers, use customFields
+    let fieldsToUse: CustomField[] = [];
+    if (currentTier === 1 && requirements.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
+      fieldsToUse = requirements.tier1_custom_fields;
+    } else if (requirements.customFields && Array.isArray(requirements.customFields)) {
+      fieldsToUse = requirements.customFields;
     }
 
+    // Add custom fields to schema
+    const customFieldsSchema: Record<string, z.ZodTypeAny> = {};
+    fieldsToUse.forEach((field: CustomField) => {
+      if (field.required) {
+        switch (field.type) {
+          case 'text':
+          case 'textarea':
+            customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `${field.label} is required`);
+            break;
+          case 'number':
+            customFieldsSchema[`custom_${field.id}`] = z.number({ required_error: `${field.label} is required` });
+            break;
+          case 'select':
+            customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `Please select ${field.label}`);
+            break;
+          case 'checkbox':
+            // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
+            if (field.options && field.options.length > 0) {
+              customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).min(1, `Please select at least one option for ${field.label}`);
+            } else {
+              customFieldsSchema[`custom_${field.id}`] = z.boolean().refine(val => val === true, `${field.label} is required`);
+            }
+            break;
+          case 'date':
+            customFieldsSchema[`custom_${field.id}`] = z.string().min(1, `${field.label} is required`);
+            break;
+        }
+      } else {
+        switch (field.type) {
+          case 'text':
+          case 'textarea':
+          case 'select':
+          case 'date':
+            customFieldsSchema[`custom_${field.id}`] = z.string().optional();
+            break;
+          case 'number':
+            customFieldsSchema[`custom_${field.id}`] = z.number().optional();
+            break;
+          case 'checkbox':
+            // If checkbox has options, it's a multi-checkbox (array), otherwise single checkbox (boolean)
+            if (field.options && field.options.length > 0) {
+              customFieldsSchema[`custom_${field.id}`] = z.array(z.string()).optional();
+            } else {
+              customFieldsSchema[`custom_${field.id}`] = z.boolean().optional();
+            }
+            break;
+        }
+      }
+    });
+
     return z.object({ ...baseFields, ...customFieldsSchema });
-  }, [requirements]);
+  }, [requirements, currentTier]);
 
   // Initialize default values for custom fields
   const getDefaultValues = useMemo(() => {
+    // Start with default values from user data
     const defaults: any = {
       firstName: defaultFirstName,
       lastName: defaultLastName,
@@ -283,20 +310,78 @@ export default function KitchenApplicationForm({
       accuracyAgree: false,
     };
 
-    // Add default values for custom fields
-    if (requirements?.customFields && Array.isArray(requirements.customFields)) {
-      requirements.customFields.forEach((field: CustomField) => {
-        if (field.type === 'checkbox') {
-          // Multi-checkbox (with options) defaults to empty array, single checkbox defaults to false
-          defaults[`custom_${field.id}`] = (field.options && field.options.length > 0) ? [] : false;
-        } else {
-          defaults[`custom_${field.id}`] = '';
+    // Load existing application data if available
+    if (application) {
+      // Personal info
+      if (application.fullName && application.fullName !== 'N/A') {
+        const nameParts = application.fullName.split(' ');
+        defaults.firstName = nameParts[0] || '';
+        defaults.lastName = nameParts.slice(1).join(' ') || '';
+      }
+      defaults.email = application.email || defaults.email;
+      defaults.phone = application.phone || '';
+
+      // Business info (stored as JSON in businessDescription)
+      if (application.businessDescription) {
+        try {
+          const businessInfo = JSON.parse(application.businessDescription);
+          defaults.businessName = businessInfo.businessName || '';
+          defaults.businessType = businessInfo.businessType || '';
+          defaults.experience = businessInfo.experience || '';
+          defaults.businessDescription = businessInfo.description || '';
+          defaults.usageFrequency = businessInfo.usageFrequency || '';
+          defaults.sessionDuration = businessInfo.sessionDuration || '';
+          defaults.foodHandlerCertExpiry = businessInfo.foodHandlerCertExpiry || '';
+          defaults.foodEstablishmentCertExpiry = businessInfo.foodEstablishmentCertExpiry || '';
+        } catch (e) {
+          console.warn('Failed to parse business description JSON:', e);
         }
-      });
+      }
+
+      // Experience might also be stored separately
+      if (application.cookingExperience) {
+        defaults.experience = application.cookingExperience;
+      }
+
+      // Certificate expiry dates
+      if (application.foodSafetyLicenseExpiry) {
+        defaults.foodHandlerCertExpiry = application.foodSafetyLicenseExpiry;
+      }
+      if (application.foodEstablishmentCertExpiry) {
+        defaults.foodEstablishmentCertExpiry = application.foodEstablishmentCertExpiry;
+      }
+
+      // Load custom fields data
+      if (application.customFieldsData) {
+        Object.entries(application.customFieldsData).forEach(([fieldId, value]) => {
+          defaults[`custom_${fieldId}`] = value;
+        });
+      }
     }
 
+    // Add default values for custom fields that don't have existing data
+    // Use tier-specific fields based on current tier
+    let fieldsToUse: CustomField[] = [];
+    if (currentTier === 1 && requirements?.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
+      fieldsToUse = requirements.tier1_custom_fields;
+    } else if (requirements?.customFields && Array.isArray(requirements.customFields)) {
+      fieldsToUse = requirements.customFields;
+    }
+
+    fieldsToUse.forEach((field: CustomField) => {
+      const fieldKey = `custom_${field.id}`;
+      if (defaults[fieldKey] === undefined) {
+        if (field.type === 'checkbox') {
+          // Multi-checkbox (with options) defaults to empty array, single checkbox defaults to false
+          defaults[fieldKey] = (field.options && field.options.length > 0) ? [] : false;
+        } else {
+          defaults[fieldKey] = '';
+        }
+      }
+    });
+
     return defaults;
-  }, [requirements, defaultFirstName, defaultLastName, user?.email]);
+  }, [requirements, defaultFirstName, defaultLastName, user?.email, application, currentTier]);
 
   const form = useForm<KitchenApplicationFormData>({
     resolver: zodResolver(dynamicSchema),
@@ -375,7 +460,7 @@ export default function KitchenApplicationForm({
       const expiryDate = new Date(data.foodHandlerCertExpiry);
       const sixMonthsFromNow = new Date();
       sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
-      
+
       if (expiryDate < sixMonthsFromNow) {
         toast({
           title: "Certificate Expiring Soon",
@@ -387,17 +472,17 @@ export default function KitchenApplicationForm({
     }
 
     setIsSubmitting(true);
-    
+
     try {
       const formData = new FormData();
-      
+
       // Core fields (handle optional fields)
       formData.append("locationId", location.id.toString());
       formData.append("fullName", `${data.firstName || ''} ${data.lastName || ''}`.trim() || 'N/A');
       formData.append("email", data.email || '');
       formData.append("phone", data.phone || '');
       formData.append("kitchenPreference", "commercial"); // Default for new form
-      
+
       // Business info - store in businessDescription field
       const businessInfo = JSON.stringify({
         businessName: data.businessName || "",
@@ -413,11 +498,14 @@ export default function KitchenApplicationForm({
       if (data.experience) {
         formData.append("cookingExperience", data.experience);
       }
-      
+
       // Certification status
       formData.append("foodSafetyLicense", foodHandlerFile ? "yes" : "no");
-      formData.append("foodEstablishmentCert", businessLicenseFile ? "yes" : "no");
-      
+      // Only include foodEstablishmentCert if required or if a file is provided
+      if (requirements?.requireFoodEstablishmentCert || businessLicenseFile) {
+        formData.append("foodEstablishmentCert", businessLicenseFile ? "yes" : "no");
+      }
+
       // Expiry dates (only if provided)
       if (data.foodHandlerCertExpiry) {
         formData.append("foodSafetyLicenseExpiry", data.foodHandlerCertExpiry);
@@ -425,7 +513,7 @@ export default function KitchenApplicationForm({
       if (data.foodEstablishmentCertExpiry) {
         formData.append("foodEstablishmentCertExpiry", data.foodEstablishmentCertExpiry);
       }
-      
+
       // Files
       if (foodHandlerFile) {
         formData.append("foodSafetyLicenseFile", foodHandlerFile);
@@ -433,45 +521,70 @@ export default function KitchenApplicationForm({
       if (businessLicenseFile) {
         formData.append("foodEstablishmentCertFile", businessLicenseFile);
       }
-      
+
       // Custom fields data
       const customFieldsData: Record<string, any> = {};
-      if (requirements?.customFields && Array.isArray(requirements.customFields)) {
-        requirements.customFields.forEach((field: CustomField) => {
-          const fieldKey = `custom_${field.id}`;
-          const value = data[fieldKey as keyof typeof data];
-          
-          // Handle different field types
-          if (value !== undefined && value !== null) {
-            // For checkbox with options (array), only include if array has items
-            if (field.type === 'checkbox' && field.options && field.options.length > 0) {
-              if (Array.isArray(value) && value.length > 0) {
-                customFieldsData[field.id] = value;
-              }
-            }
-            // For single checkbox (boolean), include if true
-            else if (field.type === 'checkbox' && (!field.options || field.options.length === 0)) {
-              if (value === true) {
-                customFieldsData[field.id] = value;
-              }
-            }
-            // For other fields, include if not empty string
-            else if (value !== '') {
+
+      // Use tier-specific fields based on current tier
+      let fieldsToUse: CustomField[] = [];
+      if (currentTier === 1 && requirements?.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
+        fieldsToUse = requirements.tier1_custom_fields;
+      } else if (requirements?.customFields && Array.isArray(requirements.customFields)) {
+        fieldsToUse = requirements.customFields;
+      }
+
+      fieldsToUse.forEach((field: CustomField) => {
+        const fieldKey = `custom_${field.id}`;
+        const value = data[fieldKey as keyof typeof data];
+
+        // Handle different field types
+        if (value !== undefined && value !== null) {
+          // For checkbox with options (array), only include if array has items
+          if (field.type === 'checkbox' && field.options && field.options.length > 0) {
+            if (Array.isArray(value) && value.length > 0) {
               customFieldsData[field.id] = value;
             }
           }
-        });
-      }
+          // For single checkbox (boolean), include if true
+          else if (field.type === 'checkbox' && (!field.options || field.options.length === 0)) {
+            if (value === true) {
+              customFieldsData[field.id] = value;
+            }
+          }
+          // For other fields, include if not empty string
+          else if (value !== '') {
+            customFieldsData[field.id] = value;
+          }
+        }
+      });
       if (Object.keys(customFieldsData).length > 0) {
         formData.append("customFieldsData", JSON.stringify(customFieldsData));
       }
-      
+
+      // Add tier data if submitting for higher tiers (currently supporting Tier 2)
+      if (currentTier === 2) {
+        const tierDataObj: Record<string, any> = {
+          tier2: tier2Data,
+        };
+        formData.append("tier_data", JSON.stringify(tierDataObj));
+        formData.append("current_tier", currentTier.toString());
+      }
+
+
+
+      // Add tier-specific file uploads
+      if (allergenPlanFile) formData.append("tier2_allergen_plan", allergenPlanFile);
+      if (supplierListFile) formData.append("tier2_supplier_list", supplierListFile);
+      if (qualityControlFile) formData.append("tier2_quality_control", qualityControlFile);
+      if (traceabilityFile) formData.append("tier2_traceability", traceabilityFile);
+
+
       await createApplication.mutateAsync(formData);
-      
+
       setShowSuccess(true);
       refetch();
       refetchLocationApp();
-      
+
     } catch (error: any) {
       toast({
         title: "Error",
@@ -528,26 +641,26 @@ export default function KitchenApplicationForm({
           </div>
           <h2 className="text-2xl font-semibold text-gray-900 mb-3">Application Submitted!</h2>
           <p className="text-gray-600 mb-8 max-w-md mx-auto">
-            Thank you! We've received your kitchen application and will review it within 24 hours. 
+            Thank you! We've received your kitchen application and will review it within 24 hours.
             Check your email for updates.
           </p>
-          
+
           <div className="grid grid-cols-3 gap-4 mb-10">
             <div className="p-4 bg-[#208D80]/5 rounded-lg">
               <div className="text-2xl font-bold text-[#208D80] mb-1">1</div>
-              <div className="text-xs text-gray-600">Documents Verified<br/>(24 hours)</div>
+              <div className="text-xs text-gray-600">Documents Verified<br />(24 hours)</div>
             </div>
             <div className="p-4 bg-[#208D80]/5 rounded-lg">
               <div className="text-2xl font-bold text-[#208D80] mb-1">2</div>
-              <div className="text-xs text-gray-600">Account<br/>Activated</div>
+              <div className="text-xs text-gray-600">Account<br />Activated</div>
             </div>
             <div className="p-4 bg-[#208D80]/5 rounded-lg">
               <div className="text-2xl font-bold text-[#208D80] mb-1">3</div>
-              <div className="text-xs text-gray-600">Start Booking<br/>Kitchens</div>
+              <div className="text-xs text-gray-600">Start Booking<br />Kitchens</div>
             </div>
           </div>
-          
-          <Button 
+
+          <Button
             onClick={() => onSuccess ? onSuccess() : navigate("/dashboard")}
             className="w-full bg-[#208D80] hover:bg-[#1A7470]"
           >
@@ -560,9 +673,10 @@ export default function KitchenApplicationForm({
   }
 
   // Check if user already has an application for this location
-  // Only block form if application is inReview or approved
+  // Only block form if application is inReview or fully approved (tier 4 completed)
+  // Allow tier progression if approved but not fully complete
   // Allow re-application if rejected or cancelled
-  if (hasApplication && application && (application.status === "inReview" || application.status === "approved")) {
+  if (hasApplication && application && application.status === "inReview") {
     const statusConfig = {
       inReview: {
         icon: Clock,
@@ -570,15 +684,9 @@ export default function KitchenApplicationForm({
         title: "Application Pending",
         description: "Your application is being reviewed by the kitchen manager.",
       },
-      approved: {
-        icon: Check,
-        color: "text-[#2BA89F] bg-[#2BA89F]/10",
-        title: "Application Approved!",
-        description: "You can now book kitchens at this location.",
-      },
     };
 
-    const config = statusConfig[application.status as keyof typeof statusConfig] || statusConfig.inReview;
+    const config = statusConfig.inReview;
     const StatusIcon = config.icon;
 
     return (
@@ -590,7 +698,7 @@ export default function KitchenApplicationForm({
             </div>
             <h2 className="text-xl font-semibold mb-2">{config.title}</h2>
             <p className="text-gray-600 mb-6">{config.description}</p>
-            
+
             <div className="flex items-center justify-center gap-3 p-4 bg-gray-50 rounded-lg mb-6">
               <Building2 className="h-5 w-5 text-gray-600" />
               <div className="text-left">
@@ -598,21 +706,63 @@ export default function KitchenApplicationForm({
                 <p className="text-sm text-gray-600">{location.address}</p>
               </div>
             </div>
-            
+
             <div className="flex gap-3">
               <Button variant="outline" onClick={onCancel || (() => navigate("/dashboard"))} className="flex-1">
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back
               </Button>
-              
-              {application.status === "approved" && (
-                <Button 
-                  onClick={() => navigate(`/book-kitchen?location=${location.id}`)} 
-                  className="flex-1 bg-[#208D80] hover:bg-[#1A7470]"
-                >
-                  Book a Kitchen
-                </Button>
-              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // If fully approved (tier 4 completed), show booking option
+  if (hasApplication && application && application.status === "approved" && application.tier4_completed_at) {
+    const statusConfig = {
+      approved: {
+        icon: Check,
+        color: "text-[#2BA89F] bg-[#2BA89F]/10",
+        title: "Application Fully Approved!",
+        description: "Your application is fully approved. You can now book kitchens.",
+      },
+    };
+
+    const config = statusConfig.approved;
+    const StatusIcon = config.icon;
+
+    return (
+      <div className="max-w-2xl mx-auto">
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-8 text-center">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${config.color}`}>
+              <StatusIcon className="h-8 w-8" />
+            </div>
+            <h2 className="text-xl font-semibold mb-2">{config.title}</h2>
+            <p className="text-gray-600 mb-6">{config.description}</p>
+
+            <div className="flex items-center justify-center gap-3 p-4 bg-gray-50 rounded-lg mb-6">
+              <Building2 className="h-5 w-5 text-gray-600" />
+              <div className="text-left">
+                <p className="font-medium">{location.name}</p>
+                <p className="text-sm text-gray-600">{location.address}</p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={onCancel || (() => navigate("/dashboard"))} className="flex-1">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+
+              <Button
+                onClick={() => navigate(`/book-kitchen?location=${location.id}`)}
+                className="flex-1 bg-[#208D80] hover:bg-[#1A7470]"
+              >
+                Book a Kitchen
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -622,7 +772,7 @@ export default function KitchenApplicationForm({
 
   // Determine if we should show re-application notice
   const showReapplicationNotice = hasApplication && application && (application.status === "rejected" || application.status === "cancelled");
-  
+
   const reapplicationStatusConfig = {
     rejected: {
       icon: XCircle,
@@ -638,9 +788,18 @@ export default function KitchenApplicationForm({
     },
   };
 
-  const reapplicationConfig = showReapplicationNotice && application 
+  const reapplicationConfig = showReapplicationNotice && application
     ? reapplicationStatusConfig[application.status as "rejected" | "cancelled"]
     : null;
+
+  // Show loading state while fetching requirements
+  if (isLoadingRequirements) {
+    return (
+      <div className="max-w-[700px] mx-auto py-12 flex justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#208D80]" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[700px] mx-auto">
@@ -680,10 +839,45 @@ export default function KitchenApplicationForm({
         </p>
       </div>
 
+      {/* Tier Progress Indicator */}
+      {hasApplication && application && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-medium text-gray-700">Application Progress</h3>
+            <span className="text-xs text-gray-500">Tier {currentTier} of 2</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {[1, 2].map((tier) => {
+              const isComplete = (tier === 1 && application.tier1_completed_at) ||
+                (tier === 2 && application.tier2_completed_at);
+              const isCurrent = tier === currentTier;
+              const isPast = tier < currentTier;
+
+              return (
+                <div key={tier} className="flex-1 flex items-center">
+                  <div className={`flex-1 h-2 rounded-full ${isComplete || isPast ? 'bg-[#208D80]' :
+                    isCurrent ? 'bg-[#208D80]/50' : 'bg-gray-200'
+                    }`} />
+                  {tier < 2 && (
+                    <div className={`w-2 h-2 rounded-full mx-1 ${isComplete || isPast ? 'bg-[#208D80]' :
+                      isCurrent ? 'bg-[#208D80]/50' : 'bg-gray-300'
+                      }`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between mt-2 text-xs text-gray-600">
+            <span>Tier 1: Submit</span>
+            <span>Tier 2: Coordinate</span>
+          </div>
+        </div>
+      )}
+
       {/* Progress Bar */}
       <div className="mb-10">
         <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <motion.div 
+          <motion.div
             className="h-full bg-[#208D80] rounded-full"
             initial={{ width: 0 }}
             animate={{ width: `${overallProgress}%` }}
@@ -810,10 +1004,10 @@ export default function KitchenApplicationForm({
                         {requirements?.requireBusinessName === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="e.g., Sarah's Catering, Artisan Bakery Co." 
-                          {...field} 
-                          className="h-11" 
+                        <Input
+                          placeholder="e.g., Sarah's Catering, Artisan Bakery Co."
+                          {...field}
+                          className="h-11"
                         />
                       </FormControl>
                       <p className="text-xs text-gray-500 mt-1">
@@ -858,23 +1052,23 @@ export default function KitchenApplicationForm({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">
-                        Years of Experience {requirements?.requireExperience !== false && <span className="text-red-500">*</span>}
-                        {requirements?.requireExperience === false && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                        Years of Experience {requirements?.requireExperience && <span className="text-red-500">*</span>}
+                        {!requirements?.requireExperience && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                       </FormLabel>
-                      <FormControl>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
                           <SelectTrigger className="h-11">
                             <SelectValue placeholder="-- Select experience level --" />
                           </SelectTrigger>
-                          <SelectContent>
-                            {experienceLevels.map((level) => (
-                              <SelectItem key={level.value} value={level.value}>
-                                {level.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
+                        </FormControl>
+                        <SelectContent>
+                          {experienceLevels.map((level) => (
+                            <SelectItem key={level.value} value={level.value}>
+                              {level.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -892,14 +1086,14 @@ export default function KitchenApplicationForm({
                           {!requirements?.requireBusinessDescription && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                         </FormLabel>
                         <FormControl>
-                          <Textarea 
+                          <Textarea
                             placeholder="Brief description of what you prepare, your target market, etc."
                             className="min-h-[80px] resize-none"
                             {...field}
                           />
                         </FormControl>
                         <p className="text-xs text-gray-500 mt-1">
-                          {requirements?.requireBusinessDescription 
+                          {requirements?.requireBusinessDescription
                             ? "Please provide a brief description of your food business"
                             : "Optional, but helps us connect you with suitable kitchen times"}
                         </p>
@@ -942,36 +1136,64 @@ export default function KitchenApplicationForm({
                     <p className="text-xs text-gray-500 mb-3">
                       Upload a photo or PDF of your current food handler certificate (must be valid and current)
                     </p>
-                    
-                    <label 
-                      htmlFor="foodHandlerCert" 
+
+                    {/* Show existing file if available */}
+                    {existingFoodHandlerUrl && !foodHandlerFile && (
+                      <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg mb-3">
+                        <Check className="h-5 w-5 text-green-600" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-green-900">Food Handler Certificate</p>
+                          <p className="text-xs text-green-700">Previously uploaded - approved</p>
+                          <a
+                            href={existingFoodHandlerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-green-600 hover:text-green-700 underline"
+                          >
+                            View certificate
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    <label
+                      htmlFor="foodHandlerCert"
                       className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
-                        ${foodHandlerFile 
-                          ? 'border-[#2BA89F] bg-[#2BA89F]/5' 
-                          : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
+                        ${foodHandlerFile
+                          ? 'border-[#2BA89F] bg-[#2BA89F]/5'
+                          : existingFoodHandlerUrl
+                            ? 'border-gray-300 bg-gray-50'
+                            : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
                         }`}
                     >
-                      <FileText className={`h-5 w-5 ${foodHandlerFile ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
+                      <FileText className={`h-5 w-5 ${foodHandlerFile || existingFoodHandlerUrl ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
                       <div className="text-left">
                         <p className="text-sm font-medium text-gray-900">
-                          {foodHandlerFile ? foodHandlerFile.name : 'Click to upload certificate'}
+                          {foodHandlerFile
+                            ? foodHandlerFile.name
+                            : existingFoodHandlerUrl
+                              ? 'Replace existing certificate'
+                              : 'Click to upload certificate'
+                          }
                         </p>
-                        <p className="text-xs text-gray-500">PDF, JPG, PNG (max 5MB)</p>
+                        <p className="text-xs text-gray-500">
+                          {existingFoodHandlerUrl ? 'Upload new file to replace' : 'PDF, JPG, PNG (max 5MB)'}
+                        </p>
                       </div>
                       {foodHandlerFile && <Check className="h-5 w-5 text-[#2BA89F] ml-auto" />}
                     </label>
-                    <input 
-                      type="file" 
-                      id="foodHandlerCert" 
+                    <input
+                      type="file"
+                      id="foodHandlerCert"
                       accept=".pdf,.jpg,.jpeg,.png"
                       onChange={handleFoodHandlerFileChange}
                       className="hidden"
                     />
-                    
+
                     {foodHandlerFile && (
                       <div className="flex items-center gap-2 mt-2 p-2 bg-[#2BA89F]/10 rounded text-[#2BA89F] text-sm">
                         <Check className="h-4 w-4" />
-                        Food Handler Certificate uploaded
+                        New Food Handler Certificate uploaded - will replace existing
                       </div>
                     )}
                   </div>
@@ -995,13 +1217,14 @@ export default function KitchenApplicationForm({
                           Your certification must be valid for at least 6 months
                         </p>
                         <FormMessage />
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
                 )}
 
-                {/* Food Establishment License (Optional) */}
-                {requirements?.requireFoodEstablishmentCert !== false && (
+                {/* Food Establishment License (Tier 2+) */}
+                {currentTier >= 2 && requirements?.requireFoodEstablishmentCert !== false && (
                   <div>
                     <Label className="text-sm font-medium block mb-2">
                       Food Establishment License/Permit
@@ -1011,43 +1234,71 @@ export default function KitchenApplicationForm({
                     <p className="text-xs text-gray-500 mb-3">
                       If you operate as a registered food business, upload proof of license.
                     </p>
-                    
-                    <label 
-                      htmlFor="businessLicense" 
+
+                    {/* Show existing file if available */}
+                    {existingBusinessLicenseUrl && !businessLicenseFile && (
+                      <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg mb-3">
+                        <Check className="h-5 w-5 text-green-600" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-green-900">Business License</p>
+                          <p className="text-xs text-green-700">Previously uploaded - approved</p>
+                          <a
+                            href={existingBusinessLicenseUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-green-600 hover:text-green-700 underline"
+                          >
+                            View license
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    <label
+                      htmlFor="businessLicense"
                       className={`flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all
-                        ${businessLicenseFile 
-                          ? 'border-[#2BA89F] bg-[#2BA89F]/5' 
-                          : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
+                        ${businessLicenseFile
+                          ? 'border-[#2BA89F] bg-[#2BA89F]/5'
+                          : existingBusinessLicenseUrl
+                            ? 'border-gray-300 bg-gray-50'
+                            : 'border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10'
                         }`}
                     >
-                      <Upload className={`h-5 w-5 ${businessLicenseFile ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
+                      <Upload className={`h-5 w-5 ${businessLicenseFile || existingBusinessLicenseUrl ? 'text-[#2BA89F]' : 'text-gray-600'}`} />
                       <div className="text-left">
                         <p className="text-sm font-medium text-gray-900">
-                          {businessLicenseFile ? businessLicenseFile.name : 'Click to upload license (optional)'}
+                          {businessLicenseFile
+                            ? businessLicenseFile.name
+                            : existingBusinessLicenseUrl
+                              ? 'Replace existing license'
+                              : 'Click to upload license (optional)'
+                          }
                         </p>
-                        <p className="text-xs text-gray-500">PDF, JPG, PNG (max 5MB)</p>
+                        <p className="text-xs text-gray-500">
+                          {existingBusinessLicenseUrl ? 'Upload new file to replace' : 'PDF, JPG, PNG (max 5MB)'}
+                        </p>
                       </div>
                       {businessLicenseFile && <Check className="h-5 w-5 text-[#2BA89F] ml-auto" />}
                     </label>
-                    <input 
-                      type="file" 
-                      id="businessLicense" 
+                    <input
+                      type="file"
+                      id="businessLicense"
                       accept=".pdf,.jpg,.jpeg,.png"
                       onChange={handleBusinessLicenseFileChange}
                       className="hidden"
                     />
-                    
+
                     {businessLicenseFile && (
                       <div className="flex items-center gap-2 mt-2 p-2 bg-[#2BA89F]/10 rounded text-[#2BA89F] text-sm">
                         <Check className="h-4 w-4" />
-                        Business License uploaded
+                        New Business License uploaded - will replace existing
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Food Establishment Expiry */}
-                {requirements?.requireFoodEstablishmentExpiry !== false && (
+                {/* Food Establishment Expiry (Tier 2+) */}
+                {currentTier >= 2 && requirements?.requireFoodEstablishmentExpiry !== false && (
                   <FormField
                     control={form.control}
                     name="foodEstablishmentCertExpiry"
@@ -1062,7 +1313,7 @@ export default function KitchenApplicationForm({
                           <Input type="date" {...field} className="h-11" />
                         </FormControl>
                         <p className="text-xs text-gray-500 mt-1">
-                          {requirements?.requireFoodEstablishmentExpiry 
+                          {requirements?.requireFoodEstablishmentExpiry
                             ? "Enter the expiry date for your food establishment license"
                             : "Optional - Enter if you have a food establishment license"}
                         </p>
@@ -1145,170 +1396,182 @@ export default function KitchenApplicationForm({
             </CardContent>
           </Card>
 
-          {/* CUSTOM FIELDS SECTION */}
-          {requirements?.customFields && Array.isArray(requirements.customFields) && requirements.customFields.length > 0 && (
-            <Card className="border border-gray-200 shadow-sm">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-6 pb-3 border-b-2 border-[#208D80]/10">
-                  <h3 className="font-semibold text-gray-900">Additional Information</h3>
-                </div>
+          {/* Custom Fields Section */}
+          {(() => {
+            // Determine which fields to render based on tier
+            let fieldsToRender: CustomField[] = [];
+            if (currentTier === 1 && requirements?.tier1_custom_fields && Array.isArray(requirements.tier1_custom_fields)) {
+              fieldsToRender = requirements.tier1_custom_fields;
+            } else if (requirements?.customFields && Array.isArray(requirements.customFields)) {
+              fieldsToRender = requirements.customFields;
+            }
 
-                <div className="space-y-4">
-                  {requirements.customFields.map((field: CustomField) => {
-                    if (!field || !field.id || !field.type) return null;
-                    
-                    const fieldName = `custom_${field.id}` as keyof KitchenApplicationFormData;
-                    return (
-                      <FormField
-                        key={field.id}
-                        control={form.control}
-                        name={fieldName}
-                        render={({ field: formField }) => {
-                          // Render the appropriate input based on field type
-                          let inputElement = null;
-                          
-                          if (field.type === 'text') {
-                            inputElement = (
-                              <Input
-                                {...formField}
-                                placeholder={field.placeholder}
-                                className="h-11"
-                                value={formField.value as string || ''}
-                              />
-                            );
-                          } else if (field.type === 'textarea') {
-                            inputElement = (
-                              <Textarea
-                                {...formField}
-                                placeholder={field.placeholder}
-                                className="min-h-[80px] resize-none"
-                                value={formField.value as string || ''}
-                              />
-                            );
-                          } else if (field.type === 'number') {
-                            inputElement = (
-                              <Input
-                                type="number"
-                                placeholder={field.placeholder}
-                                className="h-11"
-                                value={typeof formField.value === 'number' ? formField.value : (typeof formField.value === 'string' ? formField.value : '') as string | number}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  formField.onChange(val ? (isNaN(parseFloat(val)) ? undefined : parseFloat(val)) : undefined);
-                                }}
-                              />
-                            );
-                          } else if (field.type === 'select' && field.options && Array.isArray(field.options)) {
-                            inputElement = (
-                              <Select
-                                onValueChange={formField.onChange}
-                                value={formField.value as string || ''}
-                              >
-                                <SelectTrigger className="h-11">
-                                  <SelectValue placeholder={field.placeholder || `-- Select ${field.label} --`} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {field.options.map((option) => (
-                                    <SelectItem key={option} value={option}>
-                                      {option}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            );
-                          } else if (field.type === 'checkbox') {
-                            if (field.options && Array.isArray(field.options) && field.options.length > 0) {
-                              // Multi-checkbox: show multiple checkboxes for each option
+            if (fieldsToRender.length === 0) return null;
+
+            return (
+              <Card className="border border-gray-200 shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-6 pb-3 border-b-2 border-[#208D80]/10">
+                    <h3 className="font-semibold text-gray-900">Additional Information</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    {fieldsToRender.map((field: CustomField) => {
+                      if (!field || !field.id || !field.type) return null;
+
+                      const fieldName = `custom_${field.id}` as keyof KitchenApplicationFormData;
+                      return (
+                        <FormField
+                          key={field.id}
+                          control={form.control}
+                          name={fieldName}
+                          render={({ field: formField }) => {
+                            // Render the appropriate input based on field type
+                            let inputElement = null;
+
+                            if (field.type === 'text') {
                               inputElement = (
-                                <div className="space-y-3">
-                                  {field.options.map((option) => {
-                                    const selectedValues = (formField.value as string[]) || [];
-                                    const isChecked = selectedValues.includes(option);
-                                    return (
-                                      <div key={option} className="flex items-center space-x-2">
-                                        <Checkbox
-                                          checked={isChecked}
-                                          onCheckedChange={(checked) => {
-                                            const currentValues = (formField.value as string[]) || [];
-                                            if (checked) {
-                                              formField.onChange([...currentValues, option]);
-                                            } else {
-                                              formField.onChange(currentValues.filter(v => v !== option));
-                                            }
-                                          }}
-                                          className="data-[state=checked]:bg-[#208D80] data-[state=checked]:border-[#208D80]"
-                                        />
-                                        <Label className="text-sm font-normal text-gray-700 cursor-pointer">
-                                          {option}
-                                        </Label>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
+                                <Input
+                                  {...formField}
+                                  placeholder={field.placeholder}
+                                  className="h-11"
+                                  value={formField.value as string || ''}
+                                />
                               );
-                            } else {
-                              // Single checkbox: show one checkbox
+                            } else if (field.type === 'textarea') {
                               inputElement = (
-                                <div className="flex items-center space-x-2">
-                                  <Checkbox
-                                    checked={formField.value as boolean || false}
-                                    onCheckedChange={formField.onChange}
-                                    className="data-[state=checked]:bg-[#208D80] data-[state=checked]:border-[#208D80]"
-                                  />
-                                  <Label className="text-sm font-normal text-gray-700">
-                                    {field.placeholder || `I confirm ${field.label}`}
-                                  </Label>
-                                </div>
+                                <Textarea
+                                  {...formField}
+                                  placeholder={field.placeholder}
+                                  className="min-h-[80px] resize-none"
+                                  value={formField.value as string || ''}
+                                />
+                              );
+                            } else if (field.type === 'number') {
+                              inputElement = (
+                                <Input
+                                  type="number"
+                                  placeholder={field.placeholder}
+                                  className="h-11"
+                                  value={typeof formField.value === 'number' ? formField.value : (typeof formField.value === 'string' ? formField.value : '') as string | number}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    formField.onChange(val ? (isNaN(parseFloat(val)) ? undefined : parseFloat(val)) : undefined);
+                                  }}
+                                />
+                              );
+                            } else if (field.type === 'select' && field.options && Array.isArray(field.options)) {
+                              inputElement = (
+                                <Select
+                                  onValueChange={formField.onChange}
+                                  value={formField.value as string || ''}
+                                >
+                                  <SelectTrigger className="h-11">
+                                    <SelectValue placeholder={field.placeholder || `-- Select ${field.label} --`} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {field.options.map((option) => (
+                                      <SelectItem key={option} value={option}>
+                                        {option}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              );
+                            } else if (field.type === 'checkbox') {
+                              if (field.options && Array.isArray(field.options) && field.options.length > 0) {
+                                // Multi-checkbox: show multiple checkboxes for each option
+                                inputElement = (
+                                  <div className="space-y-3">
+                                    {field.options.map((option) => {
+                                      const selectedValues = (formField.value as string[]) || [];
+                                      const isChecked = selectedValues.includes(option);
+                                      return (
+                                        <div key={option} className="flex items-center space-x-2">
+                                          <Checkbox
+                                            checked={isChecked}
+                                            onCheckedChange={(checked) => {
+                                              const currentValues = (formField.value as string[]) || [];
+                                              if (checked) {
+                                                formField.onChange([...currentValues, option]);
+                                              } else {
+                                                formField.onChange(currentValues.filter(v => v !== option));
+                                              }
+                                            }}
+                                            className="data-[state=checked]:bg-[#208D80] data-[state=checked]:border-[#208D80]"
+                                          />
+                                          <Label className="text-sm font-normal text-gray-700 cursor-pointer">
+                                            {option}
+                                          </Label>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              } else {
+                                // Single checkbox: show one checkbox
+                                inputElement = (
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      checked={formField.value as boolean || false}
+                                      onCheckedChange={formField.onChange}
+                                      className="data-[state=checked]:bg-[#208D80] data-[state=checked]:border-[#208D80]"
+                                    />
+                                    <Label className="text-sm font-normal text-gray-700">
+                                      {field.placeholder || `I confirm ${field.label}`}
+                                    </Label>
+                                  </div>
+                                );
+                              }
+                            } else if (field.type === 'date') {
+                              inputElement = (
+                                <Input
+                                  {...formField}
+                                  type="date"
+                                  className="h-11"
+                                  value={formField.value as string || ''}
+                                />
                               );
                             }
-                          } else if (field.type === 'date') {
-                            inputElement = (
-                              <Input
-                                {...formField}
-                                type="date"
-                                className="h-11"
-                                value={formField.value as string || ''}
-                              />
-                            );
-                          }
 
-                          // If no input element was created, return a fallback element
-                          if (!inputElement) {
+                            // If no input element was created, return a fallback element
+                            if (!inputElement) {
+                              return (
+                                <FormItem>
+                                  <FormLabel className="text-sm font-medium">
+                                    {field.label}
+                                    {field.required && <span className="text-red-500">*</span>}
+                                  </FormLabel>
+                                  <FormControl>
+                                    <div className="text-sm text-gray-500">Unsupported field type: {field.type}</div>
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              );
+                            }
+
                             return (
                               <FormItem>
                                 <FormLabel className="text-sm font-medium">
                                   {field.label}
                                   {field.required && <span className="text-red-500">*</span>}
+                                  {!field.required && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                                 </FormLabel>
                                 <FormControl>
-                                  <div className="text-sm text-gray-500">Unsupported field type: {field.type}</div>
+                                  {inputElement}
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
                             );
-                          }
-
-                          return (
-                            <FormItem>
-                              <FormLabel className="text-sm font-medium">
-                                {field.label}
-                                {field.required && <span className="text-red-500">*</span>}
-                                {!field.required && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
-                              </FormLabel>
-                              <FormControl>
-                                {inputElement}
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          );
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* SECTION 5: Terms & Agreements */}
           <Card className="border border-gray-200 shadow-sm">
@@ -1335,7 +1598,7 @@ export default function KitchenApplicationForm({
                       </FormControl>
                       <div className="space-y-1 leading-none">
                         <FormLabel className="text-sm text-gray-700 font-normal cursor-pointer">
-                          I agree to Local Cooks' kitchen usage policies and food safety standards, 
+                          I agree to Local Cooks' kitchen usage policies and food safety standards,
                           and understand that all chefs must maintain current food safety certifications.
                         </FormLabel>
                         <FormMessage />
@@ -1358,7 +1621,7 @@ export default function KitchenApplicationForm({
                       </FormControl>
                       <div className="space-y-1 leading-none">
                         <FormLabel className="text-sm text-gray-700 font-normal cursor-pointer">
-                          I certify that all information provided is accurate and complete. 
+                          I certify that all information provided is accurate and complete.
                           I understand that misrepresentation may result in account suspension.
                         </FormLabel>
                         <FormMessage />
@@ -1370,18 +1633,231 @@ export default function KitchenApplicationForm({
             </CardContent>
           </Card>
 
-          {/* Buttons */}
+          {/* TIER 2: Kitchen Coordination (shown when Tier 1 is approved and moving to Tier 2) */}
+          {currentTier >= 2 && (
+            <>
+              {/* Facility Information Preview */}
+              {requirements && (requirements.floor_plans_url || requirements.equipment_list?.length > 0 || requirements.materials_description || requirements.ventilation_specs || requirements.ventilation_specs_url) && (
+                <Card className="border border-blue-200 bg-blue-50/50">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Info className="h-5 w-5 text-blue-600" />
+                      <h3 className="font-semibold text-gray-900">Facility Information</h3>
+                    </div>
+                    <div className="space-y-3 text-sm">
+                      {requirements.equipment_list && Array.isArray(requirements.equipment_list) && requirements.equipment_list.length > 0 && (
+                        <div>
+                          <p className="font-medium text-gray-700 mb-1">Available Equipment:</p>
+                          <p className="text-gray-600">{requirements.equipment_list.join(', ')}</p>
+                        </div>
+                      )}
+                      {requirements.floor_plans_url && (
+                        <div>
+                          <p className="font-medium text-gray-700 mb-1">Floor Plans:</p>
+                          <a href={requirements.floor_plans_url.includes('r2.cloudflarestorage.com')
+                            ? `/api/files/r2-proxy?url=${encodeURIComponent(requirements.floor_plans_url)}`
+                            : requirements.floor_plans_url} target="_blank" rel="noopener noreferrer" className="text-[#208D80] hover:underline">
+                            View Floor Plans
+                          </a>
+                        </div>
+                      )}
+                      {requirements.materials_description && (
+                        <div>
+                          <p className="font-medium text-gray-700 mb-1">Materials & Supplies:</p>
+                          <p className="text-gray-600">{requirements.materials_description}</p>
+                        </div>
+                      )}
+                      {(requirements.ventilation_specs || requirements.ventilation_specs_url) && (
+                        <div>
+                          <p className="font-medium text-gray-700 mb-1">Ventilation:</p>
+                          {requirements.ventilation_specs && (
+                            <p className="text-gray-600 mb-2">{requirements.ventilation_specs}</p>
+                          )}
+                          {requirements.ventilation_specs_url && (
+                            <a href={requirements.ventilation_specs_url.includes('r2.cloudflarestorage.com')
+                              ? `/api/files/r2-proxy?url=${encodeURIComponent(requirements.ventilation_specs_url)}`
+                              : requirements.ventilation_specs_url} target="_blank" rel="noopener noreferrer" className="text-[#208D80] hover:underline">
+                              View Ventilation Documentation
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="border border-gray-200 shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-6 pb-3 border-b-2 border-[#208D80]/10">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Tier 2: Kitchen Coordination</h3>
+                      <p className="text-sm text-gray-600 mt-1">Work with the manager to coordinate kitchen operations</p>
+                    </div>
+                    <Badge variant={application?.tier2_completed_at ? "default" : "secondary"}>
+                      {application?.tier2_completed_at ? "Complete" : "In Progress"}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-6">
+                    {requirements?.tier2_allergen_plan_required && (
+                      <div>
+                        <Label className="text-sm font-medium block mb-2">
+                          Allergen Management Plan
+                        </Label>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Detail how you identify and prevent cross-contamination of major allergens (peanuts, dairy, gluten, etc.) in your production process.
+                        </p>
+                        <label className="flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10">
+                          <Upload className="h-5 w-5 text-gray-600" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-gray-900">
+                              {allergenPlanFile ? allergenPlanFile.name : 'Click to upload allergen plan'}
+                            </p>
+                            <p className="text-xs text-gray-500">PDF, DOC, DOCX (max 10MB)</p>
+                          </div>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            onChange={(e) => setAllergenPlanFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {requirements?.tier2_supplier_list_required && (
+                      <div>
+                        <Label className="text-sm font-medium block mb-2">
+                          Supplier List
+                        </Label>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Provide a list of your ingredient suppliers, including contact information and certifications (if applicable) for traceability.
+                        </p>
+                        <label className="flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10">
+                          <Upload className="h-5 w-5 text-gray-600" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-gray-900">
+                              {supplierListFile ? supplierListFile.name : 'Click to upload supplier list'}
+                            </p>
+                            <p className="text-xs text-gray-500">PDF, DOC, DOCX, XLS, XLSX (max 10MB)</p>
+                          </div>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.xls,.xlsx"
+                            onChange={(e) => setSupplierListFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {requirements?.tier2_quality_control_required && (
+                      <div>
+                        <Label className="text-sm font-medium block mb-2">
+                          Quality Control Plan
+                        </Label>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Explain your procedures for maintaining product quality, temperature controls during prep/storage, and general food safety standards.
+                        </p>
+                        <label className="flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10">
+                          <Upload className="h-5 w-5 text-gray-600" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-gray-900">
+                              {qualityControlFile ? qualityControlFile.name : 'Click to upload quality control plan'}
+                            </p>
+                            <p className="text-xs text-gray-500">PDF, DOC, DOCX (max 10MB)</p>
+                          </div>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            onChange={(e) => setQualityControlFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {requirements?.tier2_traceability_system_required && (
+                      <div>
+                        <Label className="text-sm font-medium block mb-2">
+                          Traceability System Documentation
+                        </Label>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Describe how you track ingredients from receipt to final product, including lot numbers, production dates, and batch recording methods.
+                        </p>
+                        <label className="flex items-center justify-center gap-3 p-5 border-2 border-dashed rounded-lg cursor-pointer transition-all border-gray-300 bg-[#208D80]/5 hover:border-[#208D80] hover:bg-[#208D80]/10">
+                          <Upload className="h-5 w-5 text-gray-600" />
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-gray-900">
+                              {traceabilityFile ? traceabilityFile.name : 'Click to upload traceability documentation'}
+                            </p>
+                            <p className="text-xs text-gray-500">PDF, DOC, DOCX (max 10MB)</p>
+                          </div>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx"
+                            onChange={(e) => setTraceabilityFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    {requirements?.tier2_insurance_minimum_amount && requirements.tier2_insurance_minimum_amount > 0 && (
+                      <div>
+                        <Label htmlFor="insuranceAmount" className="text-sm font-medium block mb-2">
+                          Insurance Amount (CAD)
+                        </Label>
+                        <Input
+                          id="insuranceAmount"
+                          type="number"
+                          min={requirements.tier2_insurance_minimum_amount}
+                          value={tier2Data.insuranceAmount}
+                          onChange={(e) => setTier2Data(prev => ({ ...prev, insuranceAmount: e.target.value }))}
+                          placeholder={`Minimum: $${requirements.tier2_insurance_minimum_amount.toLocaleString()}`}
+                        />
+                      </div>
+                    )}
+
+                    {requirements?.tier2_kitchen_experience_required && (
+                      <div>
+                        <Label htmlFor="kitchenExperience" className="text-sm font-medium block mb-2">
+                          Kitchen Experience Description
+                        </Label>
+                        <Textarea
+                          id="kitchenExperience"
+                          value={tier2Data.kitchenExperience}
+                          onChange={(e) => setTier2Data(prev => ({ ...prev, kitchenExperience: e.target.value }))}
+                          placeholder="Describe your experience working in commercial kitchens..."
+                          className="min-h-[100px]"
+                        />
+                      </div>
+                    )}
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-900">
+                        <strong>Note:</strong> Upload the required documents and work with the manager via chat to complete Tier 2 coordination.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {/* Submit Button */}
           <div className="flex gap-3 pt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               onClick={onCancel || (() => window.history.back())}
               className="flex-shrink-0"
             >
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isSubmitting}
               className="flex-1 bg-[#208D80] hover:bg-[#1A7470] h-12 text-base font-semibold"
             >

@@ -62,7 +62,7 @@ export const applications = pgTable("applications", {
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
   feedback: text("feedback"),
   status: applicationStatusEnum("status").default("inReview").notNull(),
-  
+
   // Document verification fields
   foodSafetyLicenseUrl: text("food_safety_license_url"),
   foodEstablishmentCertUrl: text("food_establishment_cert_url"),
@@ -71,7 +71,7 @@ export const applications = pgTable("applications", {
   documentsAdminFeedback: text("documents_admin_feedback"),
   documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
   documentsReviewedAt: timestamp("documents_reviewed_at"),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -86,29 +86,29 @@ export const deliveryPartnerApplications = pgTable("delivery_partner_application
   city: text("city").notNull(),
   province: text("province").notNull(),
   postalCode: text("postal_code").notNull(),
-  
+
   // Vehicle details
   vehicleType: vehicleTypeEnum("vehicle_type").notNull(),
   vehicleMake: text("vehicle_make").notNull(),
   vehicleModel: text("vehicle_model").notNull(),
   vehicleYear: integer("vehicle_year").notNull(),
   licensePlate: text("license_plate").notNull(),
-  
+
   // Document uploads
   driversLicenseUrl: text("drivers_license_url"),
   vehicleRegistrationUrl: text("vehicle_registration_url"),
   insuranceUrl: text("insurance_url"),
-  
+
   // Document verification status
   driversLicenseStatus: documentVerificationStatusEnum("drivers_license_status").default("pending"),
   vehicleRegistrationStatus: documentVerificationStatusEnum("vehicle_registration_status").default("pending"),
   insuranceStatus: documentVerificationStatusEnum("insurance_status").default("pending"),
-  
+
   // Admin fields
   documentsAdminFeedback: text("documents_admin_feedback"),
   documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
   documentsReviewedAt: timestamp("documents_reviewed_at"),
-  
+
   feedback: text("feedback"),
   status: applicationStatusEnum("status").default("inReview").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -130,9 +130,9 @@ export const insertApplicationSchema = createInsertSchema(applications, {
   // Allow setting document status during creation
   foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
   foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
-}).omit({ 
-  id: true, 
-  status: true, 
+}).omit({
+  id: true,
+  status: true,
   createdAt: true,
   documentsAdminFeedback: true,
   documentsReviewedBy: true,
@@ -219,8 +219,8 @@ export const insertMicrolearningCompletionSchema = createInsertSchema(microlearn
   confirmed: z.boolean().optional(),
   certificateGenerated: z.boolean().optional(),
   videoProgress: z.any().optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   completedAt: true,
   createdAt: true,
   updatedAt: true,
@@ -233,8 +233,8 @@ export const insertVideoProgressSchema = createInsertSchema(videoProgress, {
   completed: z.boolean().optional(),
   watchedPercentage: z.number().min(0).max(100).optional(),
   isRewatching: z.boolean().optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   completedAt: true,
   updatedAt: true,
 });
@@ -264,9 +264,9 @@ export const insertDeliveryPartnerApplicationSchema = createInsertSchema(deliver
   driversLicenseUrl: z.string().optional(),
   vehicleRegistrationUrl: z.string().optional(),
   insuranceUrl: z.string().min(1, "Vehicle insurance is required"),
-}).omit({ 
-  id: true, 
-  status: true, 
+}).omit({
+  id: true,
+  status: true,
   createdAt: true,
   documentsAdminFeedback: true,
   documentsReviewedBy: true,
@@ -474,8 +474,8 @@ export const insertLocationSchema = createInsertSchema(locations, {
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -494,8 +494,8 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   name: z.string().min(1, "Kitchen name is required"),
   description: z.string().optional(),
   isActive: z.boolean().optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -513,7 +513,7 @@ export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailab
   startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   isAvailable: z.boolean().optional(),
-}).omit({ 
+}).omit({
   id: true,
 });
 
@@ -524,7 +524,7 @@ export const insertKitchenDateOverrideSchema = createInsertSchema(kitchenDateOve
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
   isAvailable: z.boolean().optional(),
   reason: z.string().optional(),
-}).omit({ 
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -546,8 +546,8 @@ export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
   specialNotes: z.string().optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -695,3 +695,49 @@ export type UpdatePortalUserApplicationStatus = z.infer<typeof updatePortalUserA
 // Type exports for portal user location access
 export type PortalUserLocationAccess = typeof portalUserLocationAccess.$inferSelect;
 export type InsertPortalUserLocationAccess = z.infer<typeof insertPortalUserLocationAccessSchema>;
+
+// Define location_requirements table
+export const locationRequirements = pgTable("location_requirements", {
+  id: serial("id").primaryKey(),
+  locationId: integer("location_id").references(() => locations.id).notNull(),
+
+  // Boolean requirements
+  requireFirstName: boolean("require_first_name").default(true).notNull(),
+  requireLastName: boolean("require_last_name").default(true).notNull(),
+  requireEmail: boolean("require_email").default(true).notNull(),
+  requirePhone: boolean("require_phone").default(true).notNull(),
+  requireBusinessName: boolean("require_business_name").default(true).notNull(),
+  requireBusinessType: boolean("require_business_type").default(true).notNull(),
+  requireExperience: boolean("require_experience").default(true).notNull(),
+  requireBusinessDescription: boolean("require_business_description").default(false).notNull(),
+  requireFoodHandlerCert: boolean("require_food_handler_cert").default(true).notNull(),
+  requireFoodHandlerExpiry: boolean("require_food_handler_expiry").default(true).notNull(),
+
+  // Additional requirements
+  requireUsageFrequency: boolean("require_usage_frequency").default(true).notNull(),
+  requireSessionDuration: boolean("require_session_duration").default(true).notNull(),
+  requireTermsAgree: boolean("require_terms_agree").default(true).notNull(),
+  requireAccuracyAgree: boolean("require_accuracy_agree").default(true).notNull(),
+
+  // Tier 1 specific
+  tier1YearsExperienceRequired: boolean("tier1_years_experience_required").default(false).notNull(),
+  tier1YearsExperienceMinimum: integer("tier1_years_experience_minimum").default(0),
+  tier1CustomFields: jsonb("tier1_custom_fields"),
+
+  // Tier 2 specific
+  tier2FoodEstablishmentCertRequired: boolean("tier2_food_establishment_cert_required").default(false).notNull(),
+  tier2FoodEstablishmentExpiryRequired: boolean("tier2_food_establishment_expiry_required").default(false).notNull(),
+  tier2InsuranceDocumentRequired: boolean("tier2_insurance_document_required").default(false).notNull(),
+  tier2CustomFields: jsonb("tier2_custom_fields"),
+
+  // Optional URLs or specs
+  floorPlansUrl: text("floor_plans_url"),
+  ventilationSpecs: text("ventilation_specs"),
+  ventilationSpecsUrl: text("ventilation_specs_url"),
+
+  // Custom fields (generic)
+  customFields: jsonb("custom_fields"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

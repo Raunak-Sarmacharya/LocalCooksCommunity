@@ -55,7 +55,7 @@ const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPa
 const PaymentSuccessPage = lazy(() => import("@/pages/PaymentSuccessPage"));
 const ShareProfile = lazy(() => import("@/pages/ShareProfile"));
 const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
-const ExploreKitchens = lazy(() => import("@/pages/ExploreKitchens"));
+
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
@@ -74,20 +74,20 @@ const LoadingSpinner = () => (
 
 
 // Subdomain-aware route wrapper
-function SubdomainRoute({ path, component, subdomain, children, ...props }: { 
-  path: string; 
-  component?: React.ComponentType<any>; 
+function SubdomainRoute({ path, component, subdomain, children, ...props }: {
+  path: string;
+  component?: React.ComponentType<any>;
   subdomain: SubdomainType;
   children?: React.ReactNode;
   [key: string]: any;
 }) {
   const [location] = useLocation();
   const currentSubdomain = useSubdomain();
-  
+
   useEffect(() => {
     // Don't redirect if on main domain - let it handle its own routes
     if (!currentSubdomain || currentSubdomain === 'main') return;
-    
+
     // Redirect if route is not accessible from current subdomain
     if (!isRouteAccessibleFromSubdomain(currentSubdomain, path)) {
       // Determine correct subdomain for this route
@@ -99,7 +99,7 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
       } else if (path.startsWith('/manager')) {
         targetSubdomain = 'kitchen';
       }
-      
+
       if (targetSubdomain && targetSubdomain !== currentSubdomain) {
         const baseDomain = 'localcooks.ca';
         const targetUrl = `https://${targetSubdomain}.${baseDomain}${path}`;
@@ -107,7 +107,7 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
       }
     }
   }, [currentSubdomain, path]);
-  
+
   // Allow routes on main domain - don't block them
   if (currentSubdomain === 'main' || !currentSubdomain) {
     if (children) {
@@ -117,63 +117,63 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
       return <Route path={path} component={component} {...props} />;
     }
   }
-  
+
   // Only render if accessible from current subdomain (for non-main domains)
   if (currentSubdomain && !isRouteAccessibleFromSubdomain(currentSubdomain, path)) {
     return null;
   }
-  
+
   if (children) {
     return <Route path={path} {...props}>{children}</Route>;
   }
-  
+
   if (component) {
     return <Route path={path} component={component} {...props} />;
   }
-  
+
   return null;
 }
 
 function Router() {
   const subdomain = useSubdomain();
   const [location, setLocation] = useLocation();
-  
+
   // Handle backward compatibility redirects on client side
   // NOTE: Don't redirect if on main domain (localcooks.ca) - it's a completely separate project
   useEffect(() => {
     // Never redirect from localcooks.ca - it's a separate independent project
     if (!subdomain || subdomain === 'main') return; // Skip in development or on main domain
-    
+
     const path = location;
-    
+
     // Only redirect if we're on a subdomain that's not the correct one
     // Main domain (subdomain === 'main') should never redirect
-    
+
     // At this point, subdomain is guaranteed to be one of: 'chef' | 'kitchen' | 'admin'
     // (not 'main' or null due to early return above)
-    
+
     // Redirect admin routes to admin subdomain
     if ((path.startsWith('/admin') || path.startsWith('/admin/')) && subdomain !== 'admin') {
       window.location.href = `https://admin.localcooks.ca${path}`;
       return;
     }
-    
+
     // Redirect chef routes to chef subdomain
-    if ((path.startsWith('/apply') || path.startsWith('/dashboard') || 
-         path.startsWith('/book-kitchen') || path.startsWith('/share-profile')) && 
-        subdomain !== 'chef') {
+    if ((path.startsWith('/apply') || path.startsWith('/dashboard') ||
+      path.startsWith('/book-kitchen') || path.startsWith('/share-profile')) &&
+      subdomain !== 'chef') {
       window.location.href = `https://chef.localcooks.ca${path}`;
       return;
     }
-    
+
     // Redirect manager routes to kitchen subdomain
-    if (path.startsWith('/manager') && 
-        subdomain !== 'kitchen' && subdomain !== 'admin') {
+    if (path.startsWith('/manager') &&
+      subdomain !== 'kitchen' && subdomain !== 'admin') {
       window.location.href = `https://kitchen.localcooks.ca${path}`;
       return;
     }
   }, [subdomain, location]);
-  
+
   // Determine which landing page to show based on subdomain
   const getLandingPage = () => {
     if (subdomain === 'chef') {
@@ -219,19 +219,19 @@ function Router() {
         <Route path="/debug-welcome">
           <div style={{ padding: '20px', fontFamily: 'monospace' }}>
             <h2>Welcome Screen Debug Dashboard</h2>
-            
+
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
               <WelcomeStatusButton />
               <ResetWelcomeFlagButton />
-              <button 
+              <button
                 onClick={() => {
                   window.location.href = '/auth';
                 }}
-                style={{ 
-                  padding: '10px 20px', 
-                  backgroundColor: '#007bff', 
-                  color: 'white', 
-                  border: 'none', 
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
                   borderRadius: '5px',
                   cursor: 'pointer'
                 }}
@@ -239,11 +239,11 @@ function Router() {
                 Go to Auth Page
               </button>
             </div>
-            
-            <div style={{ 
-              backgroundColor: '#f8f9fa', 
-              padding: '15px', 
-              borderRadius: '5px', 
+
+            <div style={{
+              backgroundColor: '#f8f9fa',
+              padding: '15px',
+              borderRadius: '5px',
               fontSize: '14px',
               lineHeight: '1.6'
             }}>
@@ -254,7 +254,7 @@ function Router() {
                 <li><strong>Test Flow:</strong> Click "Go to Auth Page" - you should see the welcome screen</li>
                 <li><strong>Verify Fix:</strong> Complete welcome screen, then check status again</li>
               </ol>
-              
+
               <h4>Expected Values for New Users:</h4>
               <ul>
                 <li>is_verified: true (for Google users)</li>
@@ -269,18 +269,18 @@ function Router() {
         <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
         <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />
         <ProtectedRoute path="/microlearning" component={MicrolearningOverview} />
-        
+
         {/* Kitchen Booking Routes */}
         <SubdomainRoute path="/book-kitchen" component={KitchenBookingCalendar} subdomain={subdomain} />
         <SubdomainRoute path="/book-kitchen/confirm" component={BookingConfirmationPage} subdomain={subdomain} />
         <SubdomainRoute path="/payment-success" component={PaymentSuccessPage} subdomain={subdomain} />
         <ProtectedRoute path="/share-profile" component={ShareProfile} />
-        
+
         {/* Kitchen Application Routes (New - Replaces Share Profile) */}
-        <SubdomainRoute path="/explore-kitchens" component={ExploreKitchens} subdomain={subdomain} />
+
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
         <SubdomainRoute path="/compare-kitchens" component={KitchenComparisonPage} subdomain={subdomain} />
-        
+
         <SubdomainRoute path="/admin/login" component={AdminLogin} subdomain={subdomain} />
         <SubdomainRoute path="/admin-register" component={AdminRegister} subdomain={subdomain} />
         <SubdomainRoute path="/admin/register" component={AdminRegister} subdomain={subdomain} />
@@ -298,7 +298,7 @@ function Router() {
             </AdminProtectedRoute>
           ) : null}
         </Route>
-        
+
         {/* Manager Routes */}
         <Route path="/manager" component={ManagerLanding} />
         <Route path="/manager/login" component={ManagerLogin} />
@@ -359,10 +359,10 @@ function Router() {
             </ManagerProtectedRoute>
           ) : null}
         </Route>
-        
+
         {/* Kitchen Preview Page - Public, no auth required */}
         <Route path="/kitchen-preview/:locationId" component={KitchenPreviewPage} />
-        
+
         <Route component={NotFound} />
       </Switch>
     </Suspense>
@@ -371,9 +371,9 @@ function Router() {
 
 function ResetWelcomeButton() {
   const { showAlert } = useCustomAlerts();
-  
+
   return (
-    <button 
+    <button
       onClick={async () => {
         try {
           const firebaseUser = auth.currentUser;
@@ -407,11 +407,11 @@ function ResetWelcomeButton() {
           });
         }
       }}
-      style={{ 
-        padding: '10px 20px', 
-        backgroundColor: '#007bff', 
-        color: 'white', 
-        border: 'none', 
+      style={{
+        padding: '10px 20px',
+        backgroundColor: '#007bff',
+        color: 'white',
+        border: 'none',
         borderRadius: '5px',
         cursor: 'pointer'
       }}
@@ -423,9 +423,9 @@ function ResetWelcomeButton() {
 
 function WelcomeStatusButton() {
   const { showAlert } = useCustomAlerts();
-  
+
   return (
-    <button 
+    <button
       onClick={async () => {
         try {
           const firebaseUser = auth.currentUser;
@@ -437,9 +437,9 @@ function WelcomeStatusButton() {
             });
             return;
           }
-          
+
           const token = await firebaseUser.getIdToken();
-          
+
           // Get comprehensive debug info
           const response = await fetch('/api/debug/welcome-status', {
             headers: {
@@ -447,10 +447,10 @@ function WelcomeStatusButton() {
               'Content-Type': 'application/json'
             }
           });
-          
+
           if (response.ok) {
             const debugData = await response.json();
-            
+
             const display = {
               'Firebase UID': debugData.firebase_user.uid,
               'Database User ID': debugData.user_id,
@@ -465,7 +465,7 @@ function WelcomeStatusButton() {
                 'has_seen_welcome': debugData.has_seen_welcome_type
               }
             };
-            
+
             console.log('🔍 WELCOME DEBUG DATA:', debugData);
             showAlert({
               title: "Welcome Screen Debug Info",
@@ -488,11 +488,11 @@ function WelcomeStatusButton() {
           });
         }
       }}
-      style={{ 
-        padding: '10px 20px', 
-        backgroundColor: '#28a745', 
-        color: 'white', 
-        border: 'none', 
+      style={{
+        padding: '10px 20px',
+        backgroundColor: '#28a745',
+        color: 'white',
+        border: 'none',
         borderRadius: '5px',
         cursor: 'pointer'
       }}
@@ -504,9 +504,9 @@ function WelcomeStatusButton() {
 
 function ResetWelcomeFlagButton() {
   const { showAlert } = useCustomAlerts();
-  
+
   return (
-    <button 
+    <button
       onClick={async () => {
         try {
           const firebaseUser = auth.currentUser;
@@ -540,11 +540,11 @@ function ResetWelcomeFlagButton() {
           });
         }
       }}
-      style={{ 
-        padding: '10px 20px', 
-        backgroundColor: '#dc3545', 
-        color: 'white', 
-        border: 'none', 
+      style={{
+        padding: '10px 20px',
+        backgroundColor: '#dc3545',
+        color: 'white',
+        border: 'none',
         borderRadius: '5px',
         cursor: 'pointer'
       }}

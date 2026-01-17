@@ -83,7 +83,7 @@ export const applications = pgTable("applications", {
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
   feedback: text("feedback"),
   status: applicationStatusEnum("status").default("inReview").notNull(),
-  
+
   // Document verification fields
   foodSafetyLicenseUrl: text("food_safety_license_url"),
   foodEstablishmentCertUrl: text("food_establishment_cert_url"),
@@ -92,7 +92,7 @@ export const applications = pgTable("applications", {
   documentsAdminFeedback: text("documents_admin_feedback"),
   documentsReviewedBy: integer("documents_reviewed_by").references(() => users.id),
   documentsReviewedAt: timestamp("documents_reviewed_at"),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -113,9 +113,9 @@ export const insertApplicationSchema = createInsertSchema(applications, {
   // Allow setting document status during creation
   foodSafetyLicenseStatus: z.enum(["pending", "approved", "rejected"]).optional(),
   foodEstablishmentCertStatus: z.enum(["pending", "approved", "rejected"]).optional(),
-}).omit({ 
-  id: true, 
-  status: true, 
+}).omit({
+  id: true,
+  status: true,
   createdAt: true,
   documentsAdminFeedback: true,
   documentsReviewedBy: true,
@@ -201,8 +201,8 @@ export const insertMicrolearningCompletionSchema = createInsertSchema(microlearn
   confirmed: z.boolean().optional(),
   certificateGenerated: z.boolean().optional(),
   videoProgress: z.any().optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   completedAt: true,
   createdAt: true,
   updatedAt: true,
@@ -215,8 +215,8 @@ export const insertVideoProgressSchema = createInsertSchema(videoProgress, {
   completed: z.boolean().optional(),
   watchedPercentage: z.number().min(0).max(100).optional(),
   isRewatching: z.boolean().optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   completedAt: true,
   updatedAt: true,
 });
@@ -260,36 +260,49 @@ export const locations = pgTable("locations", {
 export const locationRequirements = pgTable("location_requirements", {
   id: serial("id").primaryKey(),
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull().unique(),
-  
+
   // Personal Information
   requireFirstName: boolean("require_first_name").default(true).notNull(),
   requireLastName: boolean("require_last_name").default(true).notNull(),
   requireEmail: boolean("require_email").default(true).notNull(),
   requirePhone: boolean("require_phone").default(true).notNull(),
-  
+
   // Business Information
   requireBusinessName: boolean("require_business_name").default(true).notNull(),
   requireBusinessType: boolean("require_business_type").default(true).notNull(),
   requireExperience: boolean("require_experience").default(true).notNull(),
   requireBusinessDescription: boolean("require_business_description").default(false).notNull(),
-  
+
   // Certifications
   requireFoodHandlerCert: boolean("require_food_handler_cert").default(true).notNull(),
   requireFoodHandlerExpiry: boolean("require_food_handler_expiry").default(true).notNull(),
-  requireFoodEstablishmentCert: boolean("require_food_establishment_cert").default(false).notNull(),
-  requireFoodEstablishmentExpiry: boolean("require_food_establishment_expiry").default(false).notNull(),
-  
+
   // Kitchen Usage
   requireUsageFrequency: boolean("require_usage_frequency").default(true).notNull(),
   requireSessionDuration: boolean("require_session_duration").default(true).notNull(),
-  
+
   // Agreements
   requireTermsAgree: boolean("require_terms_agree").default(true).notNull(),
   requireAccuracyAgree: boolean("require_accuracy_agree").default(true).notNull(),
-  
+
+  // Tier 1 Requirements (Submit Application)
+  tier1_years_experience_required: boolean("tier1_years_experience_required").default(false).notNull(),
+  tier1_years_experience_minimum: integer("tier1_years_experience_minimum").default(0).notNull(),
+  tier1_custom_fields: jsonb("tier1_custom_fields").default([]),
+
+  // Tier 2 Requirements (Kitchen Coordination)
+  tier2_food_establishment_cert_required: boolean("tier2_food_establishment_cert_required").default(false).notNull(),
+  tier2_food_establishment_expiry_required: boolean("tier2_food_establishment_expiry_required").default(false).notNull(),
+  tier2_insurance_document_required: boolean("tier2_insurance_document_required").default(false).notNull(),
+  tier2_custom_fields: jsonb("tier2_custom_fields").default([]),
+  // Facility Information (auto-shared with chefs)
+  floor_plans_url: text("floor_plans_url"),
+  ventilation_specs: text("ventilation_specs"),
+  ventilation_specs_url: text("ventilation_specs_url"),
+
   // Custom Fields (JSONB array of field definitions)
   customFields: jsonb("custom_fields").default([]), // Array of { id, label, type, required, options?, placeholder? }
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -445,8 +458,8 @@ export const insertLocationSchema = createInsertSchema(locations, {
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -469,10 +482,11 @@ export const insertLocationRequirementsSchema = createInsertSchema(locationRequi
 export const customFieldSchema = z.object({
   id: z.string(), // Unique identifier for the field
   label: z.string().min(1, "Label is required"),
-  type: z.enum(["text", "textarea", "number", "select", "checkbox", "date"]),
+  type: z.enum(["text", "textarea", "number", "select", "checkbox", "date", "file", "cloudflare_upload"]),
   required: z.boolean().default(false),
   placeholder: z.string().optional(),
   options: z.array(z.string()).optional(), // For select fields
+  tier: z.number().min(1).max(3), // Tier assignment for the field
 });
 
 export const updateLocationRequirementsSchema = z.object({
@@ -486,13 +500,38 @@ export const updateLocationRequirementsSchema = z.object({
   requireBusinessDescription: z.boolean().optional(),
   requireFoodHandlerCert: z.boolean().optional(),
   requireFoodHandlerExpiry: z.boolean().optional(),
-  requireFoodEstablishmentCert: z.boolean().optional(),
-  requireFoodEstablishmentExpiry: z.boolean().optional(),
   requireUsageFrequency: z.boolean().optional(),
   requireSessionDuration: z.boolean().optional(),
   requireTermsAgree: z.boolean().optional(),
   requireAccuracyAgree: z.boolean().optional(),
   customFields: z.array(customFieldSchema).optional(),
+  // Tier 1 Requirements
+  tier1_years_experience_required: z.boolean().optional(),
+  tier1_years_experience_minimum: z.number().int().min(0).optional(),
+  tier1_custom_fields: z.array(customFieldSchema).optional().default([]),
+  // Tier 2 Requirements
+  tier2_food_establishment_cert_required: z.boolean().optional(),
+  tier2_food_establishment_expiry_required: z.boolean().optional(),
+  tier2_insurance_document_required: z.boolean().optional(),
+  tier2_custom_fields: z.array(customFieldSchema).optional().default([]),
+  // Facility Information
+  floor_plans_url: z.union([
+    z.null(),
+    z.literal(''),
+    z.string().url(),
+    z.string()
+  ]).optional(),
+  ventilation_specs: z.union([
+    z.string(),
+    z.literal(''),
+    z.null()
+  ]).optional(),
+  ventilation_specs_url: z.union([
+    z.null(),
+    z.literal(''),
+    z.string().url(),
+    z.string()
+  ]).optional(),
 });
 
 export const insertKitchenSchema = createInsertSchema(kitchens, {
@@ -504,8 +543,8 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -527,7 +566,7 @@ export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailab
   startTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   isAvailable: z.boolean().optional(),
-}).omit({ 
+}).omit({
   id: true,
 });
 
@@ -538,7 +577,7 @@ export const insertKitchenDateOverrideSchema = createInsertSchema(kitchenDateOve
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").optional(),
   isAvailable: z.boolean().optional(),
   reason: z.string().optional(),
-}).omit({ 
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -560,8 +599,8 @@ export const insertKitchenBookingSchema = createInsertSchema(kitchenBookings, {
   endTime: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
   specialNotes: z.string().optional(),
-}).omit({ 
-  id: true, 
+}).omit({
+  id: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -721,7 +760,7 @@ export const storageListings = pgTable("storage_listings", {
   storageType: storageTypeEnum("storage_type").notNull(),
   name: text("name").notNull(),
   description: text("description"),
-  
+
   // Physical specifications
   dimensionsLength: numeric("dimensions_length"), // feet/meters
   dimensionsWidth: numeric("dimensions_width"),
@@ -730,7 +769,7 @@ export const storageListings = pgTable("storage_listings", {
   shelfCount: integer("shelf_count"),
   shelfMaterial: text("shelf_material"),
   accessType: text("access_type"), // 'walk-in', 'shelving-unit', 'rack-system'
-  
+
   // Features & amenities (JSONB for flexibility - following existing pattern)
   features: jsonb("features").default([]),
   securityFeatures: jsonb("security_features").default([]),
@@ -738,7 +777,7 @@ export const storageListings = pgTable("storage_listings", {
   temperatureRange: text("temperature_range"), // "35-40°F"
   humidityControl: boolean("humidity_control").default(false),
   powerOutlets: integer("power_outlets").default(0),
-  
+
   // Pricing (all in cents)
   pricingModel: storagePricingModelEnum("pricing_model").notNull(),
   basePrice: numeric("base_price").notNull(), // Base price in cents (integer)
@@ -747,27 +786,27 @@ export const storageListings = pgTable("storage_listings", {
   minimumBookingDuration: integer("minimum_booking_duration").default(1).notNull(), // Minimum booking duration (number)
   bookingDurationUnit: bookingDurationUnitEnum("booking_duration_unit").default("monthly").notNull(), // Unit: hourly, daily, or monthly
   currency: text("currency").default("CAD").notNull(), // Locked to CAD
-  
+
   // Status & moderation (admin approval workflow)
   status: listingStatusEnum("status").default("draft").notNull(),
   approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }), // Admin who approved
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"), // If rejected by admin
-  
+
   // Availability
   isActive: boolean("is_active").default(true).notNull(),
   availabilityCalendar: jsonb("availability_calendar").default({}), // Blocked dates, maintenance windows
-  
+
   // Compliance & documentation
   certifications: jsonb("certifications").default([]),
   photos: jsonb("photos").default([]), // Array of image URLs
   documents: jsonb("documents").default([]), // Array of document URLs
-  
+
   // Rules & restrictions
   houseRules: jsonb("house_rules").default([]),
   prohibitedItems: jsonb("prohibited_items").default([]),
   insuranceRequired: boolean("insurance_required").default(false),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -856,13 +895,13 @@ export type UpdateStorageListingStatus = z.infer<typeof updateStorageListingStat
 export const equipmentListings = pgTable("equipment_listings", {
   id: serial("id").primaryKey(),
   kitchenId: integer("kitchen_id").references(() => kitchens.id, { onDelete: "cascade" }).notNull(),
-  
+
   // Category & type
   category: equipmentCategoryEnum("category").notNull(),
   equipmentType: text("equipment_type").notNull(), // 'mixer', 'oven', 'fryer', etc.
   brand: text("brand"),
   model: text("model"),
-  
+
   // Specifications
   description: text("description"),
   condition: equipmentConditionEnum("condition").notNull(),
@@ -870,15 +909,15 @@ export const equipmentListings = pgTable("equipment_listings", {
   serviceHistory: text("service_history"),
   dimensions: jsonb("dimensions").default({}), // {width, depth, height, weight}
   powerRequirements: text("power_requirements"), // '110V', '208V', '240V', '3-phase'
-  
+
   // Equipment-specific fields (JSONB for flexibility)
   specifications: jsonb("specifications").default({}),
   certifications: jsonb("certifications").default([]),
   safetyFeatures: jsonb("safety_features").default([]),
-  
+
   // Availability type: included (free with kitchen) or rental (paid addon)
   availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("rental").notNull(),
-  
+
   // Pricing - SIMPLIFIED to flat session rate (in cents)
   // For rental equipment: charged once per kitchen booking session, regardless of duration
   sessionRate: numeric("session_rate").default("0"), // Flat session rate in cents (e.g., 2500 = $25.00/session)
@@ -891,32 +930,32 @@ export const equipmentListings = pgTable("equipment_listings", {
   minimumRentalHours: integer("minimum_rental_hours"), // @deprecated
   minimumRentalDays: integer("minimum_rental_days"), // @deprecated
   currency: text("currency").default("CAD").notNull(),
-  
+
   // Usage terms
   usageRestrictions: jsonb("usage_restrictions").default([]),
   trainingRequired: boolean("training_required").default(false),
   cleaningResponsibility: text("cleaning_responsibility"), // 'renter', 'host', 'shared'
-  
+
   // Status & moderation (admin approval workflow)
   status: listingStatusEnum("status").default("draft").notNull(), // Reuse same enum
   approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
-  
+
   // Availability
   isActive: boolean("is_active").default(true).notNull(),
   availabilityCalendar: jsonb("availability_calendar").default({}),
   prepTimeHours: integer("prep_time_hours").default(4), // Cleaning time between rentals
-  
+
   // Visuals & documentation
   photos: jsonb("photos").default([]),
   manuals: jsonb("manuals").default([]), // PDF URLs
   maintenanceLog: jsonb("maintenance_log").default([]),
-  
+
   // Damage & liability (deposits in cents)
   damageDeposit: numeric("damage_deposit").default("0"), // Refundable deposit (in cents)
   insuranceRequired: boolean("insurance_required").default(false),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1166,61 +1205,75 @@ export const chefKitchenApplications = pgTable("chef_kitchen_applications", {
   id: serial("id").primaryKey(),
   chefId: integer("chef_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(),
-  
+
   // Personal Info (collected per application)
   fullName: text("full_name").notNull(),
   email: text("email").notNull(),
   phone: text("phone").notNull(),
-  
+
   // Business Info
   kitchenPreference: kitchenPreferenceEnum("kitchen_preference").notNull(),
   businessDescription: text("business_description"),
   cookingExperience: text("cooking_experience"),
-  
+
   // Food Safety License
   foodSafetyLicense: certificationStatusEnum("food_safety_license").notNull(),
   foodSafetyLicenseUrl: text("food_safety_license_url"),
   foodSafetyLicenseStatus: documentVerificationStatusEnum("food_safety_license_status").default("pending"),
   foodSafetyLicenseExpiry: date("food_safety_license_expiry"),
-  
+
   // Food Establishment Certificate (optional)
   foodEstablishmentCert: certificationStatusEnum("food_establishment_cert").notNull(),
   foodEstablishmentCertUrl: text("food_establishment_cert_url"),
   foodEstablishmentCertStatus: documentVerificationStatusEnum("food_establishment_cert_status").default("pending"),
   foodEstablishmentCertExpiry: date("food_establishment_cert_expiry"),
-  
+
   // Application Status
   status: applicationStatusEnum("status").default("inReview").notNull(),
   feedback: text("feedback"),
-  
+
   // Manager Review
   reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
   reviewedAt: timestamp("reviewed_at"),
-  
+
+  // Tier Tracking
+  current_tier: integer("current_tier").default(1).notNull(),
+  tier1_completed_at: timestamp("tier1_completed_at"),
+  tier2_completed_at: timestamp("tier2_completed_at"),
+  tier3_submitted_at: timestamp("tier3_submitted_at"),
+  tier4_completed_at: timestamp("tier4_completed_at"),
+  government_license_number: text("government_license_number"),
+  government_license_received_date: date("government_license_received_date"),
+  government_license_expiry_date: date("government_license_expiry_date"),
+  tier_data: jsonb("tier_data").default({}),
+  chat_conversation_id: text("chat_conversation_id"),
+
   // Custom Fields Data (JSONB object storing values for custom fields)
   customFieldsData: jsonb("custom_fields_data").default({}), // { [fieldId]: value }
-  
+
   // Timestamps
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Zod validation schemas for chef kitchen applications
+// Base schema - field requirements are validated in API based on location requirements
+// This schema accepts the data structure, but individual field requirements are checked in the API endpoint
 export const insertChefKitchenApplicationSchema = createInsertSchema(chefKitchenApplications, {
   chefId: z.number(),
   locationId: z.number(),
-  fullName: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Please enter a valid email address"),
-  phone: phoneNumberSchema,
+  fullName: z.string().min(1, "Name is required"), // Minimum validation, but requirement checked in API
+  email: z.string().email("Please enter a valid email address"), // Email format validation, but requirement checked in API
+  phone: z.string(), // Accept any string (including empty) - requirement and format validation happens in API
   kitchenPreference: z.enum(["commercial", "home", "notSure"]),
   businessDescription: z.string().optional(),
   cookingExperience: z.string().optional(),
-  foodSafetyLicense: z.enum(["yes", "no", "notSure"]),
+  foodSafetyLicense: z.enum(["yes", "no", "notSure"]), // Requirement checked in API
   foodSafetyLicenseUrl: z.string().optional(),
-  foodSafetyLicenseExpiry: z.string().optional(),
-  foodEstablishmentCert: z.enum(["yes", "no", "notSure"]),
+  foodSafetyLicenseExpiry: z.string().optional(), // Requirement checked in API
+  foodEstablishmentCert: z.enum(["yes", "no", "notSure"]).optional(), // Optional - defaults to "no" if not required
   foodEstablishmentCertUrl: z.string().optional(),
-  foodEstablishmentCertExpiry: z.string().optional(),
+  foodEstablishmentCertExpiry: z.string().optional(), // Requirement checked in API
   customFieldsData: z.record(z.any()).optional(), // Custom fields data as JSON object
 }).omit({
   id: true,
@@ -1250,6 +1303,14 @@ export const updateChefKitchenApplicationStatusSchema = z.object({
   id: z.number(),
   status: z.enum(["inReview", "approved", "rejected", "cancelled"]),
   feedback: z.string().optional(),
+  current_tier: z.number().min(1).max(4).optional(),
+  tier_data: z.record(z.any()).optional(),
+});
+
+export const updateApplicationTierSchema = z.object({
+  id: z.number(),
+  current_tier: z.number().min(1).max(4),
+  tier_data: z.record(z.any()).optional(),
 });
 
 export const updateChefKitchenApplicationDocumentsSchema = z.object({
@@ -1266,6 +1327,7 @@ export type InsertChefKitchenApplication = z.infer<typeof insertChefKitchenAppli
 export type UpdateChefKitchenApplication = z.infer<typeof updateChefKitchenApplicationSchema>;
 export type UpdateChefKitchenApplicationStatus = z.infer<typeof updateChefKitchenApplicationStatusSchema>;
 export type UpdateChefKitchenApplicationDocuments = z.infer<typeof updateChefKitchenApplicationDocumentsSchema>;
+export type UpdateApplicationTier = z.infer<typeof updateApplicationTierSchema>;
 
 // ===== PAYMENT TRANSACTIONS TABLE =====
 // Centralized table for tracking all payment transactions across booking types

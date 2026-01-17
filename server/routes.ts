@@ -15,16 +15,16 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
       role: req.neonUser.role || '',
     };
   }
-  
+
   // Fall back to session auth
-        if (req.isAuthenticated && req.isAuthenticated() && req.user) {
+  if (req.isAuthenticated && req.isAuthenticated() && req.user) {
     return {
       id: req.user.id,
       username: req.user.username,
       role: req.user.role,
     };
   }
-  
+
   return null;
 }
 import fs from "fs";
@@ -43,8 +43,9 @@ import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
 import { verifyFirebaseToken } from "./firebase-admin";
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
+import { deleteConversation } from "./chat-service";
 import { pool, db } from "./db";
-import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, users, locations, applications, kitchens } from "@shared/schema";
+import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, chefKitchenApplications, users, locations, applications, kitchens } from "@shared/schema";
 import Stripe from "stripe";
 import { eq, inArray, and, desc, count } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
@@ -64,14 +65,14 @@ import { portalUserApplications, portalUserLocationAccess } from "@shared/schema
  */
 function normalizeImageUrl(url: string | null | undefined, req: Request): string | null {
   if (!url) return null;
-  
+
   const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-  
+
   // Helper to get origin
   const getOrigin = (): string => {
     let protocol: string;
     let host: string;
-    
+
     if (isProduction) {
       protocol = (req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
       host = req.get('x-forwarded-host') || req.get('host') || req.headers.host || '';
@@ -80,10 +81,10 @@ function normalizeImageUrl(url: string | null | undefined, req: Request): string
       protocol = req.protocol || 'http';
       host = req.get('host') || req.headers.host || 'localhost:5001';
     }
-    
+
     return `${protocol}://${host}`;
   };
-  
+
   // Check if this is an R2 custom domain URL (files.localcooks.ca) that needs proxying
   // This domain doesn't have DNS configured, so we need to proxy through our API
   if (url.startsWith('https://files.localcooks.ca/')) {
@@ -92,12 +93,12 @@ function normalizeImageUrl(url: string | null | undefined, req: Request): string
     const origin = getOrigin();
     return `${origin}/api/images/r2/${encodeURIComponent(r2Path)}`;
   }
-  
+
   // If already an absolute URL (http:// or https://), return as-is
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url;
   }
-  
+
   // If it's a relative path, convert to absolute URL
   if (url.startsWith('/')) {
     const origin = getOrigin();
@@ -107,7 +108,7 @@ function normalizeImageUrl(url: string | null | undefined, req: Request): string
     }
     return `${origin}${url}`;
   }
-  
+
   // Return as-is if it doesn't match any pattern (might be a data URL or other format)
   return url;
 }
@@ -204,11 +205,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // Application submission endpoint (supports both JSON and multipart form data)
-  app.post("/api/applications", 
+  app.post("/api/applications",
     upload.fields([
       { name: 'foodSafetyLicense', maxCount: 1 },
       { name: 'foodEstablishmentCert', maxCount: 1 }
-    ]), 
+    ]),
     async (req: Request, res: Response) => {
       try {
         // Require authentication to submit an application
@@ -242,7 +243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
           }
-          
+
           const validationError = fromZodError(parsedData.error);
           return res.status(400).json({
             message: "Validation error",
@@ -283,11 +284,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Handle uploaded files and URL inputs
         const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-        
+
         // Handle file uploads
         if (files) {
           const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-          
+
           if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
             console.log('📄 Uploading food safety license file...');
             if (isProduction) {
@@ -297,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             console.log('✅ Food safety license uploaded:', applicationData.foodSafetyLicenseUrl);
           }
-          
+
           if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
             console.log('📄 Uploading food establishment cert file...');
             if (isProduction) {
@@ -314,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
           console.log('📄 Using provided food safety license URL:', applicationData.foodSafetyLicenseUrl);
         }
-        
+
         if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
           applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
           console.log('📄 Using provided food establishment cert URL:', applicationData.foodEstablishmentCertUrl);
@@ -325,7 +326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           applicationData.foodSafetyLicenseStatus = "pending";
           console.log('✅ Food safety license document provided, status set to pending');
         }
-        
+
         if (applicationData.foodEstablishmentCertUrl) {
           applicationData.foodEstablishmentCertStatus = "pending";
           console.log('✅ Food establishment cert document provided, status set to pending');
@@ -355,7 +356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           if (fullApplication && fullApplication.email) {
             const hasDocuments = !!(fullApplication.foodSafetyLicenseUrl || fullApplication.foodEstablishmentCertUrl);
-            
+
             if (hasDocuments) {
               // Application submitted WITH documents - send combined email
               const emailContent = generateApplicationWithDocumentsEmail({
@@ -391,7 +392,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(201).json(application);
       } catch (error) {
         console.error("Error creating application:", error);
-        
+
         // Clean up uploaded files on error (development only)
         if (req.files) {
           const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -406,7 +407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           });
         }
-        
+
         return res.status(500).json({ message: "Internal server error" });
       }
     }
@@ -532,7 +533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await sendEmail(emailContent, {
             trackingId: `status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()}`
           });
-          
+
           console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
@@ -607,7 +608,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await sendEmail(emailContent, {
             trackingId: `cancel_${updatedApplication.id}_${Date.now()}`
           });
-          
+
           console.log(`Cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send cancellation email for application ${updatedApplication.id}: No email address found`);
@@ -772,7 +773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('Error stack:', dbError?.stack);
         console.error('Error code:', dbError?.code);
         console.error('Error detail:', dbError?.detail);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Database connection failed',
           message: dbError instanceof Error ? dbError.message : 'Unknown database error',
           code: dbError?.code
@@ -783,7 +784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('Admin user not found:', username);
         return res.status(401).json({ error: 'Incorrect username or password' });
       }
-      
+
       console.log('User found:', { id: admin.id, username: admin.username, role: admin.role });
 
       // Verify user is admin (only admins can use this endpoint)
@@ -842,8 +843,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Admin login error:', error);
       console.error('Error details:', error instanceof Error ? error.stack : error);
-      res.status(500).json({ 
-        error: 'Admin login failed', 
+      res.status(500).json({
+        error: 'Admin login failed',
         message: error instanceof Error ? error.message : 'Unknown error',
         details: process.env.NODE_ENV === 'development' ? error : undefined
       });
@@ -952,14 +953,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Generic file upload endpoint (for use with new upload components)
   // Uses Firebase Auth - supports both session and Firebase authentication
-  app.post("/api/upload-file", 
+  app.post("/api/upload-file",
     upload.single('file'),
     optionalFirebaseAuth, // Try Firebase auth, but don't require it (supports legacy session auth too)
     async (req: Request, res: Response) => {
       try {
         // Check if user is authenticated (Firebase or session)
         const userId = (req as any).neonUser?.id || (req as any).user?.id;
-        
+
         if (!userId) {
           // Clean up uploaded file (development only)
           if (req.file && (req.file as any).path) {
@@ -1001,7 +1002,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } catch (error) {
         console.error("File upload error:", error);
-        
+
         // Clean up uploaded file on error (development only)
         if (req.file && (req.file as any).path) {
           try {
@@ -1010,8 +1011,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error('Error cleaning up file:', e);
           }
         }
-        
-        return res.status(500).json({ 
+
+        return res.status(500).json({
           error: "File upload failed",
           details: error instanceof Error ? error.message : "Unknown error"
         });
@@ -1026,41 +1027,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/images/r2/:path(*)", async (req: Request, res: Response) => {
     try {
       const r2Path = decodeURIComponent(req.params.path);
-      
+
       if (!r2Path) {
         return res.status(400).json({ error: "Path is required" });
       }
-      
+
       // Security: Only allow specific folder prefixes
       const allowedPrefixes = ['documents/', 'images/', 'profiles/', 'kitchen-applications/'];
       const isAllowed = allowedPrefixes.some(prefix => r2Path.startsWith(prefix));
-      
+
       if (!isAllowed) {
         console.warn(`[R2 Proxy] Blocked request for path: ${r2Path}`);
         return res.status(403).json({ error: "Access denied" });
       }
-      
+
       // Import R2 storage utilities
       const { isR2Configured } = await import('./r2-storage');
-      
+
       if (!isR2Configured()) {
         console.error('[R2 Proxy] R2 is not configured');
         return res.status(503).json({ error: "Storage not configured" });
       }
-      
+
       // Get the R2 bucket details from environment
       const R2_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
       const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
       const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
       const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME;
-      
+
       if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
         return res.status(503).json({ error: "R2 credentials not configured" });
       }
-      
+
       // Use AWS SDK to fetch the image
       const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
-      
+
       const s3Client = new S3Client({
         region: 'auto',
         endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -1069,18 +1070,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           secretAccessKey: R2_SECRET_ACCESS_KEY,
         },
       });
-      
+
       const command = new GetObjectCommand({
         Bucket: R2_BUCKET_NAME,
         Key: r2Path,
       });
-      
+
       const response = await s3Client.send(command);
-      
+
       if (!response.Body) {
         return res.status(404).json({ error: "File not found" });
       }
-      
+
       // Set appropriate headers
       if (response.ContentType) {
         res.setHeader('Content-Type', response.ContentType);
@@ -1088,24 +1089,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (response.ContentLength) {
         res.setHeader('Content-Length', response.ContentLength);
       }
-      
+
       // Cache for 1 day (public images)
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      
+
       // Stream the response
       const stream = response.Body as NodeJS.ReadableStream;
       stream.pipe(res);
-      
+
     } catch (error: any) {
       console.error('[R2 Proxy] Error fetching file:', error);
-      
+
       if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
         return res.status(404).json({ error: "File not found" });
       }
-      
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: "Failed to fetch file",
-        details: error.message 
+        details: error.message
       });
     }
   });
@@ -1131,7 +1132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const filename = fileUrl.replace('/api/files/documents/', '');
         const filenameParts = filename.split('_');
         let fileUserId: number | null = null;
-        
+
         if (filenameParts[0] === 'unknown') {
           // Only admins and managers can access unknown files
           if (user.role !== "admin" && user.role !== "manager") {
@@ -1143,12 +1144,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             fileUserId = parseInt(userIdMatch[0]);
           }
         }
-        
+
         // Check permissions
         if (fileUserId !== null && user.id !== fileUserId && user.role !== "admin" && user.role !== "manager") {
           return res.status(403).json({ error: "Access denied" });
         }
-        
+
         // For local files, return the URL with a token query parameter
         // The file serving route will validate the token
         const { auth } = await import('@/lib/firebase');
@@ -1157,7 +1158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const token = await currentUser.getIdToken();
           return res.json({ url: `${fileUrl}?token=${encodeURIComponent(token)}` });
         }
-        
+
         return res.json({ url: fileUrl });
       }
 
@@ -1171,12 +1172,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const urlParts = fileUrl.split('/');
             const fileUserIdMatch = urlParts.find(part => /^\d+$/.test(part));
             const fileUserId = fileUserIdMatch ? parseInt(fileUserIdMatch) : null;
-            
+
             // Check permissions
             if (fileUserId && user.id !== fileUserId && user.role !== "admin" && user.role !== "manager") {
               return res.status(403).json({ error: "Access denied" });
             }
-            
+
             const presignedUrl = await getPresignedUrl(fileUrl, 3600); // 1 hour expiry
             return res.json({ url: presignedUrl });
           }
@@ -1202,11 +1203,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be set
       const user = req.neonUser!;
-      
+
       console.log(`✅ Presigned URL request from authenticated user: ${user.id} (${user.role || 'no role'})`);
 
       const { imageUrl } = req.body;
-      
+
       if (!imageUrl || typeof imageUrl !== 'string') {
         return res.status(400).json({ error: "imageUrl is required" });
       }
@@ -1214,23 +1215,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if R2 is configured and we're in production
       const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
       const isDevelopment = process.env.NODE_ENV === 'development' || (!isProduction && !process.env.VERCEL_ENV);
-      
+
       // In development, always return the original URL (no presigned URLs needed)
       if (isDevelopment) {
         console.log('💻 Development mode: Returning original URL without presigned URL');
         return res.json({ url: imageUrl });
       }
-      
+
       // In production, try to generate presigned URL
       if (isProduction) {
         try {
           const { getPresignedUrl, isR2Configured } = await import('./r2-storage');
-          
+
           if (!isR2Configured()) {
             console.warn('R2 not configured, returning original URL');
             return res.json({ url: imageUrl });
           }
-          
+
           const presignedUrl = await getPresignedUrl(imageUrl, 3600); // 1 hour expiry
           return res.json({ url: presignedUrl });
         } catch (error) {
@@ -1243,12 +1244,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.json({ url: imageUrl });
         }
       }
-      
+
       // Default: return original URL
       return res.json({ url: imageUrl });
     } catch (error) {
       console.error('Error in presigned URL endpoint:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: "Failed to generate presigned URL",
         details: error instanceof Error ? error.message : "Unknown error"
       });
@@ -1267,7 +1268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support multiple methods
       let userId: number | null = null;
       let userRole: string | null = null;
-      
+
       // Method 1: Try Firebase auth from Authorization header (set by optionalFirebaseAuth middleware)
       if (req.neonUser) {
         userId = req.neonUser.id;
@@ -1307,7 +1308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId = req.user.id;
         userRole = req.user.role;
       }
-      
+
       if (!userId) {
         // Log detailed auth info for debugging
         console.log('[FILE ACCESS] Authentication failed for:', req.params.filename, {
@@ -1320,21 +1321,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           method: req.method,
           path: req.path
         });
-        
+
         // For direct file access (like img tags), provide helpful error message
-        return res.status(401).json({ 
+        return res.status(401).json({
           message: "Not authenticated",
           hint: "Files must be accessed with authentication. Use the presigned URL endpoint or include an auth token."
         });
       }
-      
+
       console.log('[FILE ACCESS] Authenticated user:', userId, 'role:', userRole, 'accessing:', req.params.filename);
 
       const filename = req.params.filename;
-      
+
       // Check if this is a Cloudflare R2 URL (production)
       const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-      
+
       // If filename looks like a URL (starts with http), it's likely an R2 URL
       // In this case, we should redirect to presigned URL instead
       if (filename.startsWith('http://') || filename.startsWith('https://')) {
@@ -1348,12 +1349,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const urlParts = filename.split('/');
               const fileUserIdMatch = urlParts.find(part => /^\d+$/.test(part));
               const fileUserId = fileUserIdMatch ? parseInt(fileUserIdMatch) : null;
-              
+
               // Check permissions
               if (fileUserId && userId !== fileUserId && userRole !== "admin" && userRole !== "manager") {
                 return res.status(403).json({ message: "Access denied" });
               }
-              
+
               const presignedUrl = await getPresignedUrl(filename, 3600); // 1 hour expiry
               return res.redirect(presignedUrl);
             }
@@ -1363,10 +1364,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       // Local file serving (development)
       const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
-      
+
       // Check if file exists
       if (!fs.existsSync(filePath)) {
         return res.status(404).json({ message: "File not found" });
@@ -1376,7 +1377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Handle "unknown_" prefix for files uploaded without auth
       const filenameParts = filename.split('_');
       let fileUserId: number | null = null;
-      
+
       // Try to parse userId from filename
       if (filenameParts[0] === 'unknown') {
         // File uploaded without auth - allow access for admins and managers only
@@ -1390,7 +1391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fileUserId = parseInt(userIdMatch[0]);
         }
       }
-      
+
       // Allow access if user owns the file, is admin, or is manager
       // Chefs can view their own files, admins and managers can view all files
       if (fileUserId !== null && userId !== fileUserId && userRole !== "admin" && userRole !== "manager") {
@@ -1400,7 +1401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get file info
       const stat = fs.statSync(filePath);
       const ext = path.extname(filename).toLowerCase();
-      
+
       // Set appropriate content type
       let contentType = 'application/octet-stream';
       if (ext === '.pdf') {
@@ -1416,7 +1417,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', stat.size);
       res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      
+
       // Stream the file
       const readStream = fs.createReadStream(filePath);
       readStream.pipe(res);
@@ -1431,11 +1432,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===============================
 
   // Update application documents endpoint (for approved applicants)
-  app.patch("/api/applications/:id/documents", 
+  app.patch("/api/applications/:id/documents",
     (req, res, next) => {
       // Check content type to decide whether to use multer
       const contentType = req.get('Content-Type') || '';
-      
+
       if (contentType.includes('multipart/form-data')) {
         // Use multer for file uploads
         const fileUploadMiddleware = upload.fields([
@@ -1506,7 +1507,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
           }
-          return res.status(400).json({ 
+          return res.status(400).json({
             message: "Document uploads are not permitted for cancelled or rejected applications",
             applicationStatus: application.status
           });
@@ -1535,7 +1536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 deleteFile(oldFilePath);
               }
             }
-            
+
             if (isProduction) {
               updateData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user!.id);
             } else {
@@ -1554,7 +1555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 deleteFile(oldFilePath);
               }
             }
-            
+
             if (isProduction) {
               updateData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user!.id);
             } else {
@@ -1592,7 +1593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(200).json(updatedApplication);
       } catch (error) {
         console.error("Error updating application documents:", error);
-        
+
         // Clean up uploaded files on error
         if (req.files) {
           const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -1604,7 +1605,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           });
         }
-        
+
         return res.status(500).json({ message: "Internal server error" });
       }
     }
@@ -1657,11 +1658,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Check if both documents are approved, then update user verification status
-      if (updatedApplication.foodSafetyLicenseStatus === "approved" && 
-          (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
+      if (updatedApplication.foodSafetyLicenseStatus === "approved" &&
+        (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
         await storage.updateUserVerificationStatus(updatedApplication.userId!, true);
         console.log(`User ${updatedApplication.userId} has been fully verified`);
-        
+
         // NOTE: Full verification email is handled by api/index.js in production
         // Removed duplicate email logic to prevent double emails
       }
@@ -1672,16 +1673,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Check if all documents are approved
           const hasFoodSafetyLicense = updatedApplication.foodSafetyLicenseUrl;
           const hasFoodEstablishmentCert = updatedApplication.foodEstablishmentCertUrl;
-          
+
           const foodSafetyApproved = updatedApplication.foodSafetyLicenseStatus === "approved";
           const foodEstablishmentApproved = !hasFoodEstablishmentCert || updatedApplication.foodEstablishmentCertStatus === "approved";
-          
+
           // If all documents are approved, send consolidated email
           if (foodSafetyApproved && foodEstablishmentApproved) {
             const approvedDocuments = [];
             if (hasFoodSafetyLicense) approvedDocuments.push("Food Safety License");
             if (hasFoodEstablishmentCert) approvedDocuments.push("Food Establishment Certificate");
-            
+
             const emailContent = generateChefAllDocumentsApprovedEmail({
               fullName: updatedApplication.fullName || "Applicant",
               email: updatedApplication.email,
@@ -1692,7 +1693,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await sendEmail(emailContent, {
               trackingId: `all_docs_approved_chef_${updatedApplication.id}_${Date.now()}`
             });
-            
+
             console.log(`All documents approved email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
           }
         } else {
@@ -1733,7 +1734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = parseInt(req.params.userId);
-      
+
       // Verify user can access this data (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -1742,7 +1743,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const progress = await storage.getMicrolearningProgress(userId);
       const completionStatus = await storage.getMicrolearningCompletion(userId);
       const hasApproval = await hasApprovedApplication(userId);
-      
+
       // Admins and completed users have unrestricted access regardless of application status
       const isAdmin = req.user!.role === 'admin';
       const isCompleted = completionStatus?.confirmed || false;
@@ -1771,7 +1772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { userId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
-      
+
       // Verify user can update this data (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -1783,10 +1784,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isCompleted = completionStatus?.confirmed || false;
       const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
       const isAdmin = req.user!.role === 'admin';
-      
+
       // Admins and completed users have unrestricted access to all videos
       if (!hasApproval && !isAdmin && !isCompleted && videoId !== firstVideoId) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: 'Application approval required to access this video',
           accessLevel: 'limited',
           firstVideoOnly: true
@@ -1826,7 +1827,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { userId, completionDate, videoProgress } = req.body;
-      
+
       // Verify user can complete this (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -1835,11 +1836,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user has approved application to complete full training
       const hasApproval = await hasApprovedApplication(userId);
       const isAdmin = req.user!.role === 'admin';
-      
+
       // Admins can complete certification without application approval
       // Regular users need approval unless they're completing as admin
       if (!hasApproval && !isAdmin) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: 'Application approval required to complete full certification',
           accessLevel: 'limited',
           requiresApproval: true
@@ -1861,7 +1862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));
 
       if (!allRequired) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: 'All required videos must be completed before certification',
           missingVideos: requiredVideos.filter(id => !completedVideos.includes(id))
         });
@@ -1900,7 +1901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the request, just log the error
         }
       }
-      
+
       res.json({
         success: true,
         message: 'Microlearning completed successfully',
@@ -1923,14 +1924,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = parseInt(req.params.userId);
-      
+
       // Verify user can access this completion (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
       }
 
       const completion = await storage.getMicrolearningCompletion(userId);
-      
+
       if (!completion) {
         return res.status(404).json({ message: 'No completion found' });
       }
@@ -1950,7 +1951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userId = parseInt(req.params.userId);
-      
+
       // Verify user can access this certificate (either their own or admin)
       if (req.user!.id !== userId && req.user!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -2100,7 +2101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const crypto = await import('crypto');
       const verificationToken = crypto.randomBytes(32).toString('hex');
       const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
-      
+
       // Store verification token in database directly (bypassing storage interface for now)
       const { pool } = await import('./db.js');
       await pool.query(`
@@ -2127,19 +2128,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (emailSent) {
         console.log(`Email verification sent to ${email}`);
-        return res.status(200).json({ 
-          message: "Verification email sent successfully" 
+        return res.status(200).json({
+          message: "Verification email sent successfully"
         });
       } else {
         console.error(`Failed to send verification email to ${email}`);
-        return res.status(500).json({ 
-          message: "Error sending verification email. Please try again later." 
+        return res.status(500).json({
+          message: "Error sending verification email. Please try again later."
         });
       }
     } catch (error) {
       console.error("Error sending verification email:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
@@ -2176,26 +2177,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await pool.query('DELETE FROM email_verification_tokens WHERE token = $1', [token]);
 
       console.log(`Email verified successfully: ${email}`);
-      
+
       // Redirect to success page
       return res.redirect(`${process.env.BASE_URL || 'http://localhost:5000'}/auth?verified=true`);
 
     } catch (error) {
       console.error("Error in email verification:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
 
-    // NOTE: Firebase user sync endpoint has been moved to firebase-routes.ts with proper authentication
+  // NOTE: Firebase user sync endpoint has been moved to firebase-routes.ts with proper authentication
   // This old endpoint has been removed to prevent conflicts
 
   // Admin endpoint to send promo emails
   app.post('/api/admin/send-promo-email', async (req: Request, res: Response) => {
     try {
       console.log(`POST /api/admin/send-promo-email - Session ID: ${req.sessionID}, User ID: ${req.user?.id}`);
-      
+
       // Check if user is authenticated
       if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
         console.log('Promo email request - User not authenticated');
@@ -2208,19 +2209,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { 
-        email, 
+      const {
+        email,
         customEmails,
         emailMode,
         recipients,
-        promoCode, 
-        promoCodeLabel, 
-        message, 
-        customMessage, 
+        promoCode,
+        promoCodeLabel,
+        message,
+        customMessage,
         greeting,
-        buttonText, 
-        orderUrl, 
-        subject, 
+        buttonText,
+        orderUrl,
+        subject,
         previewText,
         designSystem,
         isPremium,
@@ -2246,10 +2247,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Determine target emails - support both old and new formats
       let targetEmails: string[] = [];
-      
+
       if (recipients && Array.isArray(recipients) && recipients.length > 0) {
         // New unified format - extract emails from recipients array
-        targetEmails = recipients.map((recipient: any) => 
+        targetEmails = recipients.map((recipient: any) =>
           typeof recipient === 'string' ? recipient : recipient.email
         ).filter(Boolean);
       } else if (emailMode === 'custom' && customEmails && Array.isArray(customEmails)) {
@@ -2273,8 +2274,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (!messageContent || messageContent.length < 10) {
-        console.log('Promo email request - Invalid message:', { 
-          customMessage: customMessage?.substring(0, 50), 
+        console.log('Promo email request - Invalid message:', {
+          customMessage: customMessage?.substring(0, 50),
           message: message?.substring(0, 50),
           messageContent: messageContent?.substring(0, 50)
         });
@@ -2313,31 +2314,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 subtitleColor: '#ffffff',
                 titleFontSize: '32px',
                 subtitleFontSize: '18px',
-                          padding: '24px',
-              borderRadius: '0px',
-              textAlign: 'center'
-            }
-          },
-          footer: footer || {
-            mainText: 'Thank you for being part of the Local Cooks community!',
-            contactText: 'Questions? Contact us at support@localcooks.com',
-            copyrightText: '© 2024 Local Cooks. All rights reserved.',
-            showContact: true,
-            showCopyright: true,
-            styling: {
-              backgroundColor: '#f8fafc',
-              textColor: '#64748b',
-              linkColor: '#F51042',
-              fontSize: '14px',
-              padding: '24px 32px',
-              textAlign: 'center',
-              borderColor: '#e2e8f0'
-            }
-          },
-          usageSteps: usageSteps || {
-            title: '🚀 How to use your promo code:',
-            steps: [
-              `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
+                padding: '24px',
+                borderRadius: '0px',
+                textAlign: 'center'
+              }
+            },
+            footer: footer || {
+              mainText: 'Thank you for being part of the Local Cooks community!',
+              contactText: 'Questions? Contact us at support@localcooks.com',
+              copyrightText: '© 2024 Local Cooks. All rights reserved.',
+              showContact: true,
+              showCopyright: true,
+              styling: {
+                backgroundColor: '#f8fafc',
+                textColor: '#64748b',
+                linkColor: '#F51042',
+                fontSize: '14px',
+                padding: '24px 32px',
+                textAlign: 'center',
+                borderColor: '#e2e8f0'
+              }
+            },
+            usageSteps: usageSteps || {
+              title: '🚀 How to use your promo code:',
+              steps: [
+                `Visit our website: <a href="${orderUrl || 'https://localcooks.ca'}" style="color: #1d4ed8;">${orderUrl || 'https://localcooks.ca'}</a>`,
                 'Browse our amazing local cooks and their delicious offerings',
                 'Apply your promo code during checkout',
                 'Enjoy your special offer!'
@@ -2407,8 +2408,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Return results
       if (successCount > 0) {
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: `Promo emails sent: ${successCount} successful, ${failureCount} failed`,
           results: results,
           promoCode,
@@ -2419,7 +2420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         });
       } else {
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'All email sending failed',
           message: 'Failed to send promo emails to any recipients.',
           results: results
@@ -2427,7 +2428,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error('Error sending promo email:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -2438,7 +2439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/admin/test-email', async (req: Request, res: Response) => {
     try {
       console.log(`POST /api/admin/test-email - Session ID: ${req.sessionID}, User ID: ${req.user?.id}`);
-      
+
       // Check if user is authenticated
       if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
         console.log('Test email request - User not authenticated');
@@ -2451,16 +2452,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { 
-        email, 
-        subject, 
-        previewText, 
-        sections, 
-        header, 
+      const {
+        email,
+        subject,
+        previewText,
+        sections,
+        header,
         footer,
         usageSteps,
         emailContainer,
-        customDesign 
+        customDesign
       } = req.body;
 
       // Validate required fields
@@ -2568,21 +2569,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (emailSent) {
         console.log(`Test email sent successfully to ${email}`);
-        res.json({ 
-          success: true, 
+        res.json({
+          success: true,
           message: 'Test email sent successfully',
           recipient: email
         });
       } else {
         console.error(`Failed to send test email to ${email}`);
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'Failed to send email',
           message: 'Email service unavailable'
         });
       }
     } catch (error) {
       console.error('Error sending test email:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
@@ -2610,18 +2611,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, reason, feedback, timestamp } = req.body;
 
       if (!email) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Email address is required' 
+        return res.status(400).json({
+          success: false,
+          message: 'Email address is required'
         });
       }
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Invalid email format' 
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid email format'
         });
       }
 
@@ -2689,9 +2690,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!emailSent) {
         console.error('Failed to send unsubscribe notification email');
-        return res.status(500).json({ 
-          success: false, 
-          message: 'Failed to process unsubscribe request' 
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to process unsubscribe request'
         });
       }
 
@@ -2767,17 +2768,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log(`✅ Unsubscribe request processed for: ${email}`);
-      
-      res.json({ 
-        success: true, 
-        message: 'Unsubscribe request processed successfully' 
+
+      res.json({
+        success: true,
+        message: 'Unsubscribe request processed successfully'
       });
 
     } catch (error) {
       console.error('Error processing unsubscribe request:', error);
-      res.status(500).json({ 
-        success: false, 
-        message: 'Internal server error' 
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
       });
     }
   });
@@ -2789,7 +2790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // IMPORTANT: Put route must be defined BEFORE get route with same base path
   // to avoid Express routing conflicts. Specific routes must come before generic ones.
-  
+
   // Update location cancellation policy (manager only)
   app.put("/api/manager/locations/:locationId/cancellation-policy", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     console.log('[PUT] /api/manager/locations/:locationId/cancellation-policy hit', {
@@ -2802,14 +2803,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { locationId } = req.params;
       const locationIdNum = parseInt(locationId);
-      
+
       if (isNaN(locationIdNum) || locationIdNum <= 0) {
         console.error('[PUT] Invalid locationId:', locationId);
         return res.status(400).json({ error: "Invalid location ID" });
       }
-      
+
       const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone } = req.body;
-      
+
       console.log('[PUT] Request body:', {
         cancellationPolicyHours,
         cancellationPolicyMessage,
@@ -2844,7 +2845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .select()
         .from(locations)
         .where(and(eq(locations.id, locationIdNum), eq(locations.managerId, user.id)));
-      
+
       const location = locationResults[0];
 
       if (!location) {
@@ -2855,7 +2856,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         return res.status(404).json({ error: "Location not found or access denied" });
       }
-      
+
       console.log('[PUT] Location verified:', {
         locationId: location.id,
         locationName: location.name,
@@ -2867,10 +2868,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update location settings
       // Build updates object with proper field names matching the schema
-      const updates: Partial<typeof locations.$inferInsert> = { 
-        updatedAt: new Date() 
+      const updates: Partial<typeof locations.$inferInsert> = {
+        updatedAt: new Date()
       };
-      
+
       if (cancellationPolicyHours !== undefined) {
         (updates as any).cancellationPolicyHours = cancellationPolicyHours;
       }
@@ -2890,8 +2891,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         // Set to null if empty string, otherwise use the value
         (updates as any).notificationEmail = notificationEmail && notificationEmail.trim() !== '' ? notificationEmail.trim() : null;
-        console.log('[PUT] Setting notificationEmail:', { 
-          raw: notificationEmail, 
+        console.log('[PUT] Setting notificationEmail:', {
+          raw: notificationEmail,
           processed: (updates as any).notificationEmail,
           oldEmail: oldNotificationEmail
         });
@@ -2901,13 +2902,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (notificationPhone && notificationPhone.trim() !== '') {
           const normalized = normalizePhoneForStorage(notificationPhone);
           if (!normalized) {
-            return res.status(400).json({ 
-              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            return res.status(400).json({
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
             });
           }
           (updates as any).notificationPhone = normalized;
-          console.log('[PUT] Setting notificationPhone:', { 
-            raw: notificationPhone, 
+          console.log('[PUT] Setting notificationPhone:', {
+            raw: notificationPhone,
             normalized: normalized
           });
         } else {
@@ -2962,7 +2963,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .set(updates)
         .where(eq(locations.id, locationIdNum))
         .returning();
-      
+
       console.log('[PUT] Updated location from DB (full object):', JSON.stringify(updatedResults[0], null, 2));
       console.log('[PUT] Updated location logoUrl (camelCase):', (updatedResults[0] as any).logoUrl);
       console.log('[PUT] Updated location logo_url (snake_case):', (updatedResults[0] as any).logo_url);
@@ -2985,7 +2986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notificationEmail: (updated as any).notificationEmail || (updated as any).notification_email || 'not set',
         logoUrl: (updated as any).logoUrl || (updated as any).logo_url || 'NOT SET'
       });
-      
+
       // Verify the defaultDailyBookingLimit was actually saved
       if (defaultDailyBookingLimit !== undefined) {
         const savedValue = updated.defaultDailyBookingLimit ?? (updated as any).default_daily_booking_limit;
@@ -3001,7 +3002,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       }
-      
+
       // Map snake_case fields to camelCase for the frontend
       const response = {
         ...updated,
@@ -3014,7 +3015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 1,
         timezone: (updated as any).timezone || DEFAULT_TIMEZONE,
       };
-      
+
       // Send email to new notification email if it was changed
       if (notificationEmail !== undefined && response.notificationEmail && response.notificationEmail !== oldNotificationEmail) {
         try {
@@ -3030,7 +3031,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the update if email fails
         }
       }
-      
+
       console.log('[PUT] Sending response with notificationEmail:', response.notificationEmail);
       res.status(200).json(response);
     } catch (error: any) {
@@ -3045,7 +3046,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.neonUser!;
 
       const locations = await firebaseStorage.getLocationsByManager(user.id);
-      
+
       console.log('[GET] /api/manager/locations - Raw locations from DB:', locations.map(loc => ({
         id: loc.id,
         name: loc.name,
@@ -3053,7 +3054,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         logo_url: (loc as any).logo_url,
         allKeys: Object.keys(loc)
       })));
-      
+
       // Map snake_case fields to camelCase for the frontend
       const mappedLocations = locations.map(loc => ({
         ...loc,
@@ -3072,9 +3073,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         kitchenLicenseApprovedAt: (loc as any).kitchenLicenseApprovedAt || (loc as any).kitchen_license_approved_at || null,
         kitchenLicenseFeedback: (loc as any).kitchenLicenseFeedback || (loc as any).kitchen_license_feedback || null,
       }));
-      
+
       // Log to verify logoUrl is included in response
-      console.log('[GET] /api/manager/locations - Mapped locations:', 
+      console.log('[GET] /api/manager/locations - Mapped locations:',
         mappedLocations.map(loc => ({
           id: loc.id,
           name: loc.name,
@@ -3082,7 +3083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           notificationEmail: loc.notificationEmail || 'not set'
         }))
       );
-      
+
       res.json(mappedLocations);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
@@ -3110,23 +3111,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (notificationPhone && notificationPhone.trim() !== '') {
         const normalized = normalizePhoneForStorage(notificationPhone);
         if (!normalized) {
-          return res.status(400).json({ 
-            error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+          return res.status(400).json({
+            error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
           });
         }
         normalizedNotificationPhone = normalized;
       }
 
       console.log('Creating location for manager:', { managerId: user.id, name, address, notificationPhone: normalizedNotificationPhone });
-      
-      const location = await firebaseStorage.createLocation({ 
-        name, 
-        address, 
+
+      const location = await firebaseStorage.createLocation({
+        name,
+        address,
         managerId: user.id,
         notificationEmail: notificationEmail || undefined,
         notificationPhone: normalizedNotificationPhone
       });
-      
+
       // Map snake_case to camelCase for consistent API response
       const mappedLocation = {
         ...location,
@@ -3139,7 +3140,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: (location as any).createdAt || (location as any).created_at,
         updatedAt: (location as any).updatedAt || (location as any).updated_at,
       };
-      
+
       res.status(201).json(mappedLocation);
     } catch (error: any) {
       console.error("Error creating location:", error);
@@ -3166,10 +3167,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied to this location" });
       }
 
-      const { 
-        name, 
-        address, 
-        notificationEmail, 
+      const {
+        name,
+        address,
+        notificationEmail,
         notificationPhone,
         kitchenLicenseUrl,
         kitchenLicenseStatus,
@@ -3180,14 +3181,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (name !== undefined) updates.name = name;
       if (address !== undefined) updates.address = address;
       if (notificationEmail !== undefined) updates.notificationEmail = notificationEmail || null;
-      
+
       // Normalize phone number if provided
       if (notificationPhone !== undefined) {
         if (notificationPhone && notificationPhone.trim() !== '') {
           const normalized = normalizePhoneForStorage(notificationPhone);
           if (!normalized) {
-            return res.status(400).json({ 
-              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            return res.status(400).json({
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
             });
           }
           updates.notificationPhone = normalized;
@@ -3212,8 +3213,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (kitchenLicenseStatus !== undefined) {
         // Validate status is one of the allowed values
         if (kitchenLicenseStatus && !['pending', 'approved', 'rejected'].includes(kitchenLicenseStatus)) {
-          return res.status(400).json({ 
-            error: "Invalid kitchenLicenseStatus. Must be 'pending', 'approved', or 'rejected'" 
+          return res.status(400).json({
+            error: "Invalid kitchenLicenseStatus. Must be 'pending', 'approved', or 'rejected'"
           });
         }
         updates.kitchenLicenseStatus = kitchenLicenseStatus || null;
@@ -3223,15 +3224,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`💾 Updating location ${locationId} with:`, updates);
-      
+
       const updated = await firebaseStorage.updateLocation(locationId, updates);
       if (!updated) {
         console.error(`❌ Location ${locationId} not found in database`);
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       console.log(`✅ Location ${locationId} updated successfully`);
-      
+
       // Map snake_case to camelCase for consistent API response
       const mappedLocation = {
         ...updated,
@@ -3244,7 +3245,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: (updated as any).createdAt || (updated as any).created_at,
         updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
       };
-      
+
       return res.json(mappedLocation);
     } catch (error: any) {
       console.error("❌ Error updating location:", error);
@@ -3254,7 +3255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get kitchens for a location (manager)
-  
+
   // ===================================
   // MANAGER ONBOARDING ENDPOINTS
   // ===================================
@@ -3278,7 +3279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         'SELECT manager_onboarding_steps_completed FROM users WHERE id = $1',
         [user.id]
       );
-      
+
       const currentSteps = result.rows[0]?.manager_onboarding_steps_completed || {};
       const updatedSteps = {
         ...currentSteps,
@@ -3338,7 +3339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const managerId = req.neonUser!.id;
       // Always use Firebase email to ensure we have the correct email address
       const managerEmail = req.firebaseUser!.email || req.neonUser!.username;
-      
+
       if (!managerEmail) {
         return res.status(400).json({ error: "Email address is required for Stripe Connect account creation" });
       }
@@ -3354,7 +3355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       if (userResult.rows[0]?.stripe_connect_account_id) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Stripe Connect account already exists',
           accountId: userResult.rows[0].stripe_connect_account_id
         });
@@ -3401,12 +3402,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const accountId = userResult.rows[0].stripe_connect_account_id;
-      
+
       // Determine base URL - use same pattern as email service
       let baseUrl: string;
       const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
       const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-      
+
       if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
         baseUrl = process.env.BASE_URL;
       } else if (isProduction) {
@@ -3446,7 +3447,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       if (!userResult.rows[0]?.stripe_connect_account_id) {
-        return res.json({ 
+        return res.json({
           hasAccount: false,
           status: 'not_started'
         });
@@ -3454,7 +3455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const accountId = userResult.rows[0].stripe_connect_account_id;
       const { isAccountReady, getAccountStatus } = await import('./services/stripe-connect-service');
-      
+
       const accountStatus = await getAccountStatus(accountId);
       const ready = await isAccountReady(accountId);
 
@@ -3492,7 +3493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // If onboarding is not complete, automatically redirect to onboarding
   app.get("/api/manager/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     let accountId: string | null = null;
-    
+
     try {
       const managerId = req.neonUser!.id;
 
@@ -3519,7 +3520,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let baseUrl: string;
         const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
         const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-        
+
         if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
           baseUrl = process.env.BASE_URL;
         } else if (isProduction) {
@@ -3546,7 +3547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If onboarding is not complete, redirect to onboarding instead of dashboard
       if (onboardingStatus !== 'complete' && !accountReady) {
         const { url } = await createOnboardingLink();
-        return res.json({ 
+        return res.json({
           url,
           requiresOnboarding: true,
           message: 'Please complete Stripe Connect onboarding to access your dashboard.'
@@ -3560,7 +3561,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ url, requiresOnboarding: false });
     } catch (error: any) {
       console.error('Error creating dashboard login link:', error);
-      
+
       // If Stripe says onboarding not complete, try to redirect to onboarding
       if (error.message?.includes('not completed onboarding') && accountId) {
         try {
@@ -3568,7 +3569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let baseUrl: string;
           const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
           const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-          
+
           if (process.env.BASE_URL && !process.env.BASE_URL.includes('localhost')) {
             baseUrl = process.env.BASE_URL;
           } else if (isProduction) {
@@ -3584,7 +3585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             `${baseUrl}/manager/stripe-connect/return`
           );
 
-          return res.json({ 
+          return res.json({
             url,
             requiresOnboarding: true,
             message: 'Please complete Stripe Connect onboarding to access your dashboard.'
@@ -3593,7 +3594,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error('Error creating onboarding link as fallback:', onboardingError);
         }
       }
-      
+
       res.status(500).json({ error: error.message || 'Failed to create dashboard login link' });
     }
   });
@@ -3645,7 +3646,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Handle different event types
       // Store event.id for use in handlers
       const webhookEventId = event.id;
-      
+
       switch (event.type) {
         case 'checkout.session.completed':
           await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session, webhookEventId);
@@ -3780,7 +3781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
       const { getStripePaymentAmounts } = await import('./services/stripe-service');
-      
+
       // Update payment_transactions table
       const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
       if (transaction) {
@@ -3798,10 +3799,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (error) {
           console.warn(`[Webhook] Could not fetch manager Connect account:`, error);
         }
-        
+
         // Fetch actual Stripe amounts
         const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerConnectAccountId);
-        
+
         const updateParams: any = {
           status: 'succeeded',
           stripeStatus: paymentIntent.status,
@@ -3810,7 +3811,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastSyncedAt: new Date(),
           webhookEventId: webhookEventId,
         };
-        
+
         // If we got Stripe amounts, sync them to override calculated amounts
         if (stripeAmounts) {
           updateParams.stripeAmount = stripeAmounts.stripeAmount;
@@ -3824,10 +3825,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`,
           });
         }
-        
+
         await updatePaymentTransaction(transaction.id, updateParams, pool);
         console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}${stripeAmounts ? ' with Stripe amounts' : ''}`);
-        
+
         // Sync Stripe amounts to all related booking tables
         if (stripeAmounts) {
           const { syncStripeAmountsToBookings } = await import('./services/payment-transactions-service');
@@ -3879,7 +3880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
-      
+
       // Update payment_transactions table
       const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
       if (transaction) {
@@ -3935,7 +3936,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
-      
+
       // Update payment_transactions table
       const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
       if (transaction) {
@@ -3990,10 +3991,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
-      
+
       // Find booking by payment intent ID from charge
-      const paymentIntentId = typeof charge.payment_intent === 'string' 
-        ? charge.payment_intent 
+      const paymentIntentId = typeof charge.payment_intent === 'string'
+        ? charge.payment_intent
         : charge.payment_intent?.id;
 
       if (!paymentIntentId) {
@@ -4081,7 +4082,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { getCompleteRevenueMetrics } = await import('./services/revenue-service');
-      
+
       const metrics = await getCompleteRevenueMetrics(
         managerId,
         pool,
@@ -4191,7 +4192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { syncManagerPayments } = await import('./services/payment-tracking-service');
-      
+
       const result = await syncManagerPayments(managerId, pool);
 
       res.json({
@@ -4385,12 +4386,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           limit: parseInt(limit as string),
           offset: parseInt(offset as string),
         });
-        
+
         // Only use payment_transactions if we have results OR if we're explicitly filtering
         // If no results and no filters, fall back to legacy method (which queries bookings directly)
         if (result.transactions.length > 0 || paymentStatus) {
           usePaymentTransactions = true;
-          
+
           // Convert payment_transactions to transaction history format
           transactions = result.transactions.map(pt => {
             // Get booking details for kitchen_name, location_name, chef_name
@@ -4407,7 +4408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               paidAt: pt.paid_at,
             };
           });
-          
+
           // Fetch booking details for display
           if (transactions.length > 0) {
             const bookingIds = transactions.map(t => t.id);
@@ -4429,7 +4430,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               LEFT JOIN users u ON kb.chef_id = u.id
               WHERE kb.id = ANY($1)
             `, [bookingIds]);
-            
+
             const detailsMap = new Map(bookingDetails.rows.map(b => [b.id, b]));
             transactions = transactions.map(t => ({
               ...t,
@@ -4444,14 +4445,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               chefEmail: detailsMap.get(t.id)?.chef_email,
             }));
           }
-          
+
           console.log(`[Revenue] Using payment_transactions for transaction history: ${transactions.length} transactions`);
         }
       } catch (error) {
         console.warn('[Revenue] Error using payment_transactions, falling back to legacy method:', error);
         usePaymentTransactions = false;
       }
-      
+
       // Fall back to legacy method if payment_transactions had no results or failed
       if (!usePaymentTransactions) {
         console.log('[Revenue] Using legacy getTransactionHistory method');
@@ -4526,8 +4527,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Date filters apply to either booking_date OR created_at to include recent bookings
       // This ensures bookings show up even if booking_date is in the future
       if (startDate) {
-        const start = typeof startDate === 'string' 
-          ? startDate 
+        const start = typeof startDate === 'string'
+          ? startDate
           : (Array.isArray(startDate) ? startDate[0] : String(startDate));
         whereClause += ` AND (DATE(kb.booking_date) >= $${paramIndex}::date OR DATE(kb.created_at) >= $${paramIndex}::date)`;
         params.push(start);
@@ -4535,8 +4536,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (endDate) {
-        const end = typeof endDate === 'string' 
-          ? endDate 
+        const end = typeof endDate === 'string'
+          ? endDate
           : (Array.isArray(endDate) ? endDate[0] : String(endDate));
         whereClause += ` AND (DATE(kb.booking_date) <= $${paramIndex}::date OR DATE(kb.created_at) <= $${paramIndex}::date)`;
         params.push(end);
@@ -4588,7 +4589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Handle null/undefined total_price gracefully
           const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
           const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
-          
+
           return {
             bookingId: row.id,
             bookingDate: row.booking_date,
@@ -4645,13 +4646,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (booking.manager_id !== managerId) {
         return res.status(403).json({ error: "Access denied to this booking" });
       }
-      
+
       // Allow invoice download for all bookings (managers should be able to download invoices for their bookings)
       // Only block cancelled bookings that have no payment information at all
       if (booking.status === 'cancelled' && !booking.payment_intent_id && !booking.total_price) {
         return res.status(400).json({ error: "Invoice cannot be downloaded for cancelled bookings without payment information" });
       }
-      
+
       // Allow all other bookings - invoice service will handle missing payment info gracefully
 
       // Get chef info
@@ -5010,13 +5011,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
       }
 
-      const kitchen = await firebaseStorage.createKitchen({ 
-        locationId: locationIdNum, 
-        name, 
-        description: description || undefined, 
-        isActive: true 
+      const kitchen = await firebaseStorage.createKitchen({
+        locationId: locationIdNum,
+        name,
+        description: description || undefined,
+        isActive: true
       });
-      
+
       console.log(`✅ Kitchen created by manager ${user.id} for location ${locationIdNum}`);
       res.status(201).json(kitchen);
     } catch (error: any) {
@@ -5057,14 +5058,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { imageUrl } = req.body;
-      
+
       // If removing image, delete from R2
       if (!imageUrl && kitchen.imageUrl) {
         try {
           const { deleteFromR2 } = await import('./r2-storage');
           const { isR2Configured } = await import('./r2-storage');
           const isProduction = process.env.NODE_ENV === 'production';
-          
+
           if (isProduction && isR2Configured()) {
             await deleteFromR2(kitchen.imageUrl);
             console.log(`🗑️ Deleted kitchen image from R2: ${kitchen.imageUrl}`);
@@ -5074,11 +5075,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Continue with database update even if R2 deletion fails
         }
       }
-      
+
       const updated = await firebaseStorage.updateKitchen(kitchenId, { imageUrl: imageUrl || null });
-      
+
       console.log(`✅ Kitchen ${kitchenId} image updated by manager ${user.id}`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating kitchen image:", error);
@@ -5111,12 +5112,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { galleryImages } = req.body;
-      
+
       // Validate galleryImages is an array
       if (galleryImages !== undefined && !Array.isArray(galleryImages)) {
         return res.status(400).json({ error: "galleryImages must be an array" });
       }
-      
+
       // If removing images, delete from R2
       if (galleryImages && Array.isArray(galleryImages) && kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) {
         const removedImages = kitchen.galleryImages.filter((img: string) => !galleryImages.includes(img));
@@ -5125,7 +5126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const { deleteFromR2 } = await import('./r2-storage');
             const { isR2Configured } = await import('./r2-storage');
             const isProduction = process.env.NODE_ENV === 'production';
-            
+
             if (isProduction && isR2Configured()) {
               for (const imageUrl of removedImages) {
                 await deleteFromR2(imageUrl);
@@ -5138,11 +5139,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       const updated = await firebaseStorage.updateKitchen(kitchenId, { galleryImages: galleryImages || [] });
-      
+
       console.log(`✅ Kitchen ${kitchenId} gallery images updated by manager ${user.id}`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating kitchen gallery images:", error);
@@ -5157,7 +5158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.neonUser!;
 
       const { fileUrl } = req.body;
-      
+
       if (!fileUrl || typeof fileUrl !== 'string') {
         return res.status(400).json({ error: "fileUrl is required and must be a string" });
       }
@@ -5166,7 +5167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { deleteFromR2, isR2Configured } = await import('./r2-storage');
         const isProduction = process.env.NODE_ENV === 'production';
         const r2Configured = isR2Configured();
-        
+
         if (!r2Configured) {
           console.error('❌ R2 not configured. Required env vars:', {
             hasAccountId: !!process.env.CLOUDFLARE_ACCOUNT_ID,
@@ -5174,12 +5175,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             hasSecretKey: !!process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
             hasBucketName: !!process.env.CLOUDFLARE_R2_BUCKET_NAME
           });
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: "R2 storage not configured",
             message: "Cloudflare R2 is not properly configured. Please check environment variables."
           });
         }
-        
+
         if (isProduction || process.env.ALLOW_R2_DELETE_IN_DEV === 'true') {
           const deleted = await deleteFromR2(fileUrl);
           if (deleted) {
@@ -5187,7 +5188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.json({ success: true, message: "File deleted successfully" });
           } else {
             console.error(`❌ Failed to delete file from R2: ${fileUrl}`);
-            return res.status(500).json({ 
+            return res.status(500).json({
               error: "Failed to delete file from R2",
               message: "The file could not be deleted from R2 storage. Check server logs for details."
             });
@@ -5203,7 +5204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fileUrl,
           stack: error.stack
         });
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: error.message || "Failed to delete file",
           message: "An error occurred while deleting the file. Check server logs for details."
         });
@@ -5240,14 +5241,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { name, description } = req.body;
       const updates: { name?: string; description?: string } = {};
-      
+
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description || null;
-      
+
       const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
-      
+
       console.log(`✅ Kitchen ${kitchenId} details updated by manager ${user.id}`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating kitchen details:", error);
@@ -5337,7 +5338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method)
       const pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string } = {};
-      
+
       if (hourlyRate !== undefined) {
         pricing.hourlyRate = hourlyRate === null ? null : hourlyRate; // Will be converted to cents in storage method
       }
@@ -5346,9 +5347,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
 
       const updated = await firebaseStorage.updateKitchenPricing(kitchenId, pricing);
-      
+
       console.log(`✅ Kitchen ${kitchenId} pricing updated by manager ${user.id}`);
-      
+
       // updateKitchenPricing already returns hourlyRate in dollars, no need to convert again
       res.json(updated);
     } catch (error: any) {
@@ -5747,20 +5748,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
-      
+
       const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
       await firebaseStorage.setKitchenAvailability(kitchenId, { dayOfWeek, startTime, endTime, isAvailable });
-      
+
       // Send email notifications to chefs and managers
       try {
         const kitchen = await firebaseStorage.getKitchenById(kitchenId);
         if (kitchen) {
           const location = await firebaseStorage.getLocationById(kitchen.locationId);
-          
+
           // Get all chefs who have bookings at this kitchen
           const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
           const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-          
+
           // Send emails to chefs
           for (const chefId of uniqueChefIds) {
             try {
@@ -5768,10 +5769,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (chef) {
                 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                 const changeType = isAvailable ? 'Availability Updated' : 'Kitchen Closed';
-                const details = isAvailable 
+                const details = isAvailable
                   ? `The kitchen is now available on ${dayNames[dayOfWeek]} from ${startTime} to ${endTime}.`
                   : `The kitchen is now closed on ${dayNames[dayOfWeek]}.`;
-                
+
                 const email = generateKitchenAvailabilityChangeEmail({
                   chefEmail: chef.username,
                   chefName: (chef as any).displayName || chef.username || 'Chef',
@@ -5786,7 +5787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error(`Error sending email to chef ${chefId}:`, emailError);
             }
           }
-          
+
           // Send email to manager
           if (location?.managerId) {
             try {
@@ -5795,7 +5796,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
                 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                 const changes = `Kitchen availability updated: ${dayNames[dayOfWeek]} ${isAvailable ? `is now available from ${startTime} to ${endTime}` : 'is now closed'}.`;
-                
+
                 const email = generateKitchenSettingsChangeEmail({
                   email: notificationEmail,
                   name: manager.username,
@@ -5815,7 +5816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending availability change emails:", emailError);
         // Don't fail the request if emails fail
       }
-      
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error setting availability:", error);
@@ -5828,7 +5829,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
-      
+
       const kitchenId = parseInt(req.params.kitchenId);
       const availability = await firebaseStorage.getKitchenAvailability(kitchenId);
       res.json(availability);
@@ -5856,7 +5857,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/manager/profile", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
       const user = req.neonUser!;
-      
+
       if (!pool) {
         return res.status(500).json({ error: "Database not available" });
       }
@@ -5896,7 +5897,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/manager/profile", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
       const user = req.neonUser!;
-      
+
       if (!pool) {
         return res.status(500).json({ error: "Database not available" });
       }
@@ -5948,7 +5949,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (existingUser && existingUser.id !== user.id) {
           return res.status(400).json({ error: "Username already exists" });
         }
-        
+
         // Update username
         await firebaseStorage.updateUser(user.id, { username });
       }
@@ -6008,23 +6009,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all locations managed by this manager
       const { users } = await import('@shared/schema');
-      
+
       console.log(`[Manager Portal Applications] Fetching for manager ID: ${user.id}`);
-      
+
       const managedLocations = await db.select()
         .from(locations)
         .where(eq(locations.managerId, user.id));
-      
+
       console.log(`[Manager Portal Applications] Found ${managedLocations.length} managed locations`);
-      
+
       if (managedLocations.length === 0) {
         console.log(`[Manager Portal Applications] No locations found for manager ${user.id}`);
         return res.json([]);
       }
-      
+
       const locationIds = managedLocations.map(loc => loc.id);
       console.log(`[Manager Portal Applications] Location IDs: ${locationIds.join(', ')}`);
-      
+
       // Get ALL portal user applications for these locations (not just inReview)
       const applications = await db.select({
         application: portalUserApplications,
@@ -6037,9 +6038,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(
           inArray(portalUserApplications.locationId, locationIds)
         );
-      
+
       console.log(`[Manager Portal Applications] Found ${applications.length} total applications`);
-      
+
       // Format response
       const formatted = applications.map(app => ({
         id: app.application.id,
@@ -6064,16 +6065,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           username: app.user.username,
         },
       }));
-      
+
       console.log(`[Manager Portal Applications] Returning ${formatted.length} applications (statuses: ${formatted.map(a => a.status).join(', ')})`);
-      
+
       // Get count of actual access records (users who have access)
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(inArray(portalUserLocationAccess.locationId, locationIds));
-      
+
       console.log(`[Manager Portal Applications] Found ${accessRecords.length} access records`);
-      
+
       // Return applications with access count
       res.json({
         applications: formatted,
@@ -6093,13 +6094,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const applicationId = parseInt(req.params.id);
       const { status, feedback } = req.body;
-      
+
       if (!status || !['approved', 'rejected'].includes(status)) {
         return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
       }
 
       const { users } = await import('@shared/schema');
-      
+
       // Get application and verify it belongs to a location managed by this manager
       const applicationRecords = await db.select({
         application: portalUserApplications,
@@ -6109,20 +6110,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .innerJoin(locations, eq(portalUserApplications.locationId, locations.id))
         .where(eq(portalUserApplications.id, applicationId))
         .limit(1);
-      
+
       if (applicationRecords.length === 0) {
         return res.status(404).json({ error: "Application not found" });
       }
-      
+
       const applicationData = applicationRecords[0];
       const location = applicationData.location;
       const application = applicationData.application;
-      
+
       // Verify manager owns this location
       if ((location as any).managerId !== user.id) {
         return res.status(403).json({ error: "You don't have permission to manage this application" });
       }
-      
+
       // Update application status
       const updatedApplication = await db.update(portalUserApplications)
         .set({
@@ -6133,7 +6134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
         .where(eq(portalUserApplications.id, applicationId))
         .returning();
-      
+
       // If approved, grant location access
       if (status === 'approved') {
         // Check if access already exists
@@ -6146,7 +6147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             )
           )
           .limit(1);
-        
+
         if (existingAccess.length === 0) {
           // Create location access
           await db.insert(portalUserLocationAccess).values({
@@ -6156,7 +6157,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             applicationId: applicationId,
           });
         }
-        
+
         // Send notification email to portal user
         try {
           const { sendEmail } = await import('./email');
@@ -6167,16 +6168,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               to: userEmail,
               subject: `Portal Access Approved - ${(location as any).name}`,
               text: `Your application for portal access has been approved!\n\n` +
-                    `Location: ${(location as any).name}\n` +
-                    `Address: ${(location as any).address}\n` +
-                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
-                    `\nYou can now log in to the portal and book kitchens at this location.`,
+                `Location: ${(location as any).name}\n` +
+                `Address: ${(location as any).address}\n` +
+                `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                `\nYou can now log in to the portal and book kitchens at this location.`,
               html: `<h2>Portal Access Approved</h2>` +
-                    `<p>Your application for portal access has been approved!</p>` +
-                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                    `<p><strong>Address:</strong> ${(location as any).address}</p>` +
-                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
-                    `<p>You can now log in to the portal and book kitchens at this location.</p>`,
+                `<p>Your application for portal access has been approved!</p>` +
+                `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                `<p><strong>Address:</strong> ${(location as any).address}</p>` +
+                `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                `<p>You can now log in to the portal and book kitchens at this location.</p>`,
             };
             await sendEmail(emailContent);
           }
@@ -6195,16 +6196,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               to: userEmail,
               subject: `Portal Access Application - ${(location as any).name}`,
               text: `Your application for portal access has been reviewed.\n\n` +
-                    `Location: ${(location as any).name}\n` +
-                    `Status: Rejected\n` +
-                    `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
-                    `\nIf you have questions, please contact the location manager.`,
+                `Location: ${(location as any).name}\n` +
+                `Status: Rejected\n` +
+                `${feedback ? `\nManager Feedback: ${feedback}\n` : ''}` +
+                `\nIf you have questions, please contact the location manager.`,
               html: `<h2>Portal Access Application</h2>` +
-                    `<p>Your application for portal access has been reviewed.</p>` +
-                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                    `<p><strong>Status:</strong> Rejected</p>` +
-                    `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
-                    `<p>If you have questions, please contact the location manager.</p>`,
+                `<p>Your application for portal access has been reviewed.</p>` +
+                `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                `<p><strong>Status:</strong> Rejected</p>` +
+                `${feedback ? `<p><strong>Manager Feedback:</strong> ${feedback}</p>` : ''}` +
+                `<p>If you have questions, please contact the location manager.</p>`,
             };
             await sendEmail(emailContent);
           }
@@ -6213,7 +6214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the rejection if email fails
         }
       }
-      
+
       res.json(updatedApplication[0]);
     } catch (error: any) {
       console.error("Error updating portal application status:", error);
@@ -6229,7 +6230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const profileId = parseInt(req.params.id);
       const { status, reviewFeedback } = req.body;
-      
+
       if (!status || !['approved', 'rejected'].includes(status)) {
         return res.status(400).json({ error: "Invalid status. Must be 'approved' or 'rejected'" });
       }
@@ -6240,7 +6241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user.id,
         reviewFeedback
       );
-      
+
       // Send email notification to chef when access is approved
       if (status === 'approved') {
         try {
@@ -6274,7 +6275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the status update if emails fail
         }
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating chef profile status:", error);
@@ -6289,7 +6290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.neonUser!;
 
       const { chefId, locationId } = req.body;
-      
+
       if (!chefId || !locationId) {
         return res.status(400).json({ error: "chefId and locationId are required" });
       }
@@ -6307,6 +6308,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Revoke access
       await firebaseStorage.revokeChefLocationAccess(chefId, locationId);
 
+      // Delete the chat conversation if it exists
+      try {
+        const applications = await db
+          .select()
+          .from(chefKitchenApplications)
+          .where(
+            and(
+              eq(chefKitchenApplications.chefId, chefId),
+              eq(chefKitchenApplications.locationId, locationId)
+            )
+          );
+
+        // Delete chat conversations for all applications at this location
+        for (const application of applications) {
+          if (application.chat_conversation_id) {
+            try {
+              await deleteConversation(application.chat_conversation_id);
+              console.log(`Deleted chat conversation ${application.chat_conversation_id} for application ${application.id}`);
+            } catch (chatError) {
+              console.error('Error deleting chat conversation:', chatError);
+              // Don't fail the whole operation if chat deletion fails
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error deleting chat conversations:', error instanceof Error ? error.message : error);
+        // Don't fail the whole operation if chat deletion fails
+      }
+
       // Also update the chef profile status to rejected if it exists
       try {
         const profiles = await db
@@ -6318,7 +6348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               eq(chefLocationProfiles.locationId, locationId)
             )
           );
-        
+
         if (profiles.length > 0) {
           await db
             .update(chefLocationProfiles)
@@ -6355,10 +6385,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const kitchenId = parseInt(req.params.kitchenId);
       console.log(`📋 Fetching bookings for kitchen ${kitchenId}`);
-      
+
       const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
       console.log(`✅ Found ${bookings.length} bookings for kitchen ${kitchenId}`);
-      
+
       // Return ALL bookings (not just confirmed) so manager can see pending ones too
       res.json(bookings);
     } catch (error: any) {
@@ -6377,36 +6407,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid booking ID" });
       }
-      
+
       const booking = await firebaseStorage.getBookingById(id);
       if (!booking) {
         return res.status(404).json({ error: "Booking not found" });
       }
-      
+
       // Verify the booking is for a kitchen in a location managed by this manager
       const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
       if (!kitchen) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      
+
       const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
       const location = await firebaseStorage.getLocationById(kitchenLocationId);
       if (!location || location.managerId !== user.id) {
         return res.status(403).json({ error: "You don't have permission to view this booking" });
       }
-      
+
       // Get storage and equipment bookings for this kitchen booking
       const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
       const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
-      
+
       // Get chef details
       const chef = booking.chefId ? await storage.getUser(booking.chefId) : null;
-      
+
       // Get chef's full name, email, and phone from applications table
       let chefFullName: string | null = null;
       let chefEmail: string | null = null;
       let chefPhone: string | null = null;
-      
+
       if (chef && booking.chefId) {
         try {
           const appResult = await pool.query(
@@ -6422,12 +6452,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error('Error fetching chef details from applications:', error);
         }
       }
-      
+
       res.json({
         ...booking,
         kitchen,
         location,
-        chef: chef ? { 
+        chef: chef ? {
           id: chef.id,
           username: chef.username,
           fullName: chefFullName,
@@ -6448,27 +6478,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
-      
+
       const id = parseInt(req.params.id);
       const { status } = req.body;
-      
+
       // Get booking details before updating
       const booking = await firebaseStorage.getBookingById(id);
-      
+
       await firebaseStorage.updateKitchenBookingStatus(id, status);
-      
+
       // Send email notifications to chef and manager based on status change
       if (booking) {
         try {
           const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
           const chef = await storage.getUser(booking.chefId);
-          
+
           if (chef && kitchen) {
             // Get location details (DIRECT DATABASE QUERY - emails are in Neon database)
             const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
             let location = null;
             let manager = null;
-            
+
             if (kitchenLocationId && pool) {
               // DIRECT DATABASE QUERY - emails are stored in Neon database
               const locationData = await pool.query(`
@@ -6476,10 +6506,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 FROM locations l
                 WHERE l.id = $1
               `, [kitchenLocationId]);
-              
+
               if (locationData.rows.length > 0) {
                 location = locationData.rows[0];
-                
+
                 // Get manager details if manager_id is set (DIRECT DATABASE QUERY)
                 const managerId = location.manager_id;
                 if (managerId) {
@@ -6488,21 +6518,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     FROM users
                     WHERE id = $1
                   `, [managerId]);
-                  
+
                   if (managerData.rows.length > 0) {
                     manager = managerData.rows[0];
                   }
                 }
               }
             }
-            
+
             // Get chef's full name and phone from application if available (better than just email)
             let chefName = chef.username || 'Chef';
             let chefPhone: string | null = null;
             if (pool && booking.chefId) {
               // Get phone using utility function (from applications table)
               chefPhone = await getChefPhone(booking.chefId, pool);
-              
+
               // Get full name from application
               try {
                 const appResult = await pool.query(
@@ -6517,9 +6547,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.debug(`Could not get full name for chef ${booking.chefId} from applications, using username`);
               }
             }
-            
+
             const chefEmailAddress = chef.username;
-            
+
             if (!chefEmailAddress) {
               console.warn(`⚠️ Chef ${booking.chefId} has no email address, skipping status update email`);
             } else {
@@ -6565,7 +6595,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.error(`❌ Error sending booking confirmation SMS to chef:`, smsError);
                   }
                 }
-                
+
                 // Send notification email to manager (use notification_email from direct database query)
                 const notificationEmailAddress = location ? (location.notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
@@ -6599,12 +6629,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   // Check if booking is a portal user booking (has external contact or bookingType is 'external')
                   const bookingData = await firebaseStorage.getBookingById(id);
                   const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
-                  
+
                   if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
                     try {
                       // Get portal user phone using utility function (normalized)
                       const portalUserPhone = await getPortalUserPhone(booking.chefId, kitchenLocationId, pool);
-                      
+
                       if (portalUserPhone) {
                         const smsMessage = generatePortalUserBookingConfirmationSMS({
                           kitchenName: kitchen.name || 'Kitchen',
@@ -6663,7 +6693,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.error(`❌ Error sending booking cancellation SMS to chef:`, smsError);
                   }
                 }
-                
+
                 // Send notification email to manager (use notification_email from direct database query)
                 const notificationEmailAddress = location ? (location.notification_email || (manager ? manager.username : null)) : null;
                 if (notificationEmailAddress) {
@@ -6697,11 +6727,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   // Check if booking is a portal user booking (has external contact or bookingType is 'external')
                   const bookingData = await firebaseStorage.getBookingById(id);
                   const isPortalBooking = bookingData && ((bookingData as any).bookingType === 'external' || (bookingData as any).externalContact);
-                  
+
                   if (isPortalBooking && kitchenLocationId && booking.chefId && pool) {
                     // Get portal user phone using utility function (normalized)
                     const portalUserPhone = await getPortalUserPhone(booking.chefId, kitchenLocationId, pool);
-                    
+
                     if (portalUserPhone) {
                       const smsMessage = generatePortalUserBookingCancellationSMS({
                         kitchenName: kitchen.name || 'Kitchen',
@@ -6727,7 +6757,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the status update if email fails
         }
       }
-      
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error updating booking status:", error);
@@ -6743,10 +6773,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const kitchenId = parseInt(req.params.kitchenId);
       const { startDate, endDate } = req.query;
-      
+
       const start = startDate ? new Date(startDate as string) : undefined;
       const end = endDate ? new Date(endDate as string) : undefined;
-      
+
       const overrides = await firebaseStorage.getKitchenDateOverrides(kitchenId, start, end);
       res.json(overrides);
     } catch (error: any) {
@@ -6763,35 +6793,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const kitchenId = parseInt(req.params.kitchenId);
       const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
-      
+
       // Validate input
       if (!specificDate) {
         return res.status(400).json({ error: "Date is required" });
       }
-      
+
       // Validate time range if kitchen is available
       if (isAvailable) {
         if (!startTime || !endTime) {
-          return res.status(400).json({ 
-            error: "Start time and end time are required when kitchen is available" 
+          return res.status(400).json({
+            error: "Start time and end time are required when kitchen is available"
           });
         }
         if (startTime >= endTime) {
-          return res.status(400).json({ 
-            error: "End time must be after start time" 
+          return res.status(400).json({
+            error: "End time must be after start time"
           });
         }
       }
-      
+
       // Parse date string (YYYY-MM-DD) correctly to avoid timezone shifting
       // Setting to noon UTC ensures the date is always correct regardless of timezone
       const parseDateString = (dateStr: string): Date => {
         const [year, month, day] = dateStr.split('-').map(Number);
         return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
       };
-      
+
       const parsedDate = parseDateString(specificDate);
-      
+
       // If closing the kitchen (isAvailable = false), check for existing bookings
       if (!isAvailable) {
         const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
@@ -6800,16 +6830,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
           return bookingDateStr === dateStr && b.status === 'confirmed';
         });
-        
+
         if (bookingsOnDate.length > 0) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: "Cannot close kitchen on this date",
             message: `There are ${bookingsOnDate.length} confirmed booking(s) on this date. Please cancel or reschedule them first.`,
-            bookings: bookingsOnDate 
+            bookings: bookingsOnDate
           });
         }
       }
-      
+
       const override = await firebaseStorage.createKitchenDateOverride({
         kitchenId,
         specificDate: parsedDate,
@@ -6818,23 +6848,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isAvailable,
         reason,
       });
-      
+
       // Send email notifications to chefs and managers
       try {
         const kitchen = await firebaseStorage.getKitchenById(kitchenId);
         if (kitchen) {
           const location = await firebaseStorage.getLocationById(kitchen.locationId);
           const dateStr = new Date(specificDate).toLocaleDateString();
-          
+
           // Get all chefs who have bookings at this kitchen
           const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
           const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-          
+
           const changeType = isAvailable ? 'Special Availability Added' : 'Kitchen Closed for Date';
-          const details = isAvailable 
+          const details = isAvailable
             ? `Special availability on ${dateStr} from ${startTime} to ${endTime}.${reason ? ` Reason: ${reason}` : ''}`
             : `Kitchen will be closed on ${dateStr}.${reason ? ` Reason: ${reason}` : ''}`;
-          
+
           // Send emails to chefs
           for (const chefId of uniqueChefIds) {
             try {
@@ -6854,7 +6884,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error(`Error sending email to chef ${chefId}:`, emailError);
             }
           }
-          
+
           // Send email to manager
           if (location?.managerId) {
             try {
@@ -6862,7 +6892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (manager) {
                 const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
                 const changes = `Date override created: ${dateStr} - ${isAvailable ? `special availability from ${startTime} to ${endTime}` : 'kitchen closed'}.${reason ? ` Reason: ${reason}` : ''}`;
-                
+
                 const email = generateKitchenSettingsChangeEmail({
                   email: notificationEmail,
                   name: manager.username,
@@ -6882,7 +6912,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending date override emails:", emailError);
         // Don't fail the request if emails fail
       }
-      
+
       res.json(override);
     } catch (error: any) {
       console.error("Error creating date override:", error);
@@ -6898,21 +6928,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const id = parseInt(req.params.id);
       const { startTime, endTime, isAvailable, reason } = req.body;
-      
+
       // Validate time range if kitchen is available
       if (isAvailable === true) {
         if (!startTime || !endTime) {
-          return res.status(400).json({ 
-            error: "Start time and end time are required when kitchen is available" 
+          return res.status(400).json({
+            error: "Start time and end time are required when kitchen is available"
           });
         }
         if (startTime >= endTime) {
-          return res.status(400).json({ 
-            error: "End time must be after start time" 
+          return res.status(400).json({
+            error: "End time must be after start time"
           });
         }
       }
-      
+
       // If changing to closed (isAvailable = false), check for existing bookings
       if (isAvailable === false) {
         // Load the specific override to find its kitchen and date
@@ -6925,22 +6955,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return bookingDateStr === dateStr && b.status === 'confirmed';
           });
           if (bookingsOnDate.length > 0) {
-            return res.status(400).json({ 
+            return res.status(400).json({
               error: "Cannot close kitchen on this date",
               message: `There are ${bookingsOnDate.length} confirmed booking(s) on this date. Please cancel or reschedule them first.`,
-              bookings: bookingsOnDate 
+              bookings: bookingsOnDate
             });
           }
         }
       }
-      
+
       const updated = await firebaseStorage.updateKitchenDateOverride(id, {
         startTime,
         endTime,
         isAvailable,
         reason,
       });
-      
+
       // Send email notifications to chefs and managers
       try {
         const override = await firebaseStorage.getKitchenDateOverrideById(id);
@@ -6949,20 +6979,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (kitchen) {
             const location = await firebaseStorage.getLocationById(kitchen.locationId);
             const dateStr = new Date(override.specificDate).toLocaleDateString();
-            
+
             // Get all chefs who have bookings at this kitchen
             const bookings = await firebaseStorage.getBookingsByKitchen(override.kitchenId);
             const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-            
-            const changeType = isAvailable !== undefined 
+
+            const changeType = isAvailable !== undefined
               ? (isAvailable ? 'Date Override Updated - Special Availability' : 'Date Override Updated - Kitchen Closed')
               : 'Date Override Updated';
             const details = isAvailable !== undefined
-              ? (isAvailable 
-                  ? `Date override updated: ${dateStr} is now available${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}.${reason ? ` Reason: ${reason}` : ''}`
-                  : `Date override updated: ${dateStr} is now closed.${reason ? ` Reason: ${reason}` : ''}`)
+              ? (isAvailable
+                ? `Date override updated: ${dateStr} is now available${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}.${reason ? ` Reason: ${reason}` : ''}`
+                : `Date override updated: ${dateStr} is now closed.${reason ? ` Reason: ${reason}` : ''}`)
               : `Date override updated for ${dateStr}.${startTime && endTime ? ` Time: ${startTime} to ${endTime}` : ''}${reason ? ` Reason: ${reason}` : ''}`;
-            
+
             // Send emails to chefs
             for (const chefId of uniqueChefIds) {
               try {
@@ -6982,7 +7012,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.error(`Error sending email to chef ${chefId}:`, emailError);
               }
             }
-            
+
             // Send email to manager
             if (location?.managerId) {
               try {
@@ -6990,7 +7020,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (manager) {
                   const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
                   const changes = `Date override updated for ${dateStr}.${isAvailable !== undefined ? (isAvailable ? ` Special availability${startTime && endTime ? ` from ${startTime} to ${endTime}` : ''}` : ' Kitchen closed') : ''}${reason ? `. Reason: ${reason}` : ''}`;
-                  
+
                   const email = generateKitchenSettingsChangeEmail({
                     email: notificationEmail,
                     name: manager.username,
@@ -7011,7 +7041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending date override update emails:", emailError);
         // Don't fail the request if emails fail
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating date override:", error);
@@ -7046,15 +7076,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // First, try Firebase authentication
       const authHeader = req.headers.authorization;
-      
+
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
         const decodedToken = await verifyFirebaseToken(token);
-        
+
         if (decodedToken) {
           // Load user from Firebase UID
           const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
-          
+
           if (neonUser && neonUser.isChef) {
             // Set both Firebase and user info on request
             req.firebaseUser = {
@@ -7070,13 +7100,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       // Fall back to session authentication
       if (req.isAuthenticated && req.isAuthenticated() && (req.user as any)?.isChef) {
         console.log(`✅ Chef authenticated via session: ${req.user.username} (ID: ${req.user.id})`);
         return next();
       }
-      
+
       // Neither authentication method worked
       return res.status(401).json({ error: "Authentication required. Please sign in as a chef." });
     } catch (error) {
@@ -7091,22 +7121,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // For marketing purposes, show ALL active kitchens at all locations
       // Chefs can see all available commercial kitchen locations
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       // Filter only active kitchens
       const activeKitchens = allKitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       // Normalize image URLs for all kitchens
       const normalizedKitchens = activeKitchens.map((kitchen: any) => {
         const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || kitchen.image_url || null, req);
-        const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) => 
+        const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) =>
           normalizeImageUrl(img, req)
         ).filter((url: string | null): url is string => url !== null);
         const normalizedLocationBrandImageUrl = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
         const normalizedLocationLogoUrl = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
-        
+
         return {
           ...kitchen,
           imageUrl: normalizedImageUrl,
@@ -7119,9 +7149,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           location_logo_url: normalizedLocationLogoUrl, // Also set snake_case for compatibility
         };
       });
-      
+
       console.log(`[API] /api/chef/kitchens - Returning ${normalizedKitchens.length} active kitchens (all locations for marketing)`);
-      
+
       res.json(normalizedKitchens);
     } catch (error: any) {
       console.error("Error fetching kitchens:", error);
@@ -7177,9 +7207,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Return maxSlotsPerChef from location's default_daily_booking_limit
       // Default to 2 if not set
-      const maxSlotsPerChef = location.default_daily_booking_limit || 
-                              location.defaultDailyBookingLimit || 
-                              2;
+      const maxSlotsPerChef = location.default_daily_booking_limit ||
+        location.defaultDailyBookingLimit ||
+        2;
 
       res.json({ maxSlotsPerChef });
     } catch (error: any) {
@@ -7198,16 +7228,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all storage listings for this kitchen
       const allListings = await firebaseStorage.getStorageListingsByKitchen(kitchenId);
-      
+
       // Filter to only show approved/active listings to chefs
       // Listings with status 'approved' or 'active' AND isActive=true are visible
-      const visibleListings = allListings.filter((listing: any) => 
-        (listing.status === 'approved' || listing.status === 'active') && 
+      const visibleListings = allListings.filter((listing: any) =>
+        (listing.status === 'approved' || listing.status === 'active') &&
         listing.isActive === true
       );
 
       console.log(`[API] /api/chef/kitchens/${kitchenId}/storage-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
-      
+
       res.json(visibleListings);
     } catch (error: any) {
       console.error("Error getting storage listings for chef:", error);
@@ -7226,11 +7256,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all equipment listings for this kitchen
       const allListings = await firebaseStorage.getEquipmentListingsByKitchen(kitchenId);
-      
+
       // Filter to only show approved/active listings to chefs
       // Listings with status 'approved' or 'active' AND isActive=true are visible
-      const visibleListings = allListings.filter((listing: any) => 
-        (listing.status === 'approved' || listing.status === 'active') && 
+      const visibleListings = allListings.filter((listing: any) =>
+        (listing.status === 'approved' || listing.status === 'active') &&
         listing.isActive === true
       );
 
@@ -7239,7 +7269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const rentalEquipment = visibleListings.filter((l: any) => l.availabilityType === 'rental');
 
       console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
-      
+
       // Return both the full list and categorized lists for convenience
       res.json({
         all: visibleListings,
@@ -7258,23 +7288,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all locations with active kitchens for marketing purposes
       const allLocations = await firebaseStorage.getAllLocations();
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       // Filter to only locations that have at least one active kitchen
       const activeKitchens = allKitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       const locationIdsWithKitchens = new Set(
         activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
       );
-      
-      const locationsWithKitchens = allLocations.filter((location: any) => 
+
+      const locationsWithKitchens = allLocations.filter((location: any) =>
         locationIdsWithKitchens.has(location.id)
       );
-      
+
       console.log(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
-      
+
       res.json(locationsWithKitchens);
     } catch (error: any) {
       console.error("Error fetching locations:", error);
@@ -7287,26 +7317,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
       const { date } = req.query;
-      
+
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required" });
       }
-      
+
       const bookingDate = new Date(date as string);
-      
+
       // Validate date
       if (isNaN(bookingDate.getTime())) {
         return res.status(400).json({ error: "Invalid date format" });
       }
-      
+
       const slotsInfo = await firebaseStorage.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
-      
+
       res.json(slotsInfo);
     } catch (error: any) {
       console.error("Error fetching time slots:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to fetch time slots",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -7316,30 +7346,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const kitchenId = parseInt(req.params.kitchenId);
       const { date } = req.query;
-      
+
       if (!date) {
         return res.status(400).json({ error: "Date parameter is required" });
       }
-      
+
       const bookingDate = new Date(date as string);
-      
+
       // Validate date
       if (isNaN(bookingDate.getTime())) {
         return res.status(400).json({ error: "Invalid date format" });
       }
-      
+
       console.log(`🔍 Fetching available slots for kitchen ${kitchenId} on ${date}`);
-      
+
       const slots = await firebaseStorage.getAvailableTimeSlots(kitchenId, bookingDate);
-      
+
       console.log(`✅ Returning ${slots.length} available slots`);
-      
+
       res.json(slots);
     } catch (error: any) {
       console.error("Error fetching available slots:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to fetch available slots",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -7371,18 +7401,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               `SELECT id, pricing_model, base_price, minimum_booking_duration FROM storage_listings WHERE id = $1`,
               [storage.storageListingId]
             );
-            
+
             if (storageResult.rows.length > 0) {
               const storageListing = storageResult.rows[0];
               // Parse base_price as numeric (stored in cents in database)
               const basePriceCents = storageListing.base_price ? Math.round(parseFloat(String(storageListing.base_price))) : 0;
               const minDays = storageListing.minimum_booking_duration || 1;
-              
+
               const startDate = new Date(storage.startDate);
               const endDate = new Date(storage.endDate);
               const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
               const effectiveDays = Math.max(days, minDays);
-              
+
               let storagePrice = basePriceCents * effectiveDays;
               if (storageListing.pricing_model === 'hourly') {
                 const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
@@ -7390,7 +7420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               } else if (storageListing.pricing_model === 'monthly-flat') {
                 storagePrice = basePriceCents;
               }
-              
+
               totalPriceCents += storagePrice;
             }
           } catch (error) {
@@ -7407,13 +7437,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               `SELECT id, session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`,
               [equipmentListingId]
             );
-            
+
             if (equipmentResult.rows.length > 0) {
               const equipmentListing = equipmentResult.rows[0];
               // Parse session_rate and damage_deposit as numeric (stored in cents in database)
               const sessionRateCents = equipmentListing.session_rate ? Math.round(parseFloat(String(equipmentListing.session_rate))) : 0;
               const damageDepositCents = equipmentListing.damage_deposit ? Math.round(parseFloat(String(equipmentListing.damage_deposit))) : 0;
-              
+
               totalPriceCents += sessionRateCents + damageDepositCents;
             }
           } catch (error) {
@@ -7538,9 +7568,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error('Error creating payment intent:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to create payment intent",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -7572,9 +7602,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error('Error confirming payment:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to confirm payment",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -7598,9 +7628,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error('Error getting payment intent status:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to get payment intent status",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -7608,7 +7638,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // DEPRECATED: Capture endpoint - no longer needed with automatic capture
   // Payments are now automatically captured when confirmed
   app.post("/api/payments/capture", requireChef, async (req: Request, res: Response) => {
-    res.status(410).json({ 
+    res.status(410).json({
       error: "This endpoint is deprecated. Payments are now automatically captured when confirmed.",
       message: "With automatic capture enabled, payments are processed immediately. No manual capture is needed."
     });
@@ -7636,8 +7666,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if payment intent can be cancelled
       const cancellableStatuses = ['requires_payment_method', 'requires_capture', 'requires_confirmation'];
       if (!cancellableStatuses.includes(paymentIntent.status)) {
-        return res.status(400).json({ 
-          error: `Payment intent cannot be cancelled. Current status: ${paymentIntent.status}` 
+        return res.status(400).json({
+          error: `Payment intent cannot be cancelled. Current status: ${paymentIntent.status}`
         });
       }
 
@@ -7652,9 +7682,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error('Error canceling payment intent:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: "Failed to cancel payment intent",
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -7664,44 +7694,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
       const chefId = req.user!.id;
-      
+
       // Get the location for this kitchen
       const kitchenLocationId1 = await firebaseStorage.getKitchenLocation(kitchenId);
       if (!kitchenLocationId1) {
         return res.status(400).json({ error: "Kitchen location not found" });
       }
-      
+
       // Check if chef has an approved kitchen application for this location
       // This is the new single-step validation that replaces both admin-granted access and profile sharing
       const applicationStatus = await firebaseStorage.getChefKitchenApplicationStatus(chefId, kitchenLocationId1);
-      
+
       if (!applicationStatus.canBook) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: applicationStatus.message,
           hasApplication: applicationStatus.hasApplication,
           applicationStatus: applicationStatus.status,
         });
       }
-      
+
       // First validate that the booking is within manager-set availability
       const bookingDateObj = new Date(bookingDate);
       const availabilityCheck = await firebaseStorage.validateBookingAvailability(
-        kitchenId, 
-        bookingDateObj, 
-        startTime, 
+        kitchenId,
+        bookingDateObj,
+        startTime,
         endTime
       );
-      
+
       if (!availabilityCheck.valid) {
         return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
       }
-      
+
       // Get location to get timezone and minimum booking window
       const kitchenLocationId2 = await firebaseStorage.getKitchenLocation(kitchenId);
       let location = null;
       let timezone = DEFAULT_TIMEZONE;
       let minimumBookingWindowHours = 1; // Default fallback
-      
+
       if (kitchenLocationId2) {
         location = await firebaseStorage.getLocationById(kitchenLocationId2);
         if (location) {
@@ -7716,27 +7746,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       // Extract date string from ISO string to avoid timezone shifts
       // The frontend sends bookingDate as ISO string (e.g., "2025-01-15T00:00:00.000Z")
       // We need to extract the date part (YYYY-MM-DD) before timezone conversion
-      const bookingDateStr = typeof bookingDate === 'string' 
-        ? bookingDate.split('T')[0] 
+      const bookingDateStr = typeof bookingDate === 'string'
+        ? bookingDate.split('T')[0]
         : bookingDateObj.toISOString().split('T')[0];
-      
+
       // Validate booking time using timezone-aware functions
       if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
-      
+
       // Check if booking is within minimum booking window (timezone-aware)
       const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
       if (hoursUntilBooking < minimumBookingWindowHours) {
-        return res.status(400).json({ 
-          error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance` 
+        return res.status(400).json({
+          error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
         });
       }
-      
+
       // Check for conflicts with existing bookings
       const hasConflict = await firebaseStorage.checkBookingConflict(kitchenId, bookingDateObj, startTime, endTime);
       if (hasConflict) {
@@ -7745,7 +7775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check daily booking limit
       const { pool } = await import('./db');
-      
+
       // Calculate requested slots
       const [sH, sM] = String(startTime).split(':').map(Number);
       const [eH, eM] = String(endTime).split(':').map(Number);
@@ -7763,7 +7793,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ORDER BY updated_at DESC
             LIMIT 1
           `, [kitchenId, bookingDateStr]);
-          
+
           if (overrideResult.rows.length > 0) {
             const val = Number(overrideResult.rows[0].max_slots_per_chef);
             if (Number.isFinite(val) && val > 0) {
@@ -7778,25 +7808,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               INNER JOIN kitchens k ON k.location_id = l.id
               WHERE k.id = $1
             `, [kitchenId]);
-            
+
             console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
               rowCount: locationLimitResult.rows.length,
               rawValue: locationLimitResult.rows[0]?.default_daily_booking_limit,
               locationId: locationLimitResult.rows[0]?.location_id,
               locationName: locationLimitResult.rows[0]?.location_name
             });
-            
+
             if (locationLimitResult.rows.length > 0) {
               const rawValue = locationLimitResult.rows[0].default_daily_booking_limit;
               const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
-              
+
               console.log(`[Booking Limit] Parsed location default value:`, {
                 rawValue,
                 locVal,
                 isFinite: Number.isFinite(locVal),
                 isPositive: locVal !== null && locVal > 0
               });
-              
+
               if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
                 maxSlotsPerChef = locVal;
                 console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${locationLimitResult.rows[0].location_name || locationLimitResult.rows[0].location_id})`);
@@ -7834,8 +7864,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Check if booking would exceed daily limit
         if (existingSlots + requestedSlots > maxSlotsPerChef) {
-          return res.status(400).json({ 
-            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` 
+          return res.status(400).json({
+            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).`
           });
         }
       }
@@ -7904,9 +7934,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expectedTotal = calculateTotalWithFees(expectedTotal, totalServiceFee, 0);
 
         const verification = await verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedTotal);
-        
+
         if (!verification.valid) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: verification.error || 'Payment verification failed',
             paymentStatus: verification.status
           });
@@ -7925,9 +7955,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
         const totalServiceFee = serviceFee + stripeProcessingFeeCents;
         const total = calculateTotalWithFees(kitchenPricing.totalPriceCents, totalServiceFee, 0);
-        
+
         if (total > 0) {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: 'Payment required for this booking. Please complete payment first.',
             requiresPayment: true
           });
@@ -7956,14 +7986,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 1.5: Create storage and equipment bookings if selected
       const storageBookingsCreated: any[] = [];
       const equipmentBookingsCreated: any[] = [];
-      
+
       if (pool && ((selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) || selectedStorageIds?.length > 0 || selectedEquipmentIds?.length > 0)) {
         console.log(`📦 STEP 1.5: Creating add-on bookings...`);
-        
+
         // Parse booking dates for equipment (same as kitchen booking)
         const bookingStartDateTime = new Date(`${bookingDateStr}T${startTime}`);
         const bookingEndDateTime = new Date(`${bookingDateStr}T${endTime}`);
-        
+
         // Create storage bookings with custom date ranges (NEW FORMAT)
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
           for (const storage of selectedStorage) {
@@ -7971,43 +8001,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const storageListingId = storage.storageListingId;
               const startDate = new Date(storage.startDate);
               const endDate = new Date(storage.endDate);
-              
+
               // Validate dates
               if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
                 console.error(`   ⚠️ Invalid dates for storage booking ${storageListingId}`);
                 continue;
               }
-              
+
               if (startDate >= endDate) {
                 console.error(`   ⚠️ Storage booking ${storageListingId}: End date must be after start date`);
                 continue;
               }
-              
+
               // Get storage listing details to get pricing info
               const storageResult = await pool.query(
                 `SELECT id, pricing_model, base_price, minimum_booking_duration, currency FROM storage_listings WHERE id = $1`,
                 [storageListingId]
               );
-              
+
               if (storageResult.rows.length > 0) {
                 const storageListing = storageResult.rows[0];
                 const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
                 const minDays = storageListing.minimum_booking_duration || 1;
-                
+
                 // Calculate number of days
                 const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
                 const effectiveDays = Math.max(days, minDays);
-                
+
                 // Validate minimum duration
                 if (days < minDays) {
                   console.error(`   ⚠️ Storage booking ${storageListingId}: Requires minimum ${minDays} days, got ${days}`);
                   continue;
                 }
-                
+
                 // Calculate price based on daily pricing model
                 // For daily pricing, multiply base price by number of days
                 let totalPrice = basePriceCents * effectiveDays;
-                
+
                 // For other pricing models (legacy support)
                 if (storageListing.pricing_model === 'hourly') {
                   const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
@@ -8016,13 +8046,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   // For monthly-flat, use base price directly (pro-rated not implemented)
                   totalPrice = basePriceCents;
                 }
-                
+
                 // Calculate service fee dynamically from platform_settings + $0.30 flat fee
                 const { calculatePlatformFeeDynamic } = await import('./services/pricing-service');
                 const serviceFeeBase = await calculatePlatformFeeDynamic(totalPrice, pool);
                 const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
                 const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
-                
+
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
                     (storage_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, payment_status, service_fee, currency)
@@ -8040,7 +8070,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     storageListing.currency || 'CAD'
                   ]
                 );
-                
+
                 storageBookingsCreated.push({
                   id: insertResult.rows[0].id,
                   storageListingId,
@@ -8053,7 +8083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
-        
+
         // Legacy support: Create storage bookings from IDs (using kitchen booking dates)
         // This is kept for backwards compatibility but should be removed in future
         if (selectedStorageIds && Array.isArray(selectedStorageIds) && selectedStorageIds.length > 0) {
@@ -8064,15 +8094,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 `SELECT id, pricing_model, base_price, currency FROM storage_listings WHERE id = $1`,
                 [storageListingId]
               );
-              
+
               if (storageResult.rows.length > 0) {
                 const storageListing = storageResult.rows[0];
                 const basePriceCents = storageListing.base_price ? parseInt(storageListing.base_price) : 0;
-                
+
                 // Calculate price based on pricing model and booking duration
                 let totalPrice = basePriceCents;
                 const durationHours = Math.max(1, Math.ceil((bookingEndDateTime.getTime() - bookingStartDateTime.getTime()) / (1000 * 60 * 60)));
-                
+
                 // For hourly/daily storage, multiply by duration
                 if (storageListing.pricing_model === 'hourly') {
                   totalPrice = basePriceCents * durationHours;
@@ -8080,13 +8110,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   totalPrice = basePriceCents * Math.ceil(durationHours / 24);
                 }
                 // For monthly-flat, use base price directly (pro-rated storage not implemented)
-                
+
                 // Calculate service fee dynamically from platform_settings + $0.30 flat fee
                 const { calculatePlatformFeeDynamic: calcFee2 } = await import('./services/pricing-service');
                 const serviceFeeBase = await calcFee2(totalPrice, pool);
                 const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
                 const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
-                
+
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
                     (storage_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, payment_status, service_fee, currency)
@@ -8104,7 +8134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     storageListing.currency || 'CAD'
                   ]
                 );
-                
+
                 storageBookingsCreated.push({
                   id: insertResult.rows[0].id,
                   storageListingId,
@@ -8117,7 +8147,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
-        
+
         // Create equipment bookings
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds)) {
           for (const equipmentListingId of selectedEquipmentIds) {
@@ -8128,30 +8158,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
                  FROM equipment_listings WHERE id = $1`,
                 [equipmentListingId]
               );
-              
+
               if (equipmentResult.rows.length > 0) {
                 const equipmentListing = equipmentResult.rows[0];
-                
+
                 // Skip if it's included equipment (shouldn't happen, but safety check)
                 if (equipmentListing.availability_type === 'included') {
                   console.log(`   ℹ️ Skipping equipment ${equipmentListingId} - it's included with kitchen`);
                   continue;
                 }
-                
+
                 // Use sessionRate - flat fee per session (not hourly/duration-based)
                 const sessionRateCents = equipmentListing.session_rate ? parseInt(equipmentListing.session_rate) : 0;
-                
+
                 // Flat session rate - same price regardless of booking duration
                 const totalPrice = sessionRateCents;
-                
+
                 const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
-                
+
                 // Calculate service fee dynamically from platform_settings + $0.30 flat fee
                 const { calculatePlatformFeeDynamic: calcEquipFee2 } = await import('./services/pricing-service');
                 const serviceFeeBase = await calcEquipFee2(totalPrice, pool);
                 const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
                 const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
-                
+
                 const insertResult = await pool.query(
                   `INSERT INTO equipment_bookings 
                     (equipment_listing_id, kitchen_booking_id, chef_id, start_date, end_date, status, total_price, pricing_model, damage_deposit, payment_status, service_fee, currency)
@@ -8170,7 +8200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     equipmentListing.currency || 'CAD'
                   ]
                 );
-                
+
                 equipmentBookingsCreated.push({
                   id: insertResult.rows[0].id,
                   equipmentListingId,
@@ -8183,13 +8213,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
-        
+
         console.log(`✅ STEP 1.5 COMPLETE: Created ${storageBookingsCreated.length} storage and ${equipmentBookingsCreated.length} equipment bookings`);
       }
 
       // Step 2: Send email notifications - SEQUENTIAL execution to ensure reliability
       console.log(`📧 STEP 2: Starting sequential email notification process for booking ${booking.id}`);
-      
+
       let emailResults = {
         chefEmailSent: false,
         managerEmailSent: false,
@@ -8207,7 +8237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(errorMsg);
         }
         console.log(`✅ STEP 2.1 COMPLETE: Kitchen found - ${kitchen.name || kitchenId}`);
-        
+
         // Step 2.2: Get location details (DIRECT DATABASE QUERY - emails are in Neon database)
         console.log(`📧 STEP 2.2: Fetching location details from database...`);
         const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
@@ -8218,7 +8248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(errorMsg);
         }
         console.log(`✅ STEP 2.2 PROGRESS: Kitchen locationId is ${kitchenLocationId}`);
-        
+
         // DIRECT DATABASE QUERY - emails are stored in Neon database, not Firebase
         if (!pool) {
           const errorMsg = `Database pool not available`;
@@ -8226,23 +8256,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           emailResults.errors.push(errorMsg);
           throw new Error(errorMsg);
         }
-        
+
         const locationData = await pool.query(`
           SELECT l.id, l.name, l.manager_id, l.notification_email, l.timezone
           FROM locations l
           WHERE l.id = $1
         `, [kitchenLocationId]);
-        
+
         if (locationData.rows.length === 0) {
           const errorMsg = `Location ${kitchenLocationId} not found`;
           console.error(`❌ STEP 2.2 FAILED: ${errorMsg}`);
           emailResults.errors.push(errorMsg);
           throw new Error(errorMsg);
         }
-        
+
         const location = locationData.rows[0];
         console.log(`✅ STEP 2.2 COMPLETE: Location found - ${location.name}, Notification Email: ${location.notification_email || 'NOT SET'}`);
-        
+
         // Step 2.3: Get chef details
         console.log(`📧 STEP 2.3: Fetching chef details...`);
         const chef = await storage.getUser(req.user!.id);
@@ -8253,12 +8283,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error(errorMsg);
         }
         console.log(`✅ STEP 2.3 COMPLETE: Chef found - ${chef.username || 'unknown'}`);
-        
+
         // Step 2.4: Get manager details (DIRECT DATABASE QUERY - managers use session auth)
         console.log(`📧 STEP 2.4: Fetching manager details from database...`);
         const managerId = location.manager_id;
         console.log(`📋 STEP 2.4 PROGRESS: Manager ID from location: ${managerId || 'NOT SET'}`);
-        
+
         let manager = null;
         if (managerId) {
           const managerData = await pool.query(`
@@ -8266,7 +8296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             FROM users
             WHERE id = $1
           `, [managerId]);
-          
+
           if (managerData.rows.length > 0) {
             manager = managerData.rows[0];
             console.log(`✅ STEP 2.4 COMPLETE: Manager found - ${manager.username || 'unknown'}`);
@@ -8325,7 +8355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.6 PROGRESS: Generated chef email - To: ${chefEmail.to}, Subject: ${chefEmail.subject}`);
-            
+
             // CRITICAL: Wait for email to complete before proceeding
             const emailSent = await sendEmail(chefEmail);
             if (emailSent) {
@@ -8343,7 +8373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             emailResults.errors.push(errorMsg);
           }
         }
-        
+
         // Step 2.7: Send manager email (ONLY after chef email completes)
         console.log(`📧 STEP 2.7: Sending booking notification email to manager...`);
         // Use notification_email from direct database query (snake_case from DB)
@@ -8369,7 +8399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locationName: location.name || kitchen.name || 'Kitchen'
             });
             console.log(`📧 STEP 2.7 PROGRESS: Generated manager email - To: ${managerEmail.to}, Subject: ${managerEmail.subject}`);
-            
+
             // CRITICAL: Wait for email to complete before proceeding
             const emailSent = await sendEmail(managerEmail);
             if (emailSent) {
@@ -8422,7 +8452,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error(`❌ STEP 2.8 ERROR: Exception sending manager SMS:`, smsError);
           // Don't fail the booking if SMS fails
         }
-        
+
         // Final summary
         console.log(`📧 STEP 2 COMPLETE: Email notification process finished for booking ${booking.id}`);
         console.log(`   Chef email: ${emailResults.chefEmailSent ? '✅ SENT' : '❌ FAILED'}`);
@@ -8433,7 +8463,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`     ${index + 1}. ${error}`);
           });
         }
-        
+
       } catch (emailError) {
         const errorMsg = emailError instanceof Error ? emailError.message : String(emailError);
         console.error(`❌ STEP 2 CRITICAL ERROR: ${errorMsg}`);
@@ -8442,9 +8472,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         emailResults.errors.push(`Critical error: ${errorMsg}`);
         // Don't fail the booking if emails fail - booking is already created
       }
-      
+
       console.log(`📝 FINAL: Booking ${booking.id} created. Email status: Chef=${emailResults.chefEmailSent ? 'sent' : 'failed'}, Manager=${emailResults.managerEmailSent ? 'sent' : 'failed'}`);
-      
+
       // Include add-on bookings in the response
       res.status(201).json({
         ...booking,
@@ -8463,7 +8493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const chefId = req.user!.id;
       console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
       console.log(`[CHEF BOOKINGS] User object:`, { id: req.user!.id, username: req.user!.username, isChef: (req.user as any).isChef });
-      
+
       const bookings = await firebaseStorage.getBookingsByChef(chefId);
       console.log(`[CHEF BOOKINGS] Found ${bookings.length} bookings for chef ${chefId}`);
       if (bookings.length > 0) {
@@ -8609,17 +8639,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid storage booking ID" });
       }
-      
+
       const booking = await firebaseStorage.getStorageBookingById(id);
       if (!booking) {
         return res.status(404).json({ error: "Storage booking not found" });
       }
-      
+
       // Verify the booking belongs to this chef
       if (booking.chefId !== req.user!.id) {
         return res.status(403).json({ error: "You don't have permission to view this booking" });
       }
-      
+
       res.json(booking);
     } catch (error: any) {
       console.error("Error fetching storage booking:", error);
@@ -8632,10 +8662,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // TODO: Add admin authentication here
       // For now, this endpoint is open - secure it in production!
-      
+
       const { maxDaysToCharge } = req.body;
       const processed = await firebaseStorage.processOverstayerPenalties(maxDaysToCharge || 7);
-      
+
       res.json({
         success: true,
         processed: processed.length,
@@ -8666,7 +8696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!booking) {
         return res.status(404).json({ error: "Storage booking not found" });
       }
-      
+
       if (booking.chefId !== req.user!.id) {
         return res.status(403).json({ error: "You don't have permission to extend this booking" });
       }
@@ -8707,24 +8737,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid booking ID" });
       }
-      
+
       const booking = await firebaseStorage.getBookingById(id);
       if (!booking) {
         return res.status(404).json({ error: "Booking not found" });
       }
-      
+
       // Verify the booking belongs to this chef
       if (booking.chefId !== req.user!.id) {
         return res.status(403).json({ error: "You don't have permission to view this booking" });
       }
-      
+
       // Get storage and equipment bookings for this kitchen booking
       const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
       const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
-      
+
       // Get kitchen details
       const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
-      
+
       res.json({
         ...booking,
         kitchen,
@@ -8744,23 +8774,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid booking ID" });
       }
-      
+
       const booking = await firebaseStorage.getBookingById(id);
       if (!booking) {
         return res.status(404).json({ error: "Booking not found" });
       }
-      
+
       // Verify the booking belongs to this chef
       if (booking.chefId !== req.user!.id) {
         return res.status(403).json({ error: "You don't have permission to view this invoice" });
       }
-      
+
       // Get related data
       const chef = await storage.getUser(booking.chefId);
       const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
       const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
       const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
-      
+
       // Get location details
       let location = null;
       if (kitchen && (kitchen as any).locationId) {
@@ -8775,10 +8805,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       }
-      
+
       // Get payment intent ID from booking
       const paymentIntentId = (booking as any).paymentIntentId || (booking as any).payment_intent_id || null;
-      
+
       // Generate invoice PDF
       const { generateInvoicePDF } = await import('./services/invoice-service');
       const pdfBuffer = await generateInvoicePDF(
@@ -8791,13 +8821,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         paymentIntentId,
         pool
       );
-      
+
       // Set headers for PDF download
       res.setHeader('Content-Type', 'application/pdf');
       const bookingDate = booking.bookingDate ? new Date(booking.bookingDate).toISOString().split('T')[0] : 'unknown';
       res.setHeader('Content-Disposition', `attachment; filename="LocalCooks-Invoice-${id}-${bookingDate}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
-      
+
       res.send(pdfBuffer);
     } catch (error: any) {
       console.error("Error generating invoice:", error);
@@ -8809,11 +8839,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/chef/bookings/:id/cancel", requireChef, async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id);
-      
+
       if (!pool) {
         return res.status(500).json({ error: "Database not available" });
       }
-      
+
       // Get booking details with location cancellation policy from database
       const bookingResult = await pool.query(`
         SELECT 
@@ -8825,31 +8855,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         JOIN locations l ON k.location_id = l.id
         WHERE kb.id = $1 AND kb.chef_id = $2
       `, [id, req.user!.id]);
-      
+
       if (bookingResult.rows.length === 0) {
         return res.status(404).json({ error: "Booking not found" });
       }
-      
+
       const booking = bookingResult.rows[0];
-      
+
       // Check if booking is within cancellation period
       const bookingDateTime = new Date(`${booking.booking_date.toISOString().split('T')[0]}T${booking.start_time}`);
       const now = new Date();
       const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
       const cancellationHours = booking.cancellation_policy_hours || 24;
-      
+
       // If cancelled within cancellation period and payment was already captured, create refund
       if (booking.payment_intent_id && hoursUntilBooking >= cancellationHours && booking.payment_status === 'paid') {
         try {
           const { createRefund, getPaymentIntent } = await import('./services/stripe-service');
-          
+
           // Check if payment intent was successfully captured
           const paymentIntent = await getPaymentIntent(booking.payment_intent_id);
           if (paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing')) {
             // Create refund for the captured payment
             const refund = await createRefund(booking.payment_intent_id, undefined, 'requested_by_customer');
             console.log(`[Cancel Booking] Created refund for booking ${id} (PaymentIntent: ${booking.payment_intent_id}, Refund: ${refund.id})`);
-            
+
             // Update payment status to refunded
             await pool.query(`
               UPDATE kitchen_bookings 
@@ -8862,10 +8892,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Continue with booking cancellation even if refund fails
         }
       }
-      
+
       // Cancel the booking
       await firebaseStorage.cancelKitchenBooking(id, req.user!.id);
-      
+
       // Send email notifications to chef and manager
       try {
         // Get kitchen details
@@ -8886,12 +8916,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               FROM locations l
               WHERE l.id = $1
             `, [kitchenLocationId]);
-            
+
             if (locationData.rows.length === 0) {
               console.warn(`⚠️ Location ${kitchenLocationId} not found for email notification`);
             } else {
               const location = locationData.rows[0];
-              
+
               // Get chef details
               const chef = await storage.getUser(booking.chefId);
               if (!chef) {
@@ -8906,7 +8936,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     FROM users
                     WHERE id = $1
                   `, [managerId]);
-                  
+
                   if (managerData.rows.length > 0) {
                     manager = managerData.rows[0];
                   }
@@ -8914,10 +8944,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 // Get chef phone using utility function (from applications table)
                 const chefPhone = await getChefPhone(booking.chefId, pool);
-                
+
                 // Import email functions
                 const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('./email.js');
-                
+
                 // Send email to chef
                 try {
                   const chefEmail = generateBookingCancellationEmail({
@@ -8950,10 +8980,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     console.error("Error sending chef cancellation SMS:", smsError);
                   }
                 }
-                
+
                 // Send email to manager (use notification_email from direct database query)
                 const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
-                
+
                 if (notificationEmailAddress) {
                   try {
                     const managerEmail = generateBookingCancellationNotificationEmail({
@@ -9002,7 +9032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending booking cancellation emails:", emailError);
         // Don't fail the cancellation if emails fail
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error cancelling booking:", error);
@@ -9015,14 +9045,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { locationId } = req.body;
       const chefId = req.user!.id;
-      
+
       if (!locationId) {
         return res.status(400).json({ error: "locationId is required" });
       }
 
       // Check if chef has admin-granted access to this location
       const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, locationId);
-      
+
       if (!hasLocationAccess) {
         return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
       }
@@ -9051,19 +9081,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
 
       const profile = await firebaseStorage.shareChefProfileWithLocation(chefId, locationId);
-      
+
       // Send email to manager if this is a new profile share (status is pending)
       if (profile && profile.status === 'pending') {
         try {
           const managerEmail = (location as any).notificationEmail || (location as any).notification_email;
           if (managerEmail) {
-            const chefName = chefApp.length > 0 && chefApp[0].fullName 
-              ? chefApp[0].fullName 
+            const chefName = chefApp.length > 0 && chefApp[0].fullName
+              ? chefApp[0].fullName
               : (chef as any).username || 'Chef';
-            const chefEmail = chefApp.length > 0 && chefApp[0].email 
-              ? chefApp[0].email 
+            const chefEmail = chefApp.length > 0 && chefApp[0].email
+              ? chefApp[0].email
               : (chef as any).email || (chef as any).username || 'chef@example.com';
-            
+
             const emailContent = generateChefProfileRequestEmail({
               managerEmail: managerEmail,
               chefName: chefName,
@@ -9079,7 +9109,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the profile share if email fails
         }
       }
-      
+
       res.status(201).json(profile);
     } catch (error: any) {
       console.error("Error sharing chef profile:", error);
@@ -9091,25 +9121,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/chef/profiles", requireChef, async (req: Request, res: Response) => {
     try {
       const chefId = req.user!.id;
-      
+
       // Get all locations chef has access to via admin-granted access
       const locationAccessRecords = await db
         .select()
         .from(chefLocationAccess)
         .where(eq(chefLocationAccess.chefId, chefId));
-      
+
       const locationIds = locationAccessRecords.map(access => access.locationId);
-      
+
       if (locationIds.length === 0) {
         return res.json([]);
       }
-      
+
       // Get all locations with details
       const allLocations = await db
         .select()
         .from(locations)
         .where(inArray(locations.id, locationIds));
-      
+
       // Get profiles for all accessible locations
       const profiles = await Promise.all(
         locationIds.map(async (locationId) => {
@@ -9118,7 +9148,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return { locationId, location, profile };
         })
       );
-      
+
       res.json(profiles);
     } catch (error: any) {
       console.error("Error getting chef profiles:", error);
@@ -9423,24 +9453,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { chefId, locationId } = req.body;
-      
+
       if (!chefId || !locationId) {
         return res.status(400).json({ error: "chefId and locationId are required" });
       }
 
       const access = await firebaseStorage.grantChefLocationAccess(chefId, locationId, user.id);
-      
+
       // Send email notification to chef when access is granted
       try {
         // Get location details
@@ -9472,7 +9502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error sending chef access emails:", emailError);
         // Don't fail the access grant if emails fail
       }
-      
+
       res.status(201).json(access);
     } catch (error: any) {
       console.error("Error granting chef location access:", error);
@@ -9485,18 +9515,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { chefId, locationId } = req.body;
-      
+
       if (!chefId || !locationId) {
         return res.status(400).json({ error: "chefId and locationId are required" });
       }
@@ -9515,17 +9545,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("[Admin Chef Access] GET request received");
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       console.log("[Admin Chef Access] Auth check:", { hasSession: !!sessionUser, hasFirebase: !!isFirebaseAuth });
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         console.log("[Admin Chef Access] Not authenticated");
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       console.log("[Admin Chef Access] User:", { id: user.id, role: user.role });
-      
+
       if (user.role !== "admin") {
         console.log("[Admin Chef Access] Not admin");
         return res.status(403).json({ error: "Admin access required" });
@@ -9545,14 +9575,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const isChef = (u as any).isChef ?? (u as any).is_chef;
         return role === 'chef' || isChef === true;
       });
-      
+
       console.log(`[Admin Chef Access] Total users: ${allUsers.length}, Found ${chefs.length} chefs in database`);
       console.log(`[Admin Chef Access] Chefs:`, chefs.map(c => ({ id: c.id, username: c.username, role: (c as any).role, isChef: (c as any).isChef ?? (c as any).is_chef })));
-      
+
       // Get all locations
       const allLocations = await db.select().from(locations);
       console.log(`[Admin Chef Access] Found ${allLocations.length} locations`);
-      
+
       // Get all location access records (handle case if table doesn't exist yet)
       let allAccess: any[] = [];
       try {
@@ -9568,7 +9598,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw error; // Re-throw if it's a different error
         }
       }
-      
+
       // Build response with chef location access info
       const response = chefs.map(chef => {
         // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
@@ -9580,7 +9610,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Handle both camelCase (Drizzle) and snake_case (raw SQL) field names
           const accessLocationId = (access as any).locationId ?? (access as any).location_id;
           const location = allLocations.find(l => l.id === accessLocationId);
-          
+
           if (location) {
             const grantedAt = (access as any).grantedAt ?? (access as any).granted_at;
             return {
@@ -9592,7 +9622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           return null;
         }).filter((l): l is NonNullable<typeof l> => l !== null);
-        
+
         return {
           chef: {
             id: chef.id,
@@ -9601,7 +9631,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           accessibleLocations,
         };
       });
-      
+
       console.log(`[Admin Chef Access] Returning ${response.length} chefs with location access info`);
       res.json(response);
     } catch (error: any) {
@@ -9617,23 +9647,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { username, password, email, name } = req.body;
-      
+
       // Validate required fields
       if (!username || !password) {
         return res.status(400).json({ error: "Username and password are required" });
       }
-      
+
       // Check if user already exists
       const existingUser = await firebaseStorage.getUserByUsername(username);
       if (existingUser) {
@@ -9657,14 +9687,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         // Use email field if provided, otherwise fallback to username
         const managerEmail = email || username;
-        
+
         const welcomeEmail = generateManagerCredentialsEmail({
           email: managerEmail,
           name: name || 'Manager',
           username: username,
           password: password
         });
-        
+
         await sendEmail(welcomeEmail);
         console.log(`✅ Welcome email with credentials sent to manager: ${managerEmail}`);
       } catch (emailError) {
@@ -9687,28 +9717,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-      
+
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       // Fetch all users with manager role and their managed locations with notification emails
       const { pool, db } = await import('./db');
-      
+
       console.log('🔍 GET /api/admin/managers - Pool available?', !!pool);
       console.log('🔍 GET /api/admin/managers - DB available?', !!db);
-      
+
       // CRITICAL: Always use pool if available (faster SQL aggregation)
       // Only fallback to Drizzle if pool is not available
       if (pool) {
         console.log('✅ Using pool query for GET /api/admin/managers');
-        
+
         // Get managers with their locations and notification emails
         // CRITICAL: Use COALESCE with json_agg to ensure we always get an array (even if empty)
         const result = await pool.query(
@@ -9733,7 +9763,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ORDER BY u.username ASC`,
           ['manager']
         );
-        
+
         console.log('📊 Database query executed, rows returned:', result.rows.length);
         if (result.rows.length > 0) {
           console.log('📊 First row from database:', {
@@ -9745,7 +9775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             locationsIsArray: Array.isArray(result.rows[0].locations)
           });
         }
-        
+
         // Transform the result to include notification emails in a flat structure
         console.log(`📊 Raw database result - ${result.rows.length} manager(s) found`);
         if (result.rows.length > 0) {
@@ -9753,15 +9783,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`📊 First row locations property:`, result.rows[0].locations);
           console.log(`📊 First row locations type:`, typeof result.rows[0].locations);
         }
-        
+
         const managersWithEmails = result.rows.map((row: any) => {
           // Parse JSON if it's a string, otherwise use as-is
           // PostgreSQL json_agg returns JSON as a string or object depending on driver
           let locations = row.locations;
-          
+
           console.log(`🔍 Manager ${row.id} (${row.username}): raw locations =`, typeof locations, locations);
           console.log(`🔍 Manager ${row.id}: row object keys:`, Object.keys(row));
-          
+
           // Handle different return types from PostgreSQL
           // COALESCE in SQL should ensure we get []::json, but handle all cases
           if (locations === null || locations === undefined) {
@@ -9786,7 +9816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Already parsed JSON object/array
             console.log(`✅ Manager ${row.id}: locations is already object, isArray=${Array.isArray(locations)}`);
           }
-          
+
           // Ensure locations is an array (handle case where it's already parsed)
           if (!Array.isArray(locations)) {
             console.warn(`⚠️ Manager ${row.id} locations is not an array after processing:`, typeof locations, locations);
@@ -9797,39 +9827,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locations = [];
             }
           }
-          
+
           console.log(`✅ Manager ${row.id} (${row.username}) FINAL: ${locations.length} location(s):`, JSON.stringify(locations, null, 2));
-          
+
           // Get all notification emails from locations managed by this manager
           // Handle both camelCase (from mapping) and raw snake_case
           const notificationEmails = locations
             .map((loc: any) => loc.notificationEmail || loc.notification_email)
             .filter((email: string) => email && email.trim() !== '');
-          
+
           // STEP 4: Map to consistent structure (camelCase)
           const mappedLocations = locations.map((loc: any) => {
             // Handle both camelCase and snake_case from database
             const locationId = loc.locationId || loc.location_id || loc.id;
             const locationName = loc.locationName || loc.location_name || loc.name;
             const notificationEmail = loc.notificationEmail || loc.notification_email || null;
-            
+
             return {
               locationId: locationId,
               locationName: locationName,
               notificationEmail: notificationEmail
             };
           });
-          
+
           // CRITICAL: Build managerData with explicit locations property
           const managerData: any = {
             id: row.id,
             username: row.username,
             role: row.role,
           };
-          
+
           // EXPLICITLY set locations property - do not rely on object spread
           managerData.locations = mappedLocations;
-          
+
           console.log(`📦 Manager ${row.id} FINAL structure (BEFORE return):`, {
             id: managerData.id,
             username: managerData.username,
@@ -9840,16 +9870,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             locationsValue: managerData.locations,
             fullObject: JSON.stringify(managerData, null, 2)
           });
-          
+
           // Verify the object has locations before returning
           if (!('locations' in managerData)) {
             console.error(`❌ CRITICAL ERROR: Manager ${row.id} object missing locations property!`);
             managerData.locations = [];
           }
-          
+
           return managerData;
         });
-        
+
         console.log('📤 GET /api/admin/managers - managersWithEmails.length:', managersWithEmails.length);
         if (managersWithEmails.length > 0) {
           const firstManager = managersWithEmails[0];
@@ -9860,7 +9890,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log('📤 managersWithEmails[0].locations is array?', Array.isArray(firstManager.locations));
           console.log('📤 managersWithEmails[0] FULL OBJECT:', JSON.stringify(firstManager, null, 2));
         }
-        
+
         // FINAL VERIFICATION: Ensure every manager has a locations array before sending
         const verifiedManagers = managersWithEmails.map((manager: any) => {
           // CRITICAL: Explicitly check and ensure locations property exists
@@ -9871,7 +9901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.warn(`⚠️ Manager ${manager.id} has locations but it's not an array (${typeof manager.locations}), converting`);
             manager.locations = Array.isArray(manager.locations) ? manager.locations : [];
           }
-          
+
           // Return a new object with explicit structure to ensure properties are preserved
           return {
             id: manager.id,
@@ -9880,7 +9910,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             locations: Array.isArray(manager.locations) ? manager.locations : []
           };
         });
-        
+
         console.log('📤 FINAL VERIFIED - First manager structure:', {
           id: verifiedManagers[0]?.id,
           username: verifiedManagers[0]?.username,
@@ -9891,11 +9921,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           locations: verifiedManagers[0]?.locations,
           fullJSON: JSON.stringify(verifiedManagers[0], null, 2)
         });
-        
+
         // CRITICAL: Log what we're actually sending
         console.log(`📤 GET /api/admin/managers - Returning ${verifiedManagers.length} managers to client`);
         console.log('📤 SENDING RESPONSE - Full response array:', JSON.stringify(verifiedManagers, null, 2));
-        
+
         return res.json(verifiedManagers);
       } else {
         // Fallback to Drizzle if pool is not available
@@ -9907,9 +9937,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .select({ id: users.id, username: users.username, role: users.role })
             .from(users)
             .where(eq(users.role as any, 'manager'));
-          
+
           console.log(`Found ${managerRows.length} managers with Drizzle`);
-          
+
           // Get locations for each manager
           const managersWithLocations = await Promise.all(
             managerRows.map(async (manager) => {
@@ -9917,27 +9947,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 .select()
                 .from(locations)
                 .where(eq(locations.managerId, manager.id));
-              
+
               console.log(`Manager ${manager.id} has ${managerLocations.length} locations`);
-              
+
               const notificationEmails = managerLocations
                 .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
                 .filter(email => email && email.trim() !== '');
-              
+
               // CRITICAL: Build managerData with explicit locations property
               const managerData: any = {
                 id: manager.id,
                 username: manager.username,
                 role: manager.role,
               };
-              
+
               // EXPLICITLY set locations property
               managerData.locations = managerLocations.map(loc => ({
                 locationId: loc.id,
                 locationName: (loc as any).name,
                 notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
               }));
-              
+
               console.log(`📤 Drizzle Manager ${manager.id} final structure:`, {
                 id: managerData.id,
                 username: managerData.username,
@@ -9947,11 +9977,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 locations: managerData.locations,
                 fullJSON: JSON.stringify(managerData, null, 2)
               });
-              
+
               return managerData;
             })
           );
-          
+
           console.log('📤 Drizzle fallback returning', managersWithLocations.length, 'managers');
           if (managersWithLocations.length > 0) {
             console.log('📤 Drizzle managersWithLocations[0] FULL:', JSON.stringify(managersWithLocations[0], null, 2));
@@ -10031,18 +10061,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const isSessionAuth = req.isAuthenticated?.();
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!isSessionAuth && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : req.user!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const locations = await firebaseStorage.getAllLocations();
-      
+
       console.log(`📍 GET /api/admin/locations - Found ${locations.length} locations in database`);
       if (locations.length > 0) {
         console.log(`📍 First location:`, {
@@ -10051,7 +10081,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           managerId: locations[0].managerId || locations[0].manager_id
         });
       }
-      
+
       // Map snake_case fields to camelCase for the frontend (consistent with manager endpoint)
       // Drizzle ORM may return snake_case depending on configuration, so we ensure camelCase
       const mappedLocations = locations.map((loc: any) => ({
@@ -10064,7 +10094,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: loc.createdAt || loc.created_at,
         updatedAt: loc.updatedAt || loc.updated_at,
       }));
-      
+
       console.log(`📍 GET /api/admin/locations - Returning ${mappedLocations.length} locations to client`);
       res.json(mappedLocations);
     } catch (error) {
@@ -10079,18 +10109,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { name, address, managerId } = req.body;
-      
+
       // Convert managerId to number or undefined
       // Handle empty strings, null, undefined, and convert to number
       let managerIdNum: number | undefined = undefined;
@@ -10099,7 +10129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (isNaN(managerIdNum) || managerIdNum <= 0) {
           return res.status(400).json({ error: "Invalid manager ID format" });
         }
-        
+
         // Validate that the manager exists and has manager role
         // Use firebaseStorage to be consistent with location creation
         const manager = await firebaseStorage.getUser(managerIdNum);
@@ -10110,29 +10140,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: `User with ID ${managerIdNum} is not a manager` });
         }
       }
-      
+
       // Normalize notification phone if provided
       let normalizedNotificationPhone: string | undefined = undefined;
       if (req.body.notificationPhone && req.body.notificationPhone.trim() !== '') {
         const normalized = normalizePhoneForStorage(req.body.notificationPhone);
         if (!normalized) {
-          return res.status(400).json({ 
-            error: "Invalid notification phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+          return res.status(400).json({
+            error: "Invalid notification phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
           });
         }
         normalizedNotificationPhone = normalized;
       }
-      
+
       console.log('Creating location with:', { name, address, managerId: managerIdNum, notificationPhone: normalizedNotificationPhone });
-      
-      const location = await firebaseStorage.createLocation({ 
-        name, 
-        address, 
+
+      const location = await firebaseStorage.createLocation({
+        name,
+        address,
         managerId: managerIdNum,
         notificationEmail: req.body.notificationEmail || undefined,
         notificationPhone: normalizedNotificationPhone
       });
-      
+
       // Map snake_case to camelCase for consistent API response
       const mappedLocation = {
         ...location,
@@ -10145,7 +10175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: (location as any).createdAt || (location as any).created_at,
         updatedAt: (location as any).updatedAt || (location as any).updated_at,
       };
-      
+
       res.status(201).json(mappedLocation);
     } catch (error: any) {
       console.error("Error creating location:", error);
@@ -10160,11 +10190,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -10189,35 +10219,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - support both session and Firebase auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
       }
 
       const { locationId, name, description } = req.body;
-      
+
       // Validate required fields
       if (!locationId || !name) {
         return res.status(400).json({ error: "Location ID and name are required" });
       }
-      
+
       // Validate locationId is a valid number
       const locationIdNum = parseInt(locationId.toString());
       if (isNaN(locationIdNum) || locationIdNum <= 0) {
         return res.status(400).json({ error: "Invalid location ID format" });
       }
-      
+
       // Validate that the location exists
       const location = await firebaseStorage.getLocationById(locationIdNum);
       if (!location) {
         return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
       }
-      
+
       const kitchen = await firebaseStorage.createKitchen({ locationId: locationIdNum, name, description, isActive: true });
       res.status(201).json(kitchen);
     } catch (error: any) {
@@ -10237,15 +10267,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log(`📍 PUT /api/admin/locations/:id - Request received for location ID: ${req.params.id}`);
       console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
-      
+
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         console.error('❌ PUT /api/admin/locations/:id - Not authenticated');
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         console.error(`❌ PUT /api/admin/locations/:id - User ${user.id} is not admin (role: ${user.role})`);
@@ -10257,11 +10287,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`❌ Invalid location ID: ${req.params.id}`);
         return res.status(400).json({ error: "Invalid location ID" });
       }
-      
+
       console.log(`✅ Validated - updating location ${locationId} for admin user ${user.id}`);
 
       const { name, address, managerId, notificationEmail, notificationPhone } = req.body;
-      
+
       // Validate managerId if provided
       let managerIdNum: number | undefined | null = undefined;
       if (managerId !== undefined && managerId !== null && managerId !== '') {
@@ -10269,7 +10299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (isNaN(managerIdNum) || managerIdNum <= 0) {
           return res.status(400).json({ error: "Invalid manager ID format" });
         }
-        
+
         // Validate that the manager exists and has manager role
         const manager = await firebaseStorage.getUser(managerIdNum);
         if (!manager) {
@@ -10288,14 +10318,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (address !== undefined) updates.address = address;
       if (managerIdNum !== undefined) updates.managerId = managerIdNum;
       if (notificationEmail !== undefined) updates.notificationEmail = notificationEmail || null;
-      
+
       // Normalize phone number if provided
       if (notificationPhone !== undefined) {
         if (notificationPhone && notificationPhone.trim() !== '') {
           const normalized = normalizePhoneForStorage(notificationPhone);
           if (!normalized) {
-            return res.status(400).json({ 
-              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)" 
+            return res.status(400).json({
+              error: "Invalid phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
             });
           }
           updates.notificationPhone = normalized;
@@ -10305,15 +10335,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`💾 Updating location ${locationId} with:`, updates);
-      
+
       const updated = await firebaseStorage.updateLocation(locationId, updates);
       if (!updated) {
         console.error(`❌ Location ${locationId} not found in database`);
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       console.log(`✅ Location ${locationId} updated successfully`);
-      
+
       // Map snake_case to camelCase for consistent API response (matching getAllLocations pattern)
       const mappedLocation = {
         ...updated,
@@ -10325,7 +10355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: (updated as any).createdAt || (updated as any).created_at,
         updatedAt: (updated as any).updatedAt || (updated as any).updated_at,
       };
-      
+
       return res.json(mappedLocation);
     } catch (error: any) {
       console.error("❌ Error updating location:", error);
@@ -10339,11 +10369,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -10367,11 +10397,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -10389,10 +10419,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { name, description, isActive, locationId } = req.body;
-      
+
       const updates: any = {};
       const changesList: string[] = [];
-      
+
       if (name !== undefined && name !== currentKitchen.name) {
         updates.name = name;
         changesList.push(`Name changed to "${name}"`);
@@ -10410,7 +10440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (isNaN(locationIdNum) || locationIdNum <= 0) {
           return res.status(400).json({ error: "Invalid location ID format" });
         }
-        
+
         // Validate that the location exists
         const location = await firebaseStorage.getLocationById(locationIdNum);
         if (!location) {
@@ -10431,20 +10461,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!updated) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      
+
       // Send email notifications to chefs and managers
       if (changesList.length > 0) {
         try {
           const kitchen = await firebaseStorage.getKitchenById(kitchenId);
           if (kitchen) {
             const location = await firebaseStorage.getLocationById(kitchen.locationId);
-            
+
             // Get all chefs who have bookings at this kitchen
             const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
             const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
-            
+
             const changes = changesList.join(', ');
-            
+
             // Send emails to chefs
             for (const chefId of uniqueChefIds) {
               try {
@@ -10464,7 +10494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.error(`Error sending email to chef ${chefId}:`, emailError);
               }
             }
-            
+
             // Send email to manager
             if (location?.managerId) {
               try {
@@ -10491,7 +10521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Don't fail the request if emails fail
         }
       }
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating kitchen:", error);
@@ -10504,11 +10534,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -10533,15 +10563,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log(`📍 PUT /api/admin/managers/:id - Request received for manager ID: ${req.params.id}`);
       console.log(`📍 Request body:`, JSON.stringify(req.body, null, 2));
-      
+
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         console.error('❌ PUT /api/admin/managers/:id - Not authenticated');
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         console.error(`❌ PUT /api/admin/managers/:id - User ${user.id} is not admin (role: ${user.role})`);
@@ -10553,11 +10583,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`❌ Invalid manager ID: ${req.params.id}`);
         return res.status(400).json({ error: "Invalid manager ID" });
       }
-      
+
       console.log(`✅ Validated - updating manager ${managerId} for admin user ${user.id}`);
 
       const { username, role, isManager, locationNotificationEmails } = req.body;
-      
+
       // Verify the user exists and is a manager
       const manager = await firebaseStorage.getUser(managerId);
       if (!manager) {
@@ -10583,19 +10613,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!updated) {
         return res.status(404).json({ error: "Failed to update manager" });
       }
-      
+
       // Update notification emails for locations managed by this manager
       if (locationNotificationEmails && Array.isArray(locationNotificationEmails)) {
         const { db } = await import('./db');
         const { locations } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
-        
+
         // Get all locations managed by this manager
         const managedLocations = await db
           .select()
           .from(locations)
           .where(eq(locations.managerId, managerId));
-        
+
         // Update each location's notification email
         for (const emailUpdate of locationNotificationEmails) {
           if (emailUpdate.locationId && emailUpdate.notificationEmail !== undefined) {
@@ -10607,21 +10637,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.warn(`Invalid email format for location ${locationId}: ${email}`);
                 continue; // Skip invalid emails
               }
-              
+
               await db
                 .update(locations)
-                .set({ 
+                .set({
                   notificationEmail: email || null,
                   updatedAt: new Date()
                 })
                 .where(eq(locations.id, locationId));
-              
+
               console.log(`✅ Updated notification email for location ${locationId}: ${email || 'null'}`);
             }
           }
         }
       }
-      
+
       // Return updated manager with location info
       const { locations } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
@@ -10629,11 +10659,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .select()
         .from(locations)
         .where(eq(locations.managerId, managerId));
-      
+
       const notificationEmails = managedLocations
         .map(loc => (loc as any).notificationEmail || (loc as any).notification_email)
         .filter(email => email && email.trim() !== '');
-      
+
       const response = {
         ...updated,
         locations: managedLocations.map(loc => ({
@@ -10644,7 +10674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notificationEmails: notificationEmails,
         primaryNotificationEmail: notificationEmails.length > 0 ? notificationEmails[0] : null
       };
-      
+
       res.json(response);
     } catch (error: any) {
       console.error("Error updating manager:", error);
@@ -10657,11 +10687,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "admin") {
         return res.status(403).json({ error: "Admin access required" });
@@ -10738,7 +10768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isManager = (portalUser as any).isManager || (portalUser as any).is_manager || false;
       if (!isRoleAllowedForSubdomain(portalUser.role, subdomain, isPortalUser || false, isChef, isManager)) {
         console.log(`Portal user ${username} attempted login from wrong subdomain: ${subdomain}`);
-        return res.status(403).json({ 
+        return res.status(403).json({
           error: 'Access denied. Portal users must login from the kitchen subdomain.',
           requiredSubdomain: 'kitchen'
         });
@@ -10756,11 +10786,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             const { portalUserLocationAccess } = await import('../shared/schema');
             const { eq } = await import('drizzle-orm');
-            
+
             const accessRecords = await db.select()
               .from(portalUserLocationAccess)
               .where(eq(portalUserLocationAccess.portalUserId, portalUser.id));
-            
+
             if (accessRecords.length > 0) {
               return accessRecords[0].locationId;
             }
@@ -10807,7 +10837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already exists
       let user = await firebaseStorage.getUserByUsername(username);
       let isNewUser = false;
-      
+
       if (!user) {
         // Hash password and create user
         const hashedPassword = await hashPassword(password);
@@ -10844,18 +10874,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error checking existing applications:", dbError);
         // If table doesn't exist, provide helpful error message
         if (dbError.message && dbError.message.includes('does not exist')) {
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: "Database migration required. Please run the migration to create portal_user_applications table.",
             details: "Run: migrations/0005_add_portal_user_tables.sql"
           });
         }
         throw dbError;
       }
-      
+
       if (existingApplications.length > 0) {
         const existingApp = existingApplications[0];
         if (existingApp.status === 'inReview' || existingApp.status === 'approved') {
-          return res.status(400).json({ 
+          return res.status(400).json({
             error: "You already have an application for this location",
             applicationId: existingApp.id,
             status: existingApp.status
@@ -10871,7 +10901,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!normalizedPhone) {
           return res.status(400).json({ error: "Invalid phone number format. Please enter a valid phone number." });
         }
-        
+
         application = await db.insert(portalUserApplications).values({
           userId: user.id,
           locationId: parseInt(locationId),
@@ -10885,7 +10915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error creating application:", dbError);
         // If table doesn't exist, provide helpful error message
         if (dbError.message && dbError.message.includes('does not exist')) {
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: "Database migration required. Please run the migration to create portal_user_applications table.",
             details: "Run: migrations/0005_add_portal_user_tables.sql"
           });
@@ -10900,15 +10930,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("Login error after registration:", err);
             return res.status(500).json({ error: "Login failed after registration" });
           }
-          
+
           // Send notification to manager
           (async () => {
             try {
               const { sendEmail } = await import('./email');
-              
+
               // First, try to get notification_email from location (preferred)
               let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
-              
+
               // If no notification_email, get manager's email from manager_id
               if (!managerEmail) {
                 const managerId = (location as any).managerId || (location as any).manager_id;
@@ -10919,26 +10949,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   }
                 }
               }
-              
+
               // Send email if we have a manager email
               if (managerEmail) {
                 const emailContent = {
                   to: managerEmail,
                   subject: `New Portal User Application - ${(location as any).name}`,
                   text: `A new portal user has applied for access to your location:\n\n` +
-                        `Location: ${(location as any).name}\n` +
-                        `Applicant Name: ${fullName}\n` +
-                        `Email: ${email}\n` +
-                        `Phone: ${phone}\n` +
-                        `${company ? `Company: ${company}\n` : ''}` +
-                        `\nPlease log in to your manager dashboard to review and approve this application.`,
+                    `Location: ${(location as any).name}\n` +
+                    `Applicant Name: ${fullName}\n` +
+                    `Email: ${email}\n` +
+                    `Phone: ${phone}\n` +
+                    `${company ? `Company: ${company}\n` : ''}` +
+                    `\nPlease log in to your manager dashboard to review and approve this application.`,
                   html: `<h2>New Portal User Application</h2>` +
-                        `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                        `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
-                        `<p><strong>Email:</strong> ${email}</p>` +
-                        `<p><strong>Phone:</strong> ${phone}</p>` +
-                        `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
-                        `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                    `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                    `<p><strong>Email:</strong> ${email}</p>` +
+                    `<p><strong>Phone:</strong> ${phone}</p>` +
+                    `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                    `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
                 };
                 await sendEmail(emailContent);
                 console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
@@ -10981,46 +11011,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Authentication required. Please sign in." });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
-      
+
       if (!isPortalUser) {
         return res.status(403).json({ error: "Portal user access required" });
       }
-      
+
       // Verify user has approved location access
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, user.id))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         // Check if user has a pending application
         const applications = await db.select()
           .from(portalUserApplications)
           .where(eq(portalUserApplications.userId, user.id))
           .limit(1);
-        
+
         if (applications.length > 0) {
           const app = applications[0];
-          return res.status(403).json({ 
+          return res.status(403).json({
             error: "Access denied. Your application is pending approval by the location manager.",
             applicationStatus: app.status,
             awaitingApproval: true
           });
         }
-        
-        return res.status(403).json({ 
+
+        return res.status(403).json({
           error: "Access denied. Your application is pending approval by the location manager.",
           awaitingApproval: true
         });
       }
-      
+
       // Attach user to request
       req.user = user as any;
       console.log(`✅ Portal user authenticated: ${user.username} (ID: ${user.id})`);
@@ -11035,46 +11065,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/portal/my-location", requirePortalUser, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any).id;
-      
+
       const { portalUserLocationAccess, locations } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       // Get user's location access
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const locationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, locationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       const location = locationRecords[0];
       const slug = (location as any).name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
       res.json({
         id: location.id,
         name: (location as any).name,
         address: (location as any).address,
         logoUrl: (location as any).logoUrl || (location as any).logo_url || null,
-          slug: slug,
+        slug: slug,
       });
     } catch (error: any) {
       console.error("Error fetching portal user location:", error);
@@ -11091,14 +11121,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
-      
+
       if (!isPortalUser) {
         return res.status(403).json({ error: "Portal user access required" });
       }
@@ -11108,9 +11138,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, user.id))
         .limit(1);
-      
+
       if (accessRecords.length > 0) {
-        return res.json({ 
+        return res.json({
           hasAccess: true,
           status: 'approved'
         });
@@ -11122,7 +11152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(eq(portalUserApplications.userId, user.id))
         .orderBy(desc(portalUserApplications.createdAt))
         .limit(1);
-      
+
       if (applications.length > 0) {
         const app = applications[0];
         return res.json({
@@ -11149,40 +11179,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/portal/locations", requirePortalUser, async (req: Request, res: Response) => {
     try {
       const userId = (req.user as any).id;
-      
+
       const { portalUserLocationAccess, locations } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       // Get user's location access
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const locationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, locationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       const location = locationRecords[0];
       const slug = (location as any).name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-      
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
       res.json([{
         id: location.id,
         name: (location as any).name,
@@ -11201,28 +11231,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = (req.user as any).id;
       const locationSlug = req.params.locationSlug;
-      
+
       // Get user's assigned location
       const { portalUserLocationAccess, locations } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, userLocationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
@@ -11234,7 +11264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .replace(/[^\w\s-]/g, '')
         .replace(/[\s_-]+/g, '-')
         .replace(/^-+|-+$/g, '');
-      
+
       // Verify the slug matches the user's location
       if (slug !== locationSlug) {
         return res.status(403).json({ error: "Access denied. You can only access your assigned location." });
@@ -11258,36 +11288,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = (req.user as any).id;
       const locationSlug = req.params.locationSlug;
-      
+
       // Get user's assigned location
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Get location details
       const locationRecords = await db.select()
         .from(locations)
         .where(eq(locations.id, userLocationId))
         .limit(1);
-      
+
       if (locationRecords.length === 0) {
         return res.status(404).json({ error: "Location not found" });
       }
-      
+
       const location = locationRecords[0];
       const slug = (location as any).name
-          .toLowerCase()
-          .trim()
-          .replace(/[^\w\s-]/g, '')
-          .replace(/[\s_-]+/g, '-')
-          .replace(/^-+|-+$/g, '');
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
 
       // Verify the slug matches the user's location
       if (slug !== locationSlug) {
@@ -11295,7 +11325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const kitchens = await firebaseStorage.getKitchensByLocation(userLocationId);
-      
+
       // Filter only active kitchens and return info
       const publicKitchens = kitchens
         .filter((kitchen: any) => kitchen.isActive !== false)
@@ -11331,38 +11361,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get user's assigned location
       const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
-      
+
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Verify kitchen belongs to user's location
       const kitchenRecords = await db.select()
         .from(kitchens)
         .where(eq(kitchens.id, kitchenId))
         .limit(1);
-      
+
       if (kitchenRecords.length === 0) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      
+
       const kitchen = kitchenRecords[0];
       const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
-      
+
       if (kitchenLocationId !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
       }
 
       // Get available slots using the same logic as chef bookings
       const slots = await firebaseStorage.getAvailableSlots(kitchenId, date);
-      
+
       res.json({ slots });
     } catch (error: any) {
       console.error("Error fetching portal availability:", error);
@@ -11393,7 +11423,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate booking date/time
       const bookingDateObj = new Date(bookingDate);
       const now = new Date();
-      
+
       if (bookingDateObj < now) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
@@ -11421,10 +11451,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const slotTime = new Date(bookingDateObj);
         slotTime.setHours(startHours, startMins, 0, 0);
         const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        
+
         if (hoursUntilBooking < minimumBookingWindowHours) {
-          return res.status(400).json({ 
-            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          return res.status(400).json({
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance`
           });
         }
       }
@@ -11455,30 +11485,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             to: (location as any).notificationEmail,
             subject: `New Third-Party Booking Request - ${(location as any).name}`,
             text: `A new booking request has been submitted:\n\n` +
-                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
-                  `Date: ${bookingDate}\n` +
-                  `Time: ${startTime} - ${endTime}\n\n` +
-                  `Contact Information:\n` +
-                  `Name: ${bookingName}\n` +
-                  `Email: ${bookingEmail}\n` +
-                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
-                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
-                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
-                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+              `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+              `Date: ${bookingDate}\n` +
+              `Time: ${startTime} - ${endTime}\n\n` +
+              `Contact Information:\n` +
+              `Name: ${bookingName}\n` +
+              `Email: ${bookingEmail}\n` +
+              `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+              `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+              `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+              `Please log in to your manager dashboard to confirm or manage this booking.`,
             html: `<h2>New Third-Party Booking Request</h2>` +
-                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
-                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
-                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
-                  `<h3>Contact Information:</h3>` +
-                  `<ul>` +
-                  `<li><strong>Name:</strong> ${bookingName}</li>` +
-                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
-                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
-                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
-                  `</ul>` +
-                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
-                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+              `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+              `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+              `<p><strong>Date:</strong> ${bookingDate}</p>` +
+              `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+              `<h3>Contact Information:</h3>` +
+              `<ul>` +
+              `<li><strong>Name:</strong> ${bookingName}</li>` +
+              `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+              `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+              `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+              `</ul>` +
+              `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+              `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
           };
           await sendEmail(emailContent);
         }
@@ -11529,36 +11559,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { portalUserLocationAccess, kitchens } = await import('../shared/schema');
       const { eq } = await import('drizzle-orm');
       const { db } = await import('./db');
-      
+
       const accessRecords = await db.select()
         .from(portalUserLocationAccess)
         .where(eq(portalUserLocationAccess.portalUserId, userId))
         .limit(1);
-      
+
       if (accessRecords.length === 0) {
         return res.status(404).json({ error: "No location assigned to this portal user" });
       }
-      
+
       const userLocationId = accessRecords[0].locationId;
-      
+
       // Verify location matches user's assigned location
       if (parseInt(locationId) !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
       }
-      
+
       // Verify kitchen belongs to user's location
       const kitchenRecords = await db.select()
         .from(kitchens)
         .where(eq(kitchens.id, parseInt(kitchenId)))
         .limit(1);
-      
+
       if (kitchenRecords.length === 0) {
         return res.status(404).json({ error: "Kitchen not found" });
       }
-      
+
       const kitchen = kitchenRecords[0];
       const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
-      
+
       if (kitchenLocationId !== userLocationId) {
         return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
       }
@@ -11566,7 +11596,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate booking date/time
       const bookingDateObj = new Date(bookingDate);
       const now = new Date();
-      
+
       if (bookingDateObj < now) {
         return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
       }
@@ -11594,17 +11624,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const slotTime = new Date(bookingDateObj);
         slotTime.setHours(startHours, startMins, 0, 0);
         const hoursUntilBooking = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        
+
         if (hoursUntilBooking < minimumBookingWindowHours) {
-          return res.status(400).json({ 
-            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance` 
+          return res.status(400).json({
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour(s) in advance`
           });
         }
       }
 
       // Check daily booking limit
       const { pool } = await import('./db');
-      
+
       if (pool) {
         // Calculate requested slots
         const [sH, sM] = startTime.split(':').map(Number);
@@ -11623,7 +11653,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ORDER BY updated_at DESC
             LIMIT 1
           `, [kitchenId, dateStr]);
-          
+
           if (overrideResult.rows.length > 0) {
             const val = Number(overrideResult.rows[0].max_slots_per_chef);
             if (Number.isFinite(val) && val > 0) {
@@ -11638,25 +11668,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               INNER JOIN kitchens k ON k.location_id = l.id
               WHERE k.id = $1
             `, [kitchenId]);
-            
+
             console.log(`[Booking Limit] Location query result for kitchen ${kitchenId}:`, {
               rowCount: locationLimitResult.rows.length,
               rawValue: locationLimitResult.rows[0]?.default_daily_booking_limit,
               locationId: locationLimitResult.rows[0]?.location_id,
               locationName: locationLimitResult.rows[0]?.location_name
             });
-            
+
             if (locationLimitResult.rows.length > 0) {
               const rawValue = locationLimitResult.rows[0].default_daily_booking_limit;
               const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
-              
+
               console.log(`[Booking Limit] Parsed location default value:`, {
                 rawValue,
                 locVal,
                 isFinite: Number.isFinite(locVal),
                 isPositive: locVal !== null && locVal > 0
               });
-              
+
               if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
                 maxSlotsPerChef = locVal;
                 console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${locationLimitResult.rows[0].location_name || locationLimitResult.rows[0].location_id})`);
@@ -11694,8 +11724,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Check if booking would exceed daily limit
         if (existingSlots + requestedSlots > maxSlotsPerChef) {
-          return res.status(400).json({ 
-            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).` 
+          return res.status(400).json({
+            error: `Booking exceeds daily limit. Allowed: ${maxSlotsPerChef} hour(s).`
           });
         }
       }
@@ -11727,30 +11757,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             to: (location as any).notificationEmail,
             subject: `New Portal User Booking Request - ${(location as any).name}`,
             text: `A new booking request has been submitted by a portal user:\n\n` +
-                  `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
-                  `Date: ${bookingDate}\n` +
-                  `Time: ${startTime} - ${endTime}\n\n` +
-                  `Contact Information:\n` +
-                  `Name: ${bookingName}\n` +
-                  `Email: ${bookingEmail}\n` +
-                  `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
-                  `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
-                  `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
-                  `Please log in to your manager dashboard to confirm or manage this booking.`,
+              `Kitchen: ${booking.kitchenName || 'Kitchen'}\n` +
+              `Date: ${bookingDate}\n` +
+              `Time: ${startTime} - ${endTime}\n\n` +
+              `Contact Information:\n` +
+              `Name: ${bookingName}\n` +
+              `Email: ${bookingEmail}\n` +
+              `${bookingPhone ? `Phone: ${bookingPhone}\n` : ''}` +
+              `${bookingCompany ? `Company: ${bookingCompany}\n` : ''}` +
+              `${specialNotes ? `\nNotes: ${specialNotes}` : ''}\n\n` +
+              `Please log in to your manager dashboard to confirm or manage this booking.`,
             html: `<h2>New Portal User Booking Request</h2>` +
-                  `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                  `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
-                  `<p><strong>Date:</strong> ${bookingDate}</p>` +
-                  `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
-                  `<h3>Contact Information:</h3>` +
-                  `<ul>` +
-                  `<li><strong>Name:</strong> ${bookingName}</li>` +
-                  `<li><strong>Email:</strong> ${bookingEmail}</li>` +
-                  `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
-                  `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
-                  `</ul>` +
-                  `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
-                  `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
+              `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+              `<p><strong>Kitchen:</strong> ${booking.kitchenName || 'Kitchen'}</p>` +
+              `<p><strong>Date:</strong> ${bookingDate}</p>` +
+              `<p><strong>Time:</strong> ${startTime} - ${endTime}</p>` +
+              `<h3>Contact Information:</h3>` +
+              `<ul>` +
+              `<li><strong>Name:</strong> ${bookingName}</li>` +
+              `<li><strong>Email:</strong> ${bookingEmail}</li>` +
+              `${bookingPhone ? `<li><strong>Phone:</strong> ${bookingPhone}</li>` : ''}` +
+              `${bookingCompany ? `<li><strong>Company:</strong> ${bookingCompany}</li>` : ''}` +
+              `</ul>` +
+              `${specialNotes ? `<p><strong>Notes:</strong> ${specialNotes}</p>` : ''}` +
+              `<p>Please log in to your manager dashboard to confirm or manage this booking.</p>`,
           };
           await sendEmail(emailContent);
         }
@@ -11760,10 +11790,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const { db, pool } = await import('./db');
           const { locations } = await import('../shared/schema');
           const { eq } = await import('drizzle-orm');
-          
+
           const locationRecord = await db.select().from(locations).where(eq(locations.id, userLocationId)).limit(1);
           const locationData = locationRecord[0];
-          
+
           // Get manager phone number using utility function (with fallback logic and normalization)
           const managerPhone = await getManagerPhone(locationData, (locationData as any)?.managerId, pool);
 
@@ -11812,17 +11842,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/public/kitchens", async (req: Request, res: Response) => {
     try {
       const kitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       console.log(`[API] /api/public/kitchens - Found ${kitchens.length} total kitchens`);
-      
+
       // Filter only active kitchens (handle both camelCase and snake_case)
       const activeKitchens = kitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       console.log(`[API] /api/public/kitchens - ${activeKitchens.length} active kitchens after filtering`);
-      
+
       // Return public-safe info with location data (no limit - show all for marketing)
       const publicKitchens = activeKitchens
         .map((kitchen: any) => {
@@ -11832,17 +11862,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const imageUrl = kitchen.imageUrl || kitchen.image_url || null;
           const locationBrandImageUrl = kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null;
           const locationLogoUrl = kitchen.locationLogoUrl || kitchen.location_logo_url || null;
-          
+
           // Log for debugging
           if (locationId && !locationName) {
             console.warn(`[API] Kitchen ${kitchen.id} has locationId ${locationId} but no locationName`);
           }
-          
+
           // Normalize image URLs to ensure they work in production
           const normalizedImageUrl = normalizeImageUrl(imageUrl, req);
           const normalizedBrandImageUrl = normalizeImageUrl(locationBrandImageUrl, req);
           const normalizedLogoUrl = normalizeImageUrl(locationLogoUrl, req);
-          
+
           return {
             id: kitchen.id,
             name: kitchen.name,
@@ -11872,18 +11902,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const allLocations = await firebaseStorage.getAllLocations();
       const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-      
+
       // Filter to only active kitchens
       const activeKitchens = allKitchens.filter((kitchen: any) => {
         const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
         return isActive !== false && isActive !== null;
       });
-      
+
       // Get unique location IDs that have active kitchens
       const locationIdsWithKitchens = new Set(
         activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)
       );
-      
+
       // Filter locations to only those with active kitchens (including pending approval locations)
       const locationsWithKitchens = allLocations
         .filter((location: any) => locationIdsWithKitchens.has(location.id))
@@ -11892,15 +11922,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const kitchenCount = activeKitchens.filter((kitchen: any) =>
             (kitchen.locationId || kitchen.location_id) === location.id
           ).length;
-          
+
           // Include kitchen license status
           const kitchenLicenseStatus = (location as any).kitchenLicenseStatus || (location as any).kitchen_license_status || 'pending';
-          
+
           // Get first kitchen image as featured for this location if location doesn't have its own brand image
-          const locationKitchens = activeKitchens.filter((kitchen: any) => 
+          const locationKitchens = activeKitchens.filter((kitchen: any) =>
             (kitchen.locationId || kitchen.location_id) === location.id
           );
-          
+
           // Debug: Log the raw kitchen data structure to understand what fields are available
           if (locationKitchens.length > 0) {
             console.log(`[API] Debug - Location ${location.id} (${location.name}) kitchens data structure:`, {
@@ -11917,17 +11947,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
           }
-          
+
           // Extract and normalize kitchen image - same approach as detail page
           // Try to find the first kitchen with a valid image URL, then normalize it
           // Also fall back to galleryImages if imageUrl is not set (this matches what the detail page does)
           let featuredKitchenImage: string | null = null;
-          
+
           for (const kitchen of locationKitchens) {
             // Check both camelCase and snake_case for image URL
             // Also check if the imageUrl was set by getAllKitchensWithLocationAndManager
             const kitchenImage = kitchen.imageUrl || kitchen.image_url || (kitchen as any).imageUrl || (kitchen as any).image_url;
-            
+
             if (kitchenImage && typeof kitchenImage === 'string' && kitchenImage.trim() !== '') {
               // Normalize the kitchen image URL immediately (same as detail page does)
               featuredKitchenImage = normalizeImageUrl(kitchenImage, req);
@@ -11939,10 +11969,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
               break; // Use the first valid image found
             }
-            
+
             // Fall back to galleryImages if no imageUrl - this matches the KitchenPreviewPage behavior
             const galleryImages = kitchen.galleryImages || kitchen.gallery_images || [];
-            
+
             if (Array.isArray(galleryImages) && galleryImages.length > 0) {
               const firstGalleryImage = galleryImages[0];
               if (firstGalleryImage && typeof firstGalleryImage === 'string' && firstGalleryImage.trim() !== '') {
@@ -11958,10 +11988,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             }
           }
-          
+
           // If no kitchen image found, log it for debugging
           if (!featuredKitchenImage && locationKitchens.length > 0) {
-            console.warn(`[API] No kitchen image found for location ${location.id} (${location.name}). Kitchens checked:`, 
+            console.warn(`[API] No kitchen image found for location ${location.id} (${location.name}). Kitchens checked:`,
               locationKitchens.map((k: any) => ({
                 id: k.id,
                 name: k.name,
@@ -11970,12 +12000,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }))
             );
           }
-          
+
           // Normalize location image URLs to ensure they work in production
           const normalizedLogoUrl = normalizeImageUrl((location as any).logoUrl || (location as any).logo_url || null, req);
           const normalizedBrandImageUrl = normalizeImageUrl((location as any).brandImageUrl || (location as any).brand_image_url || null, req);
           // featuredKitchenImage is already normalized above
-          
+
           // Debug logging
           console.log(`[API] Location ${location.id} (${location.name}) images:`, {
             logoUrl: normalizedLogoUrl,
@@ -11985,7 +12015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             firstKitchenRawImage: locationKitchens[0]?.imageUrl || locationKitchens[0]?.image_url || 'none',
             firstKitchenNormalizedImage: locationKitchens[0] ? normalizeImageUrl(locationKitchens[0]?.imageUrl || locationKitchens[0]?.image_url || null, req) : 'none'
           });
-          
+
           return {
             id: location.id,
             name: location.name,
@@ -11997,9 +12027,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             kitchenLicenseStatus: kitchenLicenseStatus,
           };
         });
-      
+
       console.log(`[API] /api/public/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
-      
+
       res.json(locationsWithKitchens);
     } catch (error: any) {
       console.error("Error fetching public locations:", error);
@@ -12013,7 +12043,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/public/locations/:locationId/details", async (req: Request, res: Response) => {
     try {
       const locationId = parseInt(req.params.locationId);
-      
+
       if (isNaN(locationId)) {
         return res.status(400).json({ error: "Invalid location ID" });
       }
@@ -12021,7 +12051,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get location with license status
       const allLocations = await firebaseStorage.getAllLocations();
       const location = allLocations.find((loc: any) => loc.id === locationId);
-      
+
       if (!location) {
         return res.status(404).json({ error: "Location not found" });
       }
@@ -12038,12 +12068,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .map((kitchen: any) => {
           // Normalize image URLs
           const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || kitchen.image_url || null, req);
-          const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) => 
+          const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) =>
             normalizeImageUrl(img, req)
           ).filter((url: string | null): url is string => url !== null);
           const normalizedLocationBrandImageUrl = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
           const normalizedLocationLogoUrl = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
-          
+
           return {
             id: kitchen.id,
             name: kitchen.name,
@@ -12082,6 +12112,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get location requirements (custom fields, etc.)
+  app.get("/api/public/locations/:id/requirements", async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.id);
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      const requirements = await storage.getLocationRequirements(locationId);
+
+      // Return found requirements or empty object if none (schema defaults will apply)
+      res.json(requirements || {});
+    } catch (error: any) {
+      console.error("Error fetching location requirements:", error);
+      res.status(500).json({ error: "Internal server error", details: error.message });
+    }
+  });
+
   // Get public kitchen availability preview (limited data for marketing - no auth required)
   app.get("/api/public/kitchens/:kitchenId/availability-preview", async (req: Request, res: Response) => {
     try {
@@ -12094,14 +12142,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get kitchen availability settings
       const availabilities = await firebaseStorage.getKitchenAvailability(kitchenId);
-      
+
       // Get operating days (days of week that have availability set)
       const operatingDays = Array.from(new Set(availabilities.map((a: any) => a.dayOfWeek)));
 
       // Generate sample slots for preview (not real-time, just example)
       // These are illustrative and don't reflect actual bookings
       const sampleSlots = [];
-      
+
       // If a specific date is provided, get the day of week
       let dayOfWeek = new Date().getDay();
       if (date) {
@@ -12111,21 +12159,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Find availability for this day
       const dayAvailability = availabilities.find((a: any) => a.dayOfWeek === dayOfWeek);
-      
+
       if (dayAvailability) {
         const startTime = dayAvailability.startTime || "08:00";
         const endTime = dayAvailability.endTime || "18:00";
-        
+
         const [startHour] = startTime.split(':').map(Number);
         const [endHour] = endTime.split(':').map(Number);
-        
+
         // Generate hourly slots
         for (let hour = startHour; hour < endHour; hour++) {
           const timeStr = `${hour.toString().padStart(2, '0')}:00`;
           // Generate pseudo-random availability for demo purposes
           const seed = kitchenId * 100 + hour;
           const available = (seed % 3) === 0 ? 0 : ((seed % 2) === 0 ? 1 : 2);
-          
+
           sampleSlots.push({
             time: timeStr,
             available: available,
@@ -12139,7 +12187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const timeStr = `${hour.toString().padStart(2, '0')}:00`;
           const seed = kitchenId * 100 + hour;
           const available = (seed % 3) === 0 ? 0 : ((seed % 2) === 0 ? 1 : 2);
-          
+
           sampleSlots.push({
             time: timeStr,
             available: available,
@@ -12284,26 +12332,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Generate custom token for immediate login
         const { initializeFirebaseAdmin } = await import('./firebase-admin');
         const firebaseAdmin = initializeFirebaseAdmin();
-        
+
         if (!firebaseAdmin) {
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: 'Firebase Admin not available',
-            message: 'Cannot generate login token. Please contact support.' 
+            message: 'Cannot generate login token. Please contact support.'
           });
         }
-        
+
         const { getAuth } = await import('firebase-admin/auth');
         const auth = getAuth(firebaseAdmin);
-        
+
         try {
           const firebaseUser = await auth.getUser(admin.firebase_uid);
           const customToken = await auth.createCustomToken(admin.firebase_uid);
-          
+
           let email = admin.email;
           if (!email) {
             email = firebaseUser.email || `${admin.username}@localcooks.com`;
           }
-          
+
           console.log('✅ Returning custom token for migrated admin');
           return res.json({
             success: true,
@@ -12331,21 +12379,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email = `${admin.username}@localcooks.com`;
         }
       }
-      
+
       // Create Firebase account
       const { initializeFirebaseAdmin } = await import('./firebase-admin');
       const firebaseAdmin = initializeFirebaseAdmin();
-      
+
       if (!firebaseAdmin) {
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Firebase Admin not configured',
-          message: 'Cannot create Firebase account. Please contact support.' 
+          message: 'Cannot create Firebase account. Please contact support.'
         });
       }
-      
+
       const { getAuth } = await import('firebase-admin/auth');
       const auth = getAuth(firebaseAdmin);
-      
+
       let firebaseUser;
       try {
         try {
@@ -12398,7 +12446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       } catch (firebaseError: any) {
         console.error('❌ Firebase account creation error:', firebaseError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Failed to create Firebase account',
           message: firebaseError.message || 'Unknown error occurred',
           code: firebaseError.code
@@ -12407,9 +12455,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error: any) {
       console.error('Admin migration login error:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Migration login failed',
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -12458,26 +12506,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('✅ Manager already has Firebase UID:', manager.firebase_uid);
         const { initializeFirebaseAdmin } = await import('./firebase-admin');
         const firebaseAdmin = initializeFirebaseAdmin();
-        
+
         if (!firebaseAdmin) {
-          return res.status(500).json({ 
+          return res.status(500).json({
             error: 'Firebase Admin not available',
-            message: 'Cannot generate login token. Please contact support.' 
+            message: 'Cannot generate login token. Please contact support.'
           });
         }
-        
+
         const { getAuth } = await import('firebase-admin/auth');
         const auth = getAuth(firebaseAdmin);
-        
+
         try {
           const firebaseUser = await auth.getUser(manager.firebase_uid);
           const customToken = await auth.createCustomToken(manager.firebase_uid);
-          
+
           let email = manager.email;
           if (!email) {
             email = firebaseUser.email || `${manager.username}@localcooks.com`;
           }
-          
+
           console.log('✅ Returning custom token for migrated manager');
           return res.json({
             success: true,
@@ -12505,21 +12553,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email = `${manager.username}@localcooks.com`;
         }
       }
-      
+
       // Create Firebase account
       const { initializeFirebaseAdmin } = await import('./firebase-admin');
       const firebaseAdmin = initializeFirebaseAdmin();
-      
+
       if (!firebaseAdmin) {
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Firebase Admin not configured',
-          message: 'Cannot create Firebase account. Please contact support.' 
+          message: 'Cannot create Firebase account. Please contact support.'
         });
       }
-      
+
       const { getAuth } = await import('firebase-admin/auth');
       const auth = getAuth(firebaseAdmin);
-      
+
       let firebaseUser;
       try {
         try {
@@ -12572,7 +12620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       } catch (firebaseError: any) {
         console.error('❌ Firebase account creation error:', firebaseError);
-        return res.status(500).json({ 
+        return res.status(500).json({
           error: 'Failed to create Firebase account',
           message: firebaseError.message || 'Unknown error occurred',
           code: firebaseError.code
@@ -12581,9 +12629,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error: any) {
       console.error('Manager migration login error:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         error: 'Migration login failed',
-        message: error.message 
+        message: error.message
       });
     }
   });
@@ -12678,7 +12726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // TODO: Create a proper email template for license approval/rejection
           // For now, using the basic location email template
           const { generateLocationEmailChangedEmail } = await import('./email');
-          
+
           const emailContent = generateLocationEmailChangedEmail({
             email: manager.username,
             locationName: location.name,
@@ -12715,8 +12763,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🔐 Manager password reset requested for username: ${username}`);
 
       if (!pool) {
-        return res.status(500).json({ 
-          message: "Password reset service unavailable. Please try again later." 
+        return res.status(500).json({
+          message: "Password reset service unavailable. Please try again later."
         });
       }
 
@@ -12726,16 +12774,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!manager) {
         // Don't reveal if user exists or not for security
         console.log(`❌ Manager not found: ${username}`);
-        return res.status(200).json({ 
-          message: "If an account with this username exists, you will receive a password reset link." 
+        return res.status(200).json({
+          message: "If an account with this username exists, you will receive a password reset link."
         });
       }
 
       // Verify user is a manager
       if (manager.role !== 'manager') {
         console.log(`❌ User is not a manager: ${username}, role: ${manager.role}`);
-        return res.status(200).json({ 
-          message: "If an account with this username exists, you will receive a password reset link." 
+        return res.status(200).json({
+          message: "If an account with this username exists, you will receive a password reset link."
         });
       }
 
@@ -12757,14 +12805,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✅ Password reset token stored for manager: ${manager.id}`);
       } catch (dbError) {
         console.error('Error storing password reset token:', dbError);
-        return res.status(500).json({ 
-          message: "Error processing password reset request. Please try again later." 
+        return res.status(500).json({
+          message: "Error processing password reset request. Please try again later."
         });
       }
 
       // Generate reset URL
       const baseDomain = process.env.BASE_DOMAIN || 'localcooks.ca';
-      const baseUrl = process.env.NODE_ENV === 'production' 
+      const baseUrl = process.env.NODE_ENV === 'production'
         ? `https://kitchen.${baseDomain}`
         : (process.env.BASE_URL || 'http://localhost:5000');
       const resetUrl = `${baseUrl}/password-reset?token=${resetToken}&role=manager`;
@@ -12772,7 +12820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Send password reset email
       try {
         const { generatePasswordResetEmail } = await import('./email');
-        
+
         const emailContent = generatePasswordResetEmail({
           fullName: manager.username || username,
           email: username, // Username is the email for managers
@@ -12788,25 +12836,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`✅ Password reset email sent successfully to manager: ${username}`);
         } else {
           console.error(`❌ Failed to send password reset email to manager: ${username}`);
-          return res.status(500).json({ 
-            message: "Error sending password reset email. Please try again later." 
+          return res.status(500).json({
+            message: "Error sending password reset email. Please try again later."
           });
         }
       } catch (emailError) {
         console.error(`❌ Error sending password reset email:`, emailError);
-        return res.status(500).json({ 
-          message: "Error sending password reset email. Please try again later." 
+        return res.status(500).json({
+          message: "Error sending password reset email. Please try again later."
         });
       }
 
-      return res.status(200).json({ 
-        message: "If an account with this username exists, you will receive a password reset link." 
+      return res.status(200).json({
+        message: "If an account with this username exists, you will receive a password reset link."
       });
 
     } catch (error: any) {
       console.error("Error in manager forgot password:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
@@ -12828,8 +12876,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🔐 Manager password reset attempt with token: ${token.substring(0, 8)}...`);
 
       if (!pool) {
-        return res.status(500).json({ 
-          message: "Password reset service unavailable. Please try again later." 
+        return res.status(500).json({
+          message: "Password reset service unavailable. Please try again later."
         });
       }
 
@@ -12866,20 +12914,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✅ Reset token cleared for manager: ${manager.id}`);
       } catch (dbError) {
         console.error('Error updating password:', dbError);
-        return res.status(500).json({ 
-          message: "Error updating password. Please try again later." 
+        return res.status(500).json({
+          message: "Error updating password. Please try again later."
         });
       }
 
       console.log(`✅ Password successfully reset for manager: ${manager.id}`);
-      return res.status(200).json({ 
-        message: "Password reset successfully. You can now log in with your new password." 
+      return res.status(200).json({
+        message: "Password reset successfully. You can now log in with your new password."
       });
 
     } catch (error: any) {
       console.error("Error in manager reset password:", error);
-      return res.status(500).json({ 
-        message: "Internal server error. Please try again later." 
+      return res.status(500).json({
+        message: "Internal server error. Please try again later."
       });
     }
   });
@@ -12890,7 +12938,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Verify this is a cron request (Vercel adds Authorization header)
     const authHeader = req.headers.authorization;
     const cronSecret = process.env.CRON_SECRET;
-    
+
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       return res.status(401).json({ error: 'Unauthorized' });
     }

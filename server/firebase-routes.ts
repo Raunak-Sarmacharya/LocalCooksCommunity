@@ -1,4 +1,5 @@
-import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema, updateLocationRequirementsSchema } from '@shared/schema';
+import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema, updateLocationRequirementsSchema, updateApplicationTierSchema, chefKitchenApplications } from '@shared/schema';
+import { initializeConversation, sendSystemNotification, notifyTierTransition } from './chat-service';
 import { platformSettings } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { chefLocationAccess } from '@shared/schema';
@@ -11,10 +12,10 @@ import { upload, uploadToBlob } from './fileUpload';
 import { handleFileUpload } from './upload-handler';
 import { initializeFirebaseAdmin } from './firebase-admin';
 import {
-    requireAdmin,
-    requireManager,
-    requireFirebaseAuthWithUser,
-    verifyFirebaseAuth
+  requireAdmin,
+  requireManager,
+  requireFirebaseAuthWithUser,
+  verifyFirebaseAuth
 } from './firebase-auth-middleware';
 import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
@@ -54,21 +55,21 @@ export function registerFirebaseRoutes(app: Express) {
       // Explicitly ignore any Authorization headers - this endpoint uses session auth only
       // Delete any Firebase-related request properties to prevent accidental Firebase auth
       delete (req as any).firebaseUser;
-      
+
       const user = await getAuthenticatedUserFromSession(req);
-      
+
       if (!user) {
         console.log('❌ Session admin auth failed: No session found');
-        return res.status(401).json({ 
-          error: 'Unauthorized', 
-          message: 'Session authentication required. Please login as an admin.' 
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Session authentication required. Please login as an admin.'
         });
       }
 
       if (user.role !== 'admin') {
         console.log(`❌ Session admin auth failed: User ${user.id} is not an admin (role: ${user.role})`);
-        return res.status(403).json({ 
-          error: 'Forbidden', 
+        return res.status(403).json({
+          error: 'Forbidden',
           message: 'Admin access required',
           userRole: user.role || 'none'
         });
@@ -82,9 +83,9 @@ export function registerFirebaseRoutes(app: Express) {
       next();
     } catch (error) {
       console.error('Session admin auth error:', error);
-      return res.status(500).json({ 
-        error: 'Internal server error', 
-        message: 'Authentication verification failed' 
+      return res.status(500).json({
+        error: 'Internal server error',
+        message: 'Authentication verification failed'
       });
     }
   }
@@ -119,9 +120,9 @@ export function registerFirebaseRoutes(app: Express) {
       // For registration, we only have the role, not the flags yet
       if (role && !isRoleAllowedForSubdomain(role, subdomain, false, false, false)) {
         const requiredSubdomain = role === 'chef' ? 'chef' :
-                                  role === 'manager' ? 'kitchen' :
-                                  role === 'admin' ? 'admin' : null;
-        
+          role === 'manager' ? 'kitchen' :
+            role === 'admin' ? 'admin' : null;
+
         return res.status(403).json({
           error: `Access denied. ${role} users must register from the ${requiredSubdomain} subdomain.`,
           requiredSubdomain: requiredSubdomain
@@ -396,9 +397,9 @@ export function registerFirebaseRoutes(app: Express) {
         // Determine effective role for error message
         const effectiveRole = existingUser.role || (isManager ? 'manager' : isChef ? 'chef' : null);
         const requiredSubdomain = effectiveRole === 'chef' ? 'chef' :
-                                  effectiveRole === 'manager' ? 'kitchen' :
-                                  effectiveRole === 'admin' ? 'admin' : null;
-        
+          effectiveRole === 'manager' ? 'kitchen' :
+            effectiveRole === 'admin' ? 'admin' : null;
+
         return res.status(403).json({
           error: `Access denied. ${effectiveRole || 'user'} users must login from the ${requiredSubdomain} subdomain.`,
           requiredSubdomain: requiredSubdomain
@@ -433,7 +434,7 @@ export function registerFirebaseRoutes(app: Express) {
       let userFullName = null;
       let stripeConnectAccountId = null;
       let stripeConnectOnboardingStatus = null;
-      
+
       if (pool) {
         try {
           // Get full name from chef applications
@@ -444,7 +445,7 @@ export function registerFirebaseRoutes(app: Express) {
           if (chefAppResult.rows.length > 0 && chefAppResult.rows[0].full_name) {
             userFullName = chefAppResult.rows[0].full_name;
           }
-          
+
           // Fetch Stripe Connect account information
           const stripeResult = await pool.query(
             'SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1',
@@ -557,104 +558,104 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // 🔥 Submit Application (with Firebase Auth, NO SESSIONS)
-  app.post('/api/firebase/applications', 
+  app.post('/api/firebase/applications',
     upload.fields([
       { name: 'foodSafetyLicense', maxCount: 1 },
       { name: 'foodEstablishmentCert', maxCount: 1 }
     ]),
-    requireFirebaseAuthWithUser, 
+    requireFirebaseAuthWithUser,
     async (req: Request, res: Response) => {
-    try {
-      console.log(`📝 POST /api/firebase/applications - User ${req.neonUser!.id} submitting chef application`);
-      
-      // Handle file uploads if present
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-      let foodSafetyLicenseUrl: string | undefined;
-      let foodEstablishmentCertUrl: string | undefined;
+      try {
+        console.log(`📝 POST /api/firebase/applications - User ${req.neonUser!.id} submitting chef application`);
 
-      if (files) {
-        // Upload food safety license if provided
-        if (files['foodSafetyLicense']?.[0]) {
-          try {
-            foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicense'][0], req.neonUser!.id, 'documents');
-            console.log(`✅ Uploaded food safety license: ${foodSafetyLicenseUrl}`);
-          } catch (uploadError) {
-            console.error('❌ Failed to upload food safety license:', uploadError);
+        // Handle file uploads if present
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+        let foodSafetyLicenseUrl: string | undefined;
+        let foodEstablishmentCertUrl: string | undefined;
+
+        if (files) {
+          // Upload food safety license if provided
+          if (files['foodSafetyLicense']?.[0]) {
+            try {
+              foodSafetyLicenseUrl = await uploadToBlob(files['foodSafetyLicense'][0], req.neonUser!.id, 'documents');
+              console.log(`✅ Uploaded food safety license: ${foodSafetyLicenseUrl}`);
+            } catch (uploadError) {
+              console.error('❌ Failed to upload food safety license:', uploadError);
+            }
+          }
+
+          // Upload food establishment cert if provided
+          if (files['foodEstablishmentCert']?.[0]) {
+            try {
+              foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCert'][0], req.neonUser!.id, 'documents');
+              console.log(`✅ Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
+            } catch (uploadError) {
+              console.error('❌ Failed to upload food establishment cert:', uploadError);
+            }
           }
         }
-        
-        // Upload food establishment cert if provided
-        if (files['foodEstablishmentCert']?.[0]) {
-          try {
-            foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCert'][0], req.neonUser!.id, 'documents');
-            console.log(`✅ Uploaded food establishment cert: ${foodEstablishmentCertUrl}`);
-          } catch (uploadError) {
-            console.error('❌ Failed to upload food establishment cert:', uploadError);
-          }
+
+        // Prepare application data from form body and uploaded files
+        const applicationData = {
+          ...req.body,
+          userId: req.neonUser!.id, // This is the Neon user ID from the middleware
+          // Use uploaded file URLs if available, otherwise use provided URLs
+          foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
+          foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || undefined,
+        };
+
+        // Set document status to pending if URLs are provided
+        if (applicationData.foodSafetyLicenseUrl) {
+          applicationData.foodSafetyLicenseStatus = "pending";
         }
-      }
+        if (applicationData.foodEstablishmentCertUrl) {
+          applicationData.foodEstablishmentCertStatus = "pending";
+        }
 
-      // Prepare application data from form body and uploaded files
-      const applicationData = {
-        ...req.body,
-        userId: req.neonUser!.id, // This is the Neon user ID from the middleware
-        // Use uploaded file URLs if available, otherwise use provided URLs
-        foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
-        foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || undefined,
-      };
+        // Validate the request body
+        const parsedData = insertApplicationSchema.safeParse(applicationData);
 
-      // Set document status to pending if URLs are provided
-      if (applicationData.foodSafetyLicenseUrl) {
-        applicationData.foodSafetyLicenseStatus = "pending";
-      }
-      if (applicationData.foodEstablishmentCertUrl) {
-        applicationData.foodEstablishmentCertStatus = "pending";
-      }
+        if (!parsedData.success) {
+          const validationError = fromZodError(parsedData.error);
+          console.log('❌ Validation failed:', validationError.details);
+          return res.status(400).json({
+            message: "Validation error",
+            errors: validationError.details
+          });
+        }
 
-      // Validate the request body
-      const parsedData = insertApplicationSchema.safeParse(applicationData);
+        console.log(`📝 Creating application: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
 
-      if (!parsedData.success) {
-        const validationError = fromZodError(parsedData.error);
-        console.log('❌ Validation failed:', validationError.details);
-        return res.status(400).json({
-          message: "Validation error",
-          errors: validationError.details
+        const application = await firebaseStorage.createApplication(parsedData.data);
+
+        res.json({
+          success: true,
+          application,
+          message: 'Application submitted successfully'
+        });
+      } catch (error) {
+        console.error('Error creating application:', error);
+        res.status(500).json({
+          error: 'Failed to create application',
+          message: error instanceof Error ? error.message : 'Unknown error'
         });
       }
-
-      console.log(`📝 Creating application: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id}`);
-
-      const application = await firebaseStorage.createApplication(parsedData.data);
-
-      res.json({
-        success: true,
-        application,
-        message: 'Application submitted successfully'
-      });
-    } catch (error) {
-      console.error('Error creating application:', error);
-      res.status(500).json({
-        error: 'Failed to create application',
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
+    });
 
   // 🔥 Get User's Applications (with Firebase Auth, NO SESSIONS)
   app.get('/api/firebase/applications/my', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       const userId = req.neonUser!.id;
       const firebaseUid = req.firebaseUser!.uid;
-      
+
       console.log(`[APPLICATIONS] Fetching applications for user ID: ${userId} (Firebase UID: ${firebaseUid})`);
-      console.log(`[APPLICATIONS] User object:`, { 
-        id: req.neonUser!.id, 
-        username: req.neonUser!.username, 
+      console.log(`[APPLICATIONS] User object:`, {
+        id: req.neonUser!.id,
+        username: req.neonUser!.username,
         role: req.neonUser!.role,
-        isChef: (req.neonUser as any).isChef 
+        isChef: (req.neonUser as any).isChef
       });
-      
+
       // Get applications for the authenticated Neon user
       const applications = await firebaseStorage.getApplicationsByUserId(userId);
 
@@ -721,6 +722,22 @@ export function registerFirebaseRoutes(app: Express) {
     }
   });
 
+  // 🔥 Get Current User Info (Firebase Auth, NO SESSIONS)
+  // Returns Neon user ID for client-side use (e.g., chat service)
+  app.get('/api/firebase/user/me', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      res.json({
+        id: req.neonUser!.id,
+        username: req.neonUser!.username,
+        role: req.neonUser!.role,
+        firebaseUid: req.firebaseUser!.uid,
+      });
+    } catch (error) {
+      console.error('Error getting user info:', error);
+      res.status(500).json({ error: 'Failed to get user info' });
+    }
+  });
+
   // 🔥 Update User Roles (Firebase Auth, NO SESSIONS)
   app.post('/api/firebase/user/update-roles', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
@@ -750,8 +767,8 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // 🔥 File Upload Endpoint (Firebase Auth, NO SESSIONS) - Uses Cloudflare R2
-  app.post('/api/upload', 
-    upload.single('file'), 
+  app.post('/api/upload',
+    upload.single('file'),
     requireFirebaseAuthWithUser,
     handleFileUpload
   );
@@ -814,7 +831,7 @@ export function registerFirebaseRoutes(app: Express) {
       try {
         if (updatedApplication.email) {
           const { generateStatusChangeEmail, sendEmail } = await import('./email');
-          
+
           const emailContent = generateStatusChangeEmail({
             fullName: updatedApplication.fullName || "Applicant",
             email: updatedApplication.email,
@@ -824,7 +841,7 @@ export function registerFirebaseRoutes(app: Express) {
           await sendEmail(emailContent, {
             trackingId: `cancel_${updatedApplication.id}_${Date.now()}`
           });
-          
+
           console.log(`Cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send cancellation email for application ${updatedApplication.id}: No email address found`);
@@ -872,7 +889,7 @@ export function registerFirebaseRoutes(app: Express) {
       try {
         if (updatedApplication.email) {
           const { generateStatusChangeEmail, sendEmail } = await import('./email');
-          
+
           const emailContent = generateStatusChangeEmail({
             fullName: updatedApplication.fullName || "Applicant",
             email: updatedApplication.email,
@@ -882,7 +899,7 @@ export function registerFirebaseRoutes(app: Express) {
           await sendEmail(emailContent, {
             trackingId: `admin_cancel_${updatedApplication.id}_${Date.now()}`
           });
-          
+
           console.log(`Admin cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
         } else {
           console.warn(`Cannot send admin cancellation email for application ${updatedApplication.id}: No email address found`);
@@ -1642,7 +1659,7 @@ export function registerFirebaseRoutes(app: Express) {
         .from(platformSettings)
         .where(eq(platformSettings.key, 'service_fee_rate'))
         .limit(1);
-      
+
       if (setting) {
         const rate = parseFloat(setting.value);
         if (!isNaN(rate) && rate >= 0 && rate <= 1) {
@@ -1655,7 +1672,7 @@ export function registerFirebaseRoutes(app: Express) {
           });
         }
       }
-      
+
       // Return default if not set
       return res.json({
         key: 'service_fee_rate',
@@ -1683,7 +1700,7 @@ export function registerFirebaseRoutes(app: Express) {
         .from(platformSettings)
         .where(eq(platformSettings.key, 'service_fee_rate'))
         .limit(1);
-      
+
       if (setting) {
         const rate = parseFloat(setting.value);
         if (!isNaN(rate) && rate >= 0 && rate <= 1) {
@@ -1697,7 +1714,7 @@ export function registerFirebaseRoutes(app: Express) {
           });
         }
       }
-      
+
       // Return default if not set
       return res.json({
         key: 'service_fee_rate',
@@ -1720,30 +1737,30 @@ export function registerFirebaseRoutes(app: Express) {
   app.put('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req: Request, res: Response) => {
     try {
       const { rate } = req.body;
-      
+
       if (rate === undefined || rate === null) {
         return res.status(400).json({ error: 'Rate is required' });
       }
-      
+
       const rateValue = typeof rate === 'string' ? parseFloat(rate) : rate;
-      
+
       if (isNaN(rateValue) || rateValue < 0 || rateValue > 1) {
         return res.status(400).json({ error: 'Rate must be a number between 0 and 1 (e.g., 0.05 for 5%)' });
       }
-      
+
       // Get user ID from session (set by requireSessionAdmin middleware)
       const userId = (req as any).sessionUser?.id || (req as any).neonUser?.id;
       if (!userId) {
         return res.status(401).json({ error: 'User not authenticated' });
       }
-      
+
       // Check if setting exists
       const [existing] = await db
         .select()
         .from(platformSettings)
         .where(eq(platformSettings.key, 'service_fee_rate'))
         .limit(1);
-      
+
       if (existing) {
         // Update existing
         const [updated] = await db
@@ -1755,7 +1772,7 @@ export function registerFirebaseRoutes(app: Express) {
           })
           .where(eq(platformSettings.key, 'service_fee_rate'))
           .returning();
-        
+
         return res.json({
           key: 'service_fee_rate',
           value: updated.value,
@@ -1776,7 +1793,7 @@ export function registerFirebaseRoutes(app: Express) {
             updatedBy: userId,
           })
           .returning();
-        
+
         return res.json({
           key: 'service_fee_rate',
           value: created.value,
@@ -1810,20 +1827,29 @@ export function registerFirebaseRoutes(app: Express) {
    * Chefs can apply even without having a platform application approved.
    * If previously rejected, submitting again will reset the application to inReview.
    */
-  app.post('/api/firebase/chef/kitchen-applications', 
+  app.post('/api/firebase/chef/kitchen-applications',
     upload.fields([
       { name: 'foodSafetyLicenseFile', maxCount: 1 },
-      { name: 'foodEstablishmentCertFile', maxCount: 1 }
+      { name: 'foodEstablishmentCertFile', maxCount: 1 },
+      { name: 'tier2_allergen_plan', maxCount: 1 },
+      { name: 'tier2_supplier_list', maxCount: 1 },
+      { name: 'tier2_quality_control', maxCount: 1 },
+      { name: 'tier2_traceability', maxCount: 1 },
+      { name: 'tier3_food_safety_plan', maxCount: 1 },
+      { name: 'tier3_production_timeline', maxCount: 1 },
+      { name: 'tier3_cleaning_schedule', maxCount: 1 },
+      { name: 'tier3_training_records', maxCount: 1 },
     ]),
-    requireFirebaseAuthWithUser, 
+    requireFirebaseAuthWithUser,
     async (req: Request, res: Response) => {
       try {
         console.log(`🍳 POST /api/firebase/chef/kitchen-applications - Chef ${req.neonUser!.id} submitting kitchen application`);
-        
+
         // Handle file uploads if present
         const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
         let foodSafetyLicenseUrl: string | undefined;
         let foodEstablishmentCertUrl: string | undefined;
+        const tierFileUrls: Record<string, string> = {};
 
         if (files) {
           // Upload food safety license if provided
@@ -1835,7 +1861,7 @@ export function registerFirebaseRoutes(app: Express) {
               console.error('❌ Failed to upload food safety license:', uploadError);
             }
           }
-          
+
           // Upload food establishment cert if provided
           if (files['foodEstablishmentCertFile']?.[0]) {
             try {
@@ -1845,13 +1871,37 @@ export function registerFirebaseRoutes(app: Express) {
               console.error('❌ Failed to upload food establishment cert:', uploadError);
             }
           }
+
+          // Upload tier-specific files
+          const tierFileFields = [
+            'tier2_allergen_plan',
+            'tier2_supplier_list',
+            'tier2_quality_control',
+            'tier2_traceability',
+            'tier3_food_safety_plan',
+            'tier3_production_timeline',
+            'tier3_cleaning_schedule',
+            'tier3_training_records',
+          ];
+
+          for (const field of tierFileFields) {
+            if (files[field]?.[0]) {
+              try {
+                const url = await uploadToBlob(files[field][0], req.neonUser!.id, 'documents');
+                tierFileUrls[field] = url;
+                console.log(`✅ Uploaded ${field}: ${url}`);
+              } catch (uploadError) {
+                console.error(`❌ Failed to upload ${field}:`, uploadError);
+              }
+            }
+          }
         }
 
         // Parse custom fields data if provided
         let customFieldsData: Record<string, any> | undefined;
         if (req.body.customFieldsData) {
           try {
-            customFieldsData = typeof req.body.customFieldsData === 'string' 
+            customFieldsData = typeof req.body.customFieldsData === 'string'
               ? JSON.parse(req.body.customFieldsData)
               : req.body.customFieldsData;
           } catch (error) {
@@ -1860,24 +1910,312 @@ export function registerFirebaseRoutes(app: Express) {
           }
         }
 
+        // Parse tier data if provided
+        let tierData: Record<string, any> | undefined;
+        if (req.body.tier_data) {
+          try {
+            tierData = typeof req.body.tier_data === 'string'
+              ? JSON.parse(req.body.tier_data)
+              : req.body.tier_data;
+            // Add tier file URLs to tier data
+            if (Object.keys(tierFileUrls).length > 0) {
+              tierData = { ...tierData, tierFiles: tierFileUrls };
+            }
+          } catch (error) {
+            console.error('Error parsing tier_data:', error);
+          }
+        }
+
+        // Verify the location exists and get requirements
+        const locationId = parseInt(req.body.locationId);
+        const location = await firebaseStorage.getLocationById(locationId);
+        if (!location) {
+          return res.status(404).json({ error: 'Kitchen location not found' });
+        }
+
+        // Get location requirements to validate fields properly
+        const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+
         // Parse and validate form data
-        const formData = {
+        // Handle phone: validate based on location requirements
+        let phoneValue: string = '';
+        const phoneInput = req.body.phone ? req.body.phone.trim() : '';
+
+        // Validate phone based on location requirements
+        if (requirements.requirePhone) {
+          // Phone is required - must be provided and valid
+          if (!phoneInput || phoneInput === '') {
+            return res.status(400).json({
+              error: 'Validation error',
+              message: 'Phone number is required for this location',
+              details: [{
+                code: 'too_small',
+                minimum: 1,
+                type: 'string',
+                inclusive: true,
+                exact: false,
+                message: 'Phone number is required',
+                path: ['phone']
+              }]
+            });
+          }
+          // Validate phone format using the required phone schema
+          const { phoneNumberSchema } = await import('@shared/phone-validation.js');
+          const phoneValidation = phoneNumberSchema.safeParse(phoneInput);
+          if (!phoneValidation.success) {
+            const validationError = fromZodError(phoneValidation.error);
+            return res.status(400).json({
+              error: 'Validation error',
+              message: validationError.message,
+              details: validationError.details
+            });
+          }
+          phoneValue = phoneValidation.data;
+        } else {
+          // Phone is optional - validate format only if provided
+          if (phoneInput && phoneInput !== '') {
+            const { optionalPhoneNumberSchema } = await import('@shared/phone-validation.js');
+            const phoneValidation = optionalPhoneNumberSchema.safeParse(phoneInput);
+            if (!phoneValidation.success) {
+              const validationError = fromZodError(phoneValidation.error);
+              return res.status(400).json({
+                error: 'Validation error',
+                message: validationError.message,
+                details: validationError.details
+              });
+            }
+            // optionalPhoneNumberSchema returns null for empty, but we need string for DB
+            phoneValue = phoneValidation.data || '';
+          }
+          // If phone not provided and not required, phoneValue remains empty string
+        }
+
+        // Parse businessDescription JSON to extract individual fields for validation
+        let businessInfo: any = {};
+        if (req.body.businessDescription) {
+          try {
+            businessInfo = typeof req.body.businessDescription === 'string'
+              ? JSON.parse(req.body.businessDescription)
+              : req.body.businessDescription;
+          } catch (error) {
+            console.error('Error parsing businessDescription:', error);
+            businessInfo = {};
+          }
+        }
+
+        // Parse fullName to extract firstName and lastName for validation
+        const fullNameParts = (req.body.fullName || '').trim().split(/\s+/);
+        const firstName = fullNameParts[0] || '';
+        const lastName = fullNameParts.slice(1).join(' ') || '';
+
+        // Validate firstName
+        if (requirements.requireFirstName && (!firstName || firstName.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'First name is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'First name is required',
+              path: ['firstName']
+            }]
+          });
+        }
+
+        // Validate lastName
+        if (requirements.requireLastName && (!lastName || lastName.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Last name is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Last name is required',
+              path: ['lastName']
+            }]
+          });
+        }
+
+        // Validate email
+        if (requirements.requireEmail && (!req.body.email || req.body.email.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Email is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Email is required',
+              path: ['email']
+            }]
+          });
+        }
+
+        // Validate businessName
+        if (requirements.requireBusinessName && (!businessInfo.businessName || businessInfo.businessName.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Business name is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Business name is required',
+              path: ['businessName']
+            }]
+          });
+        }
+
+        // Validate businessType
+        if (requirements.requireBusinessType && (!businessInfo.businessType || businessInfo.businessType.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Business type is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Business type is required',
+              path: ['businessType']
+            }]
+          });
+        }
+
+        // Validate experience
+        if (requirements.requireExperience && (!businessInfo.experience || businessInfo.experience.trim() === '') && (!req.body.cookingExperience || req.body.cookingExperience.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Experience level is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Experience level is required',
+              path: ['experience']
+            }]
+          });
+        }
+
+        // Validate businessDescription
+        if (requirements.requireBusinessDescription && (!businessInfo.description || businessInfo.description.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Business description is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Business description is required',
+              path: ['businessDescription']
+            }]
+          });
+        }
+
+        // Validate foodSafetyLicense (food handler cert)
+        if (requirements.requireFoodHandlerCert && (!req.body.foodSafetyLicense)) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Food handler certificate is required for this location',
+            details: [{
+              code: 'custom',
+              message: 'Food handler certificate is required',
+              path: ['foodSafetyLicense']
+            }]
+          });
+        }
+
+        // Validate foodHandlerCertExpiry
+        if (requirements.requireFoodHandlerExpiry && (!businessInfo.foodHandlerCertExpiry || businessInfo.foodHandlerCertExpiry.trim() === '') && (!req.body.foodSafetyLicenseExpiry || req.body.foodSafetyLicenseExpiry.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Food handler certificate expiry date is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Food handler certificate expiry date is required',
+              path: ['foodHandlerCertExpiry']
+            }]
+          });
+        }
+
+        // Food establishment cert is now a Tier 2 requirement - not validated at initial application
+        let foodEstablishmentCertValue: "yes" | "no" | "notSure" = "no"; // Default to "no" if not required
+        foodEstablishmentCertValue = req.body.foodEstablishmentCert || "no";
+
+        // Validate usageFrequency
+        if (requirements.requireUsageFrequency && (!businessInfo.usageFrequency || businessInfo.usageFrequency.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Usage frequency is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Usage frequency is required',
+              path: ['usageFrequency']
+            }]
+          });
+        }
+
+        // Validate sessionDuration
+        if (requirements.requireSessionDuration && (!businessInfo.sessionDuration || businessInfo.sessionDuration.trim() === '')) {
+          return res.status(400).json({
+            error: 'Validation error',
+            message: 'Session duration is required for this location',
+            details: [{
+              code: 'too_small',
+              minimum: 1,
+              type: 'string',
+              message: 'Session duration is required',
+              path: ['sessionDuration']
+            }]
+          });
+        }
+
+        // Note: termsAgree and accuracyAgree are validated client-side in the form
+        // The form won't submit if these are required but not checked
+        // Server-side validation could be added if needed, but client-side is sufficient for boolean checkboxes
+
+        const formData: any = {
           chefId: req.neonUser!.id,
-          locationId: parseInt(req.body.locationId),
-          fullName: req.body.fullName,
-          email: req.body.email,
-          phone: req.body.phone,
-          kitchenPreference: req.body.kitchenPreference,
+          locationId: locationId,
+          fullName: req.body.fullName || `${firstName} ${lastName}`.trim() || 'N/A',
+          email: req.body.email || '',
+          phone: phoneValue, // Empty string if not required (database has notNull constraint)
+          kitchenPreference: req.body.kitchenPreference || "commercial",
           businessDescription: req.body.businessDescription || undefined,
-          cookingExperience: req.body.cookingExperience || undefined,
-          foodSafetyLicense: req.body.foodSafetyLicense,
+          cookingExperience: req.body.cookingExperience || businessInfo.experience || undefined,
+          foodSafetyLicense: req.body.foodSafetyLicense || "no",
           foodSafetyLicenseUrl: foodSafetyLicenseUrl || req.body.foodSafetyLicenseUrl || undefined,
-          foodEstablishmentCert: req.body.foodEstablishmentCert,
+          foodSafetyLicenseExpiry: req.body.foodSafetyLicenseExpiry || businessInfo.foodHandlerCertExpiry || undefined,
+          foodEstablishmentCert: foodEstablishmentCertValue,
           foodEstablishmentCertUrl: foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl || undefined,
+          foodEstablishmentCertExpiry: req.body.foodEstablishmentCertExpiry || businessInfo.foodEstablishmentCertExpiry || undefined,
           customFieldsData: customFieldsData || undefined,
         };
 
-        // Validate with Zod schema
+        // Add tier fields if provided
+        if (req.body.current_tier) {
+          formData.current_tier = parseInt(req.body.current_tier);
+        }
+        if (tierData) {
+          formData.tier_data = tierData;
+        }
+        // Handle Tier 4 license fields
+        if (req.body.government_license_number) {
+          formData.government_license_number = req.body.government_license_number;
+        }
+        if (req.body.government_license_received_date) {
+          formData.government_license_received_date = req.body.government_license_received_date;
+        }
+        if (req.body.government_license_expiry_date) {
+          formData.government_license_expiry_date = req.body.government_license_expiry_date;
+        }
+
+        // Validate with Zod schema (phone is already validated above)
         const parsedData = insertChefKitchenApplicationSchema.safeParse(formData);
 
         if (!parsedData.success) {
@@ -1890,16 +2228,13 @@ export function registerFirebaseRoutes(app: Express) {
           });
         }
 
-        // Verify the location exists
-        const location = await firebaseStorage.getLocationById(parsedData.data.locationId);
-        if (!location) {
-          return res.status(404).json({ error: 'Kitchen location not found' });
-        }
-
         // Create/update the application
         const application = await firebaseStorage.createChefKitchenApplication(parsedData.data);
 
         console.log(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
+
+        // Note: Conversation will be initialized when Tier 1 is approved
+        // This allows managers to review applications before starting chat
 
         res.status(201).json({
           success: true,
@@ -1927,17 +2262,17 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       const chefId = req.neonUser!.id;
       const firebaseUid = req.firebaseUser!.uid;
-      
+
       console.log(`[KITCHEN APPLICATIONS] Fetching kitchen applications for chef ID: ${chefId} (Firebase UID: ${firebaseUid})`);
-      console.log(`[KITCHEN APPLICATIONS] User object:`, { 
-        id: req.neonUser!.id, 
-        username: req.neonUser!.username, 
+      console.log(`[KITCHEN APPLICATIONS] User object:`, {
+        id: req.neonUser!.id,
+        username: req.neonUser!.username,
         role: req.neonUser!.role,
-        isChef: (req.neonUser as any).isChef 
+        isChef: (req.neonUser as any).isChef
       });
 
       const applications = await firebaseStorage.getChefKitchenApplicationsByChefId(chefId);
-      
+
       console.log(`[KITCHEN APPLICATIONS] Retrieved ${applications.length} kitchen applications for chef ${chefId}`);
       if (applications.length > 0) {
         console.log(`[KITCHEN APPLICATIONS] First application sample:`, {
@@ -1947,7 +2282,7 @@ export function registerFirebaseRoutes(app: Express) {
           status: applications[0].status
         });
       }
-      
+
       // Enrich with location details
       const enrichedApplications = await Promise.all(
         applications.map(async (app) => {
@@ -1963,7 +2298,7 @@ export function registerFirebaseRoutes(app: Express) {
           };
         })
       );
-      
+
       res.json(enrichedApplications);
     } catch (error) {
       console.error('Error getting chef kitchen applications:', error);
@@ -1981,31 +2316,31 @@ export function registerFirebaseRoutes(app: Express) {
   app.get('/api/firebase/chef/kitchen-applications/location/:locationId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       const locationId = parseInt(req.params.locationId);
-      
+
       if (isNaN(locationId)) {
         return res.status(400).json({ error: 'Invalid location ID' });
       }
-      
+
       console.log(`🍳 GET /api/firebase/chef/kitchen-applications/location/${locationId} - Chef ${req.neonUser!.id}`);
-      
+
       const application = await firebaseStorage.getChefKitchenApplication(req.neonUser!.id, locationId);
-      
+
       if (!application) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'No application found',
           hasApplication: false,
           canBook: false,
           message: 'You have not applied to this kitchen yet.',
         });
       }
-      
+
       // Get location details
       const location = await firebaseStorage.getLocationById(locationId);
-      
+
       res.json({
         ...application,
         hasApplication: true,
-        canBook: application.status === 'approved',
+        canBook: !!application.tier4_completed_at, // Can only book after completing all tiers
         location: location ? {
           id: (location as any).id,
           name: (location as any).name,
@@ -2028,15 +2363,15 @@ export function registerFirebaseRoutes(app: Express) {
   app.get('/api/firebase/chef/kitchen-access-status/:locationId', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       const locationId = parseInt(req.params.locationId);
-      
+
       if (isNaN(locationId)) {
         return res.status(400).json({ error: 'Invalid location ID' });
       }
-      
+
       console.log(`🍳 GET /api/firebase/chef/kitchen-access-status/${locationId} - Chef ${req.neonUser!.id}`);
-      
+
       const accessStatus = await firebaseStorage.getChefKitchenApplicationStatus(req.neonUser!.id, locationId);
-      
+
       res.json(accessStatus);
     } catch (error) {
       console.error('Error getting kitchen access status:', error);
@@ -2054,14 +2389,14 @@ export function registerFirebaseRoutes(app: Express) {
   app.get('/api/firebase/chef/approved-kitchens', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       console.log(`🍳 GET /api/firebase/chef/approved-kitchens - Chef ${req.neonUser!.id}`);
-      
+
       const approvedKitchens = await firebaseStorage.getChefApprovedKitchens(req.neonUser!.id);
-      
+
       console.log(`[APPROVED KITCHENS] Returning ${approvedKitchens.length} approved locations for chef ${req.neonUser!.id}`);
       if (approvedKitchens.length > 0) {
         console.log(`[APPROVED KITCHENS] First location sample:`, approvedKitchens[0]);
       }
-      
+
       res.json(approvedKitchens);
     } catch (error) {
       console.error('Error getting approved kitchens:', error);
@@ -2079,15 +2414,15 @@ export function registerFirebaseRoutes(app: Express) {
   app.patch('/api/firebase/chef/kitchen-applications/:id/cancel', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
       const applicationId = parseInt(req.params.id);
-      
+
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: 'Invalid application ID' });
       }
-      
+
       console.log(`🍳 PATCH /api/firebase/chef/kitchen-applications/${applicationId}/cancel - Chef ${req.neonUser!.id}`);
-      
+
       const cancelledApplication = await firebaseStorage.cancelChefKitchenApplication(applicationId, req.neonUser!.id);
-      
+
       res.json({
         success: true,
         application: cancelledApplication,
@@ -2118,19 +2453,19 @@ export function registerFirebaseRoutes(app: Express) {
     async (req: Request, res: Response) => {
       try {
         const applicationId = parseInt(req.params.id);
-        
+
         if (isNaN(applicationId)) {
           return res.status(400).json({ error: 'Invalid application ID' });
         }
-        
+
         console.log(`🍳 PATCH /api/firebase/chef/kitchen-applications/${applicationId}/documents - Chef ${req.neonUser!.id}`);
-        
+
         // Verify the application belongs to this chef
         const existing = await firebaseStorage.getChefKitchenApplicationById(applicationId);
         if (!existing || existing.chefId !== req.neonUser!.id) {
           return res.status(403).json({ error: 'Application not found or access denied' });
         }
-        
+
         // Handle file uploads
         const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
         const updateData: any = { id: applicationId };
@@ -2144,7 +2479,7 @@ export function registerFirebaseRoutes(app: Express) {
               console.error('❌ Failed to upload food safety license:', uploadError);
             }
           }
-          
+
           if (files['foodEstablishmentCertFile']?.[0]) {
             try {
               updateData.foodEstablishmentCertUrl = await uploadToBlob(files['foodEstablishmentCertFile'][0], req.neonUser!.id, 'documents');
@@ -2154,9 +2489,9 @@ export function registerFirebaseRoutes(app: Express) {
             }
           }
         }
-        
+
         const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
-        
+
         res.json({
           success: true,
           application: updatedApplication,
@@ -2188,9 +2523,9 @@ export function registerFirebaseRoutes(app: Express) {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
       console.log(`👨‍🍳 GET /api/manager/kitchen-applications - Manager ${user.id}`);
-      
+
       const applications = await firebaseStorage.getChefKitchenApplicationsForManager(user.id);
-      
+
       res.json(applications);
     } catch (error) {
       console.error('Error getting kitchen applications for manager:', error);
@@ -2210,21 +2545,21 @@ export function registerFirebaseRoutes(app: Express) {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
       const locationId = parseInt(req.params.locationId);
-      
+
       if (isNaN(locationId)) {
         return res.status(400).json({ error: 'Invalid location ID' });
       }
-      
+
       console.log(`👨‍🍳 GET /api/manager/kitchen-applications/location/${locationId} - Manager ${user.id}`);
-      
+
       // Verify manager has access to this location
       const location = await firebaseStorage.getLocationById(locationId);
       if (!location || (location as any).managerId !== user.id) {
         return res.status(403).json({ error: 'Access denied to this location' });
       }
-      
+
       const applications = await firebaseStorage.getChefKitchenApplicationsByLocationId(locationId);
-      
+
       res.json(applications);
     } catch (error) {
       console.error('Error getting kitchen applications for location:', error);
@@ -2243,42 +2578,59 @@ export function registerFirebaseRoutes(app: Express) {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
       const applicationId = parseInt(req.params.id);
-      
+
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: 'Invalid application ID' });
       }
-      
+
       console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/status - Manager ${user.id}`);
-      
+
       // Validate request body
       const { status, feedback } = req.body;
-      
-      if (!status || !['approved', 'rejected'].includes(status)) {
-        return res.status(400).json({ error: 'Status must be "approved" or "rejected"' });
+
+      if (!status || !['approved', 'rejected', 'inReview'].includes(status)) {
+        return res.status(400).json({ error: 'Status must be "approved", "rejected", or "inReview"' });
       }
-      
+
       // Get the application
       const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
       if (!application) {
         return res.status(404).json({ error: 'Application not found' });
       }
-      
+
       // Verify manager has access to this location
       const location = await firebaseStorage.getLocationById(application.locationId);
       if (!location || (location as any).managerId !== user.id) {
         return res.status(403).json({ error: 'Access denied to this application' });
       }
-      
-      // Update the status
+
+      // Update the status with tier support
+      const updateData: any = { id: applicationId, status, feedback };
+      if (req.body.current_tier !== undefined) {
+        updateData.current_tier = req.body.current_tier;
+      }
+      if (req.body.tier_data !== undefined) {
+        updateData.tier_data = req.body.tier_data;
+      }
+
       const updatedApplication = await firebaseStorage.updateChefKitchenApplicationStatus(
-        { id: applicationId, status, feedback },
+        updateData,
         user.id
       );
-      
+
       console.log(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
-      
-      // If approved, grant the chef access to this location
+
+      // Handle tier transitions and chat initialization
       if (status === 'approved' && updatedApplication) {
+        const currentTier = updatedApplication.current_tier ?? 1;
+        const previousTier = application.current_tier ?? 1;
+
+        // Notify tier transitions (handles initialization and system messages)
+        if (currentTier > previousTier) {
+          await notifyTierTransition(applicationId, previousTier, currentTier);
+        }
+
+        // Grant the chef access to this location
         try {
           // Check if chef already has access
           const existingAccess = await db
@@ -2290,7 +2642,7 @@ export function registerFirebaseRoutes(app: Express) {
                 eq(chefLocationAccess.locationId, application.locationId)
               )
             );
-          
+
           if (existingAccess.length === 0) {
             // Grant access
             await db.insert(chefLocationAccess).values({
@@ -2308,9 +2660,9 @@ export function registerFirebaseRoutes(app: Express) {
           // Don't fail the request, just log the error
         }
       }
-      
+
       // TODO: Send email notification to chef about the decision
-      
+
       res.json({
         success: true,
         application: updatedApplication,
@@ -2336,15 +2688,15 @@ export function registerFirebaseRoutes(app: Express) {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
       const applicationId = parseInt(req.params.id);
-      
+
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: 'Invalid application ID' });
       }
-      
+
       console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/verify-documents - Manager ${user.id}`);
-      
+
       const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
-      
+
       // Validate statuses
       const validStatuses = ['pending', 'approved', 'rejected'];
       if (foodSafetyLicenseStatus && !validStatuses.includes(foodSafetyLicenseStatus)) {
@@ -2353,26 +2705,42 @@ export function registerFirebaseRoutes(app: Express) {
       if (foodEstablishmentCertStatus && !validStatuses.includes(foodEstablishmentCertStatus)) {
         return res.status(400).json({ error: 'Invalid food establishment cert status' });
       }
-      
+
       // Get the application
       const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
       if (!application) {
         return res.status(404).json({ error: 'Application not found' });
       }
-      
+
       // Verify manager has access
       const location = await firebaseStorage.getLocationById(application.locationId);
       if (!location || (location as any).managerId !== user.id) {
         return res.status(403).json({ error: 'Access denied to this application' });
       }
-      
+
       // Update document statuses
       const updateData: any = { id: applicationId };
       if (foodSafetyLicenseStatus) updateData.foodSafetyLicenseStatus = foodSafetyLicenseStatus;
       if (foodEstablishmentCertStatus) updateData.foodEstablishmentCertStatus = foodEstablishmentCertStatus;
-      
+
       const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
-      
+
+      // Send system message when documents are verified
+      if (updatedApplication?.chat_conversation_id) {
+        const documentName = foodSafetyLicenseStatus === 'approved'
+          ? 'Food Safety License'
+          : foodEstablishmentCertStatus === 'approved'
+            ? 'Food Establishment Certificate'
+            : 'Document';
+        if (foodSafetyLicenseStatus === 'approved' || foodEstablishmentCertStatus === 'approved') {
+          await sendSystemNotification(
+            updatedApplication.chat_conversation_id,
+            'DOCUMENT_VERIFIED',
+            { documentName }
+          );
+        }
+      }
+
       res.json({
         success: true,
         application: updatedApplication,
@@ -2395,24 +2763,24 @@ export function registerFirebaseRoutes(app: Express) {
    * 🔥 Get Location Requirements (Manager)
    * GET /api/manager/locations/:locationId/requirements
    */
-  app.get('/api/manager/locations/:locationId/requirements', 
-    requireFirebaseAuthWithUser, 
-    requireManager, 
+  app.get('/api/manager/locations/:locationId/requirements',
+    requireFirebaseAuthWithUser,
+    requireManager,
     async (req: Request, res: Response) => {
       try {
         const user = req.neonUser!;
         const locationId = parseInt(req.params.locationId);
-        
+
         if (isNaN(locationId)) {
           return res.status(400).json({ error: 'Invalid location ID' });
         }
-        
+
         // Verify manager access
         const location = await firebaseStorage.getLocationById(locationId);
         if (!location || (location as any).managerId !== user.id) {
           return res.status(403).json({ error: 'Access denied' });
         }
-        
+
         const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
         res.json(requirements);
       } catch (error) {
@@ -2433,26 +2801,45 @@ export function registerFirebaseRoutes(app: Express) {
       try {
         const user = req.neonUser!;
         const locationId = parseInt(req.params.locationId);
-        
+
         if (isNaN(locationId)) {
           return res.status(400).json({ error: 'Invalid location ID' });
         }
-        
+
         // Verify manager access
         const location = await firebaseStorage.getLocationById(locationId);
         if (!location || (location as any).managerId !== user.id) {
           return res.status(403).json({ error: 'Access denied' });
         }
-        
-        const updates = updateLocationRequirementsSchema.parse(req.body);
+
+        // Validate request body with Zod schema
+        const parseResult = updateLocationRequirementsSchema.safeParse(req.body);
+        if (!parseResult.success) {
+          const validationError = fromZodError(parseResult.error);
+          console.error('❌ Validation error updating location requirements:', validationError.message);
+          return res.status(400).json({
+            error: 'Validation error',
+            message: validationError.message,
+            details: validationError.details
+          });
+        }
+
+        const updates = parseResult.data;
         const requirements = await firebaseStorage.upsertLocationRequirements(locationId, updates);
-        
+
+        console.log(`✅ Location requirements updated for location ${locationId} by manager ${user.id}`);
         res.json({ success: true, requirements });
       } catch (error) {
-        console.error('Error updating location requirements:', error);
-        res.status(500).json({ 
+        // Safe error logging - handle circular references and unusual error structures
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        console.error('❌ Error updating location requirements:', errorMessage);
+        if (errorStack) {
+          console.error('Stack trace:', errorStack);
+        }
+        res.status(500).json({
           error: 'Failed to update requirements',
-          message: error instanceof Error ? error.message : 'Unknown error'
+          message: errorMessage
         });
       }
     }
@@ -2465,16 +2852,84 @@ export function registerFirebaseRoutes(app: Express) {
   app.get('/api/public/locations/:locationId/requirements', async (req: Request, res: Response) => {
     try {
       const locationId = parseInt(req.params.locationId);
-      
+
       if (isNaN(locationId)) {
         return res.status(400).json({ error: 'Invalid location ID' });
       }
-      
+
       const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
       res.json(requirements);
     } catch (error) {
       console.error('Error getting location requirements:', error);
       res.status(500).json({ error: 'Failed to get requirements' });
+    }
+  });
+
+  /**
+   * 🔥 Update Application Tier (Manager)
+   * PATCH /api/manager/kitchen-applications/:id/tier
+   * 
+   * Allows managers to advance applications to the next tier
+   */
+  app.patch('/api/manager/kitchen-applications/:id/tier', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const user = req.neonUser!;
+      const applicationId = parseInt(req.params.id);
+
+      if (isNaN(applicationId)) {
+        return res.status(400).json({ error: 'Invalid application ID' });
+      }
+
+      // Validate request body
+      const parsed = updateApplicationTierSchema.safeParse({
+        id: applicationId,
+        ...req.body,
+      });
+
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: 'Validation error',
+          message: parsed.error.message,
+        });
+      }
+
+      // Get the application
+      const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+      if (!application) {
+        return res.status(404).json({ error: 'Application not found' });
+      }
+
+      // Verify manager has access
+      const location = await firebaseStorage.getLocationById(application.locationId);
+      if (!location || (location as any).managerId !== user.id) {
+        return res.status(403).json({ error: 'Access denied to this application' });
+      }
+
+      // Update tier
+      const updatedApplication = await firebaseStorage.updateApplicationTier(
+        applicationId,
+        parsed.data.current_tier,
+        parsed.data.tier_data
+      );
+
+      // Send system notification for tier transition
+      if (updatedApplication?.chat_conversation_id) {
+        const fromTier = application.current_tier ?? 1;
+        const toTier = parsed.data.current_tier;
+        await notifyTierTransition(applicationId, fromTier, toTier);
+      }
+
+      res.json({
+        success: true,
+        application: updatedApplication,
+        message: `Application advanced to Tier ${parsed.data.current_tier}`,
+      });
+    } catch (error) {
+      console.error('Error updating application tier:', error);
+      res.status(500).json({
+        error: 'Failed to update application tier',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   });
 
@@ -2485,14 +2940,14 @@ export function registerFirebaseRoutes(app: Express) {
       const userIdParam = req.params.userId;
       const currentUserId = req.neonUser!.id;
       const currentFirebaseUid = req.firebaseUser!.uid;
-      
+
       // Determine if the request is for the current user
       // Support both Neon numeric ID and Firebase UID for compatibility
       const isNumeric = !isNaN(parseInt(userIdParam));
       const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
       const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
       const isAdmin = req.neonUser!.role === 'admin';
-      
+
       // Verify user can access this completion (either their own or admin)
       if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: 'Access denied' });
@@ -2505,7 +2960,7 @@ export function registerFirebaseRoutes(app: Express) {
       }
 
       const completion = await firebaseStorage.getMicrolearningCompletion(targetUserId);
-      
+
       if (!completion) {
         return res.status(404).json({ message: 'No completion found' });
       }
@@ -2524,14 +2979,14 @@ export function registerFirebaseRoutes(app: Express) {
       const userIdParam = req.params.userId;
       const currentUserId = req.neonUser!.id;
       const currentFirebaseUid = req.firebaseUser!.uid;
-      
+
       // Determine if the request is for the current user
       // Support both Neon numeric ID and Firebase UID for compatibility
       const isNumeric = !isNaN(parseInt(userIdParam));
       const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
       const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
       const isAdmin = req.neonUser!.role === 'admin';
-      
+
       // Verify user can access this certificate (either their own or admin)
       if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: 'Access denied' });
@@ -2575,14 +3030,14 @@ export function registerFirebaseRoutes(app: Express) {
       const userIdParam = req.params.userId;
       const currentUserId = req.neonUser!.id;
       const currentFirebaseUid = req.firebaseUser!.uid;
-      
+
       // Determine if the request is for the current user
       // Support both Neon numeric ID and Firebase UID for compatibility
       const isNumeric = !isNaN(parseInt(userIdParam));
       const requestedUserId = isNumeric ? parseInt(userIdParam) : null;
       const isOwnData = userIdParam === currentFirebaseUid || requestedUserId === currentUserId;
       const isAdmin = req.neonUser!.role === 'admin';
-      
+
       // Verify user can access this data (either their own or admin)
       if (!isOwnData && !isAdmin) {
         return res.status(403).json({ message: 'Access denied' });
@@ -2596,11 +3051,11 @@ export function registerFirebaseRoutes(app: Express) {
 
       const progress = await firebaseStorage.getMicrolearningProgress(targetUserId);
       const completionStatus = await firebaseStorage.getMicrolearningCompletion(targetUserId);
-      
+
       // Check if user has approved application
       const applications = await firebaseStorage.getApplicationsByUserId(targetUserId);
       const hasApproval = applications.some((app: any) => app.status === 'approved');
-      
+
       const isCompleted = completionStatus?.confirmed || false;
       const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
 
@@ -2624,7 +3079,7 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       const { userId, completionDate, videoProgress } = req.body;
       const currentUserId = req.neonUser!.id;
-      
+
       // Verify user can complete this (either their own or admin)
       if (currentUserId !== userId && req.neonUser!.role !== 'admin') {
         return res.status(403).json({ message: 'Access denied' });
@@ -2634,9 +3089,9 @@ export function registerFirebaseRoutes(app: Express) {
       const applications = await firebaseStorage.getApplicationsByUserId(userId);
       const hasApproval = applications.some((app: any) => app.status === 'approved');
       const isAdmin = req.neonUser!.role === 'admin';
-      
+
       if (!hasApproval && !isAdmin) {
-        return res.status(403).json({ 
+        return res.status(403).json({
           message: 'Application approval required to complete full certification',
           accessLevel: 'limited',
           requiresApproval: true
@@ -2656,7 +3111,7 @@ export function registerFirebaseRoutes(app: Express) {
       const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));
 
       if (!allRequired) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: 'All required videos must be completed before certification',
           missingVideos: requiredVideos.filter(id => !completedVideos.includes(id))
         });
@@ -2689,8 +3144,8 @@ export function registerFirebaseRoutes(app: Express) {
   });
 
   // Firebase upload file endpoint (alias for /api/upload)
-  app.post('/api/firebase/upload-file', 
-    upload.single('file'), 
+  app.post('/api/firebase/upload-file',
+    upload.single('file'),
     requireFirebaseAuthWithUser,
     handleFileUpload
   );

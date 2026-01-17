@@ -52,7 +52,7 @@ export default function ApplyToKitchen() {
     queryKey: ["/api/public/locations", locationId, "details"],
     queryFn: async () => {
       if (!locationId) throw new Error("No location ID provided");
-      
+
       const response = await fetch(`/api/public/locations/${locationId}/details`);
       if (!response.ok) {
         if (response.status === 404) {
@@ -108,8 +108,8 @@ export default function ApplyToKitchen() {
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to Dashboard
                   </Button>
-                  <Button onClick={() => navigate("/explore-kitchens")}>
-                    Explore Kitchens
+                  <Button onClick={() => navigate("/compare-kitchens")}>
+                    Find Kitchens
                   </Button>
                 </div>
               </CardContent>

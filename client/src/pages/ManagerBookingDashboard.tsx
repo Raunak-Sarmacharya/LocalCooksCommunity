@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen, 
   X, Check, Save, AlertCircle, Building2, FileText, 
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle, MessageCircle
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
@@ -31,6 +32,7 @@ import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar";
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
+import ManagerChatView from "@/components/chat/ManagerChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -120,7 +122,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages';
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -262,6 +264,9 @@ export default function ManagerBookingDashboard() {
   const isLicenseExpired = selectedLocation?.kitchenLicenseExpiry 
     ? new Date(selectedLocation.kitchenLicenseExpiry) < new Date()
     : false;
+
+  // Get manager ID from userData
+  const managerId = userData?.id || null;
 
   // Check if Stripe is connected
   const hasStripeAccount = !!userData?.stripeConnectAccountId || !!userData?.stripe_connect_account_id;
@@ -522,6 +527,7 @@ export default function ManagerBookingDashboard() {
     { id: 'storage-listings' as ViewType, label: 'Storage Listings', icon: Package },
     { id: 'equipment-listings' as ViewType, label: 'Equipment Listings', icon: Wrench },
     { id: 'applications' as ViewType, label: 'Applications', icon: Users },
+    { id: 'messages' as ViewType, label: 'Messages', icon: MessageCircle },
     { id: 'revenue' as ViewType, label: 'Revenue', icon: TrendingUp },
     { id: 'payments' as ViewType, label: 'Payments', icon: CreditCard },
     { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
@@ -1142,6 +1148,19 @@ export default function ManagerBookingDashboard() {
                   
                   {activeView === 'applications' && (
                     <ManagerKitchenApplications embedded={true} />
+                  )}
+                  
+                  {activeView === 'messages' && (
+                    managerId ? (
+                      <ManagerChatView managerId={managerId} embedded={true} />
+                    ) : (
+                      <Card>
+                        <CardContent className="p-12 text-center">
+                          <Loader2 className="h-8 w-8 animate-spin text-[#208D80] mx-auto mb-4" />
+                          <p className="text-gray-600">Loading your profile...</p>
+                        </CardContent>
+                      </Card>
+                    )
                   )}
                   
                   {activeView === 'revenue' && (
@@ -3392,7 +3411,10 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
 
           {/* Application Requirements Tab */}
           <TabsContent value="application-requirements" className="space-y-6 mt-0">
-            <LocationRequirementsSettings locationId={location.id} />
+            <LocationRequirementsSettings 
+              locationId={location.id} 
+              locationName={location.name}
+            />
           </TabsContent>
 
           {/* Location Tab */}

@@ -22,9 +22,11 @@ import {
   Shield,
   Ban,
   Settings,
-  ExternalLink
+  ExternalLink,
+  MessageCircle
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +38,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ChatPanel from "@/components/chat/ChatPanel";
+import { getConversationForApplication, createConversation } from "@/services/chat-service";
 
 interface ManagerKitchenApplicationsProps {
   embedded?: boolean;
@@ -68,6 +72,128 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+  const [showChatDialog, setShowChatDialog] = useState(false);
+  const [chatApplication, setChatApplication] = useState<any | null>(null);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [chatLocationName, setChatLocationName] = useState<string | null>(null);
+
+  // Get manager ID from API
+  const { data: managerInfo } = useQuery({
+    queryKey: ['/api/firebase/user/me'],
+    queryFn: async () => {
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken();
+      const response = await fetch('/api/firebase/user/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to get user info');
+      return response.json();
+    },
+  });
+
+  const managerId = managerInfo?.id || null;
+
+  // Fetch unread counts for all applications with conversations
+  useEffect(() => {
+    if (!managerId) return;
+    
+    // Combine all applications from different tabs
+    const allApplications = [
+      ...pendingApplications,
+      ...approvedApplications,
+      ...rejectedApplications,
+    ];
+    
+    if (allApplications.length === 0) return;
+
+    const fetchUnreadCounts = async () => {
+      const counts: Record<number, number> = {};
+      for (const app of allApplications) {
+        if (app.chat_conversation_id) {
+          try {
+            // Get conversation and check unread count
+            const conversation = await getConversationForApplication(app.id);
+            if (conversation) {
+              counts[app.id] = conversation.unreadManagerCount || 0;
+            }
+          } catch (error) {
+            console.error('Error fetching unread count for application', app.id, ':', error);
+          }
+        }
+      }
+      setUnreadCounts(counts);
+    };
+
+    fetchUnreadCounts();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchUnreadCounts, 30000);
+    return () => clearInterval(interval);
+  }, [pendingApplications, approvedApplications, rejectedApplications, managerId]);
+
+  const openChat = async (application: any) => {
+    if (!managerId) {
+      toast({
+        title: "Error",
+        description: "Unable to identify manager. Please refresh the page.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setChatApplication(application);
+    
+    // Fetch location name if not available in application
+    let locationName = application.location?.name;
+    if (!locationName && application.locationId) {
+      try {
+        const locationResponse = await fetch(`/api/public/locations/${application.locationId}/details`, {
+          credentials: 'include',
+        });
+        if (locationResponse.ok) {
+          const locationData = await locationResponse.json();
+          locationName = locationData?.name || null;
+        }
+      } catch (error) {
+        console.error(`Error fetching location ${application.locationId}:`, error);
+      }
+    }
+    setChatLocationName(locationName || null);
+    
+    // Get or create conversation
+    let conversationId = application.chat_conversation_id;
+    if (!conversationId) {
+      try {
+        // Try to get existing conversation
+        const existing = await getConversationForApplication(application.id);
+        if (existing) {
+          conversationId = existing.id;
+        } else {
+          // Create new conversation
+          conversationId = await createConversation(
+            application.id,
+            application.chefId,
+            managerId,
+            application.locationId
+          );
+        }
+      } catch (error) {
+        console.error('Error initializing chat:', error);
+        toast({
+          title: "Error",
+          description: "Failed to open chat. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    setChatConversationId(conversationId);
+    setShowChatDialog(true);
+  };
 
   // Function to get presigned URL for R2 files
   const getPresignedUrl = async (fileUrl: string): Promise<string> => {
@@ -151,7 +277,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
       });
       toast({
         title: "Application Approved",
-        description: "Chef can now book kitchens at this location.",
+        description: "Chef's application is approved. They can book kitchens once they complete all application tiers.",
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
@@ -198,7 +324,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
   };
 
   const handleRevokeAccess = async (application: any) => {
-    if (!window.confirm(`Are you sure you want to revoke ${application.fullName}'s access to ${application.location?.name || 'this location'}? They will no longer be able to book kitchens.`)) {
+    if (!window.confirm(`Are you sure you want to revoke ${application.fullName}'s access to ${application.location?.name || 'this location'}? They will no longer be able to complete their application tiers.`)) {
       return;
     }
 
@@ -353,6 +479,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                   key={application.id}
                   application={application}
                   onReview={() => openReviewDialog(application)}
+                  onOpenChat={() => openChat(application)}
+                  unreadCount={unreadCounts[application.id] || 0}
                   parseBusinessInfo={parseBusinessInfo}
                 />
               ))}
@@ -376,6 +504,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                   key={application.id}
                   application={application}
                   onReview={() => openReviewDialog(application)}
+                  onOpenChat={() => openChat(application)}
+                  unreadCount={unreadCounts[application.id] || 0}
                   parseBusinessInfo={parseBusinessInfo}
                 />
               ))}
@@ -399,6 +529,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                   key={application.id}
                   application={application}
                   onReview={() => openReviewDialog(application)}
+                  onOpenChat={() => openChat(application)}
+                  unreadCount={unreadCounts[application.id] || 0}
                   parseBusinessInfo={parseBusinessInfo}
                 />
               ))}
@@ -800,6 +932,33 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Chat Dialog */}
+      <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+          {chatApplication && chatConversationId && managerId && (
+            <ChatPanel
+              conversationId={chatConversationId}
+              applicationId={chatApplication.id}
+              chefId={chatApplication.chefId}
+              managerId={managerId}
+              locationId={chatApplication.locationId}
+              locationName={
+                chatApplication.location?.name || 
+                chatLocationName || 
+                (chatApplication.locationId ? `Location #${chatApplication.locationId}` : "Unknown Location")
+              }
+              onClose={() => {
+                setShowChatDialog(false);
+                setChatApplication(null);
+                setChatConversationId(null);
+                setChatLocationName(null);
+              }}
+              embedded={true}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 
@@ -823,10 +982,14 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
 function ApplicationCard({ 
   application, 
   onReview,
+  onOpenChat,
+  unreadCount = 0,
   parseBusinessInfo
 }: { 
   application: any; 
   onReview: () => void;
+  onOpenChat?: () => void;
+  unreadCount?: number;
   parseBusinessInfo: (desc: string | null | undefined) => any;
 }) {
   const businessInfo = parseBusinessInfo(application.businessDescription);
@@ -913,17 +1076,34 @@ function ApplicationCard({
           Applied: {new Date(application.createdAt).toLocaleDateString()}
         </div>
         
-        <Button
-          onClick={onReview}
-          className={`w-full mt-2 ${
-            application.status === 'inReview' 
-              ? 'bg-[#208D80] hover:bg-[#1A7470]' 
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-          variant={application.status === 'inReview' ? 'default' : 'outline'}
-        >
-          {application.status === 'inReview' ? 'Review Application' : 'View Details'}
-        </Button>
+        <div className="flex gap-2 mt-2">
+          <Button
+            onClick={onReview}
+            className={`flex-1 ${
+              application.status === 'inReview' 
+                ? 'bg-[#208D80] hover:bg-[#1A7470]' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            variant={application.status === 'inReview' ? 'default' : 'outline'}
+          >
+            {application.status === 'inReview' ? 'Review Application' : 'View Details'}
+          </Button>
+          {(application.status === 'approved' || application.status === 'inReview') && (application.chat_conversation_id || onOpenChat) && (
+            <Button
+              onClick={onOpenChat}
+              variant="outline"
+              className="relative"
+              title="Open Chat"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
