@@ -708,7 +708,7 @@ export default function ManagerRevenueDashboard({
 
           {/* Row 2: Additional Metrics */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Platform Fee */}
+            {/* Platform Fee
             <Card className="border border-gray-200 shadow-sm bg-white hover:shadow-md transition-shadow duration-300">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -723,7 +723,7 @@ export default function ManagerRevenueDashboard({
                   </div>
                 </div>
               </CardContent>
-            </Card>
+            </Card> */}
 
             {/* Completed Payments */}
             <Card className="border border-emerald-200 shadow-sm bg-emerald-50/30 hover:shadow-md transition-shadow duration-300">
