@@ -529,11 +529,19 @@ export class FirebaseStorage {
       tier2_food_establishment_cert_required: false,
       tier2_food_establishment_expiry_required: false,
       tier2_insurance_document_required: false,
+      tier2_insurance_minimum_amount: 0,
+      tier2_kitchen_experience_required: false,
+      tier2_allergen_plan_required: false,
+      tier2_supplier_list_required: false,
+      tier2_quality_control_required: false,
+      tier2_traceability_system_required: false,
       tier2_custom_fields: [],
       // Facility Information
       floor_plans_url: '',
       ventilation_specs: '',
       ventilation_specs_url: '',
+      equipment_list: [],
+      materials_description: '',
       createdAt: new Date(),
       updatedAt: new Date(),
     } as LocationRequirements;
@@ -552,6 +560,12 @@ export class FirebaseStorage {
         ...updates,
         ...(updates.customFields !== undefined && {
           customFields: Array.isArray(updates.customFields) ? updates.customFields : []
+        }),
+        ...(updates.tier1_custom_fields !== undefined && {
+          tier1_custom_fields: Array.isArray(updates.tier1_custom_fields) ? updates.tier1_custom_fields : []
+        }),
+        ...(updates.tier2_custom_fields !== undefined && {
+          tier2_custom_fields: Array.isArray(updates.tier2_custom_fields) ? updates.tier2_custom_fields : []
         }),
         updatedAt: new Date()
       };
@@ -581,8 +595,10 @@ export class FirebaseStorage {
           .values({
             locationId,
             ...processedUpdates,
-            // Ensure customFields defaults to empty array if not provided
-            customFields: processedUpdates.customFields ?? []
+            // Ensure custom fields default to empty array if not provided
+            customFields: processedUpdates.customFields ?? [],
+            tier1_custom_fields: processedUpdates.tier1_custom_fields ?? [],
+            tier2_custom_fields: processedUpdates.tier2_custom_fields ?? []
           })
           .returning();
         return created;
@@ -4053,7 +4069,51 @@ export class FirebaseStorage {
           return updated;
         }
 
-        // If pending or approved, return existing application
+        // If approved and chef is submitting Tier 2+ documents, update the application
+        if (existing[0].status === 'approved' && (data as any).current_tier && (data as any).current_tier >= 2) {
+          const updateData: any = {
+            updatedAt: now,
+          };
+
+          // Update custom fields data if provided
+          if (data.customFieldsData && Object.keys(data.customFieldsData).length > 0) {
+            updateData.customFieldsData = {
+              ...(existing[0].customFieldsData || {}),
+              ...data.customFieldsData,
+            };
+          }
+
+          // Update tier data if provided
+          if ((data as any).tier_data) {
+            updateData.tier_data = {
+              ...(existing[0].tier_data || {}),
+              ...(data as any).tier_data,
+            };
+          }
+
+          // Update food establishment cert fields if provided
+          if ((data as any).foodEstablishmentCertUrl) {
+            updateData.foodEstablishmentCertUrl = (data as any).foodEstablishmentCertUrl;
+          }
+          if ((data as any).foodEstablishmentCertExpiry) {
+            updateData.foodEstablishmentCertExpiry = (data as any).foodEstablishmentCertExpiry;
+          }
+
+          // Mark tier2 as submitted when chef submits Tier 2 documents
+          if ((data as any).current_tier === 2 && !existing[0].tier2_completed_at) {
+            updateData.tier2_completed_at = now;
+            console.log(`✅ Marking Tier 2 as submitted for application ${existing[0].id}`);
+          }
+
+          const [updated] = await db
+            .update(chefKitchenApplications)
+            .set(updateData)
+            .where(eq(chefKitchenApplications.id, existing[0].id))
+            .returning();
+          return updated;
+        }
+
+        // If pending or approved (not updating tiers), return existing application
         return existing[0];
       }
 

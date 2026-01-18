@@ -1831,14 +1831,7 @@ export function registerFirebaseRoutes(app: Express) {
     upload.fields([
       { name: 'foodSafetyLicenseFile', maxCount: 1 },
       { name: 'foodEstablishmentCertFile', maxCount: 1 },
-      { name: 'tier2_allergen_plan', maxCount: 1 },
-      { name: 'tier2_supplier_list', maxCount: 1 },
-      { name: 'tier2_quality_control', maxCount: 1 },
-      { name: 'tier2_traceability', maxCount: 1 },
-      { name: 'tier3_food_safety_plan', maxCount: 1 },
-      { name: 'tier3_production_timeline', maxCount: 1 },
-      { name: 'tier3_cleaning_schedule', maxCount: 1 },
-      { name: 'tier3_training_records', maxCount: 1 },
+      { name: 'tier2_insurance_document', maxCount: 1 },
     ]),
     requireFirebaseAuthWithUser,
     async (req: Request, res: Response) => {
@@ -1874,6 +1867,7 @@ export function registerFirebaseRoutes(app: Express) {
 
           // Upload tier-specific files
           const tierFileFields = [
+            'tier2_insurance_document',
             'tier2_allergen_plan',
             'tier2_supplier_list',
             'tier2_quality_control',
@@ -2228,8 +2222,15 @@ export function registerFirebaseRoutes(app: Express) {
           });
         }
 
-        // Create/update the application
-        const application = await firebaseStorage.createChefKitchenApplication(parsedData.data);
+        // Create/update the application - merge extra tier fields that Zod strips
+        const applicationData = {
+          ...parsedData.data,
+          // Include tier fields (not in Zod schema but needed for storage)
+          ...(req.body.current_tier && { current_tier: parseInt(req.body.current_tier) }),
+          ...(tierData && { tier_data: tierData }),
+          ...(foodEstablishmentCertUrl && { foodEstablishmentCertUrl }),
+        };
+        const application = await firebaseStorage.createChefKitchenApplication(applicationData as any);
 
         console.log(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
 
