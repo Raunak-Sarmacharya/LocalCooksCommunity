@@ -35,15 +35,17 @@ interface KitchenApplicationForManager {
   reviewedAt?: string | null;
 
   // Tier information
-  currentTier?: number;
+  current_tier?: number;
+  tier_data?: any;
 
   // Timestamps
   createdAt: string;
   updatedAt: string;
+  tier2_completed_at?: string | null;
 
   // Chat
   chat_conversation_id?: string | null;
-  
+
   // Enriched data
   chef: {
     id: number;
@@ -69,7 +71,7 @@ export function useManagerKitchenApplications() {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
-    
+
     const currentFirebaseUser = auth.currentUser;
     if (currentFirebaseUser) {
       try {
@@ -79,7 +81,7 @@ export function useManagerKitchenApplications() {
         console.error('Error getting Firebase token:', error);
       }
     }
-    
+
     return headers;
   };
 
@@ -220,11 +222,14 @@ export function useManagerKitchenApplications() {
   });
 
   // Compute statistics
+  const isTier2Pending = (a: KitchenApplicationForManager) =>
+    a.status === 'approved' && a.current_tier === 2 && !!a.tier2_completed_at;
+
   const pendingApplications = (applicationsQuery.data ?? []).filter(
-    (a) => a.status === "inReview"
+    (a) => a.status === "inReview" || isTier2Pending(a)
   );
   const approvedApplications = (applicationsQuery.data ?? []).filter(
-    (a) => a.status === "approved"
+    (a) => a.status === "approved" && !isTier2Pending(a)
   );
   const rejectedApplications = (applicationsQuery.data ?? []).filter(
     (a) => a.status === "rejected"
@@ -258,7 +263,7 @@ export function useManagerKitchenApplicationsForLocation(locationId: number | nu
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
-    
+
     const currentFirebaseUser = auth.currentUser;
     if (currentFirebaseUser) {
       try {
@@ -268,7 +273,7 @@ export function useManagerKitchenApplicationsForLocation(locationId: number | nu
         console.error('Error getting Firebase token:', error);
       }
     }
-    
+
     return headers;
   };
 
@@ -276,7 +281,7 @@ export function useManagerKitchenApplicationsForLocation(locationId: number | nu
     queryKey: ["/api/manager/kitchen-applications/location", locationId],
     queryFn: async () => {
       if (!locationId) throw new Error("No location ID provided");
-      
+
       const headers = await getAuthHeaders();
       const response = await fetch(
         `/api/manager/kitchen-applications/location/${locationId}`,

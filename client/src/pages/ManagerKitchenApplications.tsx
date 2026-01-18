@@ -2,13 +2,13 @@ import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-appli
 import ManagerHeader from "@/components/layout/ManagerHeader";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  User, 
-  MapPin, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
-  Mail, 
+import {
+  User,
+  MapPin,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Mail,
   Phone,
   Building2,
   AlertCircle,
@@ -53,15 +53,15 @@ interface ManagerKitchenApplicationsProps {
  * Managers can approve/reject applications and view chef documents.
  */
 export default function ManagerKitchenApplications({ embedded = false }: ManagerKitchenApplicationsProps) {
-  const { 
-    applications, 
+  const {
+    applications,
     pendingApplications,
     approvedApplications,
     rejectedApplications,
     pendingCount,
     approvedCount,
     rejectedCount,
-    isLoading, 
+    isLoading,
     updateApplicationStatus,
     verifyDocuments,
     revokeAccess
@@ -100,14 +100,14 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
   // Fetch unread counts for all applications with conversations
   useEffect(() => {
     if (!managerId) return;
-    
+
     // Combine all applications from different tabs
     const allApplications = [
       ...pendingApplications,
       ...approvedApplications,
       ...rejectedApplications,
     ];
-    
+
     if (allApplications.length === 0) return;
 
     const fetchUnreadCounts = async () => {
@@ -145,7 +145,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     }
 
     setChatApplication(application);
-    
+
     // Fetch location name if not available in application
     let locationName = application.location?.name;
     if (!locationName && application.locationId) {
@@ -162,7 +162,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
       }
     }
     setChatLocationName(locationName || null);
-    
+
     // Get or create conversation
     let conversationId = application.chat_conversation_id;
     if (!conversationId) {
@@ -190,7 +190,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         return;
       }
     }
-    
+
     setChatConversationId(conversationId);
     setShowChatDialog(true);
   };
@@ -210,9 +210,9 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     }
 
     // Check if it's an R2 URL (needs presigning)
-    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
-                    fileUrl.includes('cloudflare') ||
-                    (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') ||
+      fileUrl.includes('cloudflare') ||
+      (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
 
     if (!isR2Url) {
       // Not an R2 URL, return as-is
@@ -221,7 +221,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
 
     try {
       setLoadingUrls(prev => new Set(prev).add(fileUrl));
-      
+
       // Get auth token
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;
@@ -291,6 +291,30 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     }
   };
 
+  const handleApproveTier2 = async (applicationId: number) => {
+    try {
+      await updateApplicationStatus.mutateAsync({
+        applicationId,
+        status: 'approved',
+        currentTier: 3,
+        feedback: reviewFeedback || undefined,
+      });
+      toast({
+        title: "Tier 2 Approved",
+        description: "Chef has been advanced to Tier 3.",
+      });
+      setShowReviewDialog(false);
+      setSelectedApplication(null);
+      setReviewFeedback("");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve Tier 2",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleReject = async (applicationId: number) => {
     if (!reviewFeedback.trim()) {
       toast({
@@ -300,7 +324,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
       });
       return;
     }
-    
+
     try {
       await updateApplicationStatus.mutateAsync({
         applicationId,
@@ -335,13 +359,13 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         status: 'rejected',
         feedback: 'Access revoked by manager',
       });
-      
+
       // Also revoke the location access
       await revokeAccess.mutateAsync({
         chefId: application.chefId,
         locationId: application.locationId,
       });
-      
+
       toast({
         title: "Access Revoked",
         description: "Chef access has been revoked successfully.",
@@ -617,7 +641,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     {(() => {
                       const info = parseBusinessInfo(selectedApplication.businessDescription);
                       if (!info) return <p className="text-gray-600">No business information provided.</p>;
-                      
+
                       return (
                         <div className="grid grid-cols-2 gap-3 text-sm">
                           {info.businessName && (
@@ -671,11 +695,10 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                 </h3>
                 <div className="space-y-3">
                   {/* Food Safety License */}
-                  <div className={`flex items-center justify-between p-4 rounded-lg border ${
-                    selectedApplication.foodSafetyLicenseUrl 
-                      ? 'bg-green-50 border-green-200' 
-                      : 'bg-gray-50 border-gray-200'
-                  }`}>
+                  <div className={`flex items-center justify-between p-4 rounded-lg border ${selectedApplication.foodSafetyLicenseUrl
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-gray-50 border-gray-200'
+                    }`}>
                     <div className="flex items-center gap-3">
                       <FileText className={`h-5 w-5 ${selectedApplication.foodSafetyLicenseUrl ? 'text-green-600' : 'text-gray-400'}`} />
                       <div>
@@ -688,8 +711,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     {selectedApplication.foodSafetyLicenseUrl && (
                       <div className="flex gap-2">
                         <a
-                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] || 
-                            (selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') 
+                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] ||
+                            (selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com')
                               ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodSafetyLicenseUrl)}`
                               : selectedApplication.foodSafetyLicenseUrl)}
                           target="_blank"
@@ -699,7 +722,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           onClick={async (e) => {
                             const url = selectedApplication.foodSafetyLicenseUrl;
                             if (!url) return;
-                            
+
                             // If it's a local file URL, add token
                             if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
                               e.preventDefault();
@@ -708,7 +731,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                               window.open(authenticatedUrl, '_blank');
                               return;
                             }
-                            
+
                             // If it's an R2 URL, get presigned URL
                             if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                               e.preventDefault();
@@ -734,7 +757,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           onClick={async (e) => {
                             const url = selectedApplication.foodSafetyLicenseUrl;
                             if (!url) return;
-                            
+
                             // If it's a local file URL, add token
                             if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
                               e.preventDefault();
@@ -746,7 +769,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                               a.click();
                               return;
                             }
-                            
+
                             // If it's an R2 URL, get presigned URL
                             if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
                               e.preventDefault();
@@ -768,105 +791,195 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     )}
                   </div>
 
-                  {/* Food Establishment Certificate */}
-                  <div className={`flex items-center justify-between p-4 rounded-lg border ${
-                    selectedApplication.foodEstablishmentCertUrl 
-                      ? 'bg-blue-50 border-blue-200' 
-                      : 'bg-gray-50 border-gray-200'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <FileText className={`h-5 w-5 ${selectedApplication.foodEstablishmentCertUrl ? 'text-blue-600' : 'text-gray-400'}`} />
-                      <div>
-                        <p className="font-medium text-gray-900">Food Establishment License</p>
-                        <p className="text-xs text-gray-500">
-                          {selectedApplication.foodEstablishmentCertUrl ? 'Has license' : 'Optional - Not uploaded'}
-                        </p>
-                      </div>
+
+                </div>
+              </div>
+
+              {/* Tier 2 Documents Section - Show when Tier 2 is completed */}
+              {selectedApplication.tier2_completed_at && (
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Tier 2 Documents
+                    {selectedApplication.current_tier === 2 && (
+                      <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 ml-2">
+                        Awaiting Review
+                      </Badge>
+                    )}
+                    {selectedApplication.current_tier >= 3 && (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 ml-2">
+                        Approved
+                      </Badge>
+                    )}
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="text-xs text-gray-500 mb-2">
+                      Submitted: {new Date(selectedApplication.tier2_completed_at).toLocaleDateString()}
                     </div>
-                    {selectedApplication.foodEstablishmentCertUrl && (
-                      <div className="flex gap-2">
-                        <a
-                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] ||
-                            (selectedApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com')
-                              ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodEstablishmentCertUrl)}`
-                              : selectedApplication.foodEstablishmentCertUrl)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
-                          title="View document"
-                          onClick={async (e) => {
-                            const url = selectedApplication.foodEstablishmentCertUrl;
-                            if (!url) return;
-                            
-                            // If it's a local file URL, add token
-                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                              e.preventDefault();
-                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                              window.open(authenticatedUrl, '_blank');
-                              return;
-                            }
-                            
-                            // If it's an R2 URL, get presigned URL
-                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
-                              e.preventDefault();
-                              const presignedUrl = await getPresignedUrl(url);
-                              window.open(presignedUrl, '_blank');
-                            }
-                          }}
-                        >
-                          {loadingUrls.has(selectedApplication.foodEstablishmentCertUrl) ? (
-                            <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
-                          ) : (
-                            <Eye className="h-4 w-4 text-blue-600" />
-                          )}
-                        </a>
-                        <a
-                          href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] ||
-                            (selectedApplication.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com')
-                              ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodEstablishmentCertUrl)}`
-                              : selectedApplication.foodEstablishmentCertUrl)}
-                          download
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Download document"
-                          onClick={async (e) => {
-                            const url = selectedApplication.foodEstablishmentCertUrl;
-                            if (!url) return;
-                            
-                            // If it's a local file URL, add token
-                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                              e.preventDefault();
-                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                              const a = document.createElement('a');
-                              a.href = authenticatedUrl;
-                              a.download = '';
-                              a.click();
-                              return;
-                            }
-                            
-                            // If it's an R2 URL, get presigned URL
-                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
-                              e.preventDefault();
-                              const presignedUrl = await getPresignedUrl(url);
-                              const a = document.createElement('a');
-                              a.href = presignedUrl;
-                              a.download = '';
-                              a.click();
-                            }
-                          }}
-                        >
-                          {loadingUrls.has(selectedApplication.foodEstablishmentCertUrl) ? (
-                            <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
-                          ) : (
-                            <Download className="h-4 w-4 text-gray-600" />
-                          )}
-                        </a>
+
+                    {/* Insurance Document */}
+                    {(() => {
+                      const tierData = selectedApplication.tier_data || {};
+                      const tierFiles = tierData.tierFiles || {};
+                      const insuranceUrl = tierFiles.tier2_insurance_document;
+
+                      return insuranceUrl ? (
+                        <div className="flex items-center justify-between p-4 rounded-lg border bg-purple-50 border-purple-200">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-5 w-5 text-purple-600" />
+                            <div>
+                              <p className="font-medium text-gray-900">Insurance Document</p>
+                              <p className="text-xs text-gray-500">Uploaded with Tier 2 submission</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <a
+                              href={presignedUrls[insuranceUrl] ||
+                                (insuranceUrl.includes('r2.cloudflarestorage.com')
+                                  ? `/api/files/r2-proxy?url=${encodeURIComponent(insuranceUrl)}`
+                                  : insuranceUrl)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 hover:bg-purple-100 rounded-lg transition-colors"
+                              title="View document"
+                              onClick={async (e) => {
+                                const url = insuranceUrl;
+                                if (!url) return;
+
+                                // If it's a local file URL, add token
+                                if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                                  e.preventDefault();
+                                  const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                                  const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                                  window.open(authenticatedUrl, '_blank');
+                                  return;
+                                }
+
+                                // If it's an R2 URL, get presigned URL
+                                if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                  e.preventDefault();
+                                  const presignedUrl = await getPresignedUrl(url);
+                                  window.open(presignedUrl, '_blank');
+                                }
+                              }}
+                            >
+                              {loadingUrls.has(insuranceUrl) ? (
+                                <Loader2 className="h-4 w-4 text-purple-600 animate-spin" />
+                              ) : (
+                                <Eye className="h-4 w-4 text-purple-600" />
+                              )}
+                            </a>
+                            <a
+                              href={presignedUrls[insuranceUrl] ||
+                                (insuranceUrl.includes('r2.cloudflarestorage.com')
+                                  ? `/api/files/r2-proxy?url=${encodeURIComponent(insuranceUrl)}`
+                                  : insuranceUrl)}
+                              download
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Download document"
+                              onClick={async (e) => {
+                                const url = insuranceUrl;
+                                if (!url) return;
+
+                                // If it's a local file URL, add token
+                                if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                                  e.preventDefault();
+                                  const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                                  const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                                  const a = document.createElement('a');
+                                  a.href = authenticatedUrl;
+                                  a.download = '';
+                                  a.click();
+                                  return;
+                                }
+
+                                // If it's an R2 URL, get presigned URL
+                                if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                  e.preventDefault();
+                                  const presignedUrl = await getPresignedUrl(url);
+                                  const a = document.createElement('a');
+                                  a.href = presignedUrl;
+                                  a.download = '';
+                                  a.click();
+                                }
+                              }}
+                            >
+                              {loadingUrls.has(insuranceUrl) ? (
+                                <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
+                              ) : (
+                                <Download className="h-4 w-4 text-gray-600" />
+                              )}
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center p-4 rounded-lg border bg-gray-50 border-gray-200">
+                          <FileText className="h-5 w-5 text-gray-400 mr-3" />
+                          <div>
+                            <p className="font-medium text-gray-900">Insurance Document</p>
+                            <p className="text-xs text-gray-500">Not uploaded</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Food Establishment Certificate from Tier 2 (if different from Tier 1) */}
+                    {selectedApplication.foodEstablishmentCertUrl && selectedApplication.current_tier >= 2 && (
+                      <div className="flex items-center justify-between p-4 rounded-lg border bg-blue-50 border-blue-200">
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <p className="font-medium text-gray-900">Food Establishment Certificate</p>
+                            <p className="text-xs text-gray-500">
+                              {selectedApplication.foodEstablishmentCertExpiry
+                                ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
+                                : 'Tier 2 requirement'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <a
+                            href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] ||
+                              (selectedApplication.foodEstablishmentCertUrl.includes('r2.cloudflarestorage.com')
+                                ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodEstablishmentCertUrl)}`
+                                : selectedApplication.foodEstablishmentCertUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="View document"
+                            onClick={async (e) => {
+                              const url = selectedApplication.foodEstablishmentCertUrl;
+                              if (!url) return;
+
+                              // If it's a local file URL, add token
+                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                                e.preventDefault();
+                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                                window.open(authenticatedUrl, '_blank');
+                                return;
+                              }
+
+                              // If it's an R2 URL, get presigned URL
+                              if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                e.preventDefault();
+                                const presignedUrl = await getPresignedUrl(url);
+                                window.open(presignedUrl, '_blank');
+                              }
+                            }}
+                          >
+                            {loadingUrls.has(selectedApplication.foodEstablishmentCertUrl) ? (
+                              <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-blue-600" />
+                            )}
+                          </a>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Feedback */}
               <div>
@@ -927,6 +1040,16 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     Revoke Access
                   </Button>
                 )}
+                {selectedApplication.status === 'approved' && selectedApplication.current_tier === 2 && selectedApplication.tier2_completed_at && (
+                  <Button
+                    onClick={() => handleApproveTier2(selectedApplication.id)}
+                    disabled={updateApplicationStatus.isPending}
+                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Approve Tier 2
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -944,8 +1067,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
               managerId={managerId}
               locationId={chatApplication.locationId}
               locationName={
-                chatApplication.location?.name || 
-                chatLocationName || 
+                chatApplication.location?.name ||
+                chatLocationName ||
                 (chatApplication.locationId ? `Location #${chatApplication.locationId}` : "Unknown Location")
               }
               onClose={() => {
@@ -979,21 +1102,21 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
 }
 
 // Application Card Component
-function ApplicationCard({ 
-  application, 
+function ApplicationCard({
+  application,
   onReview,
   onOpenChat,
   unreadCount = 0,
   parseBusinessInfo
-}: { 
-  application: any; 
+}: {
+  application: any;
   onReview: () => void;
   onOpenChat?: () => void;
   unreadCount?: number;
   parseBusinessInfo: (desc: string | null | undefined) => any;
 }) {
   const businessInfo = parseBusinessInfo(application.businessDescription);
-  
+
   const getStatusBadge = () => {
     switch (application.status) {
       case 'inReview':
@@ -1004,6 +1127,15 @@ function ApplicationCard({
           </Badge>
         );
       case 'approved':
+        // Check if Tier 2 is awaiting review (chef submitted but current_tier still 2)
+        if (application.current_tier === 2 && application.tier2_completed_at) {
+          return (
+            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
+              <Clock className="h-3 w-3 mr-1" />
+              Tier 2 Pending
+            </Badge>
+          );
+        }
         return (
           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
             <CheckCircle className="h-3 w-3 mr-1" />
@@ -1055,7 +1187,7 @@ function ApplicationCard({
           <Phone className="h-4 w-4" />
           <span>{application.phone}</span>
         </div>
-        
+
         {/* Document Indicators */}
         <div className="flex items-center gap-2 pt-2">
           {application.foodSafetyLicenseUrl && (
@@ -1075,15 +1207,14 @@ function ApplicationCard({
         <div className="text-xs text-gray-500 pt-2 border-t">
           Applied: {new Date(application.createdAt).toLocaleDateString()}
         </div>
-        
+
         <div className="flex gap-2 mt-2">
           <Button
             onClick={onReview}
-            className={`flex-1 ${
-              application.status === 'inReview' 
-                ? 'bg-[#208D80] hover:bg-[#1A7470]' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            className={`flex-1 ${application.status === 'inReview'
+              ? 'bg-[#208D80] hover:bg-[#1A7470]'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             variant={application.status === 'inReview' ? 'default' : 'outline'}
           >
             {application.status === 'inReview' ? 'Review Application' : 'View Details'}
