@@ -539,11 +539,20 @@ var init_schema = __esm({
       tier2_food_establishment_cert_required: boolean("tier2_food_establishment_cert_required").default(false).notNull(),
       tier2_food_establishment_expiry_required: boolean("tier2_food_establishment_expiry_required").default(false).notNull(),
       tier2_insurance_document_required: boolean("tier2_insurance_document_required").default(false).notNull(),
+      tier2_insurance_minimum_amount: integer("tier2_insurance_minimum_amount").default(0).notNull(),
+      tier2_kitchen_experience_required: boolean("tier2_kitchen_experience_required").default(false).notNull(),
+      tier2_allergen_plan_required: boolean("tier2_allergen_plan_required").default(false).notNull(),
+      tier2_supplier_list_required: boolean("tier2_supplier_list_required").default(false).notNull(),
+      tier2_quality_control_required: boolean("tier2_quality_control_required").default(false).notNull(),
+      tier2_traceability_system_required: boolean("tier2_traceability_system_required").default(false).notNull(),
       tier2_custom_fields: jsonb("tier2_custom_fields").default([]),
       // Facility Information (auto-shared with chefs)
       floor_plans_url: text("floor_plans_url"),
       ventilation_specs: text("ventilation_specs"),
       ventilation_specs_url: text("ventilation_specs_url"),
+      equipment_list: jsonb("equipment_list").default([]),
+      // Array of equipment names
+      materials_description: text("materials_description"),
       // Custom Fields (JSONB array of field definitions)
       customFields: jsonb("custom_fields").default([]),
       // Array of { id, label, type, required, options?, placeholder? }
@@ -778,6 +787,12 @@ var init_schema = __esm({
       tier2_food_establishment_cert_required: z2.boolean().optional(),
       tier2_food_establishment_expiry_required: z2.boolean().optional(),
       tier2_insurance_document_required: z2.boolean().optional(),
+      tier2_insurance_minimum_amount: z2.number().int().min(0).optional(),
+      tier2_kitchen_experience_required: z2.boolean().optional(),
+      tier2_allergen_plan_required: z2.boolean().optional(),
+      tier2_supplier_list_required: z2.boolean().optional(),
+      tier2_quality_control_required: z2.boolean().optional(),
+      tier2_traceability_system_required: z2.boolean().optional(),
       tier2_custom_fields: z2.array(customFieldSchema).optional().default([]),
       // Facility Information
       floor_plans_url: z2.union([
@@ -796,7 +811,9 @@ var init_schema = __esm({
         z2.literal(""),
         z2.string().url(),
         z2.string()
-      ]).optional()
+      ]).optional(),
+      equipment_list: z2.array(z2.string()).optional(),
+      materials_description: z2.string().optional()
     });
     insertKitchenSchema = createInsertSchema(kitchens, {
       locationId: z2.number(),
@@ -9013,11 +9030,19 @@ var FirebaseStorage = class {
       tier2_food_establishment_cert_required: false,
       tier2_food_establishment_expiry_required: false,
       tier2_insurance_document_required: false,
+      tier2_insurance_minimum_amount: 0,
+      tier2_kitchen_experience_required: false,
+      tier2_allergen_plan_required: false,
+      tier2_supplier_list_required: false,
+      tier2_quality_control_required: false,
+      tier2_traceability_system_required: false,
       tier2_custom_fields: [],
       // Facility Information
       floor_plans_url: "",
       ventilation_specs: "",
       ventilation_specs_url: "",
+      equipment_list: [],
+      materials_description: "",
       createdAt: /* @__PURE__ */ new Date(),
       updatedAt: /* @__PURE__ */ new Date()
     };
@@ -9029,6 +9054,12 @@ var FirebaseStorage = class {
         ...updates,
         ...updates.customFields !== void 0 && {
           customFields: Array.isArray(updates.customFields) ? updates.customFields : []
+        },
+        ...updates.tier1_custom_fields !== void 0 && {
+          tier1_custom_fields: Array.isArray(updates.tier1_custom_fields) ? updates.tier1_custom_fields : []
+        },
+        ...updates.tier2_custom_fields !== void 0 && {
+          tier2_custom_fields: Array.isArray(updates.tier2_custom_fields) ? updates.tier2_custom_fields : []
         },
         updatedAt: /* @__PURE__ */ new Date()
       };
@@ -9048,8 +9079,10 @@ var FirebaseStorage = class {
         const [created] = await db.insert(locationRequirements).values({
           locationId,
           ...processedUpdates,
-          // Ensure customFields defaults to empty array if not provided
-          customFields: processedUpdates.customFields ?? []
+          // Ensure custom fields default to empty array if not provided
+          customFields: processedUpdates.customFields ?? [],
+          tier1_custom_fields: processedUpdates.tier1_custom_fields ?? [],
+          tier2_custom_fields: processedUpdates.tier2_custom_fields ?? []
         }).returning();
         return created;
       }
@@ -11571,6 +11604,35 @@ var FirebaseStorage = class {
           }
           if (data.government_license_expiry_date !== void 0) {
             updateData.government_license_expiry_date = data.government_license_expiry_date;
+          }
+          const [updated] = await db.update(chefKitchenApplications).set(updateData).where(eq2(chefKitchenApplications.id, existing[0].id)).returning();
+          return updated;
+        }
+        if (existing[0].status === "approved" && data.current_tier && data.current_tier >= 2) {
+          const updateData = {
+            updatedAt: now
+          };
+          if (data.customFieldsData && Object.keys(data.customFieldsData).length > 0) {
+            updateData.customFieldsData = {
+              ...existing[0].customFieldsData || {},
+              ...data.customFieldsData
+            };
+          }
+          if (data.tier_data) {
+            updateData.tier_data = {
+              ...existing[0].tier_data || {},
+              ...data.tier_data
+            };
+          }
+          if (data.foodEstablishmentCertUrl) {
+            updateData.foodEstablishmentCertUrl = data.foodEstablishmentCertUrl;
+          }
+          if (data.foodEstablishmentCertExpiry) {
+            updateData.foodEstablishmentCertExpiry = data.foodEstablishmentCertExpiry;
+          }
+          if (data.current_tier === 2 && !existing[0].tier2_completed_at) {
+            updateData.tier2_completed_at = now;
+            console.log(`\u2705 Marking Tier 2 as submitted for application ${existing[0].id}`);
           }
           const [updated] = await db.update(chefKitchenApplications).set(updateData).where(eq2(chefKitchenApplications.id, existing[0].id)).returning();
           return updated;
@@ -14373,14 +14435,7 @@ function registerFirebaseRoutes(app3) {
     upload.fields([
       { name: "foodSafetyLicenseFile", maxCount: 1 },
       { name: "foodEstablishmentCertFile", maxCount: 1 },
-      { name: "tier2_allergen_plan", maxCount: 1 },
-      { name: "tier2_supplier_list", maxCount: 1 },
-      { name: "tier2_quality_control", maxCount: 1 },
-      { name: "tier2_traceability", maxCount: 1 },
-      { name: "tier3_food_safety_plan", maxCount: 1 },
-      { name: "tier3_production_timeline", maxCount: 1 },
-      { name: "tier3_cleaning_schedule", maxCount: 1 },
-      { name: "tier3_training_records", maxCount: 1 }
+      { name: "tier2_insurance_document", maxCount: 1 }
     ]),
     requireFirebaseAuthWithUser,
     async (req, res) => {
@@ -14408,6 +14463,7 @@ function registerFirebaseRoutes(app3) {
             }
           }
           const tierFileFields = [
+            "tier2_insurance_document",
             "tier2_allergen_plan",
             "tier2_supplier_list",
             "tier2_quality_control",
@@ -14697,7 +14753,14 @@ function registerFirebaseRoutes(app3) {
             details: validationError.details
           });
         }
-        const application = await firebaseStorage.createChefKitchenApplication(parsedData.data);
+        const applicationData = {
+          ...parsedData.data,
+          // Include tier fields (not in Zod schema but needed for storage)
+          ...req.body.current_tier && { current_tier: parseInt(req.body.current_tier) },
+          ...tierData && { tier_data: tierData },
+          ...foodEstablishmentCertUrl && { foodEstablishmentCertUrl }
+        };
+        const application = await firebaseStorage.createChefKitchenApplication(applicationData);
         console.log(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
         res.status(201).json({
           success: true,

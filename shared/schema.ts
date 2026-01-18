@@ -294,11 +294,20 @@ export const locationRequirements = pgTable("location_requirements", {
   tier2_food_establishment_cert_required: boolean("tier2_food_establishment_cert_required").default(false).notNull(),
   tier2_food_establishment_expiry_required: boolean("tier2_food_establishment_expiry_required").default(false).notNull(),
   tier2_insurance_document_required: boolean("tier2_insurance_document_required").default(false).notNull(),
+  tier2_insurance_minimum_amount: integer("tier2_insurance_minimum_amount").default(0).notNull(),
+  tier2_kitchen_experience_required: boolean("tier2_kitchen_experience_required").default(false).notNull(),
+  tier2_allergen_plan_required: boolean("tier2_allergen_plan_required").default(false).notNull(),
+  tier2_supplier_list_required: boolean("tier2_supplier_list_required").default(false).notNull(),
+  tier2_quality_control_required: boolean("tier2_quality_control_required").default(false).notNull(),
+  tier2_traceability_system_required: boolean("tier2_traceability_system_required").default(false).notNull(),
   tier2_custom_fields: jsonb("tier2_custom_fields").default([]),
+
   // Facility Information (auto-shared with chefs)
   floor_plans_url: text("floor_plans_url"),
   ventilation_specs: text("ventilation_specs"),
   ventilation_specs_url: text("ventilation_specs_url"),
+  equipment_list: jsonb("equipment_list").default([]), // Array of equipment names
+  materials_description: text("materials_description"),
 
   // Custom Fields (JSONB array of field definitions)
   customFields: jsonb("custom_fields").default([]), // Array of { id, label, type, required, options?, placeholder? }
@@ -513,6 +522,12 @@ export const updateLocationRequirementsSchema = z.object({
   tier2_food_establishment_cert_required: z.boolean().optional(),
   tier2_food_establishment_expiry_required: z.boolean().optional(),
   tier2_insurance_document_required: z.boolean().optional(),
+  tier2_insurance_minimum_amount: z.number().int().min(0).optional(),
+  tier2_kitchen_experience_required: z.boolean().optional(),
+  tier2_allergen_plan_required: z.boolean().optional(),
+  tier2_supplier_list_required: z.boolean().optional(),
+  tier2_quality_control_required: z.boolean().optional(),
+  tier2_traceability_system_required: z.boolean().optional(),
   tier2_custom_fields: z.array(customFieldSchema).optional().default([]),
   // Facility Information
   floor_plans_url: z.union([
@@ -532,6 +547,8 @@ export const updateLocationRequirementsSchema = z.object({
     z.string().url(),
     z.string()
   ]).optional(),
+  equipment_list: z.array(z.string()).optional(),
+  materials_description: z.string().optional(),
 });
 
 export const insertKitchenSchema = createInsertSchema(kitchens, {
