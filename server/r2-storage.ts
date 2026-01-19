@@ -73,14 +73,14 @@ export async function uploadToR2(
 ): Promise<string> {
   try {
     const client = getS3Client();
-    
+
     // Generate unique filename
     const timestamp = Date.now();
     const documentType = file.fieldname || 'file';
     const ext = file.originalname.split('.').pop() || '';
     const baseName = file.originalname.replace(/\.[^/.]+$/, '');
     const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9-_]/g, '_');
-    
+
     const filename = `${userId}_${documentType}_${timestamp}_${sanitizedBaseName}.${ext}`;
     const key = `${folder}/${filename}`;
 
@@ -114,7 +114,7 @@ export async function uploadToR2(
     // Option 2: Use R2 public URL if configured
     let publicUrl: string;
     if (R2_PUBLIC_URL) {
-      publicUrl = R2_PUBLIC_URL.endsWith('/') 
+      publicUrl = R2_PUBLIC_URL.endsWith('/')
         ? `${R2_PUBLIC_URL}${key}`
         : `${R2_PUBLIC_URL}/${key}`;
     } else {
@@ -138,7 +138,7 @@ export async function uploadToR2(
 export async function deleteFromR2(fileUrl: string): Promise<boolean> {
   try {
     const client = getS3Client();
-    
+
     // Handle proxy URLs - extract actual R2 URL from query parameter
     let actualFileUrl = fileUrl;
     if (fileUrl.includes('/api/files/r2-proxy')) {
@@ -157,15 +157,15 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
         return false;
       }
     }
-    
+
     // Extract key from URL using robust logic (same as getPresignedUrl)
     const urlObj = new URL(actualFileUrl);
     let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
     const pathParts = pathname.split('/').filter(p => p);
-    
+
     // Find the bucket name index
     const bucketIndex = pathParts.indexOf(R2_BUCKET_NAME!);
-    
+
     let key: string;
     if (bucketIndex >= 0) {
       // Bucket name is in the path, key is everything after it
@@ -176,7 +176,7 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
       // Try to detect if it's a custom domain by checking if pathname starts with known folders
       const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
       const firstPart = pathParts[0];
-      
+
       if (knownFolders.includes(firstPart)) {
         // Custom domain with folder structure, use entire pathname
         key = pathname;
@@ -185,10 +185,10 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
         key = pathname;
       }
     }
-    
+
     // Remove leading/trailing slashes
     key = key.replace(/^\/+|\/+$/g, '');
-    
+
     // Final validation: key should not be empty
     if (!key || key.length === 0) {
       console.error(`❌ Invalid key extracted from URL: ${fileUrl} -> ${actualFileUrl}`);
@@ -231,13 +231,13 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
 export async function fileExistsInR2(fileUrl: string): Promise<boolean> {
   try {
     const client = getS3Client();
-    
+
     // Extract key from URL
     const urlObj = new URL(fileUrl);
     const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
     const keyParts = key.split('/');
     const bucketIndex = keyParts.indexOf(R2_BUCKET_NAME!);
-    const actualKey = bucketIndex >= 0 
+    const actualKey = bucketIndex >= 0
       ? keyParts.slice(bucketIndex + 1).join('/')
       : key;
 
@@ -262,15 +262,16 @@ export async function fileExistsInR2(fileUrl: string): Promise<boolean> {
 export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600): Promise<string> {
   try {
     const client = getS3Client();
-    
+
+
     // Extract key from URL using robust logic
     const urlObj = new URL(fileUrl);
     let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
     const pathParts = pathname.split('/').filter(p => p);
-    
+
     // Find the bucket name index
     const bucketIndex = pathParts.indexOf(R2_BUCKET_NAME!);
-    
+
     let key: string;
     if (bucketIndex >= 0) {
       // Bucket name is in the path, key is everything after it
@@ -281,7 +282,7 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
       // Try to detect if it's a custom domain by checking if pathname starts with known folders
       const knownFolders = ['documents', 'kitchen-applications', 'images', 'profiles'];
       const firstPart = pathParts[0];
-      
+
       if (knownFolders.includes(firstPart)) {
         // Custom domain with folder structure, use entire pathname
         key = pathname;
@@ -290,23 +291,47 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
         key = pathname;
       }
     }
-    
+
     // Remove leading/trailing slashes
     key = key.replace(/^\/+|\/+$/g, '');
-    
+
     // Final validation: key should not be empty
     if (!key || key.length === 0) {
       throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
     }
 
-    console.log('🔍 R2 Presigned URL Debug:', {
-      fileUrl,
-      extractedKey: key,
-      bucketName: R2_BUCKET_NAME,
-      pathname: urlObj.pathname,
-      pathParts,
-      bucketIndex
-    });
+    // ROBUST KEY RESOLUTION:
+    // Files might be in 'documents/' OR 'kitchen-applications/'.
+    // We check existence to ensure we sign the correct key.
+
+    // 1. Check original key
+    try {
+      await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME!, Key: key }));
+      // If successful, key exists. Use it.
+    } catch (error: any) {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+        // 2. Original key NOT found. Check remapped key if applicable.
+        if (key.startsWith('documents/') &&
+          (key.includes('foodSafetyLicenseFile') || key.includes('foodEstablishmentCert'))) {
+
+          const remappedKey = key.replace('documents/', 'kitchen-applications/');
+          console.log(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
+
+          try {
+            await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME!, Key: remappedKey }));
+            // Remapped key exists! Use it.
+            key = remappedKey;
+            console.log(`[R2 Storage] Using remapped key: ${key}`);
+          } catch (remapError) {
+            console.log(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
+            // Neither found. Fallback to original key (will likely 404 client-side, but nothing else we can do)
+          }
+        }
+      } else {
+        // Other error (auth, network), log it but proceed with original key
+        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, error.message);
+      }
+    }
 
     const command = new GetObjectCommand({
       Bucket: R2_BUCKET_NAME!,
@@ -314,7 +339,6 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
     });
 
     const presignedUrl = await getSignedUrl(client, command, { expiresIn });
-    console.log('✅ Generated presigned URL for R2 file:', key);
     return presignedUrl;
   } catch (error) {
     console.error('❌ Error generating presigned URL:', {

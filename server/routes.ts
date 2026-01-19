@@ -1,6 +1,7 @@
 import type { User } from "@shared/schema";
 import { insertApplicationSchema, updateApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
-import type { Express, Request, Response } from "express";
+import express, { type Express, type Request, type Response } from "express";
+import path from "path";
 
 // Note: Express Request.user type is already defined by @types/passport
 // We use type assertions where needed for isChef properties
@@ -46,6 +47,7 @@ import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFire
 import { deleteConversation } from "./chat-service";
 import { pool, db } from "./db";
 import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, chefKitchenApplications, users, locations, applications, kitchens } from "@shared/schema";
+import { getPresignedUrl } from "./r2-storage";
 import Stripe from "stripe";
 import { eq, inArray, and, desc, count } from "drizzle-orm";
 import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
@@ -117,6 +119,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   // Set up authentication routes and middleware
   setupAuth(app);
+
+  // R2 Proxy Endpoint - Redirects to a presigned URL for secure access
+  app.get("/api/files/r2-proxy", async (req, res) => {
+    try {
+      const { url } = req.query;
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).send("Missing or invalid url parameter");
+      }
+
+      console.log(`[R2 Proxy] Request for: ${url}`);
+
+      // Generate a presigned URL (valid for 1 hour)
+      const presignedUrl = await getPresignedUrl(url);
+
+      // Redirect the client to the presigned URL
+      // Use 307 Temporary Redirect to preserve method/body if necessary (though this is GET)
+      res.redirect(307, presignedUrl);
+    } catch (error) {
+      console.error("[R2 Proxy] Error:", error);
+      // Fallback: try redirecting to the original URL if signing fails
+      const fallbackUrl = req.query.url as string;
+      if (fallbackUrl) {
+        console.log(`[R2 Proxy] Falling back to original URL: ${fallbackUrl}`);
+        return res.redirect(fallbackUrl);
+      }
+      res.status(500).send("Failed to proxy image");
+    }
+  });
+
+  // Get Presigned URL Endpoint - Returns the signed URL JSON instead of redirecting
+  // This is used by the frontend to get a direct link to the R2 file
+  app.get("/api/files/r2-presigned", async (req, res) => {
+    try {
+      const { url } = req.query;
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: "Missing or invalid url parameter" });
+      }
+
+      console.log(`[R2 Presigned] Request for: ${url}`);
+
+      // Generate a presigned URL (valid for 1 hour)
+      const presignedUrl = await getPresignedUrl(url);
+
+      return res.json({ url: presignedUrl });
+    } catch (error) {
+      console.error("[R2 Presigned] Error:", error);
+      res.status(500).json({ error: "Failed to generate presigned URL" });
+    }
+  });
+
+  // Serve uploaded documents statically (for local dev or if files are on disk)
+  // In production, these might be on R2, but checking local first is good for hybrid setups
+  app.use('/api/files/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
+
+  // Fallback for documents that might be in R2 but requested via /api/files/documents/
+  app.use('/api/files/documents/:filename', async (req, res, next) => {
+    // If static middleware didn't find it, it reaches here
+    const filename = req.params.filename;
+    console.log(`[Documents] Local file not found, checking R2 for: ${filename}`);
+
+    // Construct a potential R2 URL - assuming it's in the 'documents' folder
+    // This needs to match how we store files in R2. 
+    // If the frontend requests /api/files/documents/abc.pdf, we try to see if it exists in R2
+
+    // Note: This is a best-effort fallback. Ideally, the DB stores the full R2 URL.
+    // usage of getPresignedUrl might fail if we pass a filename instead of a full URL, 
+    // but we can try to construct a dummy URL to satisfy the function signature if needed,
+    // or better, if the file is missing locally, simply 404 unless we know the bucket URL structure.
+
+    // However, looking at chef_kitchen_applications, some URLs are stored as /api/files/documents/... 
+    // If these are actually in R2, we need to redirect to signed R2 URL.
+
+    try {
+      // We don't have the full R2 URL here, so we construct one to pass to getPresignedUrl logic
+      // or we manually call getSignedUrl with the key.
+      // Let's assume the key in R2 is just "documents/" + filename
+
+      // Changing strategy: we can't easily guess the full R2 URL if it was stored as a local path.
+      // But if we assume standard key structure:
+      const r2Key = `documents/${filename}`;
+
+      // We need to import S3 client helpers if we want to bypass getPresignedUrl's URL parsing
+      // But getPresignedUrl parses a URL. Let's construct a fake one.
+      // const fakeUrl = `https://r2.cloudflarestorage.com/documents/${filename}`; // this might not match logic
+
+      // Simpler: just return 404 for now, as the frontend "View Documents" logic 
+      // also handles /api/files/documents/ by trying to open them. 
+      // If we want to support R2 for these, we'd need to know if they are in R2.
+
+      // If the file is not found locally, and we are in production, it's likely on R2 only if code uploads there.
+      // For now, let's just log it.
+      console.warn(`[Documents] File not found locally: ${filename}`);
+      res.status(404).send('File not found');
+    } catch (e) {
+      next(e);
+    }
+  });
+
+
 
   // NOTE: Google OAuth now handled entirely by Firebase Auth
   // No session-based Google OAuth needed for users
