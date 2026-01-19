@@ -720,23 +720,44 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           className="p-2 hover:bg-green-100 rounded-lg transition-colors"
                           title="View document"
                           onClick={async (e) => {
+                            e.preventDefault();
                             const url = selectedApplication.foodSafetyLicenseUrl;
                             if (!url) return;
 
-                            // If it's a local file URL, add token
-                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                              e.preventDefault();
-                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                              window.open(authenticatedUrl, '_blank');
-                              return;
-                            }
+                            // Open window immediately to prevent popup blocker
+                            const newWindow = window.open('', '_blank');
 
-                            // If it's an R2 URL, get presigned URL
-                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
-                              e.preventDefault();
-                              const presignedUrl = await getPresignedUrl(url);
-                              window.open(presignedUrl, '_blank');
+                            try {
+                              // If it's a local file URL, add token
+                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                                if (newWindow) newWindow.location.href = authenticatedUrl;
+                                return;
+                              }
+
+                              // If it's an R2 URL, get presigned URL
+                              if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                const presignedUrl = await getPresignedUrl(url);
+                                if (newWindow) newWindow.location.href = presignedUrl;
+                                return;
+                              }
+
+                              // Fallback
+                              if (newWindow) {
+                                newWindow.location.href = presignedUrls[url] ||
+                                  (url.includes('r2.cloudflarestorage.com')
+                                    ? `/api/files/r2-proxy?url=${encodeURIComponent(url)}`
+                                    : url);
+                              }
+                            } catch (error) {
+                              console.error('Error opening document:', error);
+                              if (newWindow) newWindow.close();
+                              toast({
+                                title: "Error",
+                                description: "Failed to open document",
+                                variant: "destructive"
+                              });
                             }
                           }}
                         >
@@ -755,29 +776,47 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                           title="Download document"
                           onClick={async (e) => {
+                            e.preventDefault();
                             const url = selectedApplication.foodSafetyLicenseUrl;
                             if (!url) return;
 
-                            // If it's a local file URL, add token
-                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                              e.preventDefault();
-                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                              const a = document.createElement('a');
-                              a.href = authenticatedUrl;
-                              a.download = '';
-                              a.click();
-                              return;
-                            }
+                            // Open window immediately
+                            const a = document.createElement('a');
 
-                            // If it's an R2 URL, get presigned URL
-                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
-                              e.preventDefault();
-                              const presignedUrl = await getPresignedUrl(url);
-                              const a = document.createElement('a');
-                              a.href = presignedUrl;
+                            try {
+                              // If it's a local file URL, add token
+                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                                a.href = authenticatedUrl;
+                                a.download = '';
+                                a.click();
+                                return;
+                              }
+
+                              // If it's an R2 URL, get presigned URL
+                              if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                const presignedUrl = await getPresignedUrl(url);
+                                a.href = presignedUrl;
+                                a.download = '';
+                                a.click();
+                                return;
+                              }
+
+                              // Fallback
+                              a.href = presignedUrls[url] ||
+                                (url.includes('r2.cloudflarestorage.com')
+                                  ? `/api/files/r2-proxy?url=${encodeURIComponent(url)}`
+                                  : url);
                               a.download = '';
                               a.click();
+                            } catch (error) {
+                              console.error('Error downloading document:', error);
+                              toast({
+                                title: "Error",
+                                description: "Failed to download document",
+                                variant: "destructive"
+                              });
                             }
                           }}
                         >
