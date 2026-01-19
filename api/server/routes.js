@@ -3628,11 +3628,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3657,11 +3657,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { imageUrl } = req.body;
-      
+
       const updated = await firebaseStorage.updateKitchen(kitchenId, { imageUrl: imageUrl || null });
-      
+
       console.log(`✅ Kitchen ${kitchenId} image updated by manager ${user.id}`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating kitchen image:", error);
@@ -3675,11 +3675,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3721,11 +3721,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check authentication - managers use session-based auth
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3770,7 +3770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method)
       const pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string } = {};
-      
+
       if (hourlyRate !== undefined) {
         pricing.hourlyRate = hourlyRate === null ? null : hourlyRate; // Will be converted to cents in storage method
       }
@@ -3779,9 +3779,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
 
       const updated = await firebaseStorage.updateKitchenPricing(kitchenId, pricing);
-      
+
       console.log(`✅ Kitchen ${kitchenId} pricing updated by manager ${user.id}`);
-      
+
       res.json(updated);
     } catch (error: any) {
       console.error("Error updating kitchen pricing:", error);
@@ -3796,11 +3796,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3836,11 +3836,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3880,11 +3880,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3931,11 +3931,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -3978,11 +3978,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const sessionUser = await getAuthenticatedUser(req);
       const isFirebaseAuth = req.neonUser;
-      
+
       if (!sessionUser && !isFirebaseAuth) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
       if (user.role !== "manager") {
         return res.status(403).json({ error: "Manager access required" });
@@ -5257,9 +5257,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Return maxSlotsPerChef from location's default_daily_booking_limit
       // Default to 2 if not set
-      const maxSlotsPerChef = location.default_daily_booking_limit || 
-                              location.defaultDailyBookingLimit || 
-                              2;
+      const maxSlotsPerChef = location.default_daily_booking_limit ||
+        location.defaultDailyBookingLimit ||
+        2;
 
       res.json({ maxSlotsPerChef });
     } catch (error: any) {
@@ -5477,14 +5477,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (locationLimitResult.rows.length > 0) {
                 const rawValue = locationLimitResult.rows[0].default_daily_booking_limit;
                 const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
-                
+
                 console.log(`[Booking Limit] Parsed location default value:`, {
                   rawValue,
                   locVal,
                   isFinite: Number.isFinite(locVal),
                   isPositive: locVal !== null && locVal > 0
                 });
-                
+
                 if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
                   maxSlotsPerChef = locVal;
                   console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${locationLimitResult.rows[0].location_name || locationLimitResult.rows[0].location_id})`);
@@ -8279,14 +8279,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (locationLimitResult.rows.length > 0) {
                 const rawValue = locationLimitResult.rows[0].default_daily_booking_limit;
                 const locVal = rawValue !== null && rawValue !== undefined ? Number(rawValue) : null;
-                
+
                 console.log(`[Booking Limit] Parsed location default value:`, {
                   rawValue,
                   locVal,
                   isFinite: Number.isFinite(locVal),
                   isPositive: locVal !== null && locVal > 0
                 });
-                
+
                 if (locVal !== null && Number.isFinite(locVal) && locVal > 0) {
                   maxSlotsPerChef = locVal;
                   console.log(`[Booking Limit] ✅ Using location default: ${maxSlotsPerChef} hours for kitchen ${kitchenId} (location: ${locationLimitResult.rows[0].location_name || locationLimitResult.rows[0].location_id})`);
@@ -8532,6 +8532,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get location requirements (custom fields, etc.)
+  app.get("/api/public/locations/:id/requirements", async (req, res) => {
+    try {
+      const locationId = parseInt(req.params.id);
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: "Invalid location ID" });
+      }
+
+      const requirements = await storage.getLocationRequirements(locationId);
+
+      // Return found requirements or empty object if none (schema defaults will apply)
+      res.json(requirements || {});
+    } catch (error) {
+      console.error("Error fetching location requirements:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Get public platform statistics for landing pages
   app.get("/api/public/stats", async (req: Request, res: Response) => {
     try {
@@ -8600,7 +8618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { getCompleteRevenueMetrics } = await import('../../server/services/revenue-service.js');
-      
+
       const metrics = await getCompleteRevenueMetrics(
         managerId,
         pool,
@@ -8656,7 +8674,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { getRevenueByLocation } = await import('../../server/services/revenue-service.js');
-      
+
       const revenueByLocation = await getRevenueByLocation(
         managerId,
         pool,
@@ -8713,7 +8731,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       })();
 
       const { getRevenueByDate } = await import('../../server/services/revenue-service.js');
-      
+
       const revenueByDate = await getRevenueByDate(
         managerId,
         pool,
@@ -8766,7 +8784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { getTransactionHistory } = await import('../../server/services/revenue-service.js');
-      
+
       let transactions = await getTransactionHistory(
         managerId,
         pool,
@@ -8881,7 +8899,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Handle null/undefined total_price gracefully
           const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
           const totalPrice = totalPriceCents / 100;
-          
+
           return {
             bookingId: row.booking_id,
             bookingDate: row.booking_date,
@@ -8974,7 +8992,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         booking.payment_intent_id,
         pool
       );
-      
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="invoice-${bookingId}.pdf"`);
       res.send(pdfBuffer);

@@ -14,12 +14,16 @@ import {
   Loader2,
   Mail,
   MapPin,
+  MessageCircle,
   Phone,
   Shield,
   User,
   XCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import ChatPanel from "@/components/chat/ChatPanel";
+import { getConversationForApplication, createConversation } from "@/services/chat-service";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,6 +88,119 @@ export default function ManagerKitchenApplications({
   const [documentsApplication, setDocumentsApplication] = useState<any | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+  const [showChatDialog, setShowChatDialog] = useState(false);
+  const [chatApplication, setChatApplication] = useState<any | null>(null);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
+  const [chatLocationName, setChatLocationName] = useState<string | null>(null);
+
+  // Get manager ID from API
+  const { data: managerInfo } = useQuery({
+    queryKey: ['/api/firebase/user/me'],
+    queryFn: async () => {
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken();
+      const response = await fetch('/api/firebase/user/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to get user info');
+      return response.json();
+    },
+  });
+
+  const managerId = managerInfo?.id || null;
+
+  // Fetch unread counts for all applications with conversations
+  useEffect(() => {
+    if (!managerId || applications.length === 0) return;
+
+    const fetchUnreadCounts = async () => {
+      const counts: Record<number, number> = {};
+      for (const app of applications) {
+        if (app.chat_conversation_id) {
+          try {
+            // Get conversation and check unread count
+            const conversation = await getConversationForApplication(app.id);
+            if (conversation) {
+              counts[app.id] = conversation.unreadManagerCount || 0;
+            }
+          } catch (error) {
+            console.error('Error fetching unread count:', error);
+          }
+        }
+      }
+      setUnreadCounts(counts);
+    };
+
+    fetchUnreadCounts();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchUnreadCounts, 30000);
+    return () => clearInterval(interval);
+  }, [applications, managerId]);
+
+  const openChat = async (application: any) => {
+    if (!managerId) {
+      toast({
+        title: "Error",
+        description: "Unable to identify manager. Please refresh the page.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setChatApplication(application);
+    
+    // Fetch location name if not available in application
+    let locationName = application.location?.name;
+    if (!locationName && application.locationId) {
+      try {
+        const locationResponse = await fetch(`/api/public/locations/${application.locationId}/details`, {
+          credentials: 'include',
+        });
+        if (locationResponse.ok) {
+          const locationData = await locationResponse.json();
+          locationName = locationData?.name || null;
+        }
+      } catch (error) {
+        console.error(`Error fetching location ${application.locationId}:`, error);
+      }
+    }
+    setChatLocationName(locationName || null);
+    
+    // Get or create conversation
+    let conversationId = application.chat_conversation_id;
+    if (!conversationId) {
+      try {
+        // Try to get existing conversation
+        const existing = await getConversationForApplication(application.id);
+        if (existing) {
+          conversationId = existing.id;
+        } else {
+          // Create new conversation
+          conversationId = await createConversation(
+            application.id,
+            application.chefId,
+            managerId,
+            application.locationId
+          );
+        }
+      } catch (error) {
+        console.error('Error initializing chat:', error);
+        toast({
+          title: "Error",
+          description: "Failed to open chat. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    setChatConversationId(conversationId);
+    setShowChatDialog(true);
+  };
 
   // Function to get presigned URL for R2 files
   const getPresignedUrl = async (fileUrl: string): Promise<string> => {
@@ -173,15 +290,38 @@ export default function ManagerKitchenApplications({
     if (!selectedApplication) return;
 
     try {
-      await updateApplicationStatus.mutateAsync({
-        applicationId: selectedApplication.id,
-        status: "approved",
-        feedback: reviewFeedback || undefined,
-      });
-      toast({
-        title: "Application Approved!",
-        description: "Chef can now book kitchens at this location.",
-      });
+      // Progress to next tier instead of approving the application
+      const currentTier = selectedApplication.currentTier ?? 1;
+      const nextTier = currentTier + 1;
+
+      // Check if this is the final tier (tier 4)
+      const isFinalTier = nextTier > 4;
+
+      if (isFinalTier) {
+        // Final approval - set status to approved
+        await updateApplicationStatus.mutateAsync({
+          applicationId: selectedApplication.id,
+          status: "approved",
+          feedback: reviewFeedback || undefined,
+        });
+        toast({
+          title: "Application Fully Approved!",
+          description: "Chef's application is now fully approved and they can start booking kitchens.",
+        });
+      } else {
+        // Progress to next tier, keep status as inReview
+        await updateApplicationStatus.mutateAsync({
+          applicationId: selectedApplication.id,
+          status: "inReview", // Keep as inReview until all tiers complete
+          feedback: reviewFeedback || undefined,
+          currentTier: nextTier,
+        });
+        toast({
+          title: `Tier ${currentTier} Approved!`,
+          description: `Application progressed to Tier ${nextTier}. Chef can continue with the next phase.`,
+        });
+      }
+
       setShowReviewDialog(false);
       setSelectedApplication(null);
       setReviewFeedback("");
@@ -369,6 +509,24 @@ export default function ManagerKitchenApplications({
 
               {/* Actions */}
               <div className="mt-4 flex gap-2 flex-wrap">
+                {/* Chat Button (shown for approved or in-review applications) */}
+                {(application.status === "approved" || application.status === "inReview") && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openChat(application)}
+                    className="relative"
+                  >
+                    <MessageCircle className="mr-1 h-4 w-4" />
+                    Chat
+                    {unreadCounts[application.id] > 0 && (
+                      <span className="ml-2 px-1.5 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full">
+                        {unreadCounts[application.id]}
+                      </span>
+                    )}
+                  </Button>
+                )}
+
                 {/* View Documents */}
                 {(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl) && (
                   <Button
@@ -510,6 +668,35 @@ export default function ManagerKitchenApplications({
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Chat Dialog */}
+      <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+          {chatApplication && chatConversationId && (
+            <ChatPanel
+              conversationId={chatConversationId}
+              applicationId={chatApplication.id}
+              chefId={chatApplication.chefId}
+              managerId={managerId!}
+              locationId={chatApplication.locationId}
+              locationName={
+                chatApplication.location?.name || 
+                chatLocationName || 
+                (chatApplication.locationId ? `Location #${chatApplication.locationId}` : "Unknown Location")
+              }
+              onClose={() => {
+                setShowChatDialog(false);
+                setChatApplication(null);
+                setChatConversationId(null);
+                setChatLocationName(null);
+                // Refresh unread counts
+                refetch();
+              }}
+              embedded={true}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Review Dialog */}
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>

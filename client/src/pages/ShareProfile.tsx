@@ -10,7 +10,7 @@ import { useEffect } from "react";
 import { motion } from "framer-motion";
 
 /**
- * @deprecated This page is deprecated in favor of the new /explore-kitchens flow.
+ * @deprecated This page is deprecated in favor of the new /compare-kitchens flow.
  * It now shows a deprecation notice and redirects users to the new flow.
  * The "Share Profile" workflow has been replaced by direct kitchen applications.
  */
@@ -19,14 +19,14 @@ export default function ShareProfile() {
   const { profiles, isLoading, shareProfile, refetch } = useChefProfiles();
   const { accessData } = useAdminChefKitchenAccess(); // This gives us locations the chef has access to
   const { toast } = useToast();
-  
+
   // Show deprecation notice and redirect after short delay
   useEffect(() => {
     // Redirect to new flow after 5 seconds, or immediately if user clicks
     const timer = setTimeout(() => {
-      navigate("/explore-kitchens");
+      navigate("/compare-kitchens");
     }, 8000);
-    
+
     return () => clearTimeout(timer);
   }, [navigate]);
 
@@ -69,7 +69,7 @@ export default function ShareProfile() {
         </span>
       );
     }
-    
+
     switch (status) {
       case 'pending':
         return (
@@ -110,16 +110,16 @@ export default function ShareProfile() {
             <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
               <ArrowRight className="h-10 w-10 text-white" />
             </div>
-            
+
             <h1 className="text-2xl font-bold text-gray-900 mb-3">
               We've Made It Easier!
             </h1>
-            
+
             <p className="text-gray-600 mb-6">
-              The "Share Profile" feature has been upgraded. You can now apply directly 
+              The "Share Profile" feature has been upgraded. You can now apply directly
               to kitchens with a simple application form. No more waiting for admin access first!
             </p>
-            
+
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
               <h3 className="font-semibold text-amber-800 mb-2">What's New:</h3>
               <ul className="text-sm text-amber-700 text-left space-y-1">
@@ -129,22 +129,22 @@ export default function ShareProfile() {
                 <li>✅ No admin access required first</li>
               </ul>
             </div>
-            
+
             <div className="space-y-3">
-              <Link href="/explore-kitchens">
+              <Link href="/compare-kitchens">
                 <Button className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-lg py-6">
                   <ArrowRight className="mr-2 h-5 w-5" />
-                  Explore Kitchens
+                  Compare Kitchens
                 </Button>
               </Link>
-              
+
               <Link href="/dashboard">
                 <Button variant="ghost" className="w-full">
                   Back to Dashboard
                 </Button>
               </Link>
             </div>
-            
+
             <p className="text-xs text-gray-500 mt-6">
               Redirecting automatically in a few seconds...
             </p>
@@ -154,7 +154,7 @@ export default function ShareProfile() {
       <Footer />
     </div>
   );
-  
+
   // Original loading state - keeping for reference during transition
   if (isLoading) {
     return (
@@ -216,7 +216,7 @@ export default function ShareProfile() {
               <div>
                 <p className="text-sm text-blue-900 font-medium mb-1">What gets shared?</p>
                 <p className="text-sm text-blue-800">
-                  When you share your profile, location managers will see your application details including your name, 
+                  When you share your profile, location managers will see your application details including your name,
                   contact information, and all documents you uploaded during your application process. Once approved, you'll have access to all kitchens in that location.
                 </p>
               </div>

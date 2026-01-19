@@ -1,4 +1,5 @@
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
 import { useChefApprovedKitchens, useChefKitchenApplicationsStatus } from "@/hooks/use-chef-kitchen-applications";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -22,6 +23,8 @@ import {
   Package,
   Snowflake,
   Info,
+  FileText,
+  MessageCircle,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -29,6 +32,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import ChatPanel from "@/components/chat/ChatPanel";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 
@@ -92,9 +97,19 @@ interface LocationWithKitchens {
   kitchens: Kitchen[];
   isApproved?: boolean;
   isPending?: boolean;
+  isRejected?: boolean;
   applicationStatus?: string;
   applicationId?: number;
   kitchenLicenseStatus?: string;
+  allTiersCompleted?: boolean;
+  nextTierToComplete?: string;
+  hasChatConversation?: boolean;
+  tierProgress?: {
+    tier1: boolean;
+    tier2: boolean;
+    tier3: boolean;
+    tier4: boolean;
+  };
 }
 
 // Helper function to get Firebase auth headers
@@ -119,6 +134,9 @@ export default function KitchenComparisonPage() {
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLocationFilter, setSelectedLocationFilter] = useState<number | null>(null);
+  const [showChatDialog, setShowChatDialog] = useState(false);
+  const [chatApplication, setChatApplication] = useState<any | null>(null);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -135,12 +153,34 @@ export default function KitchenComparisonPage() {
   // Get approved locations and applications
   const { approvedKitchens: approvedLocations, isLoading: locationsLoading } = useChefApprovedKitchens();
   const { applications, isLoading: applicationsLoading } = useChefKitchenApplicationsStatus();
+
+  // Get chef Neon user ID for chat
+  const { data: chefInfo } = useQuery({
+    queryKey: ['/api/firebase/user/me'],
+    queryFn: async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Not authenticated');
+      const token = await currentUser.getIdToken();
+      const response = await fetch('/api/firebase/user/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to get user info');
+      return response.json();
+    },
+    enabled: !!user,
+  });
+
+  const chefId = chefInfo?.id || null;
+
   
-  console.log('[KitchenComparisonPage] Approved locations:', approvedLocations);
-  console.log('[KitchenComparisonPage] Applications:', applications);
-  
-  // Get applied location IDs (all applications)
-  const appliedLocationIds = new Set(applications.map((a) => a.locationId));
+  // Get active application location IDs (inReview or approved only)
+  // Allow locations with rejected/cancelled applications so chefs can re-apply
+  const appliedLocationIds = new Set(
+    applications
+      .filter((a) => a.status === "inReview" || a.status === "approved")
+      .map((a) => a.locationId)
+  );
   const approvedLocationIds = new Set(approvedLocations.map((loc) => loc.id));
   
   console.log('[KitchenComparisonPage] Approved location IDs:', Array.from(approvedLocationIds));
@@ -148,6 +188,10 @@ export default function KitchenComparisonPage() {
   // Get pending applications (inReview status)
   const pendingApplications = applications.filter((a) => a.status === "inReview");
   const pendingLocationIds = new Set(pendingApplications.map((a) => a.locationId));
+
+  // Get rejected/cancelled applications (for re-application)
+  const rejectedApplications = applications.filter((a) => a.status === "rejected" || a.status === "cancelled");
+  const rejectedLocationIds = new Set(rejectedApplications.map((a) => a.locationId));
 
   // Fetch all public locations (for "available to apply" section)
   const { data: publicLocations, isLoading: publicLocationsLoading } = useQuery<PublicLocation[]>({
@@ -406,6 +450,58 @@ export default function KitchenComparisonPage() {
     staleTime: 60000,
   });
 
+  // Fetch kitchens for rejected application locations
+  const { data: rejectedKitchens, isLoading: rejectedKitchensLoading } = useQuery<Kitchen[]>({
+    queryKey: ["/api/chef/kitchens", rejectedLocationIds],
+    queryFn: async () => {
+      if (rejectedLocationIds.size === 0) return [];
+
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/chef/kitchens", {
+        credentials: "include",
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch kitchens");
+      }
+
+      const kitchens = await response.json();
+      console.log('[KitchenComparisonPage] Fetched kitchens for rejected locations:', kitchens.length, 'kitchens');
+      
+      // Filter to locations with rejected/cancelled applications
+      return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
+        const locationId = k.locationId ?? k.location_id;
+        return rejectedLocationIds.has(locationId);
+      }).map((k: any) => {
+        const locationId = k.locationId ?? k.location_id;
+        const location = publicLocations?.find((loc) => loc.id === locationId);
+        
+        return {
+          id: k.id,
+          name: k.name,
+          description: k.description,
+          locationId,
+          locationName: location?.name || k.locationName || k.location_name,
+          locationAddress: location?.address || k.locationAddress || k.location_address,
+          location: location ? {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+          } : k.location,
+          imageUrl: k.imageUrl || k.image_url,
+          amenities: k.amenities || [],
+          hourlyRate: k.hourlyRate,
+          currency: k.currency || 'CAD',
+          minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
+          pricingModel: k.pricingModel || k.pricing_model || 'hourly',
+        };
+      });
+    },
+    enabled: !!user && rejectedLocationIds.size > 0,
+    staleTime: 60000,
+  });
+
   // Fetch equipment and storage for pending kitchens
   const { data: pendingKitchensWithAddons } = useQuery<Kitchen[]>({
     queryKey: ["/api/chef/kitchens/pending-addons", pendingKitchens],
@@ -609,7 +705,7 @@ export default function KitchenComparisonPage() {
 
   const isLoading = locationsLoading || kitchensLoading || pricingLoading || authLoading || 
                     applicationsLoading || publicLocationsLoading || availableKitchensLoading || 
-                    pendingKitchensLoading;
+                    pendingKitchensLoading || rejectedKitchensLoading;
 
   // Group approved kitchens by location
   const approvedLocationsWithKitchens: LocationWithKitchens[] = approvedLocations.map((location) => {
@@ -617,7 +713,26 @@ export default function KitchenComparisonPage() {
       (k) => k.locationId === location.id
     );
 
-    console.log(`[KitchenComparisonPage] Location ${location.name} (${location.id}): ${locationKitchens.length} kitchens`);
+    // Find the application for this location to check tier completion
+    const application = applications.find((a) => a.locationId === location.id);
+
+
+    // Check tier completion status
+    const tier1Completed = !!application?.tier1_completed_at;
+    const tier2Completed = !!application?.tier2_completed_at;
+    const tier3Completed = !!application?.tier3_submitted_at;
+    const tier4Completed = !!application?.tier4_completed_at;
+    const allTiersCompleted = tier4Completed;
+
+    // Determine next tier to complete
+    let nextTierToComplete = "";
+    if (!application) {
+      nextTierToComplete = "Complete remaining application requirements";
+    } else if (!tier1Completed) nextTierToComplete = "Complete application submission (Tier 1)";
+    else if (!tier2Completed) nextTierToComplete = "Complete kitchen coordination (Tier 2)";
+    else if (!tier3Completed) nextTierToComplete = "Submit government application (Tier 3)";
+    else if (!tier4Completed) nextTierToComplete = "Enter government license details (Tier 4)";
+
 
     return {
       id: location.id,
@@ -627,6 +742,15 @@ export default function KitchenComparisonPage() {
       brandImageUrl: location.brandImageUrl || undefined,
       kitchens: locationKitchens,
       isApproved: true,
+      allTiersCompleted,
+      nextTierToComplete,
+      hasChatConversation: !!application?.chat_conversation_id,
+      tierProgress: {
+        tier1: tier1Completed,
+        tier2: tier2Completed,
+        tier3: tier3Completed,
+        tier4: tier4Completed,
+      },
     };
   }).filter((loc) => loc.kitchens.length > 0);
   
@@ -657,9 +781,35 @@ export default function KitchenComparisonPage() {
       })
       .filter((loc) => loc.kitchens.length > 0);
 
+  // Group rejected application kitchens by location
+  const rejectedApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string; isRejected?: boolean })[] = 
+    (publicLocations || [])
+      .filter((loc) => rejectedLocationIds.has(loc.id))
+      .map((location) => {
+        const locationKitchens = (rejectedKitchens || []).filter(
+          (k) => k.locationId === location.id
+        );
+        const application = rejectedApplications.find((a) => a.locationId === location.id);
+
+        return {
+          id: location.id,
+          name: location.name,
+          address: location.address,
+          logoUrl: location.logoUrl || undefined,
+          brandImageUrl: location.brandImageUrl || undefined,
+          kitchens: locationKitchens,
+          isApproved: false,
+          isPending: false,
+          isRejected: true,
+          applicationStatus: application?.status,
+          applicationId: application?.id,
+        };
+      })
+      .filter((loc) => loc.kitchens.length > 0);
+
   // Group available to apply kitchens by location (not yet applied)
   const availableToApplyLocations: (LocationWithKitchens & { isApproved: boolean })[] = (publicLocations || [])
-    .filter((loc) => !appliedLocationIds.has(loc.id))
+    .filter((loc) => !appliedLocationIds.has(loc.id) && !rejectedLocationIds.has(loc.id))
     .map((location) => {
       const locationKitchens = (availableToApplyKitchens || []).filter(
         (k) => k.locationId === location.id
@@ -679,16 +829,18 @@ export default function KitchenComparisonPage() {
     })
     .filter((loc) => loc.kitchens.length > 0);
 
-  // Combine all locations into a single list: Approved, Pending, Available to Apply
+  // Combine all locations into a single list: Approved, Pending, Rejected (for re-apply), Available to Apply
   const allLocationsWithKitchens = [
     ...approvedLocationsWithKitchens,
     ...pendingApplicationLocations,
+    ...rejectedApplicationLocations,
     ...availableToApplyLocations,
   ];
   
   console.log('[KitchenComparisonPage] All locations with kitchens:', {
     approved: approvedLocationsWithKitchens.length,
     pending: pendingApplicationLocations.length,
+    rejected: rejectedApplicationLocations.length,
     availableToApply: availableToApplyLocations.length,
     total: allLocationsWithKitchens.length
   });
@@ -733,6 +885,24 @@ export default function KitchenComparisonPage() {
 
   const handleApplyKitchen = (locationId: number) => {
     navigate(`/apply-kitchen/${locationId}`);
+  };
+
+  const handleOpenChat = async (location: any) => {
+    // Find the application for this location
+    const application = applications.find((a) => a.locationId === location.id);
+    if (!application) {
+      console.error('No application found for location:', location.id);
+      return;
+    }
+
+    if (!user) {
+      console.error('No user found');
+      return;
+    }
+
+    setChatApplication(application);
+    setChatConversationId(application.chat_conversation_id);
+    setShowChatDialog(true);
   };
 
   if (authLoading || isLoading) {
@@ -869,10 +1039,14 @@ export default function KitchenComparisonPage() {
                   <FadeInSection key={location.id}>
                     <Card className="overflow-hidden">
                       <CardHeader className={`border-b ${
-                        location.isApproved 
-                          ? "bg-gradient-to-r from-blue-50 to-indigo-50" 
+                        location.allTiersCompleted
+                          ? "bg-gradient-to-r from-green-50 to-emerald-50"
+                          : location.isApproved
+                          ? "bg-gradient-to-r from-blue-50 to-indigo-50"
                           : location.isPending
                           ? "bg-gradient-to-r from-yellow-50 to-amber-50"
+                          : (location as any).isRejected
+                          ? "bg-gradient-to-r from-orange-50 to-red-50"
                           : "bg-gradient-to-r from-gray-50 to-slate-50"
                       }`}>
                         <div className="flex items-start justify-between">
@@ -891,10 +1065,14 @@ export default function KitchenComparisonPage() {
                               />
                             ) : (
                               <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                location.isApproved
+                                location.allTiersCompleted
+                                  ? "bg-gradient-to-br from-green-500 to-green-600"
+                                  : location.isApproved
                                   ? "bg-gradient-to-br from-blue-500 to-blue-600"
                                   : location.isPending
                                   ? "bg-gradient-to-br from-yellow-500 to-amber-600"
+                                  : (location as any).isRejected
+                                  ? "bg-gradient-to-br from-orange-500 to-red-600"
                                   : "bg-gradient-to-br from-gray-500 to-slate-600"
                               }`}>
                                 <Building2 className="h-8 w-8 text-white" />
@@ -908,15 +1086,25 @@ export default function KitchenComparisonPage() {
                               </CardDescription>
                             </div>
                           </div>
-                          {location.isApproved ? (
+                          {location.allTiersCompleted ? (
                             <Badge className="bg-green-100 text-green-800 border-green-200">
                               <Check className="h-3 w-3 mr-1" />
-                              Approved
+                              Ready to Book
+                            </Badge>
+                          ) : location.isApproved ? (
+                            <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Tiers In Progress
                             </Badge>
                           ) : location.isPending ? (
                             <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
                               <Clock className="h-3 w-3 mr-1" />
                               Pending Review
+                            </Badge>
+                          ) : (location as any).isRejected ? (
+                            <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+                              <FileText className="h-3 w-3 mr-1" />
+                              Rejected
                             </Badge>
                           ) : (
                             <Badge className={`${
@@ -940,10 +1128,14 @@ export default function KitchenComparisonPage() {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             className={`border-2 rounded-lg p-4 transition-all ${
-                              location.isApproved
+                              location.allTiersCompleted
+                                ? "border-gray-200 hover:border-green-500 hover:shadow-md"
+                                : location.isApproved
                                 ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
                                 : location.isPending
                                 ? "border-gray-200 hover:border-yellow-500 hover:shadow-md"
+                                : (location as any).isRejected
+                                ? "border-gray-200 hover:border-orange-500 hover:shadow-md"
                                 : "border-gray-200 hover:border-gray-400 hover:shadow-md"
                             }`}
                           >
@@ -1108,13 +1300,58 @@ export default function KitchenComparisonPage() {
                                 View Details
                               </Button>
                               {location.isApproved ? (
+                                <>
+                                  {location.allTiersCompleted ? (
+                                    <div className="flex-1">
+                                      <div className="text-xs text-green-700 font-medium mb-1">
+                                        All tiers completed - ready to book!
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleBookKitchen(location.id)}
+                                        className="w-full bg-green-600 hover:bg-green-700"
+                                      >
+                                        <Calendar className="mr-2 h-4 w-4" />
+                                        Book Now
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex-1">
+                                      <div className="text-xs text-amber-700 font-medium mb-1">
+                                        {location.nextTierToComplete}
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled
+                                        className="w-full bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed"
+                                      >
+                                        <Clock className="mr-2 h-4 w-4" />
+                                        Complete All Tiers
+                                      </Button>
+                                    </div>
+                                  )}
+                                  {location.hasChatConversation && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleOpenChat(location)}
+                                      className="flex-1"
+                                    >
+                                      <MessageCircle className="mr-2 h-4 w-4" />
+                                      Chat
+                                    </Button>
+                                  )}
+                                </>
+                              ) : location.isPending ? (
                                 <Button
                                   size="sm"
-                                  onClick={() => handleBookKitchen(location.id)}
-                                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                  variant="outline"
+                                  disabled
+                                  className="flex-1 bg-yellow-50 border-yellow-300 text-yellow-700 cursor-not-allowed"
                                 >
-                                  <Calendar className="mr-2 h-4 w-4" />
-                                  Book Now
+                                  <Clock className="mr-2 h-4 w-4" />
+                                  Pending Review
                                 </Button>
                               ) : location.isPending ? (
                                 <Button
@@ -1125,6 +1362,15 @@ export default function KitchenComparisonPage() {
                                 >
                                   <Clock className="mr-2 h-4 w-4" />
                                   Pending Review
+                                </Button>
+                              ) : (location as any).isRejected ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleApplyKitchen(location.id)}
+                                  className="flex-1 bg-orange-600 hover:bg-orange-700"
+                                >
+                                  <FileText className="mr-2 h-4 w-4" />
+                                  Re-apply
                                 </Button>
                               ) : (
                                 <Button
@@ -1150,6 +1396,28 @@ export default function KitchenComparisonPage() {
         </div>
       </main>
       <Footer />
+
+      {/* Chat Dialog */}
+      <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
+          {chatApplication && chatConversationId && chefId && (
+            <ChatPanel
+              conversationId={chatConversationId}
+              applicationId={chatApplication.id}
+              chefId={chefId}
+              managerId={chatApplication.location?.managerId || 0}
+              locationId={chatApplication.locationId}
+              locationName={chatApplication.location?.name || "Unknown Location"}
+              onClose={() => {
+                setShowChatDialog(false);
+                setChatApplication(null);
+                setChatConversationId(null);
+              }}
+              embedded={true}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

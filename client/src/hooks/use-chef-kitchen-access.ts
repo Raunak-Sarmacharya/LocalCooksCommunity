@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { useState, useEffect } from "react";
 
 interface ChefLocationAccess {
   chef: {
@@ -48,6 +50,19 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 // Hook for chefs to get their profile status for kitchens
 export function useChefProfiles() {
   const queryClient = useQueryClient();
+  
+  // Track auth initialization state
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [hasAuthUser, setHasAuthUser] = useState(false);
+
+  // Wait for Firebase auth to initialize
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthReady(true);
+      setHasAuthUser(!!user);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const profilesQuery = useQuery<ChefProfile[], Error>({
     queryKey: ["/api/chef/profiles"],
@@ -65,8 +80,8 @@ export function useChefProfiles() {
       
       return await response.json();
     },
-    // Only fetch when user is authenticated (has a Firebase token)
-    enabled: !!auth.currentUser,
+    // Only fetch when auth is ready and user is authenticated
+    enabled: isAuthReady && hasAuthUser,
     retry: 1, // Only retry once to prevent infinite loops
     retryDelay: 1000,
     staleTime: 30000, // Cache for 30 seconds

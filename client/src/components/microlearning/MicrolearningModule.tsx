@@ -337,33 +337,20 @@ export default function MicrolearningModule({
         return;
       }
 
-      let response;
-      if (user.authMethod === 'session') {
-        // Admin session-based access
-        const effectiveUserId = userId || user.id;
-        response = await fetch(`/api/microlearning/progress/${effectiveUserId}`, {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-User-ID': effectiveUserId.toString()
-          }
-        });
-      } else {
-        // Firebase-based access
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
-          console.error('No authenticated Firebase user found');
-          return;
-        }
-        
-        const token = await currentUser.getIdToken();
-        response = await fetch(`/api/firebase/microlearning/progress/${userId || user?.uid}`, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
+      // Firebase-based access only (session auth has been removed)
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated Firebase user found');
+        return;
       }
+      
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/firebase/microlearning/progress/${userId || user?.uid}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -416,51 +403,29 @@ export default function MicrolearningModule({
         return;
       }
 
-      let response;
-      if (user.authMethod === 'session') {
-        // Admin session-based access
-        const effectiveUserId = userId || user.id;
-        response = await fetch('/api/microlearning/progress', {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-User-ID': effectiveUserId.toString()
-          },
-          body: JSON.stringify({
-            userId: effectiveUserId,
-            videoId,
-            progress,
-            completed,
-            watchedPercentage,
-            completedAt: completed ? new Date() : undefined
-          })
-        });
-      } else {
-        // Firebase-based access
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
-          console.error('No authenticated Firebase user found');
-          return;
-        }
-        
-        const token = await currentUser.getIdToken();
-        response = await fetch('/api/firebase/microlearning/progress', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            userId: userId || user?.uid,
-            videoId,
-            progress,
-            completed,
-            watchedPercentage,
-            completedAt: completed ? new Date() : undefined
-          })
-        });
+      // Firebase-based access only (session auth has been removed)
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated Firebase user found');
+        return;
       }
+      
+      const token = await currentUser.getIdToken();
+      const response = await fetch('/api/firebase/microlearning/progress', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          userId: userId || user?.uid,
+          videoId,
+          progress,
+          completed,
+          watchedPercentage,
+          completedAt: completed ? new Date() : undefined
+        })
+      });
 
       if (response.ok) {
         // Update local state immediately for better UX

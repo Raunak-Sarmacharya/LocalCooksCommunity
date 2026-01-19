@@ -29,7 +29,7 @@ export function initializeFirebaseAdmin() {
       }
     }
 
-    // Fallback: Check if Firebase Admin is configured using VITE variables (development/basic mode)
+    // Fallback: Check if Firebase Admin is configured using VITE variables
     if (!process.env.VITE_FIREBASE_PROJECT_ID) {
       console.warn('Firebase Admin not configured - Firebase auth verification will be disabled (missing both service account and VITE_FIREBASE_PROJECT_ID)');
       return null;
@@ -41,7 +41,6 @@ export function initializeFirebaseAdmin() {
         projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
       console.log('🔥 Firebase Admin initialized with default credentials for project:', process.env.VITE_FIREBASE_PROJECT_ID);
-      console.warn('⚠️ Using default credentials - this may not work in production. Consider setting up service account credentials.');
     } catch (error: any) {
       console.log('🔥 Firebase Admin initialization failed, will rely on client-side checks:', error.message || 'Unknown error');
       return null;

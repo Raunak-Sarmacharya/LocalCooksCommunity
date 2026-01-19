@@ -90,11 +90,16 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
   const isLoading = applicationsLoading || locationsLoading;
 
-  // Filter out locations the chef has already applied to for the discover tab
-  const appliedLocationIds = new Set(applications.map((a) => a.locationId));
+  // Filter out locations the chef has active applications for (inReview or approved)
+  // Allow locations with rejected/cancelled applications to show up so chefs can re-apply
+  const activeApplicationLocationIds = new Set(
+    applications
+      .filter((a) => a.status === "inReview" || a.status === "approved")
+      .map((a) => a.locationId)
+  );
   
   const availableLocations = (publicLocations || []).filter(
-    (loc) => !appliedLocationIds.has(loc.id)
+    (loc) => !activeApplicationLocationIds.has(loc.id)
   );
 
   const filteredAvailableLocations = availableLocations.filter(
@@ -180,10 +185,10 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
               </Link>
             )}
             
-            <Link href="/explore-kitchens">
+            <Link href="/compare-kitchens">
               <Button variant="outline" className="w-full" size="sm">
                 <Plus className="mr-2 h-4 w-4" />
-                Explore More Kitchens
+                Compare Kitchens
               </Button>
             </Link>
           </div>
@@ -395,13 +400,18 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             </div>
                             
                             <div className="flex gap-2">
-                              {app.status === "approved" && (
+                              {app.tier4_completed_at && (
                                 <Link href={`/book-kitchen?location=${app.locationId}`}>
                                   <Button size="sm" className="bg-green-600 hover:bg-green-700">
                                     <Calendar className="mr-2 h-4 w-4" />
                                     Book
                                   </Button>
                                 </Link>
+                              )}
+                              {app.status === "approved" && !app.tier4_completed_at && (
+                                <Button size="sm" variant="outline" disabled className="cursor-not-allowed">
+                                  Complete tiers to book
+                                </Button>
                               )}
                               {(app.status === "rejected" || app.status === "cancelled") && (
                                 <Link href={`/apply-kitchen/${app.locationId}`}>
@@ -464,12 +474,23 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               </p>
                               
                               <div className="mt-3">
-                                <Link href={`/book-kitchen?location=${app.locationId}`}>
-                                  <Button className="bg-green-600 hover:bg-green-700" size="sm">
-                                    <Calendar className="mr-2 h-4 w-4" />
-                                    Book Kitchen
+                                {app.tier4_completed_at ? (
+                                  <Link href={`/book-kitchen?location=${app.locationId}`}>
+                                    <Button className="bg-green-600 hover:bg-green-700" size="sm">
+                                      <Calendar className="mr-2 h-4 w-4" />
+                                      Book Kitchen
+                                    </Button>
+                                  </Link>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled
+                                    className="cursor-not-allowed"
+                                  >
+                                    Complete all tiers to book
                                   </Button>
-                                </Link>
+                                )}
                               </div>
                             </div>
                           </div>

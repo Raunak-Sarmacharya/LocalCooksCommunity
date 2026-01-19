@@ -1,4 +1,4 @@
-import { applications, deliveryPartnerApplications, microlearningCompletions, users, videoProgress, type Application, type DeliveryPartnerApplication, type InsertApplication, type InsertDeliveryPartnerApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDeliveryPartnerApplicationStatus, type UpdateDeliveryPartnerDocuments, type UpdateDeliveryPartnerDocumentVerification, type UpdateDocumentVerification, type User } from "../shared/schema.js.js";
+import { applications, deliveryPartnerApplications, microlearningCompletions, users, videoProgress, locationRequirements, type Application, type DeliveryPartnerApplication, type InsertApplication, type InsertDeliveryPartnerApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDeliveryPartnerApplicationStatus, type UpdateDeliveryPartnerDocuments, type UpdateDeliveryPartnerDocumentVerification, type UpdateDocumentVerification, type User } from "../shared/schema.js";
 import connectPg from "connect-pg-simple";
 import { and, eq } from "drizzle-orm";
 import session from "express-session";
@@ -68,6 +68,9 @@ export interface IStorage {
   sessionStore: session.Store;
 
   setUserHasSeenWelcome(userId: number | string): Promise<void>;
+
+  // Public/Location methods
+  getLocationRequirements(locationId: number): Promise<any | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -170,7 +173,7 @@ export class MemStorage implements IStorage {
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-    
+
     // Create user in memory instead of database
     const user: User = {
       id: this.userCurrentId++,
@@ -224,7 +227,7 @@ export class MemStorage implements IStorage {
       kitchenPreference: insertApplication.kitchenPreference,
       feedback: insertApplication.feedback || null,
       status: "inReview",
-      
+
       // Initialize document verification fields
       foodSafetyLicenseUrl: insertApplication.foodSafetyLicenseUrl || null,
       foodEstablishmentCertUrl: insertApplication.foodEstablishmentCertUrl || null,
@@ -233,7 +236,7 @@ export class MemStorage implements IStorage {
       documentsAdminFeedback: null,
       documentsReviewedBy: null,
       documentsReviewedAt: null,
-      
+
       createdAt: now,
     };
 
@@ -343,7 +346,7 @@ export class MemStorage implements IStorage {
 
   async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
     const user = this.users.get(userId);
-    
+
     if (!user) {
       return undefined;
     }
@@ -375,7 +378,7 @@ export class MemStorage implements IStorage {
   async updateVideoProgress(progressData: any): Promise<void> {
     const key = `${progressData.userId}-${progressData.videoId}`;
     const existingProgress = this.videoProgress.get(key);
-    
+
     // If the video was already completed, preserve the completion status and date
     // unless explicitly setting it to completed again
     if (existingProgress && existingProgress.completed && !progressData.completed) {
@@ -430,29 +433,29 @@ export class MemStorage implements IStorage {
       city: insertApplication.city,
       province: insertApplication.province,
       postalCode: insertApplication.postalCode,
-      
+
       // Vehicle details
       vehicleType: insertApplication.vehicleType,
       vehicleMake: insertApplication.vehicleMake,
       vehicleModel: insertApplication.vehicleModel,
       vehicleYear: insertApplication.vehicleYear,
       licensePlate: insertApplication.licensePlate,
-      
+
       // Document URLs
       driversLicenseUrl: insertApplication.driversLicenseUrl || null,
       vehicleRegistrationUrl: insertApplication.vehicleRegistrationUrl || null,
       insuranceUrl: insertApplication.insuranceUrl || null,
-      
+
       // Document verification status
       driversLicenseStatus: "pending",
       vehicleRegistrationStatus: "pending",
       insuranceStatus: "pending",
-      
+
       // Admin fields
       documentsAdminFeedback: null,
       documentsReviewedBy: null,
       documentsReviewedAt: null,
-      
+
       feedback: null,
       status: "inReview",
       createdAt: now,
@@ -523,7 +526,7 @@ export class MemStorage implements IStorage {
 
   async updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
     const user = this.users.get(userId);
-    
+
     if (!user) {
       return undefined;
     }
@@ -607,7 +610,7 @@ export class DatabaseStorage implements IStorage {
     // Note: The schema doesn't include firebase_uid, but the actual database has it
     // We'll use a raw query to access it
     if (!pool) return undefined;
-    
+
     try {
       const result = await pool.query('SELECT * FROM users WHERE firebase_uid = $1', [firebaseUid]);
       return result.rows[0] || undefined;
@@ -619,7 +622,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserFirebaseUid(userId: number, firebaseUid: string): Promise<User | undefined> {
     if (!pool) return undefined;
-    
+
     try {
       const result = await pool.query(
         'UPDATE users SET firebase_uid = $1 WHERE id = $2 RETURNING *',
@@ -654,7 +657,7 @@ export class DatabaseStorage implements IStorage {
     if (!insertUser.username || insertUser.password === undefined) {
       throw new Error("Username and password are required");
     }
-    
+
     // Use raw query to include firebase_uid since it's not in the schema
     if (pool && insertUser.firebaseUid) {
       try {
@@ -684,7 +687,7 @@ export class DatabaseStorage implements IStorage {
         throw error;
       }
     }
-    
+
     // Fallback to schema-based insert without firebase_uid
     const [user] = await db
       .insert(users)
@@ -815,240 +818,257 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<Application | undefined> {
-    const { id, ...updateData } = update;
-
-    const [updatedApplication] = await db
+    const { id, ...rest } = update;
+    const [application] = await db
       .update(applications)
       .set({
-        ...updateData,
+        ...rest,
         documentsReviewedAt: new Date(),
       })
       .where(eq(applications.id, id))
       .returning();
 
-    return updatedApplication || undefined;
-  }
-
-  async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
-    const [updatedUser] = await db
-      .update(users)
-      .set({ isVerified })
-      .where(eq(users.id, userId))
-      .returning();
-
-    return updatedUser || undefined;
-  }
-
-  // Microlearning methods
-  async getMicrolearningProgress(userId: number): Promise<any[]> {
-    const progressRecords = await db.select().from(videoProgress).where(eq(videoProgress.userId, userId));
-    return progressRecords.map(record => ({
-      videoId: record.videoId,
-      progress: parseFloat(record.progress.toString()),
-      completed: record.completed,
-      completedAt: record.completedAt,
-      watchedPercentage: parseFloat(record.watchedPercentage.toString()),
-      isRewatching: record.isRewatching,
-    }));
-  }
-
-  async getMicrolearningCompletion(userId: number): Promise<any | undefined> {
-    const [completion] = await db.select().from(microlearningCompletions).where(eq(microlearningCompletions.userId, userId));
-    return completion || undefined;
-  }
-
-  async updateVideoProgress(progressData: any): Promise<void> {
-    const { userId, videoId, progress, completed, completedAt, watchedPercentage, isRewatching } = progressData;
-    
-    // Check if record exists
-    const existingProgress = await db.select()
-      .from(videoProgress)
-      .where(and(eq(videoProgress.userId, userId), eq(videoProgress.videoId, videoId)))
-      .limit(1);
-
-    const existing = existingProgress[0];
-    
-    // Preserve completion status - if video was already completed, keep it completed
-    // unless explicitly setting it to completed again
-    const finalCompleted = completed || (existing?.completed || false);
-    const finalCompletedAt = finalCompleted ? (existing?.completedAt || (completed ? new Date(completedAt) : new Date())) : null;
-
-    const updateData = {
-      progress: progress?.toString() || "0",
-      completed: finalCompleted,
-      completedAt: finalCompletedAt,
-      updatedAt: new Date(),
-      watchedPercentage: watchedPercentage?.toString() || "0",
-      isRewatching: isRewatching || (existing?.completed || false), // Mark as rewatching if previously completed
-    };
-
-    if (existingProgress.length > 0) {
-      // Update existing record
-      await db.update(videoProgress)
-        .set(updateData)
-        .where(and(eq(videoProgress.userId, userId), eq(videoProgress.videoId, videoId)));
-    } else {
-      // Insert new record
-      await db.insert(videoProgress)
-        .values({
-          userId,
-          videoId,
-          ...updateData,
-        });
-    }
-  }
-
-  async createMicrolearningCompletion(completionData: any): Promise<any> {
-    const { userId, confirmed, certificateGenerated, videoProgress: videoProgressData } = completionData;
-    
-    // Check if completion already exists
-    const existingCompletion = await db.select()
-      .from(microlearningCompletions)
-      .where(eq(microlearningCompletions.userId, userId))
-      .limit(1);
-
-    const completionRecord = {
-      userId,
-      confirmed: confirmed || false,
-      certificateGenerated: certificateGenerated || false,
-      videoProgress: videoProgressData || [],
-      updatedAt: new Date(),
-    };
-
-    if (existingCompletion.length > 0) {
-      // Update existing completion
-      const [updated] = await db.update(microlearningCompletions)
-        .set(completionRecord)
-        .where(eq(microlearningCompletions.userId, userId))
-        .returning();
-      return updated;
-    } else {
-      // Insert new completion
-      const [inserted] = await db.insert(microlearningCompletions)
-        .values({
-          ...completionRecord,
-          completedAt: new Date(),
-          createdAt: new Date(),
-        })
-        .returning();
-      return inserted;
-    }
-  }
-
-  // Delivery Partner Application-related methods
-  async getAllDeliveryPartnerApplications(): Promise<DeliveryPartnerApplication[]> {
-    return await db.select().from(deliveryPartnerApplications);
-  }
-
-  async getDeliveryPartnerApplicationById(id: number): Promise<DeliveryPartnerApplication | undefined> {
-    const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
     return application || undefined;
   }
 
-  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise<DeliveryPartnerApplication[]> {
-    return await db.select().from(deliveryPartnerApplications).where(and(eq(deliveryPartnerApplications.userId, userId)));
-  }
-
-  async createDeliveryPartnerApplication(insertApplication: InsertDeliveryPartnerApplication): Promise<DeliveryPartnerApplication> {
-    const now = new Date();
-
-    const [application] = await db
-      .insert(deliveryPartnerApplications)
-      .values({
-        ...insertApplication,
-        status: "inReview",
-        createdAt: now,
-      })
-      .returning();
-
-    return application;
-  }
-
-  async updateDeliveryPartnerApplicationStatus(update: UpdateApplicationStatus): Promise<DeliveryPartnerApplication | undefined> {
-    const { id, status } = update;
-
-    // Fetch the application before updating
-    const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
-
-    // Clean up documents if application is being cancelled
-    if (application && status === "cancelled") {
-      // No specific document cleanup for delivery partner applications yet
-    }
-
-    const [updatedApplication] = await db
-      .update(deliveryPartnerApplications)
-      .set({ status })
-      .where(eq(deliveryPartnerApplications.id, id))
-      .returning();
-
-    return updatedApplication || undefined;
-  }
-
-  async updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise<DeliveryPartnerApplication | undefined> {
-    const { id, ...updateData } = update;
-
-    const [updatedApplication] = await db
-      .update(deliveryPartnerApplications)
-      .set({
-        ...updateData,
-        // Reset document status to pending when new documents are uploaded
-        ...(updateData.driversLicenseUrl && { driversLicenseStatus: "pending" }),
-        ...(updateData.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" }),
-        ...(updateData.insuranceUrl && { insuranceStatus: "pending" }),
-        ...(updateData.backgroundCheckUrl && { backgroundCheckStatus: "pending" }),
-      })
-      .where(eq(deliveryPartnerApplications.id, id))
-      .returning();
-
-    return updatedApplication || undefined;
-  }
-
-  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDocumentVerification): Promise<DeliveryPartnerApplication | undefined> {
-    const { id, ...updateData } = update;
-
-    const [updatedApplication] = await db
-      .update(deliveryPartnerApplications)
-      .set({
-        ...updateData,
-        documentsReviewedAt: new Date(),
-      })
-      .where(eq(deliveryPartnerApplications.id, id))
-      .returning();
-
-    return updatedApplication || undefined;
-  }
-
-  async updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise<User | undefined> {
-    const [updatedUser] = await db
-      .update(users)
-      .set({ isVerified })
-      .where(eq(users.id, userId))
-      .returning();
-
-    return updatedUser || undefined;
-  }
-
-  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise<User | undefined> {
-    const [updatedUser] = await db
-      .update(users)
-      .set({ applicationType })
-      .where(eq(users.id, userId))
-      .returning();
-
-    return updatedUser || undefined;
-  }
-
-  async setUserHasSeenWelcome(userId: number | string): Promise<void> {
+  // Public/Location methods
+  async getLocationRequirements(locationId: number): Promise<any | undefined> {
     try {
-      await pool.query(
-        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
-        [userId]
-      );
+      if (!process.env.DATABASE_URL) {
+        console.error('DATABASE_URL not configured');
+        throw new Error('Database not configured');
+      }
+      const [requirements] = await db.select().from(locationRequirements).where(eq(locationRequirements.locationId, locationId));
+      return requirements || undefined;
     } catch (error) {
-      console.error('Error setting has_seen_welcome:', error);
-      throw new Error('Failed to set has_seen_welcome');
+      console.error('Error in getLocationRequirements:', error);
+      // Return undefined instead of throwing to allow fallback to defaults
+      return undefined;
     }
   }
+}
+
+
+  async updateUserVerificationStatus(userId: number, isVerified: boolean): Promise < User | undefined > {
+  const [updatedUser] = await db
+    .update(users)
+    .set({ isVerified })
+    .where(eq(users.id, userId))
+    .returning();
+
+  return updatedUser || undefined;
+}
+
+  // Microlearning methods
+  async getMicrolearningProgress(userId: number): Promise < any[] > {
+  const progressRecords = await db.select().from(videoProgress).where(eq(videoProgress.userId, userId));
+  return progressRecords.map(record => ({
+    videoId: record.videoId,
+    progress: parseFloat(record.progress.toString()),
+    completed: record.completed,
+    completedAt: record.completedAt,
+    watchedPercentage: parseFloat(record.watchedPercentage.toString()),
+    isRewatching: record.isRewatching,
+  }));
+}
+
+  async getMicrolearningCompletion(userId: number): Promise < any | undefined > {
+  const [completion] = await db.select().from(microlearningCompletions).where(eq(microlearningCompletions.userId, userId));
+  return completion || undefined;
+}
+
+  async updateVideoProgress(progressData: any): Promise < void> {
+  const { userId, videoId, progress, completed, completedAt, watchedPercentage, isRewatching } = progressData;
+
+  // Check if record exists
+  const existingProgress = await db.select()
+    .from(videoProgress)
+    .where(and(eq(videoProgress.userId, userId), eq(videoProgress.videoId, videoId)))
+    .limit(1);
+
+  const existing = existingProgress[0];
+
+  // Preserve completion status - if video was already completed, keep it completed
+  // unless explicitly setting it to completed again
+  const finalCompleted = completed || (existing?.completed || false);
+  const finalCompletedAt = finalCompleted ? (existing?.completedAt || (completed ? new Date(completedAt) : new Date())) : null;
+
+  const updateData = {
+    progress: progress?.toString() || "0",
+    completed: finalCompleted,
+    completedAt: finalCompletedAt,
+    updatedAt: new Date(),
+    watchedPercentage: watchedPercentage?.toString() || "0",
+    isRewatching: isRewatching || (existing?.completed || false), // Mark as rewatching if previously completed
+  };
+
+  if(existingProgress.length > 0) {
+  // Update existing record
+  await db.update(videoProgress)
+    .set(updateData)
+    .where(and(eq(videoProgress.userId, userId), eq(videoProgress.videoId, videoId)));
+} else {
+  // Insert new record
+  await db.insert(videoProgress)
+    .values({
+      userId,
+      videoId,
+      ...updateData,
+    });
+}
+  }
+
+  async createMicrolearningCompletion(completionData: any): Promise < any > {
+  const { userId, confirmed, certificateGenerated, videoProgress: videoProgressData } = completionData;
+
+  // Check if completion already exists
+  const existingCompletion = await db.select()
+    .from(microlearningCompletions)
+    .where(eq(microlearningCompletions.userId, userId))
+    .limit(1);
+
+  const completionRecord = {
+    userId,
+    confirmed: confirmed || false,
+    certificateGenerated: certificateGenerated || false,
+    videoProgress: videoProgressData || [],
+    updatedAt: new Date(),
+  };
+
+  if(existingCompletion.length > 0) {
+  // Update existing completion
+  const [updated] = await db.update(microlearningCompletions)
+    .set(completionRecord)
+    .where(eq(microlearningCompletions.userId, userId))
+    .returning();
+  return updated;
+} else {
+  // Insert new completion
+  const [inserted] = await db.insert(microlearningCompletions)
+    .values({
+      ...completionRecord,
+      completedAt: new Date(),
+      createdAt: new Date(),
+    })
+    .returning();
+  return inserted;
+}
+  }
+
+  // Delivery Partner Application-related methods
+  async getAllDeliveryPartnerApplications(): Promise < DeliveryPartnerApplication[] > {
+  return await db.select().from(deliveryPartnerApplications);
+}
+
+  async getDeliveryPartnerApplicationById(id: number): Promise < DeliveryPartnerApplication | undefined > {
+  const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
+  return application || undefined;
+}
+
+  async getDeliveryPartnerApplicationsByUserId(userId: number): Promise < DeliveryPartnerApplication[] > {
+  return await db.select().from(deliveryPartnerApplications).where(and(eq(deliveryPartnerApplications.userId, userId)));
+}
+
+  async createDeliveryPartnerApplication(insertApplication: InsertDeliveryPartnerApplication): Promise < DeliveryPartnerApplication > {
+  const now = new Date();
+
+  const [application] = await db
+    .insert(deliveryPartnerApplications)
+    .values({
+      ...insertApplication,
+      status: "inReview",
+      createdAt: now,
+    })
+    .returning();
+
+  return application;
+}
+
+  async updateDeliveryPartnerApplicationStatus(update: UpdateApplicationStatus): Promise < DeliveryPartnerApplication | undefined > {
+  const { id, status } = update;
+
+  // Fetch the application before updating
+  const [application] = await db.select().from(deliveryPartnerApplications).where(eq(deliveryPartnerApplications.id, id));
+
+  // Clean up documents if application is being cancelled
+  if(application && status === "cancelled") {
+  // No specific document cleanup for delivery partner applications yet
+}
+
+const [updatedApplication] = await db
+  .update(deliveryPartnerApplications)
+  .set({ status })
+  .where(eq(deliveryPartnerApplications.id, id))
+  .returning();
+
+return updatedApplication || undefined;
+  }
+
+  async updateDeliveryPartnerApplicationDocuments(update: UpdateDeliveryPartnerDocuments): Promise < DeliveryPartnerApplication | undefined > {
+  const { id, ...updateData } = update;
+
+  const [updatedApplication] = await db
+    .update(deliveryPartnerApplications)
+    .set({
+      ...updateData,
+      // Reset document status to pending when new documents are uploaded
+      ...(updateData.driversLicenseUrl && { driversLicenseStatus: "pending" }),
+      ...(updateData.vehicleRegistrationUrl && { vehicleRegistrationStatus: "pending" }),
+      ...(updateData.insuranceUrl && { insuranceStatus: "pending" }),
+      ...(updateData.backgroundCheckUrl && { backgroundCheckStatus: "pending" }),
+    })
+    .where(eq(deliveryPartnerApplications.id, id))
+    .returning();
+
+  return updatedApplication || undefined;
+}
+
+  async updateDeliveryPartnerApplicationDocumentVerification(update: UpdateDocumentVerification): Promise < DeliveryPartnerApplication | undefined > {
+  const { id, ...updateData } = update;
+
+  const [updatedApplication] = await db
+    .update(deliveryPartnerApplications)
+    .set({
+      ...updateData,
+      documentsReviewedAt: new Date(),
+    })
+    .where(eq(deliveryPartnerApplications.id, id))
+    .returning();
+
+  return updatedApplication || undefined;
+}
+
+  async updateDeliveryPartnerUserVerificationStatus(userId: number, isVerified: boolean): Promise < User | undefined > {
+  const [updatedUser] = await db
+    .update(users)
+    .set({ isVerified })
+    .where(eq(users.id, userId))
+    .returning();
+
+  return updatedUser || undefined;
+}
+
+  async updateUserApplicationType(userId: number, applicationType: 'chef' | 'delivery_partner'): Promise < User | undefined > {
+  const [updatedUser] = await db
+    .update(users)
+    .set({ applicationType })
+    .where(eq(users.id, userId))
+    .returning();
+
+  return updatedUser || undefined;
+}
+
+  async setUserHasSeenWelcome(userId: number | string): Promise < void> {
+  try {
+    await pool.query(
+      'UPDATE users SET has_seen_welcome = true WHERE id = $1',
+      [userId]
+    );
+  } catch(error) {
+    console.error('Error setting has_seen_welcome:', error);
+    throw new Error('Failed to set has_seen_welcome');
+  }
+}
 }
 
 // Switch from in-memory to database storage
@@ -1093,8 +1113,8 @@ export const storePasswordResetToken = async (userId: string, token: string, exp
 export const getUserByResetToken = async (token: string): Promise<DatabaseUser | null> => {
   try {
     const result = await pool.query(
-      `SELECT u.* FROM users u 
-       JOIN password_reset_tokens prt ON u.id = prt.user_id 
+      `SELECT u.* FROM users u
+       JOIN password_reset_tokens prt ON u.id = prt.user_id
        WHERE prt.token = $1 AND prt.expires_at > NOW()`,
       [token]
     );
