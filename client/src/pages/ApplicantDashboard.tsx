@@ -83,7 +83,7 @@ function NextTierRequirements({ application, onContinue }: { application: any, o
         onClick={onContinue}
         className="bg-[#208D80] hover:bg-[#1A7470] text-white"
       >
-        Continue to Tier {nextTier}
+        Continue to Step {nextTier}
       </Button>
     );
   }
@@ -95,15 +95,22 @@ function NextTierRequirements({ application, onContinue }: { application: any, o
     switch (nextTier) {
       case 2:
         return {
-          title: "Tier 2: Kitchen Coordination Requirements",
+          title: "Step 2: Kitchen Coordination Requirements",
           description: "Work with the kitchen manager to coordinate operations",
           items: [
+            requirements.tier2_food_establishment_cert_required && "Food Establishment Certificate",
             requirements.tier2_allergen_plan_required && "Allergen Management Plan",
             requirements.tier2_supplier_list_required && "Supplier List",
             requirements.tier2_quality_control_required && "Quality Control Plan",
             requirements.tier2_traceability_system_required && "Traceability System",
-            requirements.tier2_insurance_minimum_amount > 0 && `Insurance (minimum $${requirements.tier2_insurance_minimum_amount})`,
+            (requirements.tier2_insurance_document_required || requirements.tier2_insurance_minimum_amount > 0) &&
+            `Insurance Document${requirements.tier2_insurance_minimum_amount > 0 ? ` (min $${requirements.tier2_insurance_minimum_amount})` : ''}`,
             requirements.tier2_kitchen_experience_required && "Kitchen Experience Description",
+            ...(Array.isArray(requirements.tier2_custom_fields)
+              ? requirements.tier2_custom_fields
+                .filter((f: any) => f.required)
+                .map((f: any) => f.label)
+              : [])
           ].filter(Boolean),
         };
       default:
@@ -162,7 +169,7 @@ function NextTierRequirements({ application, onContinue }: { application: any, o
         onClick={onContinue}
         className="bg-[#208D80] hover:bg-[#1A7470] text-white"
       >
-        Continue to Tier {nextTier}
+        Continue to Step {nextTier}
       </Button>
     </div>
   );
@@ -2327,7 +2334,7 @@ export default function ApplicantDashboard() {
                         {app.status === 'approved' && app.tier2_completed_at
                           ? 'Ready to Book'
                           : app.status === 'approved'
-                            ? 'Tiers In Progress'
+                            ? 'Steps In Progress'
                             : app.status === 'inReview'
                               ? 'In Review'
                               : 'Rejected'}
@@ -2371,14 +2378,14 @@ export default function ApplicantDashboard() {
                             <div className="flex flex-col gap-2">
                               <div className="text-xs text-amber-700 font-medium">
                                 {!app.tier1_completed_at
-                                  ? "Complete application submission (Tier 1)"
+                                  ? "Complete application submission (Step 1)"
                                   : !app.tier2_completed_at
-                                    ? "Complete kitchen coordination (Tier 2)"
+                                    ? "Complete kitchen coordination (Step 2)"
                                     : "Manager review in progress (Final Steps)"}
                               </div>
                               <NextTierRequirements
                                 application={app}
-                                onContinue={() => window.location.href = `/apply-kitchen/${app.locationId}`}
+                                onContinue={() => window.location.href = `/kitchen-requirements/${app.locationId}`}
                               />
                             </div>
                           )}

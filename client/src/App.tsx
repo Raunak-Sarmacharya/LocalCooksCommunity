@@ -61,6 +61,7 @@ const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
+const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
 
 
 // Loading component
@@ -94,7 +95,7 @@ function SubdomainRoute({ path, component, subdomain, children, ...props }: {
       let targetSubdomain: SubdomainType = null;
       if (path.startsWith('/admin')) {
         targetSubdomain = 'admin';
-      } else if (path.startsWith('/apply') || path.startsWith('/dashboard') || path.startsWith('/book-kitchen')) {
+      } else if (path.startsWith('/apply') || path.startsWith('/dashboard') || path.startsWith('/book-kitchen') || path.startsWith('/kitchen-requirements')) {
         targetSubdomain = 'chef';
       } else if (path.startsWith('/manager')) {
         targetSubdomain = 'kitchen';
@@ -160,7 +161,7 @@ function Router() {
 
     // Redirect chef routes to chef subdomain
     if ((path.startsWith('/apply') || path.startsWith('/dashboard') ||
-      path.startsWith('/book-kitchen') || path.startsWith('/share-profile')) &&
+      path.startsWith('/book-kitchen') || path.startsWith('/share-profile') || path.startsWith('/kitchen-requirements')) &&
       subdomain !== 'chef') {
       window.location.href = `https://chef.localcooks.ca${path}`;
       return;
@@ -182,9 +183,11 @@ function Router() {
       return KitchenLanding;
     } else if (subdomain === 'admin') {
       return AdminLanding;
+    } else if (subdomain === 'main') {
+      return Home;
     }
-    // Default to regular Home for main domain or development
-    return Home;
+    // Invalid/Unknown subdomain -> 404
+    return NotFound;
   };
 
   const LandingPage = getLandingPage();
@@ -280,6 +283,7 @@ function Router() {
 
         <SubdomainRoute path="/apply-kitchen/:locationId" component={ApplyToKitchen} subdomain={subdomain} />
         <SubdomainRoute path="/compare-kitchens" component={KitchenComparisonPage} subdomain={subdomain} />
+        <SubdomainRoute path="/kitchen-requirements/:locationId" component={KitchenRequirementsPage} subdomain={subdomain} />
 
         <SubdomainRoute path="/admin/login" component={AdminLogin} subdomain={subdomain} />
         <SubdomainRoute path="/admin-register" component={AdminRegister} subdomain={subdomain} />

@@ -300,8 +300,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         feedback: reviewFeedback || undefined,
       });
       toast({
-        title: "Tier 2 Approved",
-        description: "Chef has been advanced to Tier 3.",
+        title: "Step 2 Approved",
+        description: "Chef has been advanced to Step 3.",
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
@@ -309,7 +309,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to approve Tier 2",
+        description: error.message || "Failed to approve Step 2",
         variant: "destructive",
       });
     }
@@ -800,7 +800,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    Tier 2 Documents
+                    Step 2 Documents
                     {selectedApplication.current_tier === 2 && (
                       <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 ml-2">
                         Awaiting Review
@@ -829,7 +829,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                             <FileText className="h-5 w-5 text-purple-600" />
                             <div>
                               <p className="font-medium text-gray-900">Insurance Document</p>
-                              <p className="text-xs text-gray-500">Uploaded with Tier 2 submission</p>
+                              <p className="text-xs text-gray-500">Uploaded with Step 2 submission</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -933,7 +933,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                             <p className="text-xs text-gray-500">
                               {selectedApplication.foodEstablishmentCertExpiry
                                 ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
-                                : 'Tier 2 requirement'}
+                                : 'Step 2 requirement'}
                             </p>
                           </div>
                         </div>
@@ -1047,7 +1047,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
                   >
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    Approve Tier 2
+                    Approve Step 2
                   </Button>
                 )}
               </div>
@@ -1132,7 +1132,7 @@ function ApplicationCard({
           return (
             <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
               <Clock className="h-3 w-3 mr-1" />
-              Tier 2 Pending
+              Step 2 Pending
             </Badge>
           );
         }

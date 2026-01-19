@@ -726,8 +726,8 @@ export default function KitchenComparisonPage() {
     let nextTierToComplete = "";
     if (!application) {
       nextTierToComplete = "Complete remaining application requirements";
-    } else if (!tier1Completed) nextTierToComplete = "Complete application submission (Tier 1)";
-    else if (!tier2Completed) nextTierToComplete = "Complete kitchen coordination (Tier 2)";
+    } else if (!tier1Completed) nextTierToComplete = "Complete application submission (Step 1)";
+    else if (!tier2Completed) nextTierToComplete = "Complete kitchen coordination (Step 2)";
 
 
     return {
@@ -872,7 +872,7 @@ export default function KitchenComparisonPage() {
     .filter((loc) => loc.kitchens.length > 0);
 
   const handleBookKitchen = (locationId: number) => {
-    navigate(`/book-kitchen?location=${locationId}`);
+    navigate(`/kitchen-requirements/${locationId}`);
   };
 
   const handleViewDetails = (locationId: number) => {
@@ -880,7 +880,7 @@ export default function KitchenComparisonPage() {
   };
 
   const handleApplyKitchen = (locationId: number) => {
-    navigate(`/apply-kitchen/${locationId}`);
+    navigate(`/kitchen-requirements/${locationId}`);
   };
 
   const handleOpenChat = async (location: any) => {
@@ -1035,14 +1035,14 @@ export default function KitchenComparisonPage() {
                   <FadeInSection key={location.id}>
                     <Card className="overflow-hidden">
                       <CardHeader className={`border-b ${location.allTiersCompleted
-                          ? "bg-gradient-to-r from-green-50 to-emerald-50"
-                          : location.isApproved
-                            ? "bg-gradient-to-r from-blue-50 to-indigo-50"
-                            : location.isPending
-                              ? "bg-gradient-to-r from-yellow-50 to-amber-50"
-                              : (location as any).isRejected
-                                ? "bg-gradient-to-r from-orange-50 to-red-50"
-                                : "bg-gradient-to-r from-gray-50 to-slate-50"
+                        ? "bg-gradient-to-r from-green-50 to-emerald-50"
+                        : location.isApproved
+                          ? "bg-gradient-to-r from-blue-50 to-indigo-50"
+                          : location.isPending
+                            ? "bg-gradient-to-r from-yellow-50 to-amber-50"
+                            : (location as any).isRejected
+                              ? "bg-gradient-to-r from-orange-50 to-red-50"
+                              : "bg-gradient-to-r from-gray-50 to-slate-50"
                         }`}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-4 flex-1">
@@ -1060,14 +1060,14 @@ export default function KitchenComparisonPage() {
                               />
                             ) : (
                               <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${location.allTiersCompleted
-                                  ? "bg-gradient-to-br from-green-500 to-green-600"
-                                  : location.isApproved
-                                    ? "bg-gradient-to-br from-blue-500 to-blue-600"
-                                    : location.isPending
-                                      ? "bg-gradient-to-br from-yellow-500 to-amber-600"
-                                      : (location as any).isRejected
-                                        ? "bg-gradient-to-br from-orange-500 to-red-600"
-                                        : "bg-gradient-to-br from-gray-500 to-slate-600"
+                                ? "bg-gradient-to-br from-green-500 to-green-600"
+                                : location.isApproved
+                                  ? "bg-gradient-to-br from-blue-500 to-blue-600"
+                                  : location.isPending
+                                    ? "bg-gradient-to-br from-yellow-500 to-amber-600"
+                                    : (location as any).isRejected
+                                      ? "bg-gradient-to-br from-orange-500 to-red-600"
+                                      : "bg-gradient-to-br from-gray-500 to-slate-600"
                                 }`}>
                                 <Building2 className="h-8 w-8 text-white" />
                               </div>
@@ -1088,7 +1088,7 @@ export default function KitchenComparisonPage() {
                           ) : location.isApproved ? (
                             <Badge className="bg-blue-100 text-blue-800 border-blue-200">
                               <Clock className="h-3 w-3 mr-1" />
-                              Tiers In Progress
+                              Steps In Progress
                             </Badge>
                           ) : location.isPending ? (
                             <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
@@ -1102,8 +1102,8 @@ export default function KitchenComparisonPage() {
                             </Badge>
                           ) : (
                             <Badge className={`${location.kitchenLicenseStatus === 'pending'
-                                ? "bg-orange-100 text-orange-800 border-orange-200"
-                                : "bg-blue-100 text-blue-800 border-blue-200"
+                              ? "bg-orange-100 text-orange-800 border-orange-200"
+                              : "bg-blue-100 text-blue-800 border-blue-200"
                               }`}>
                               <Plus className="h-3 w-3 mr-1" />
                               {location.kitchenLicenseStatus === 'pending'
@@ -1121,14 +1121,14 @@ export default function KitchenComparisonPage() {
                               initial={{ opacity: 0, y: 20 }}
                               animate={{ opacity: 1, y: 0 }}
                               className={`border-2 rounded-lg p-4 transition-all ${location.allTiersCompleted
-                                  ? "border-gray-200 hover:border-green-500 hover:shadow-md"
-                                  : location.isApproved
-                                    ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
-                                    : location.isPending
-                                      ? "border-gray-200 hover:border-yellow-500 hover:shadow-md"
-                                      : (location as any).isRejected
-                                        ? "border-gray-200 hover:border-orange-500 hover:shadow-md"
-                                        : "border-gray-200 hover:border-gray-400 hover:shadow-md"
+                                ? "border-gray-200 hover:border-green-500 hover:shadow-md"
+                                : location.isApproved
+                                  ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
+                                  : location.isPending
+                                    ? "border-gray-200 hover:border-yellow-500 hover:shadow-md"
+                                    : (location as any).isRejected
+                                      ? "border-gray-200 hover:border-orange-500 hover:shadow-md"
+                                      : "border-gray-200 hover:border-gray-400 hover:shadow-md"
                                 }`}
                             >
                               {kitchen.imageUrl && (
@@ -1296,7 +1296,7 @@ export default function KitchenComparisonPage() {
                                     {location.allTiersCompleted ? (
                                       <div className="flex-1">
                                         <div className="text-xs text-green-700 font-medium mb-1">
-                                          All tiers completed - ready to book!
+                                          All steps completed - ready to book!
                                         </div>
                                         <Button
                                           size="sm"
@@ -1319,7 +1319,7 @@ export default function KitchenComparisonPage() {
                                           className="w-full bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed"
                                         >
                                           <Clock className="mr-2 h-4 w-4" />
-                                          Complete All Tiers
+                                          Complete All Steps
                                         </Button>
                                       </div>
                                     )}

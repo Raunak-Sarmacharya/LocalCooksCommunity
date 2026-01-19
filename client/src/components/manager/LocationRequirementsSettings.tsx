@@ -428,7 +428,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
       <Card className="border border-gray-200">
         <CardContent className="p-6">
           <div className="mb-4">
-            <h4 className="font-medium text-gray-900">Tier 1 Requirements (Submit Application)</h4>
+            <h4 className="font-medium text-gray-900">Step 1 Requirements (Submit Application)</h4>
             <p className="text-sm text-gray-600 mt-1">
               Configure which fields are required for the initial application submission
             </p>
@@ -522,7 +522,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
       <Card className="border border-gray-200">
         <CardContent className="p-6">
           <div className="mb-4">
-            <h4 className="font-medium text-gray-900">Tier 2 Requirements (Kitchen Coordination)</h4>
+            <h4 className="font-medium text-gray-900">Step 2 Requirements (Kitchen Coordination)</h4>
             <p className="text-sm text-gray-600 mt-1">
               Requirements for kitchen coordination and operational planning
             </p>
@@ -831,7 +831,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
               {/* Tier 1 Fields */}
               {(requirements.tier1_custom_fields as CustomField[])?.length > 0 && (
                 <div>
-                  <h5 className="text-sm font-medium text-gray-700 mb-2">Tier 1 - Submit Application Fields</h5>
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Step 1 - Submit Application Fields</h5>
                   <div className="space-y-2">
                     {(requirements.tier1_custom_fields as CustomField[]).map((field) => (
                       <div
@@ -841,7 +841,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-sm text-gray-900">{field.label}</span>
-                            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Tier 1</span>
+                            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Step 1</span>
                             <span className="text-xs text-gray-500">({field.type})</span>
                             {field.required && (
                               <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Required</span>
@@ -882,7 +882,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
               {/* Tier 2 Fields */}
               {(requirements.tier2_custom_fields as CustomField[])?.length > 0 && (
                 <div>
-                  <h5 className="text-sm font-medium text-gray-700 mb-2">Tier 2 - Kitchen Coordination Fields</h5>
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Step 2 - Kitchen Coordination Fields</h5>
                   <div className="space-y-2">
                     {(requirements.tier2_custom_fields as CustomField[]).map((field) => (
                       <div
@@ -892,7 +892,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-sm text-gray-900">{field.label}</span>
-                            <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">Tier 2</span>
+                            <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">Step 2</span>
                             <span className="text-xs text-gray-500">({field.type})</span>
                             {field.required && (
                               <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Required</span>
@@ -985,17 +985,17 @@ export default function LocationRequirementsSettings({ locationId, locationName 
                 </div>
 
                 <div>
-                  <Label htmlFor="field-tier">Tier *</Label>
+                  <Label htmlFor="field-tier">Step *</Label>
                   <Select
                     value={newField.tier?.toString()}
                     onValueChange={(value: string) => setNewField(prev => ({ ...prev, tier: parseInt(value) as 1 | 2 | 3 }))}
                   >
                     <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select Tier" />
+                      <SelectValue placeholder="Select Step" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">Tier 1 - Submit Application</SelectItem>
-                      <SelectItem value="2">Tier 2 - Kitchen Coordination</SelectItem>
+                      <SelectItem value="1">Step 1 - Submit Application</SelectItem>
+                      <SelectItem value="2">Step 2 - Kitchen Coordination</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
