@@ -212,6 +212,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     // Check if it's an R2 URL (needs presigning)
     const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') ||
       fileUrl.includes('cloudflare') ||
+      fileUrl.includes('files.localcooks.ca') ||
       (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
 
     if (!isR2Url) {
@@ -300,8 +301,8 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         feedback: reviewFeedback || undefined,
       });
       toast({
-        title: "Tier 2 Approved",
-        description: "Chef has been advanced to Tier 3.",
+        title: "Step 2 Approved",
+        description: "Chef has been advanced to Step 3.",
       });
       setShowReviewDialog(false);
       setSelectedApplication(null);
@@ -309,7 +310,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to approve Tier 2",
+        description: error.message || "Failed to approve Step 2",
         variant: "destructive",
       });
     }
@@ -712,7 +713,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                       <div className="flex gap-2">
                         <a
                           href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] ||
-                            (selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com')
+                            ((selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') || selectedApplication.foodSafetyLicenseUrl?.includes('files.localcooks.ca'))
                               ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodSafetyLicenseUrl)}`
                               : selectedApplication.foodSafetyLicenseUrl)}
                           target="_blank"
@@ -720,23 +721,44 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                           className="p-2 hover:bg-green-100 rounded-lg transition-colors"
                           title="View document"
                           onClick={async (e) => {
+                            e.preventDefault();
                             const url = selectedApplication.foodSafetyLicenseUrl;
                             if (!url) return;
 
-                            // If it's a local file URL, add token
-                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                              e.preventDefault();
-                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                              window.open(authenticatedUrl, '_blank');
-                              return;
-                            }
+                            // Open window immediately to prevent popup blocker
+                            const newWindow = window.open('', '_blank');
 
-                            // If it's an R2 URL, get presigned URL
-                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
-                              e.preventDefault();
-                              const presignedUrl = await getPresignedUrl(url);
-                              window.open(presignedUrl, '_blank');
+                            try {
+                              // If it's a local file URL, add token
+                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                                if (newWindow) newWindow.location.href = authenticatedUrl;
+                                return;
+                              }
+
+                              // If it's an R2 URL, get presigned URL
+                              if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
+                                const presignedUrl = await getPresignedUrl(url);
+                                if (newWindow) newWindow.location.href = presignedUrl;
+                                return;
+                              }
+
+                              // Fallback
+                              if (newWindow) {
+                                newWindow.location.href = presignedUrls[url] ||
+                                  ((url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))
+                                    ? `/api/files/r2-proxy?url=${encodeURIComponent(url)}`
+                                    : url);
+                              }
+                            } catch (error) {
+                              console.error('Error opening document:', error);
+                              if (newWindow) newWindow.close();
+                              toast({
+                                title: "Error",
+                                description: "Failed to open document",
+                                variant: "destructive"
+                              });
                             }
                           }}
                         >
@@ -748,36 +770,54 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                         </a>
                         <a
                           href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] ||
-                            (selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com')
+                            ((selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') || selectedApplication.foodSafetyLicenseUrl?.includes('files.localcooks.ca'))
                               ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodSafetyLicenseUrl)}`
                               : selectedApplication.foodSafetyLicenseUrl)}
                           download
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                           title="Download document"
                           onClick={async (e) => {
+                            e.preventDefault();
                             const url = selectedApplication.foodSafetyLicenseUrl;
                             if (!url) return;
 
-                            // If it's a local file URL, add token
-                            if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                              e.preventDefault();
-                              const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                              const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                              const a = document.createElement('a');
-                              a.href = authenticatedUrl;
-                              a.download = '';
-                              a.click();
-                              return;
-                            }
+                            // Open window immediately
+                            const a = document.createElement('a');
 
-                            // If it's an R2 URL, get presigned URL
-                            if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
-                              e.preventDefault();
-                              const presignedUrl = await getPresignedUrl(url);
-                              const a = document.createElement('a');
-                              a.href = presignedUrl;
+                            try {
+                              // If it's a local file URL, add token
+                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
+                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
+                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
+                                a.href = authenticatedUrl;
+                                a.download = '';
+                                a.click();
+                                return;
+                              }
+
+                              // If it's an R2 URL, get presigned URL
+                              if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
+                                const presignedUrl = await getPresignedUrl(url);
+                                a.href = presignedUrl;
+                                a.download = '';
+                                a.click();
+                                return;
+                              }
+
+                              // Fallback
+                              a.href = presignedUrls[url] ||
+                                ((url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))
+                                  ? `/api/files/r2-proxy?url=${encodeURIComponent(url)}`
+                                  : url);
                               a.download = '';
                               a.click();
+                            } catch (error) {
+                              console.error('Error downloading document:', error);
+                              toast({
+                                title: "Error",
+                                description: "Failed to download document",
+                                variant: "destructive"
+                              });
                             }
                           }}
                         >
@@ -800,7 +840,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <FileText className="h-4 w-4" />
-                    Tier 2 Documents
+                    Step 2 Documents
                     {selectedApplication.current_tier === 2 && (
                       <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 ml-2">
                         Awaiting Review
@@ -829,13 +869,13 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                             <FileText className="h-5 w-5 text-purple-600" />
                             <div>
                               <p className="font-medium text-gray-900">Insurance Document</p>
-                              <p className="text-xs text-gray-500">Uploaded with Tier 2 submission</p>
+                              <p className="text-xs text-gray-500">Uploaded with Step 2 submission</p>
                             </div>
                           </div>
                           <div className="flex gap-2">
                             <a
                               href={presignedUrls[insuranceUrl] ||
-                                (insuranceUrl.includes('r2.cloudflarestorage.com')
+                                ((insuranceUrl.includes('r2.cloudflarestorage.com') || insuranceUrl.includes('files.localcooks.ca'))
                                   ? `/api/files/r2-proxy?url=${encodeURIComponent(insuranceUrl)}`
                                   : insuranceUrl)}
                               target="_blank"
@@ -856,7 +896,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                                 }
 
                                 // If it's an R2 URL, get presigned URL
-                                if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
                                   e.preventDefault();
                                   const presignedUrl = await getPresignedUrl(url);
                                   window.open(presignedUrl, '_blank');
@@ -871,7 +911,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                             </a>
                             <a
                               href={presignedUrls[insuranceUrl] ||
-                                (insuranceUrl.includes('r2.cloudflarestorage.com')
+                                ((insuranceUrl.includes('r2.cloudflarestorage.com') || insuranceUrl.includes('files.localcooks.ca'))
                                   ? `/api/files/r2-proxy?url=${encodeURIComponent(insuranceUrl)}`
                                   : insuranceUrl)}
                               download
@@ -894,7 +934,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                                 }
 
                                 // If it's an R2 URL, get presigned URL
-                                if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                                if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
                                   e.preventDefault();
                                   const presignedUrl = await getPresignedUrl(url);
                                   const a = document.createElement('a');
@@ -933,14 +973,14 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                             <p className="text-xs text-gray-500">
                               {selectedApplication.foodEstablishmentCertExpiry
                                 ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
-                                : 'Tier 2 requirement'}
+                                : 'Step 2 requirement'}
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-2">
                           <a
                             href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] ||
-                              (selectedApplication.foodEstablishmentCertUrl.includes('r2.cloudflarestorage.com')
+                              ((selectedApplication.foodEstablishmentCertUrl.includes('r2.cloudflarestorage.com') || selectedApplication.foodEstablishmentCertUrl.includes('files.localcooks.ca'))
                                 ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodEstablishmentCertUrl)}`
                                 : selectedApplication.foodEstablishmentCertUrl)}
                             target="_blank"
@@ -961,7 +1001,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                               }
 
                               // If it's an R2 URL, get presigned URL
-                              if (!presignedUrls[url] && url.includes('r2.cloudflarestorage.com')) {
+                              if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
                                 e.preventDefault();
                                 const presignedUrl = await getPresignedUrl(url);
                                 window.open(presignedUrl, '_blank');
@@ -1047,7 +1087,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
                   >
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    Approve Tier 2
+                    Approve Step 2
                   </Button>
                 )}
               </div>
@@ -1132,7 +1172,7 @@ function ApplicationCard({
           return (
             <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
               <Clock className="h-3 w-3 mr-1" />
-              Tier 2 Pending
+              Step 2 Pending
             </Badge>
           );
         }

@@ -7,7 +7,13 @@ import { getSubdomainFromHostname } from '@shared/subdomain-utils';
  * @returns The current subdomain type
  */
 export function useSubdomain(): SubdomainType {
-  const [subdomain, setSubdomain] = useState<SubdomainType>(null);
+  const [subdomain, setSubdomain] = useState<SubdomainType>(() => {
+    // Initialize directly to avoid flash of wrong content
+    if (typeof window !== 'undefined') {
+      return getSubdomainFromHostname(window.location.hostname);
+    }
+    return null;
+  });
 
   useEffect(() => {
     // Get subdomain from current hostname
@@ -26,11 +32,11 @@ export function useSubdomain(): SubdomainType {
 export function useSubdomainUrl(): string {
   const subdomain = useSubdomain();
   const baseDomain = 'localcooks.ca';
-  
+
   if (!subdomain || subdomain === 'main') {
     return `https://${baseDomain}`;
   }
-  
+
   return `https://${subdomain}.${baseDomain}`;
 }
 

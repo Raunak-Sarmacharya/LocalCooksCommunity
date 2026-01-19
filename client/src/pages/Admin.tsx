@@ -2,9 +2,9 @@ import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
 import PromoCodeSender from "@/components/admin/PromoCodeSender";
 import ChefKitchenAccessManager from "@/components/admin/ChefKitchenAccessManager";
 import {
-    formatApplicationStatus,
-    formatCertificationStatus,
-    formatKitchenPreference
+  formatApplicationStatus,
+  formatCertificationStatus,
+  formatKitchenPreference
 } from "@/lib/applicationSchema";
 import { Application } from "@shared/schema";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,7 +27,7 @@ function SafeIcon({ IconComponent, fallback = UserIcon, className, ...props }: a
 }
 
 // Error Boundary Component
-class ErrorBoundary extends React.Component<{children: React.ReactNode, fallback?: React.ReactNode}, {hasError: boolean}> {
+class ErrorBoundary extends React.Component<{ children: React.ReactNode, fallback?: React.ReactNode }, { hasError: boolean }> {
   constructor(props: any) {
     super(props);
     this.state = { hasError: false };
@@ -71,36 +71,36 @@ import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 import ResponsiveTable from "@/components/ui/responsive-table";
 import {
-    AlertCircle,
-    AlertTriangle,
-    CalendarDays,
-    Calendar,
-    CheckCircle,
-    ChevronDown,
-    ChevronRight,
-    Clock,
-    ExternalLink,
-    Gift,
-    Mail,
-    Phone,
-    RefreshCw,
-    Search,
-    Settings,
-    Shield,
-    User as UserIcon,
-    XCircle,
-    Save,
-    DollarSign,
-    FileText,
-    Check,
-    X,
-    Users,
-    Building2,
-    Menu,
-    TrendingUp,
-    BarChart3,
-    Loader2,
-    Eye
+  AlertCircle,
+  AlertTriangle,
+  CalendarDays,
+  Calendar,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  ExternalLink,
+  Gift,
+  Mail,
+  Phone,
+  RefreshCw,
+  Search,
+  Settings,
+  Shield,
+  User as UserIcon,
+  XCircle,
+  Save,
+  DollarSign,
+  FileText,
+  Check,
+  X,
+  Users,
+  Building2,
+  Menu,
+  TrendingUp,
+  BarChart3,
+  Loader2,
+  Eye
 } from "lucide-react";
 
 function AdminDashboard() {
@@ -119,7 +119,7 @@ function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<string>("applications");
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
-  
+
   // Function to get presigned URL for R2 files
   const getPresignedUrl = async (fileUrl: string): Promise<string> => {
     // Check if we already have a presigned URL cached
@@ -134,9 +134,9 @@ function AdminDashboard() {
     }
 
     // Check if it's an R2 URL (needs presigning)
-    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
-                    fileUrl.includes('cloudflare') ||
-                    (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') ||
+      fileUrl.includes('cloudflare') ||
+      (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
 
     if (!isR2Url) {
       return fileUrl;
@@ -144,7 +144,7 @@ function AdminDashboard() {
 
     try {
       setLoadingUrls(prev => new Set(prev).add(fileUrl));
-      
+
       const token = await getFirebaseToken();
       const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
         method: 'GET',
@@ -193,7 +193,7 @@ function AdminDashboard() {
 
   // Admin uses Firebase auth (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
-  
+
   // Helper function to get Firebase token for API calls
   const getFirebaseToken = async (): Promise<string> => {
     const currentFirebaseUser = auth.currentUser;
@@ -202,7 +202,7 @@ function AdminDashboard() {
     }
     return await currentFirebaseUser.getIdToken();
   };
-  
+
   const { data: sessionUser, isLoading: sessionLoading } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
@@ -215,14 +215,14 @@ function AdminDashboard() {
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (!response.ok) {
           if (response.status === 401) {
             return null; // Not authenticated
           }
           throw new Error(`Firebase auth failed: ${response.status}`);
         }
-        
+
         const userData = await response.json();
         console.log('Admin Dashboard - Firebase user data:', userData);
         return userData;
@@ -278,15 +278,15 @@ function AdminDashboard() {
       if (!firebaseUser) {
         throw new Error("Admin not authenticated");
       }
-      
+
       console.log('Admin: Fetching applications data via Firebase auth...', {
         endpoint: queryKey[0],
         hasFirebaseUser: !!firebaseUser
       });
-      
+
       // Get Firebase token for authentication
       const token = await getFirebaseToken();
-      
+
       const headers: Record<string, string> = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -309,7 +309,7 @@ function AdminDashboard() {
         if (response.status === 403) {
           throw new Error("Admin access denied. Please contact support if you believe this is an error.");
         }
-        
+
         try {
           const errorData = await response.json();
           throw new Error(errorData.error || response.statusText);
@@ -354,7 +354,7 @@ function AdminDashboard() {
       if (!data || !Array.isArray(data)) return 20000; // 20 seconds if no data or invalid data
 
       // Check for any pending document reviews across all applications
-      const hasPendingDocumentReviews = data.some(app => 
+      const hasPendingDocumentReviews = data.some(app =>
         app.status === "approved" && (
           app.foodSafetyLicenseStatus === "pending" ||
           app.foodEstablishmentCertStatus === "pending"
@@ -362,7 +362,7 @@ function AdminDashboard() {
       );
 
       // Check for new applications awaiting review
-      const hasNewApplications = data.some(app => 
+      const hasNewApplications = data.some(app =>
         app.status === "inReview"
       );
 
@@ -392,25 +392,25 @@ function AdminDashboard() {
     mutationFn: async ({ id, status }: { id: number, status: string }) => {
       try {
         console.log(`Updating application ${id} status to ${status}`);
-        
-      const token = await getFirebaseToken();
-      const headers: Record<string, string> = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      };
-      
-      const response = await fetch(`/api/applications/${id}/status`, {
-        method: 'PATCH',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ status })
-      });
-        
+
+        const token = await getFirebaseToken();
+        const headers: Record<string, string> = {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        };
+
+        const response = await fetch(`/api/applications/${id}/status`, {
+          method: 'PATCH',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ status })
+        });
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || response.statusText);
         }
-        
+
         console.log('Status update response:', response.status);
         return response.json();
       } catch (error) {
@@ -421,13 +421,13 @@ function AdminDashboard() {
     onSuccess: async (data) => {
       // Force comprehensive refresh after status update
       await forceAdminRefresh();
-      
+
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
-      
+
       toast({
         title: "Status updated",
         description: `Application status changed to ${data.status}. Email notification sent.`,
@@ -452,7 +452,7 @@ function AdminDashboard() {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
-      
+
       const updateData = { [field]: status };
       const response = await fetch(`/api/applications/${id}/document-verification`, {
         method: 'PATCH',
@@ -460,34 +460,34 @@ function AdminDashboard() {
         credentials: 'include',
         body: JSON.stringify(updateData)
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || response.statusText);
       }
-      
+
       return response.json();
     },
     onSuccess: async (data, variables) => {
       // Force comprehensive refresh after document status update
       await forceAdminRefresh();
-      
+
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
       ]);
-      
+
       // Additional delayed refresh to catch any async database updates
       setTimeout(async () => {
         await forceAdminRefresh();
       }, 1000);
-      
+
       toast({
         title: "Document status updated",
         description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. Email notification sent to user.`,
       });
-      
+
       console.log('Admin: Document status updated', {
         applicationId: variables.id,
         field: variables.field,
@@ -597,7 +597,7 @@ function AdminDashboard() {
   // Enhanced filter applications based on status, search term, and quick filters
   const filteredApplications = applications ? applications.filter((app) => {
     const matchesStatus = filterStatus === "all" || app.status === filterStatus;
-    
+
     // Enhanced search to include name, email, phone, application ID, and submission date
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = searchTerm === "" ||
@@ -606,28 +606,28 @@ function AdminDashboard() {
       (app.phone && app.phone.toLowerCase().includes(searchLower)) ||
       app.id.toString().includes(searchLower) ||
       new Date(app.createdAt).toLocaleDateString().includes(searchLower) ||
-      new Date(app.createdAt).toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
+      new Date(app.createdAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
       }).toLowerCase().includes(searchLower);
 
     // Quick filters
     let matchesQuickFilters = true;
-    
+
     if (quickFilters.needsDocumentReview) {
       matchesQuickFilters = matchesQuickFilters && app.status === "approved" && (
         app.foodSafetyLicenseStatus === "pending" ||
         app.foodEstablishmentCertStatus === "pending"
       );
     }
-    
+
     if (quickFilters.recentApplications) {
       const threeDaysAgo = new Date();
       threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
       matchesQuickFilters = matchesQuickFilters && new Date(app.createdAt) > threeDaysAgo;
     }
-    
+
     if (quickFilters.hasDocuments) {
       matchesQuickFilters = matchesQuickFilters && Boolean(
         app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl
@@ -656,10 +656,10 @@ function AdminDashboard() {
         method: 'POST',
         credentials: 'include',
       });
-      
+
       // Clear query cache
       queryClient.clear();
-      
+
       // Redirect to login
       navigate('/admin/login');
     } catch (error) {
@@ -700,11 +700,11 @@ function AdminDashboard() {
     }
 
     // Quick Approve: User said yes to both and uploaded documents
-    if (app.status !== "approved" && 
-        app.foodSafetyLicense === "yes" && 
-        app.foodEstablishmentCert === "yes" && 
-        app.foodSafetyLicenseUrl && 
-        app.foodEstablishmentCertUrl) {
+    if (app.status !== "approved" &&
+      app.foodSafetyLicense === "yes" &&
+      app.foodEstablishmentCert === "yes" &&
+      app.foodSafetyLicenseUrl &&
+      app.foodEstablishmentCertUrl) {
       return (
         <Button
           size="sm"
@@ -796,36 +796,36 @@ function AdminDashboard() {
   // Enhanced force refresh function for admin
   const forceAdminRefresh = async () => {
     console.log('Admin: Forcing comprehensive refresh...');
-    
+
     try {
       // 1. Clear all application-related caches more aggressively
       const cacheKeys = [
         ["/api/applications"],
         ["/api/applications/my-applications"]
       ];
-      
+
       // Remove all related queries from cache
-      await Promise.all(cacheKeys.map(key => 
+      await Promise.all(cacheKeys.map(key =>
         queryClient.removeQueries({ queryKey: key })
       ));
-      
+
       // 2. Invalidate all related queries
-      await Promise.all(cacheKeys.map(key => 
+      await Promise.all(cacheKeys.map(key =>
         queryClient.invalidateQueries({ queryKey: key })
       ));
-      
+
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
-        queryClient.refetchQueries({ 
+        queryClient.refetchQueries({
           queryKey: ["/api/applications"],
           type: 'all'
         }),
-        queryClient.refetchQueries({ 
+        queryClient.refetchQueries({
           queryKey: ["/api/applications/my-applications"],
           type: 'all'
         })
       ]);
-      
+
       console.log('Admin: Comprehensive refresh completed');
     } catch (error) {
       console.error('Admin: Force refresh failed', error);
@@ -850,470 +850,470 @@ function AdminDashboard() {
       </div>
     }>
       <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20 relative">
-      <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-      {/* Subtle background pattern */}
-      <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
-        <div 
-          className="w-full h-full" 
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-            backgroundSize: '60px 60px'
-          }}
-        />
-      </div>
-      
-      <Header />
-      <main className="flex-grow pt-16 sm:pt-20 pb-8 sm:pb-16 relative">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
-          
-          {/* Welcome Header Section */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 sm:mb-8 mt-2 sm:mt-4"
-          >
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow-lg">
-                  <Shield className="h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-                  <p className="text-sm sm:text-base text-gray-500 hidden sm:block">Manage applications and review documents</p>
-                  <p className="text-xs text-gray-500 sm:hidden">Manage applications</p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+        <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
+        {/* Subtle background pattern */}
+        <div className="fixed inset-0 opacity-[0.02] pointer-events-none">
+          <div
+            className="w-full h-full"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+              backgroundSize: '60px 60px'
+            }}
+          />
+        </div>
 
-          {/* Enhanced Stats Cards */}
-          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
-            <motion.div 
+        <Header />
+        <main className="flex-grow pt-16 sm:pt-20 pb-8 sm:pb-16 relative">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
+
+            {/* Welcome Header Section */}
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              className="mb-6 sm:mb-8 mt-2 sm:mt-4"
             >
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">Approved</p>
-                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.approved}</p>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow-lg">
+                    <Shield className="h-5 w-5 sm:h-6 sm:w-6" />
+                  </div>
+                  <div>
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+                    <p className="text-sm sm:text-base text-gray-500 hidden sm:block">Manage applications and review documents</p>
+                    <p className="text-xs text-gray-500 sm:hidden">Manage applications</p>
+                  </div>
                 </div>
               </div>
             </motion.div>
 
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
-                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">In Review</p>
-                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.inReview}</p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
-                  <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">Rejected</p>
-                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.rejected}</p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-                  <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">Doc Review</p>
-                  <p className="text-lg sm:text-2xl font-bold text-gray-900">
-                    {applications.filter(app => 
-                      app.status === "approved" && (
-                        app.foodSafetyLicenseStatus === "pending" ||
-                        app.foodEstablishmentCertStatus === "pending"
-                      )
-                    ).length}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
-            >
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">Total</p>
-                  <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.total}</p>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Enhanced Search and Filter Section */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-4 sm:mb-6 backdrop-blur-sm"
-          >
-            {/* Main Admin Navigation - Grouped Categories */}
-            <div className="mb-6">
-              {/* Category Navigation */}
-              <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded-lg border border-gray-200">
-                <Button
-                  variant={activeCategory === "applications" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setActiveCategory("applications");
-                    setActiveTab("applications");
-                  }}
-                  className="flex items-center gap-2 relative"
-                >
-                  <Shield className="h-4 w-4" />
-                  Applications
-                  {(statusCounts.inReview > 0 || pendingLicensesCount > 0) && (
-                    <span className="ml-1 bg-yellow-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                      {statusCounts.inReview + pendingLicensesCount}
-                    </span>
-                  )}
-                </Button>
-                <Button
-                  variant={activeCategory === "management" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setActiveCategory("management");
-                    setActiveTab("chef-kitchen-access");
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <Users className="h-4 w-4" />
-                  Management
-                </Button>
-                <Button
-                  variant={activeCategory === "communications" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setActiveCategory("communications");
-                    setActiveTab("promos");
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <Gift className="h-4 w-4" />
-                  Communications
-                </Button>
-                <Button
-                  variant={activeCategory === "revenue" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setActiveCategory("revenue");
-                    setActiveTab("manager-revenues");
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <DollarSign className="h-4 w-4" />
-                  Revenue
-                </Button>
-                <Button
-                  variant={activeCategory === "settings" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setActiveCategory("settings");
-                    setActiveTab("platform-settings");
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <Settings className="h-4 w-4" />
-                  Settings
-                </Button>
-              </div>
-
-              {/* Sub-tabs within category */}
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                {activeCategory === "applications" && (
-                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                    <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
-                      <Shield className="h-4 w-4" />
-                      Chef Applications
-                    </TabsTrigger>
-                    <TabsTrigger value="kitchen-licenses" className="flex items-center gap-2 rounded-lg">
-                      <FileText className="h-4 w-4" />
-                      Kitchen Licenses
-                    </TabsTrigger>
-                  </TabsList>
-                )}
-
-                {activeCategory === "management" && (
-                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                    <TabsTrigger value="chef-kitchen-access" className="flex items-center gap-2 rounded-lg">
-                      <UserIcon className="h-4 w-4" />
-                      Chef Kitchen Access
-                    </TabsTrigger>
-                    <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
-                      <Building2 className="h-4 w-4" />
-                      Manage Kitchens
-                    </TabsTrigger>
-                  </TabsList>
-                )}
-
-                {activeCategory === "communications" && (
-                  <TabsList className="grid w-full grid-cols-1 rounded-xl bg-gray-100 p-1 mb-6">
-                    <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
-                      <Gift className="h-4 w-4" />
-                      Send Promo Codes
-                    </TabsTrigger>
-                  </TabsList>
-                )}
-
-                {activeCategory === "revenue" && (
-                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                    <TabsTrigger value="manager-revenues" className="flex items-center gap-2 rounded-lg">
-                      <Users className="h-4 w-4" />
-                      Manager Revenues
-                    </TabsTrigger>
-                    <TabsTrigger value="platform-overview" className="flex items-center gap-2 rounded-lg">
-                      <DollarSign className="h-4 w-4" />
-                      Platform Overview
-                    </TabsTrigger>
-                  </TabsList>
-                )}
-
-                {activeCategory === "settings" && (
-                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
-                    <TabsTrigger value="platform-settings" className="flex items-center gap-2 rounded-lg">
-                      <Settings className="h-4 w-4" />
-                      Platform Settings
-                    </TabsTrigger>
-                    <TabsTrigger value="account-settings" className="flex items-center gap-2 rounded-lg">
-                      <Shield className="h-4 w-4" />
-                      Account Settings
-                    </TabsTrigger>
-                  </TabsList>
-                )}
-
-              {/* Applications Tab Content */}
-              <TabsContent value="applications" className="mt-0">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                    <Search className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+            {/* Enhanced Stats Cards */}
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 sm:mb-8">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Search & Filter Applications</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Find and manage applications efficiently</p>
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">Approved</p>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.approved}</p>
                   </div>
                 </div>
+              </motion.div>
 
-                {/* Search Bar */}
-                <div className="mb-4 sm:mb-6">
-                  <div className="relative w-full sm:max-w-md">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      type="text"
-                      placeholder="Search by name, email, phone, or ID..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200 text-sm sm:text-base"
-                    />
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                    <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">In Review</p>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.inReview}</p>
                   </div>
                 </div>
+              </motion.div>
 
-                {/* Quick Filter Buttons */}
-                <div className="mb-4 sm:mb-6">
-                  <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Quick Filters</h4>
-                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                    <Button
-                      variant={quickFilters.needsDocumentReview ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
-                      className="rounded-lg sm:rounded-xl text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 h-auto"
-                    >
-                      <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                      <span className="hidden xs:inline">Needs </span>Doc Review
-                      {applications.filter(app => 
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">Rejected</p>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.rejected}</p>
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                    <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">Doc Review</p>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-900">
+                      {applications.filter(app =>
                         app.status === "approved" && (
                           app.foodSafetyLicenseStatus === "pending" ||
                           app.foodEstablishmentCertStatus === "pending"
                         )
-                      ).length > 0 && (
-                        <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
-                          {applications.filter(app => 
+                      ).length}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300"
+              >
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <UserIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 truncate">Total</p>
+                    <p className="text-lg sm:text-2xl font-bold text-gray-900">{statusCounts.total}</p>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Enhanced Search and Filter Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200/60 hover:shadow-lg hover:border-gray-300/60 transition-all duration-300 mb-4 sm:mb-6 backdrop-blur-sm"
+            >
+              {/* Main Admin Navigation - Grouped Categories */}
+              <div className="mb-6">
+                {/* Category Navigation */}
+                <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded-lg border border-gray-200">
+                  <Button
+                    variant={activeCategory === "applications" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveCategory("applications");
+                      setActiveTab("applications");
+                    }}
+                    className="flex items-center gap-2 relative"
+                  >
+                    <Shield className="h-4 w-4" />
+                    Applications
+                    {(statusCounts.inReview > 0 || pendingLicensesCount > 0) && (
+                      <span className="ml-1 bg-yellow-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                        {statusCounts.inReview + pendingLicensesCount}
+                      </span>
+                    )}
+                  </Button>
+                  <Button
+                    variant={activeCategory === "management" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveCategory("management");
+                      setActiveTab("chef-kitchen-access");
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Users className="h-4 w-4" />
+                    Management
+                  </Button>
+                  <Button
+                    variant={activeCategory === "communications" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveCategory("communications");
+                      setActiveTab("promos");
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Gift className="h-4 w-4" />
+                    Communications
+                  </Button>
+                  <Button
+                    variant={activeCategory === "revenue" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveCategory("revenue");
+                      setActiveTab("manager-revenues");
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <DollarSign className="h-4 w-4" />
+                    Revenue
+                  </Button>
+                  <Button
+                    variant={activeCategory === "settings" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveCategory("settings");
+                      setActiveTab("platform-settings");
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Button>
+                </div>
+
+                {/* Sub-tabs within category */}
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                  {activeCategory === "applications" && (
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                      <TabsTrigger value="applications" className="flex items-center gap-2 rounded-lg">
+                        <Shield className="h-4 w-4" />
+                        Chef Applications
+                      </TabsTrigger>
+                      <TabsTrigger value="kitchen-licenses" className="flex items-center gap-2 rounded-lg">
+                        <FileText className="h-4 w-4" />
+                        Kitchen Licenses
+                      </TabsTrigger>
+                    </TabsList>
+                  )}
+
+                  {activeCategory === "management" && (
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                      <TabsTrigger value="chef-kitchen-access" className="flex items-center gap-2 rounded-lg">
+                        <UserIcon className="h-4 w-4" />
+                        Chef Kitchen Access
+                      </TabsTrigger>
+                      <TabsTrigger value="kitchen-management" className="flex items-center gap-2 rounded-lg">
+                        <Building2 className="h-4 w-4" />
+                        Manage Kitchens
+                      </TabsTrigger>
+                    </TabsList>
+                  )}
+
+                  {activeCategory === "communications" && (
+                    <TabsList className="grid w-full grid-cols-1 rounded-xl bg-gray-100 p-1 mb-6">
+                      <TabsTrigger value="promos" className="flex items-center gap-2 rounded-lg">
+                        <Gift className="h-4 w-4" />
+                        Send Promo Codes
+                      </TabsTrigger>
+                    </TabsList>
+                  )}
+
+                  {activeCategory === "revenue" && (
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                      <TabsTrigger value="manager-revenues" className="flex items-center gap-2 rounded-lg">
+                        <Users className="h-4 w-4" />
+                        Manager Revenues
+                      </TabsTrigger>
+                      <TabsTrigger value="platform-overview" className="flex items-center gap-2 rounded-lg">
+                        <DollarSign className="h-4 w-4" />
+                        Platform Overview
+                      </TabsTrigger>
+                    </TabsList>
+                  )}
+
+                  {activeCategory === "settings" && (
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 rounded-xl bg-gray-100 p-1 mb-6 gap-1">
+                      <TabsTrigger value="platform-settings" className="flex items-center gap-2 rounded-lg">
+                        <Settings className="h-4 w-4" />
+                        Platform Settings
+                      </TabsTrigger>
+                      <TabsTrigger value="account-settings" className="flex items-center gap-2 rounded-lg">
+                        <Shield className="h-4 w-4" />
+                        Account Settings
+                      </TabsTrigger>
+                    </TabsList>
+                  )}
+
+                  {/* Applications Tab Content */}
+                  <TabsContent value="applications" className="mt-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+                        <Search className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Search & Filter Applications</h3>
+                        <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Find and manage applications efficiently</p>
+                      </div>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="mb-4 sm:mb-6">
+                      <div className="relative w-full sm:max-w-md">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          type="text"
+                          placeholder="Search by name, email, phone, or ID..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl border-gray-200 focus:border-indigo-300 focus:ring-indigo-200 text-sm sm:text-base"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick Filter Buttons */}
+                    <div className="mb-4 sm:mb-6">
+                      <h4 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">Quick Filters</h4>
+                      <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                        <Button
+                          variant={quickFilters.needsDocumentReview ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setQuickFilters(prev => ({ ...prev, needsDocumentReview: !prev.needsDocumentReview }))}
+                          className="rounded-lg sm:rounded-xl text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 h-auto"
+                        >
+                          <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                          <span className="hidden xs:inline">Needs </span>Doc Review
+                          {applications.filter(app =>
                             app.status === "approved" && (
                               app.foodSafetyLicenseStatus === "pending" ||
                               app.foodEstablishmentCertStatus === "pending"
                             )
-                          ).length}
-                        </span>
-                      )}
-                    </Button>
-                    
-                    <Button
-                      variant={quickFilters.recentApplications ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
-                      className="rounded-xl"
-                    >
-                      <CalendarDays className="h-4 w-4 mr-2" />
-                      Recent (3 days)
-                    </Button>
-                    
-                    <Button
-                      variant={quickFilters.hasDocuments ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
-                      className="rounded-xl"
-                    >
-                      <UserIcon className="h-4 w-4 mr-2" />
-                      Has Documents
-                    </Button>
-                    
-                    {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
+                          ).length > 0 && (
+                              <span className="ml-2 bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                                {applications.filter(app =>
+                                  app.status === "approved" && (
+                                    app.foodSafetyLicenseStatus === "pending" ||
+                                    app.foodEstablishmentCertStatus === "pending"
+                                  )
+                                ).length}
+                              </span>
+                            )}
+                        </Button>
+
+                        <Button
+                          variant={quickFilters.recentApplications ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setQuickFilters(prev => ({ ...prev, recentApplications: !prev.recentApplications }))}
+                          className="rounded-xl"
+                        >
+                          <CalendarDays className="h-4 w-4 mr-2" />
+                          Recent (3 days)
+                        </Button>
+
+                        <Button
+                          variant={quickFilters.hasDocuments ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setQuickFilters(prev => ({ ...prev, hasDocuments: !prev.hasDocuments }))}
+                          className="rounded-xl"
+                        >
+                          <UserIcon className="h-4 w-4 mr-2" />
+                          Has Documents
+                        </Button>
+
+                        {(quickFilters.needsDocumentReview || quickFilters.recentApplications || quickFilters.hasDocuments) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
+                            className="rounded-xl text-gray-500 hover:text-gray-700"
+                          >
+                            Clear All
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status Tabs - Mobile Optimized */}
+                    <Tabs defaultValue="all" className="w-full">
+                      <TabsList className="rounded-xl bg-gray-100 p-1 grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
+                        <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                          <UserIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
+                          <span className="hidden xs:inline">All </span>({statusCounts.total})
+                        </TabsTrigger>
+                        <TabsTrigger value="inReview" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                          <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-yellow-500 flex-shrink-0" />
+                          <span className="hidden xs:inline">Review </span>({statusCounts.inReview})
+                        </TabsTrigger>
+                        <TabsTrigger value="approved" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                          <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-green-500 flex-shrink-0" />
+                          <span className="hidden xs:inline">Approved </span>({statusCounts.approved})
+                        </TabsTrigger>
+                        <TabsTrigger value="rejected" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
+                          <XCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-red-500 flex-shrink-0" />
+                          <span className="hidden xs:inline">Rejected </span>({statusCounts.rejected})
+                        </TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="all" className="mt-6">
+                        {renderApplicationList(filteredApplications)}
+                      </TabsContent>
+                      <TabsContent value="inReview" className="mt-6">
+                        {renderApplicationList(applications.filter(app => app.status === "inReview"))}
+                      </TabsContent>
+                      <TabsContent value="approved" className="mt-6">
+                        {renderApplicationList(applications.filter(app => app.status === "approved"))}
+                      </TabsContent>
+                      <TabsContent value="rejected" className="mt-6">
+                        {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+                      </TabsContent>
+                    </Tabs>
+                  </TabsContent>
+
+
+                  {/* Promo Codes Tab Content */}
+                  <TabsContent value="kitchen-licenses" className="mt-0">
+                    <KitchenLicenseApprovalView />
+                  </TabsContent>
+
+                  <TabsContent value="promos" className="mt-0">
+                    <PromoCodeSender />
+                  </TabsContent>
+
+                  <TabsContent value="chef-kitchen-access" className="mt-0">
+                    <ChefKitchenAccessManager />
+                  </TabsContent>
+
+                  <TabsContent value="kitchen-management" className="mt-0">
+                    <div className="text-center py-12">
+                      <h3 className="text-xl font-semibold text-gray-900 mb-4">Kitchen Management</h3>
+                      <p className="text-gray-600 mb-6">Create and manage commercial kitchen locations and facilities</p>
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setQuickFilters({ needsDocumentReview: false, recentApplications: false, hasDocuments: false })}
-                        className="rounded-xl text-gray-500 hover:text-gray-700"
+                        onClick={() => navigate("/admin/manage-locations")}
+                        className="bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
                       >
-                        Clear All
+                        Open Kitchen Management →
                       </Button>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  </TabsContent>
 
-                {/* Status Tabs - Mobile Optimized */}
-                <Tabs defaultValue="all" className="w-full">
-                  <TabsList className="rounded-xl bg-gray-100 p-1 grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
-                    <TabsTrigger value="all" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                      <UserIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
-                      <span className="hidden xs:inline">All </span>({statusCounts.total})
-                    </TabsTrigger>
-                    <TabsTrigger value="inReview" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                      <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-yellow-500 flex-shrink-0" />
-                      <span className="hidden xs:inline">Review </span>({statusCounts.inReview})
-                    </TabsTrigger>
-                    <TabsTrigger value="approved" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                      <CheckCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-green-500 flex-shrink-0" />
-                      <span className="hidden xs:inline">Approved </span>({statusCounts.approved})
-                    </TabsTrigger>
-                    <TabsTrigger value="rejected" className="flex items-center gap-1 sm:gap-2 rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-2">
-                      <XCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-red-500 flex-shrink-0" />
-                      <span className="hidden xs:inline">Rejected </span>({statusCounts.rejected})
-                    </TabsTrigger>
-                  </TabsList>
+                  {/* Platform Settings Tab Content */}
+                  <TabsContent value="platform-settings" className="mt-0">
+                    <PlatformSettingsView />
+                  </TabsContent>
 
-                  <TabsContent value="all" className="mt-6">
-                    {renderApplicationList(filteredApplications)}
+                  {/* Account Settings Tab Content */}
+                  <TabsContent value="account-settings" className="mt-0">
+                    <div className="max-w-2xl">
+                      <div className="mb-6">
+                        <h3 className="text-xl font-semibold text-gray-900 mb-2">Account Settings</h3>
+                        <p className="text-gray-600">Manage your admin account password</p>
+                      </div>
+                      <ChangePassword role="admin" />
+                    </div>
                   </TabsContent>
-                  <TabsContent value="inReview" className="mt-6">
-                    {renderApplicationList(applications.filter(app => app.status === "inReview"))}
+
+                  {/* Manager Revenues Tab Content */}
+                  <TabsContent value="manager-revenues" className="mt-0">
+                    <AdminManagerRevenuesView getFirebaseToken={getFirebaseToken} />
                   </TabsContent>
-                  <TabsContent value="approved" className="mt-6">
-                    {renderApplicationList(applications.filter(app => app.status === "approved"))}
-                  </TabsContent>
-                  <TabsContent value="rejected" className="mt-6">
-                    {renderApplicationList(applications.filter(app => app.status === "rejected"))}
+
+                  {/* Platform Overview Tab Content */}
+                  <TabsContent value="platform-overview" className="mt-0">
+                    <AdminPlatformRevenueView getFirebaseToken={getFirebaseToken} />
                   </TabsContent>
                 </Tabs>
-              </TabsContent>
+              </div>
+            </motion.div>
 
-
-              {/* Promo Codes Tab Content */}
-              <TabsContent value="kitchen-licenses" className="mt-0">
-                <KitchenLicenseApprovalView />
-              </TabsContent>
-
-              <TabsContent value="promos" className="mt-0">
-                <PromoCodeSender />
-              </TabsContent>
-
-              <TabsContent value="chef-kitchen-access" className="mt-0">
-                <ChefKitchenAccessManager />
-              </TabsContent>
-
-              <TabsContent value="kitchen-management" className="mt-0">
-                <div className="text-center py-12">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Kitchen Management</h3>
-                  <p className="text-gray-600 mb-6">Create and manage commercial kitchen locations and facilities</p>
-                  <Button
-                    onClick={() => navigate("/admin/manage-locations")}
-                    className="bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
-                  >
-                    Open Kitchen Management →
-                  </Button>
-                </div>
-              </TabsContent>
-
-              {/* Platform Settings Tab Content */}
-              <TabsContent value="platform-settings" className="mt-0">
-                <PlatformSettingsView />
-              </TabsContent>
-
-              {/* Account Settings Tab Content */}
-              <TabsContent value="account-settings" className="mt-0">
-                <div className="max-w-2xl">
-                  <div className="mb-6">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Account Settings</h3>
-                    <p className="text-gray-600">Manage your admin account password</p>
-                  </div>
-                  <ChangePassword role="admin" />
-                </div>
-              </TabsContent>
-
-              {/* Manager Revenues Tab Content */}
-              <TabsContent value="manager-revenues" className="mt-0">
-                <AdminManagerRevenuesView getFirebaseToken={getFirebaseToken} />
-              </TabsContent>
-
-              {/* Platform Overview Tab Content */}
-              <TabsContent value="platform-overview" className="mt-0">
-                <AdminPlatformRevenueView getFirebaseToken={getFirebaseToken} />
-              </TabsContent>
-              </Tabs>
+            <div className="text-center">
+              <Button
+                onClick={() => navigate("/")}
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
+              >
+                Return to Website
+              </Button>
             </div>
-          </motion.div>
-
-          <div className="text-center">
-            <Button
-              onClick={() => navigate("/")}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-2xl shadow-lg transform transition hover:-translate-y-1"
-            >
-              Return to Website
-            </Button>
           </div>
-        </div>
-      </main>
-      <Footer />
-    </div>
+        </main>
+        <Footer />
+      </div>
     </ErrorBoundary>
   );
 
@@ -1381,16 +1381,16 @@ function AdminDashboard() {
       >
         {apps.map((app: Application) => {
           const isExpanded = expandedCards.has(app.id);
-          
+
           return (
             <motion.div key={app.id} variants={itemVariants} className="w-full">
               <Card className="overflow-hidden hover:shadow-lg transition-all duration-300 rounded-xl sm:rounded-2xl border border-gray-200/60 hover:border-gray-300/60 bg-white backdrop-blur-sm card-hover">
-                
+
                 {/* COMPACT VIEW - Always Visible */}
                 <CardContent className="p-0">
                   <div className={`p-3 sm:p-4 lg:p-6 border-l-4 ${getStatusBadgeColor(app.status)}`}>
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
-                      
+
                       {/* Left side: Main Info */}
                       <div className="flex-1 space-y-3 sm:space-y-4 min-w-0">
                         {/* Header with name and status */}
@@ -1410,7 +1410,7 @@ function AdminDashboard() {
                               </div>
                             </div>
                           </div>
-                          
+
                           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                             {getStatusIcon(app.status)}
                             <Badge className={`px-2 sm:px-3 py-1 text-xs sm:text-sm ${getStatusBadgeColor(app.status).replace('border-l-4', '').replace('border-', 'bg-').replace('-500', '-100 text-').replace('-600', '-800')}`}>
@@ -1432,7 +1432,7 @@ function AdminDashboard() {
                             </div>
                           )}
                         </div>
-                        
+
                         {/* Certification Status Indicators */}
                         <div className="flex flex-wrap gap-1.5 sm:gap-3">
                           <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-gray-50 border">
@@ -1478,7 +1478,7 @@ function AdminDashboard() {
                             )}
                           </Button>
                         </div>
-                        
+
                         {/* Document Status Indicators (for approved applications) */}
                         {app.status === "approved" && (
                           <div className="flex flex-col gap-1 text-right">
@@ -1496,14 +1496,14 @@ function AdminDashboard() {
                             )}
                           </div>
                         )}
-                        
+
                         {/* Quick Document Links */}
                         {(app.foodSafetyLicenseUrl || app.foodEstablishmentCertUrl) && (
                           <div className="flex gap-1">
                             {app.foodSafetyLicenseUrl && (
-                              <a 
-                                href={presignedUrls[app.foodSafetyLicenseUrl] || app.foodSafetyLicenseUrl || '#'} 
-                                target="_blank" 
+                              <a
+                                href={presignedUrls[app.foodSafetyLicenseUrl] || app.foodSafetyLicenseUrl || '#'}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                                 title="View Food Safety License Document"
@@ -1526,9 +1526,9 @@ function AdminDashboard() {
                               </a>
                             )}
                             {app.foodEstablishmentCertUrl && (
-                              <a 
-                                href={presignedUrls[app.foodEstablishmentCertUrl] || app.foodEstablishmentCertUrl || '#'} 
-                                target="_blank" 
+                              <a
+                                href={presignedUrls[app.foodEstablishmentCertUrl] || app.foodEstablishmentCertUrl || '#'}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
                                 title="View Food Establishment Certificate Document"
@@ -1636,49 +1636,49 @@ function AdminDashboard() {
                       </div>
 
                       {/* Application-specific notices */}
-                      {app.status !== "approved" && 
-                       app.foodSafetyLicense === "yes" && 
-                       app.foodEstablishmentCert === "yes" && 
-                       app.foodSafetyLicenseUrl && 
-                       app.foodEstablishmentCertUrl && (
-                        <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="text-sm font-semibold text-green-800 flex items-center gap-2">
-                                <CheckCircle className="h-4 w-4" />
-                                Ready for Quick Approval
-                              </h4>
-                              <p className="text-xs text-green-700 mt-1">
-                                Applicant has both certifications and documents uploaded
-                              </p>
+                      {app.status !== "approved" &&
+                        app.foodSafetyLicense === "yes" &&
+                        app.foodEstablishmentCert === "yes" &&
+                        app.foodSafetyLicenseUrl &&
+                        app.foodEstablishmentCertUrl && (
+                          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="text-sm font-semibold text-green-800 flex items-center gap-2">
+                                  <CheckCircle className="h-4 w-4" />
+                                  Ready for Quick Approval
+                                </h4>
+                                <p className="text-xs text-green-700 mt-1">
+                                  Applicant has both certifications and documents uploaded
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
                       {/* Notice for applications that will need documents later */}
-                      {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" || 
-                        app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") && 
-                       app.status !== "approved" && (
-                        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                          <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
-                            <AlertTriangle className="h-4 w-4" />
-                            Document Upload Required After Approval
-                          </h4>
-                          <p className="text-xs text-amber-700 mt-1">
-                            {app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" ? 
-                              "• Food Safety License: " + formatCertificationStatus(app.foodSafetyLicense) : ""}
-                            {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure") && 
-                             (app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") ? 
-                              "\n" : ""}
-                            {app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure" ? 
-                              "• Food Establishment Cert: " + formatCertificationStatus(app.foodEstablishmentCert) : ""}
-                          </p>
-                          <p className="text-xs text-amber-600 mt-2 font-medium">
-                            This applicant will need to upload documents after approval and wait for document verification.
-                          </p>
-                        </div>
-                      )}
+                      {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" ||
+                        app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") &&
+                        app.status !== "approved" && (
+                          <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                            <h4 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4" />
+                              Document Upload Required After Approval
+                            </h4>
+                            <p className="text-xs text-amber-700 mt-1">
+                              {app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure" ?
+                                "• Food Safety License: " + formatCertificationStatus(app.foodSafetyLicense) : ""}
+                              {(app.foodSafetyLicense === "no" || app.foodSafetyLicense === "notSure") &&
+                                (app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure") ?
+                                "\n" : ""}
+                              {app.foodEstablishmentCert === "no" || app.foodEstablishmentCert === "notSure" ?
+                                "• Food Establishment Cert: " + formatCertificationStatus(app.foodEstablishmentCert) : ""}
+                            </p>
+                            <p className="text-xs text-amber-600 mt-2 font-medium">
+                              This applicant will need to upload documents after approval and wait for document verification.
+                            </p>
+                          </div>
+                        )}
 
                       {/* Document Verification Section */}
                       {app.status === "approved" && (
@@ -1687,7 +1687,7 @@ function AdminDashboard() {
                             <Shield className="h-5 w-5" />
                             Document Verification
                           </h4>
-                          
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                             {/* Food Safety License Document */}
                             <div className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
@@ -1697,9 +1697,9 @@ function AdminDashboard() {
                               </h5>
                               {app.foodSafetyLicenseUrl ? (
                                 <div className="space-y-3">
-                                  <a 
-                                    href={presignedUrls[app.foodSafetyLicenseUrl] || getR2ProxyUrl(app.foodSafetyLicenseUrl)} 
-                                    target="_blank" 
+                                  <a
+                                    href={presignedUrls[app.foodSafetyLicenseUrl] || getR2ProxyUrl(app.foodSafetyLicenseUrl)}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
                                     onClick={async (e) => {
@@ -1723,7 +1723,7 @@ function AdminDashboard() {
                                       <span className="text-xs text-red-600 font-medium">✗ Rejected</span>
                                     )}
                                   </div>
-                                  
+
                                   {/* FSL Approval Controls - Only show if status is pending */}
                                   {app.foodSafetyLicenseStatus === "pending" && (
                                     <div className="flex gap-2 pt-2">
@@ -1746,7 +1746,7 @@ function AdminDashboard() {
                                       </Button>
                                     </div>
                                   )}
-                                  
+
                                   {/* Admin Override - Subtle option to change status for already processed documents */}
                                   {(app.foodSafetyLicenseStatus === "approved" || app.foodSafetyLicenseStatus === "rejected") && (
                                     <details className="mt-2">
@@ -1758,11 +1758,10 @@ function AdminDashboard() {
                                           size="sm"
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
-                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
-                                            app.foodSafetyLicenseStatus === 'approved' 
-                                              ? 'bg-emerald-100 text-emerald-700 cursor-default' 
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodSafetyLicenseStatus === 'approved'
+                                              ? 'bg-emerald-100 text-emerald-700 cursor-default'
                                               : 'text-emerald-600 hover:bg-emerald-50'
-                                          }`}
+                                            }`}
                                           disabled={app.foodSafetyLicenseStatus === 'approved'}
                                         >
                                           ✓ Approve
@@ -1771,11 +1770,10 @@ function AdminDashboard() {
                                           size="sm"
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
-                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
-                                            app.foodSafetyLicenseStatus === 'rejected' 
-                                              ? 'bg-red-100 text-red-700 cursor-default' 
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodSafetyLicenseStatus === 'rejected'
+                                              ? 'bg-red-100 text-red-700 cursor-default'
                                               : 'text-red-600 hover:bg-red-50'
-                                          }`}
+                                            }`}
                                           disabled={app.foodSafetyLicenseStatus === 'rejected'}
                                         >
                                           ✗ Reject
@@ -1807,9 +1805,9 @@ function AdminDashboard() {
                               </h5>
                               {app.foodEstablishmentCertUrl ? (
                                 <div className="space-y-3">
-                                  <a 
-                                    href={presignedUrls[app.foodEstablishmentCertUrl] || getR2ProxyUrl(app.foodEstablishmentCertUrl)} 
-                                    target="_blank" 
+                                  <a
+                                    href={presignedUrls[app.foodEstablishmentCertUrl] || getR2ProxyUrl(app.foodEstablishmentCertUrl)}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium hover:underline transition-colors"
                                     onClick={async (e) => {
@@ -1833,7 +1831,7 @@ function AdminDashboard() {
                                       <span className="text-xs text-red-600 font-medium">✗ Rejected</span>
                                     )}
                                   </div>
-                                  
+
                                   {/* FEC Approval Controls - Only show if status is pending */}
                                   {app.foodEstablishmentCertStatus === "pending" && (
                                     <div className="flex gap-2 pt-2">
@@ -1856,7 +1854,7 @@ function AdminDashboard() {
                                       </Button>
                                     </div>
                                   )}
-                                  
+
                                   {/* Admin Override - Subtle option to change status for already processed documents */}
                                   {(app.foodEstablishmentCertStatus === "approved" || app.foodEstablishmentCertStatus === "rejected") && (
                                     <details className="mt-2">
@@ -1868,11 +1866,10 @@ function AdminDashboard() {
                                           size="sm"
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
-                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
-                                            app.foodEstablishmentCertStatus === 'approved' 
-                                              ? 'bg-emerald-100 text-emerald-700 cursor-default' 
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodEstablishmentCertStatus === 'approved'
+                                              ? 'bg-emerald-100 text-emerald-700 cursor-default'
                                               : 'text-emerald-600 hover:bg-emerald-50'
-                                          }`}
+                                            }`}
                                           disabled={app.foodEstablishmentCertStatus === 'approved'}
                                         >
                                           ✓ Approve
@@ -1881,11 +1878,10 @@ function AdminDashboard() {
                                           size="sm"
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
-                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${
-                                            app.foodEstablishmentCertStatus === 'rejected' 
-                                              ? 'bg-red-100 text-red-700 cursor-default' 
+                                          className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodEstablishmentCertStatus === 'rejected'
+                                              ? 'bg-red-100 text-red-700 cursor-default'
                                               : 'text-red-600 hover:bg-red-50'
-                                          }`}
+                                            }`}
                                           disabled={app.foodEstablishmentCertStatus === 'rejected'}
                                         >
                                           ✗ Reject
@@ -1930,7 +1926,7 @@ function AdminDashboard() {
                               const fecApproved = !app.foodEstablishmentCertUrl || app.foodEstablishmentCertStatus === "approved";
                               const allApproved = fslApproved && fecApproved;
                               const anyRejected = app.foodSafetyLicenseStatus === "rejected" || app.foodEstablishmentCertStatus === "rejected";
-                              
+
                               if (allApproved) {
                                 return (
                                   <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">
@@ -1972,7 +1968,7 @@ function AdminDashboard() {
                               <p className="font-medium text-sm">{new Date(app.createdAt).toLocaleDateString()}</p>
                             </div>
                           </div>
-                          
+
                           {app.feedback && (
                             <div>
                               <h5 className="text-xs font-medium text-gray-600 mb-1">Feedback/Questions</h5>
@@ -2033,17 +2029,20 @@ function KitchenLicenseApprovalView() {
   const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState<Record<number, string>>({});
   const [expandedLicense, setExpandedLicense] = useState<number | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>("pending");
 
-  // Fetch pending licenses
-  const { data: pendingLicenses = [], isLoading, refetch } = useQuery({
-    queryKey: ['/api/admin/locations/pending-licenses'],
+  // Fetch licenses based on filter
+  const { data: licenses = [], isLoading, refetch } = useQuery({
+    queryKey: ['/api/admin/locations/licenses', filterStatus],
     queryFn: async () => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
         throw new Error("Firebase user not available");
       }
       const token = await currentFirebaseUser.getIdToken();
-      const response = await fetch('/api/admin/locations/pending-licenses', {
+      // Pass 'all' if filter is 'all', otherwise pass specific status
+      const statusParam = filterStatus === 'all' ? '' : `status=${filterStatus}`;
+      const response = await fetch(`/api/admin/locations/licenses?${statusParam}`, {
         credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -2051,7 +2050,7 @@ function KitchenLicenseApprovalView() {
         },
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch pending licenses');
+        throw new Error('Failed to fetch licenses');
       }
       return response.json();
     },
@@ -2085,7 +2084,9 @@ function KitchenLicenseApprovalView() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/locations/pending-licenses'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/locations/licenses'] });
+      // Also invalidate pending count if we processed a pending license
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/locations/pending-licenses-count'] });
       refetch();
       toast({
         title: "License Status Updated",
@@ -2121,210 +2122,299 @@ function KitchenLicenseApprovalView() {
     approveLicenseMutation.mutate({ locationId, status: 'rejected', feedbackText });
   };
 
-  if (isLoading) {
-    return (
-      <div className="text-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading pending licenses...</p>
-      </div>
-    );
-  }
-
-  if (pendingLicenses.length === 0) {
-    return (
-      <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-200">
-        <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">No Pending Licenses</h3>
-        <p className="text-gray-500">All kitchen licenses have been reviewed.</p>
-      </div>
-    );
-  }
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">Pending Review</Badge>;
+      case 'approved':
+        return <Badge className="bg-green-100 text-green-800 border-green-300">Approved</Badge>;
+      case 'rejected':
+        return <Badge className="bg-red-100 text-red-800 border-red-300">Rejected</Badge>;
+      default:
+        return <Badge variant="outline">Unknown</Badge>;
+    }
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Pending Kitchen Licenses</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Licenses</h3>
             <p className="text-sm text-gray-500">
-              {pendingLicenses.length} location{pendingLicenses.length !== 1 ? 's' : ''} awaiting review
+              Manage and review kitchen license documents
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Tabs value={filterStatus} onValueChange={setFilterStatus} className="w-full sm:w-auto">
+              <TabsList>
+                <TabsTrigger value="pending">Pending</TabsTrigger>
+                <TabsTrigger value="approved">Approved</TabsTrigger>
+                <TabsTrigger value="rejected">Rejected</TabsTrigger>
+                <TabsTrigger value="all">All</TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isLoading}
+              className="ml-auto sm:ml-0"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          {pendingLicenses.map((license: any) => (
-            <Card key={license.id} className="border-2 border-yellow-200">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-12 h-12 rounded-lg bg-yellow-100 flex items-center justify-center">
-                        <FileText className="h-6 w-6 text-yellow-600" />
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading licenses...</p>
+          </div>
+        ) : licenses.length === 0 ? (
+          <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Licenses Found</h3>
+            <p className="text-gray-500">
+              No kitchen licenses found with status "{filterStatus}".
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {licenses.map((license: any) => (
+              <Card key={license.id} className={`border-2 ${license.kitchenLicenseStatus === 'pending' ? 'border-yellow-200' :
+                  license.kitchenLicenseStatus === 'rejected' ? 'border-red-200' : 'border-gray-200'
+                }`}>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${license.kitchenLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-600' :
+                            license.kitchenLicenseStatus === 'approved' ? 'bg-green-100 text-green-600' :
+                              license.kitchenLicenseStatus === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                          <FileText className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-gray-900 text-lg">{license.name}</h4>
+                            {getStatusBadge(license.kitchenLicenseStatus)}
+                          </div>
+                          <p className="text-sm text-gray-600">{license.address}</p>
+                          {license.managerUsername && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Manager: {license.managerUsername}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-semibold text-gray-900 text-lg">{license.name}</h4>
-                        <p className="text-sm text-gray-600">{license.address}</p>
-                        {license.managerUsername && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Manager: {license.managerUsername}
-                          </p>
+
+                      {/* License Document Details */}
+                      <div className="mb-4 space-y-2">
+                        <div className="flex flex-wrap gap-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const currentFirebaseUser = auth.currentUser;
+                                if (!currentFirebaseUser) {
+                                  toast({
+                                    title: "Authentication Required",
+                                    description: "Please sign in to view the license document.",
+                                    variant: "destructive",
+                                  });
+                                  return;
+                                }
+
+                                const token = await currentFirebaseUser.getIdToken();
+
+                                // Fetch with redirect handling
+                                const response = await fetch(`/api/files/kitchen-license/${license.id}`, {
+                                  headers: {
+                                    'Authorization': `Bearer ${token}`,
+                                  },
+                                  credentials: 'include',
+                                  redirect: 'follow', // Follow redirects
+                                });
+
+                                if (!response.ok) {
+                                  if (response.status === 401 || response.status === 403) {
+                                    throw new Error('You do not have permission to view this document.');
+                                  }
+                                  throw new Error('Failed to load license document.');
+                                }
+
+                                const finalUrl = response.url;
+
+                                if (finalUrl.includes('/api/files/r2-proxy')) {
+                                  window.open(finalUrl, '_blank');
+                                } else if (finalUrl.includes('r2.cloudflarestorage.com') || finalUrl.includes('presigned')) {
+                                  window.open(finalUrl, '_blank');
+                                } else {
+                                  try {
+                                    const blob = await response.blob();
+                                    const blobUrl = URL.createObjectURL(blob);
+                                    window.open(blobUrl, '_blank');
+                                    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                                  } catch (blobError) {
+                                    window.open(finalUrl, '_blank');
+                                  }
+                                }
+                              } catch (error: any) {
+                                console.error('Error viewing license:', error);
+                                toast({
+                                  title: "Error",
+                                  description: error.message || "Failed to view license document",
+                                  variant: "destructive",
+                                });
+                              }
+                            }}
+                            className="inline-flex items-center gap-2"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            View License
+                          </Button>
+
+                          {license.kitchenLicenseExpiry && (
+                            <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200">
+                              <Calendar className="h-4 w-4 text-gray-500" />
+                              <span className="text-gray-600">Expires:</span>
+                              <span className={new Date(license.kitchenLicenseExpiry) < new Date() ? "text-red-600 font-semibold" : "font-medium"}>
+                                {new Date(license.kitchenLicenseExpiry).toLocaleDateString()}
+                                {new Date(license.kitchenLicenseExpiry) < new Date() && " (Expired)"}
+                              </span>
+                            </div>
+                          )}
+
+                          {license.kitchenLicenseUploadedAt && (
+                            <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200">
+                              <Clock className="h-4 w-4 text-gray-500" />
+                              <span className="text-gray-600">Uploaded:</span>
+                              <span className="font-medium">{new Date(license.kitchenLicenseUploadedAt).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Status details */}
+                        {license.kitchenLicenseStatus === 'approved' && license.kitchenLicenseApprovedAt && (
+                          <div className="mt-2 text-sm text-green-700 bg-green-50 px-3 py-2 rounded-md border border-green-100 inline-block">
+                            <CheckCircle className="h-3 w-3 inline mr-1 mb-0.5" />
+                            Approved on {new Date(license.kitchenLicenseApprovedAt).toLocaleDateString()}
+                          </div>
+                        )}
+
+                        {license.kitchenLicenseStatus === 'rejected' && (
+                          <div className="mt-2 text-sm text-red-700 bg-red-50 px-3 py-2 rounded-md border border-red-100">
+                            <p className="font-semibold flex items-center gap-1">
+                              <XCircle className="h-3 w-3" />
+                              Rejection Reason:
+                            </p>
+                            <p className="mt-1">{license.kitchenLicenseFeedback || "No feedback provided."}</p>
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* License Document */}
-                    <div className="mb-4 space-y-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            const currentFirebaseUser = auth.currentUser;
-                            if (!currentFirebaseUser) {
-                              toast({
-                                title: "Authentication Required",
-                                description: "Please sign in to view the license document.",
-                                variant: "destructive",
-                              });
-                              return;
-                            }
-                            
-                            const token = await currentFirebaseUser.getIdToken();
-                            
-                            // Fetch with redirect handling
-                            const response = await fetch(`/api/files/kitchen-license/${license.id}`, {
-                              headers: {
-                                'Authorization': `Bearer ${token}`,
-                              },
-                              credentials: 'include',
-                              redirect: 'follow', // Follow redirects
-                            });
-                            
-                            if (!response.ok) {
-                              if (response.status === 401 || response.status === 403) {
-                                throw new Error('You do not have permission to view this document.');
-                              }
-                              throw new Error('Failed to load license document.');
-                            }
-                            
-                            // Check if the final URL is the r2-proxy or a direct file
-                            const finalUrl = response.url;
-                            
-                            // If it redirected to r2-proxy, open that URL (it's public)
-                            if (finalUrl.includes('/api/files/r2-proxy')) {
-                              window.open(finalUrl, '_blank');
-                            } else if (finalUrl.includes('r2.cloudflarestorage.com') || finalUrl.includes('presigned')) {
-                              // Direct R2 URL or presigned URL - open directly
-                              window.open(finalUrl, '_blank');
-                            } else {
-                              // Try to get as blob for other file types
-                              try {
-                                const blob = await response.blob();
-                                const blobUrl = URL.createObjectURL(blob);
-                                window.open(blobUrl, '_blank');
-                                // Clean up blob URL after a delay
-                                setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-                              } catch (blobError) {
-                                // If blob fails, try opening the URL directly
-                                window.open(finalUrl, '_blank');
-                              }
-                            }
-                          } catch (error: any) {
-                            console.error('Error viewing license:', error);
-                            toast({
-                              title: "Error",
-                              description: error.message || "Failed to view license document",
-                              variant: "destructive",
-                            });
-                          }
-                        }}
-                        className="inline-flex items-center gap-2"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        View Kitchen License Document
-                      </Button>
-                      {license.kitchenLicenseExpiry && (
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <Calendar className="h-4 w-4 text-gray-500" />
-                          <span className="font-medium">Expiration Date:</span>
-                          <span className={new Date(license.kitchenLicenseExpiry) < new Date() ? "text-red-600 font-semibold" : ""}>
-                            {new Date(license.kitchenLicenseExpiry).toLocaleDateString()}
-                            {new Date(license.kitchenLicenseExpiry) < new Date() && (
-                              <span className="ml-2 text-red-600">(Expired)</span>
+                      {/* Expandable Action/Feedback Section (Only for pending or if changing status) */}
+                      {(license.kitchenLicenseStatus === 'pending' || expandedLicense === license.id) && (
+                        <>
+                          {expandedLicense === license.id && (
+                            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 animated fadeIn">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Feedback {license.kitchenLicenseStatus !== 'rejected' && '(Optional for approval, Required for rejection)'}
+                              </label>
+                              <textarea
+                                value={feedback[license.id] || ''}
+                                onChange={(e) => setFeedback({ ...feedback, [license.id]: e.target.value })}
+                                placeholder="Add feedback or notes about this license..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                rows={3}
+                              />
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap gap-3 mt-4">
+                            {!expandedLicense && license.kitchenLicenseStatus === 'pending' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setExpandedLicense(license.id)}
+                              >
+                                Add Feedback
+                              </Button>
                             )}
-                          </span>
+
+                            {expandedLicense === license.id && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setExpandedLicense(null)}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+
+                            {license.kitchenLicenseStatus !== 'approved' && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleApprove(license.id)}
+                                disabled={approveLicenseMutation.isPending}
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                              >
+                                <Check className="h-4 w-4 mr-2" />
+                                {approveLicenseMutation.isPending && expandedLicense === license.id ? 'Approving...' : 'Approve'}
+                              </Button>
+                            )}
+
+                            {license.kitchenLicenseStatus !== 'rejected' && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => {
+                                  if (!expandedLicense) {
+                                    setExpandedLicense(license.id);
+                                    toast({
+                                      title: "Feedback Required",
+                                      description: "Please add feedback before rejecting.",
+                                    });
+                                  } else {
+                                    handleReject(license.id);
+                                  }
+                                }}
+                                disabled={approveLicenseMutation.isPending}
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                {approveLicenseMutation.isPending && expandedLicense === license.id ? 'Rejecting...' : 'Reject'}
+                              </Button>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Allow Admin to edit result even if already processed */}
+                      {license.kitchenLicenseStatus !== 'pending' && expandedLicense !== license.id && (
+                        <div className="mt-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setExpandedLicense(license.id)}
+                            className="text-gray-500 border-gray-200 hover:text-gray-700"
+                          >
+                            Change Status / Edit Feedback
+                          </Button>
                         </div>
                       )}
-                      {license.kitchenLicenseUploadedAt && (
-                        <div className="flex items-center gap-2 text-sm text-gray-700">
-                          <Clock className="h-4 w-4 text-gray-500" />
-                          <span className="font-medium">Uploaded:</span>
-                          <span>{new Date(license.kitchenLicenseUploadedAt).toLocaleDateString()}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Expandable Feedback Section */}
-                    {expandedLicense === license.id && (
-                      <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Feedback (Required for rejection, optional for approval)
-                        </label>
-                        <textarea
-                          value={feedback[license.id] || ''}
-                          onChange={(e) => setFeedback({ ...feedback, [license.id]: e.target.value })}
-                          placeholder="Add feedback or notes about this license..."
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                          rows={3}
-                        />
-                      </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3 mt-4">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setExpandedLicense(expandedLicense === license.id ? null : license.id)}
-                      >
-                        {expandedLicense === license.id ? 'Hide Feedback' : 'Add Feedback'}
-                      </Button>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => handleApprove(license.id)}
-                        disabled={approveLicenseMutation.isPending}
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                      >
-                        <Check className="h-4 w-4 mr-2" />
-                        {approveLicenseMutation.isPending ? 'Approving...' : 'Approve'}
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleReject(license.id)}
-                        disabled={approveLicenseMutation.isPending}
-                      >
-                        <X className="h-4 w-4 mr-2" />
-                        {approveLicenseMutation.isPending ? 'Rejecting...' : 'Reject'}
-                      </Button>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2358,7 +2448,7 @@ function PlatformSettingsView() {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
-      
+
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
         credentials: 'include',
         headers,
@@ -2406,7 +2496,7 @@ function PlatformSettingsView() {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       };
-      
+
       const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
         method: 'PUT',
         credentials: 'include',
@@ -2443,7 +2533,7 @@ function PlatformSettingsView() {
 
   const handleSave = () => {
     const rateValue = parseFloat(serviceFeeRate);
-    
+
     if (isNaN(rateValue) || rateValue < 0 || rateValue > 100) {
       toast({
         title: "Invalid Input",
@@ -2498,7 +2588,7 @@ function PlatformSettingsView() {
                 <p className="text-sm text-gray-600 mb-4">
                   The platform service fee rate applied to storage extensions and bookings. This rate is used when chefs extend their storage bookings.
                 </p>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2634,7 +2724,7 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
         startDate: dateRangeParams.startDate,
         endDate: dateRangeParams.endDate,
       });
-      
+
       const response = await fetch(`/api/admin/revenue/all-managers?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -2642,7 +2732,7 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
         },
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Failed to fetch managers revenue');
@@ -2661,7 +2751,7 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
         startDate: dateRangeParams.startDate,
         endDate: dateRangeParams.endDate,
       });
-      
+
       const response = await fetch(`/api/admin/revenue/manager/${selectedManager}?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -2669,7 +2759,7 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
         },
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch manager revenue details');
       }
@@ -2920,7 +3010,7 @@ function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () =
         startDate: dateRangeParams.startDate,
         endDate: dateRangeParams.endDate,
       });
-      
+
       const response = await fetch(`/api/admin/revenue/platform-overview?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -2928,7 +3018,7 @@ function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () =
         },
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Failed to fetch platform overview');

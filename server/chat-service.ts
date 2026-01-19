@@ -103,19 +103,19 @@ export async function sendSystemNotification(
     let content = '';
     switch (eventType) {
       case 'TIER1_APPROVED':
-        content = `✅ Tier 1 Approved: Your food handler certificate has been verified. You can now proceed to Tier 2 - Kitchen Coordination.`;
+        content = `✅ Step 1 Approved: Your food handler certificate has been verified. You can now proceed to Step 2 - Kitchen Coordination.`;
         break;
       case 'TIER1_REJECTED':
-        content = `❌ Tier 1 Rejected: ${data?.reason || 'Your application did not meet the requirements.'}`;
+        content = `❌ Step 1 Rejected: ${data?.reason || 'Your application did not meet the requirements.'}`;
         break;
       case 'TIER2_COMPLETE':
-        content = `✅ Tier 2 Complete: All kitchen coordination requirements have been met. You can now proceed to Tier 3 - Government Application.`;
+        content = `✅ Step 2 Complete: All kitchen coordination requirements have been met. Your application is now fully approved.`;
         break;
       case 'TIER3_SUBMITTED':
-        content = `📋 Tier 3 Submitted: Your government application has been submitted. We'll notify you once it's approved.`;
+        content = `📋 Step 3 Submitted: Your government application has been submitted. We'll notify you once it's approved.`;
         break;
       case 'TIER4_APPROVED':
-        content = `🎉 Tier 4 Approved: Congratulations! Your license has been entered and you're fully approved to use the kitchen.`;
+        content = `🎉 Step 4 Approved: Congratulations! Your license has been entered and you're fully approved to use the kitchen.`;
         break;
       case 'DOCUMENT_UPLOADED':
         content = `📄 Document Uploaded: ${data?.fileName || 'A document'} has been uploaded for review.`;

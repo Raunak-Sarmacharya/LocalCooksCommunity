@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "../hooks/use-toast";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { Switch } from "@/components/ui/switch";
 import { auth } from "@/lib/firebase";
 
 export default function AdminManageLocations() {
@@ -13,7 +14,7 @@ export default function AdminManageLocations() {
   const [editingKitchen, setEditingKitchen] = useState<any | null>(null);
   const [editingManager, setEditingManager] = useState<any | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ type: 'location' | 'kitchen' | 'manager', id: number, name: string } | null>(null);
-  
+
   const [locations, setLocations] = useState<any[]>([]);
   const [kitchens, setKitchens] = useState<any[]>([]);
   const [managers, setManagers] = useState<any[]>([]);
@@ -46,7 +47,7 @@ export default function AdminManageLocations() {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
-    
+
     const currentFirebaseUser = auth.currentUser;
     if (currentFirebaseUser) {
       try {
@@ -56,7 +57,7 @@ export default function AdminManageLocations() {
         console.error('Error getting Firebase token:', error);
       }
     }
-    
+
     return headers;
   };
 
@@ -64,27 +65,27 @@ export default function AdminManageLocations() {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch("/api/admin/locations", { 
+      const response = await fetch("/api/admin/locations", {
         credentials: "include",
         headers,
       });
-      
+
       console.log('📍 Locations API response status:', response.status);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("❌ Failed to load locations:", response.status, response.statusText, errorText);
-        toast({ 
-          title: "Error", 
+        toast({
+          title: "Error",
           description: `Failed to load locations: ${response.status} ${response.statusText}`,
           variant: "destructive"
         });
         return;
       }
-      
+
       const contentType = response.headers.get('content-type');
       let data;
-      
+
       if (contentType?.includes('application/json')) {
         data = await response.json();
       } else {
@@ -94,35 +95,35 @@ export default function AdminManageLocations() {
           data = JSON.parse(text);
         } catch (e) {
           console.error('📍 Failed to parse response as JSON:', e);
-          toast({ 
-            title: "Error", 
+          toast({
+            title: "Error",
             description: "Invalid response format from server",
             variant: "destructive"
           });
           return;
         }
       }
-      
+
       console.log('📍 Raw locations response:', data);
       console.log('📍 Response is array?', Array.isArray(data));
       console.log('📍 Response length:', data?.length);
-      
+
       if (!Array.isArray(data)) {
         console.error('📍 Response is not an array! Got:', typeof data, data);
-        toast({ 
-          title: "Error", 
+        toast({
+          title: "Error",
           description: "Server returned invalid data format",
           variant: "destructive"
         });
         return;
       }
-      
+
       console.log(`✅ Loaded ${data.length} locations`);
       setLocations(data);
     } catch (error: any) {
       console.error("❌ Error loading locations:", error);
-      toast({ 
-        title: "Error", 
+      toast({
+        title: "Error",
         description: error.message || "Failed to load locations",
         variant: "destructive"
       });
@@ -131,134 +132,134 @@ export default function AdminManageLocations() {
     }
   };
 
-        const loadManagers = async () => {
+  const loadManagers = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch("/api/admin/managers", {
+        credentials: "include",
+        headers,
+      });
+
+      console.log('👥 Managers API response status:', response.status);
+
+      if (!response.ok) {
+        console.error("❌ Failed to load managers:", response.status, response.statusText);
+        const errorText = await response.text();
+        console.error("❌ Error response:", errorText);
+        toast({
+          title: "Error",
+          description: `Failed to load managers: ${response.status} ${response.statusText}`,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (response.ok) {
+        // Check response content type
+        const contentType = response.headers.get('content-type');
+        console.log('👥 Response content-type:', contentType);
+
+        let data;
+        if (contentType?.includes('application/json')) {
+          data = await response.json();
+        } else {
+          // Try to parse as text first, then JSON
+          const text = await response.text();
+          console.warn('👥 Response was not JSON, got text:', text.substring(0, 200));
           try {
-            const headers = await getAuthHeaders();
-            const response = await fetch("/api/admin/managers", { 
-              credentials: "include",
-              headers,
-            });
-            
-            console.log('👥 Managers API response status:', response.status);
-            
-            if (!response.ok) {
-              console.error("❌ Failed to load managers:", response.status, response.statusText);
-              const errorText = await response.text();
-              console.error("❌ Error response:", errorText);
-              toast({ 
-                title: "Error", 
-                description: `Failed to load managers: ${response.status} ${response.statusText}`,
-                variant: "destructive"
-              });
-              return;
-            }
-            
-            if (response.ok) {
-              // Check response content type
-              const contentType = response.headers.get('content-type');
-              console.log('👥 Response content-type:', contentType);
-              
-              let data;
-              if (contentType?.includes('application/json')) {
-                data = await response.json();
-              } else {
-                // Try to parse as text first, then JSON
-                const text = await response.text();
-                console.warn('👥 Response was not JSON, got text:', text.substring(0, 200));
-                try {
-                  data = JSON.parse(text);
-                } catch (e) {
-                  console.error('👥 Failed to parse response as JSON:', e);
-                  return;
-                }
-              }
-              
-              console.log('👥 Raw response data:', data);
-              console.log('👥 Response is array?', Array.isArray(data));
-              console.log('👥 Response length:', data?.length);
-              
-              if (!Array.isArray(data)) {
-                console.error('👥 Response is not an array! Got:', typeof data);
-                return;
-              }
-              
-              if (data.length > 0) {
-                console.log('👥 First manager from API:', JSON.stringify(data[0], null, 2));
-                console.log('👥 First manager has locations property?', 'locations' in data[0]);
-                console.log('👥 First manager.locations value:', data[0].locations);
-                console.log('👥 First manager.locations type:', typeof data[0].locations);
-                console.log('👥 First manager.locations is array?', Array.isArray(data[0].locations));
-                if (data[0].locations) {
-                  console.log('👥 First manager.locations length:', data[0].locations.length);
-                  console.log('👥 First manager.locations content:', JSON.stringify(data[0].locations, null, 2));
-                }
-              }
-              
-              // CRITICAL: Ensure every manager has a locations array, even if empty
-              const managersWithLocations = data.map((manager: any, index: number) => {
-                // Extensive validation and logging
-                console.log(`👥 Processing manager ${index}:`, {
-                  id: manager.id,
-                  username: manager.username,
-                  hasLocationsKey: 'locations' in manager,
-                  locationsValue: manager.locations,
-                  locationsType: typeof manager.locations,
-                  locationsIsArray: Array.isArray(manager.locations)
-                });
-                
-                // Normalize locations
-                let normalizedLocations = [];
-                if (manager.locations) {
-                  if (Array.isArray(manager.locations)) {
-                    normalizedLocations = manager.locations;
-                  } else if (typeof manager.locations === 'string') {
-                    try {
-                      normalizedLocations = JSON.parse(manager.locations);
-                      if (!Array.isArray(normalizedLocations)) {
-                        normalizedLocations = [];
-                      }
-                    } catch (e) {
-                      console.warn(`👥 Manager ${manager.id}: Failed to parse locations string:`, e);
-                      normalizedLocations = [];
-                    }
-                  } else {
-                    console.warn(`👥 Manager ${manager.id}: locations is not array or string, got:`, typeof manager.locations);
-                    normalizedLocations = [];
-                  }
-                }
-                
-                const normalized = {
-                  ...manager,
-                  locations: normalizedLocations
-                };
-                
-                console.log(`👥 Manager ${index} normalized:`, {
-                  id: normalized.id,
-                  username: normalized.username,
-                  locationsCount: normalized.locations.length,
-                  locations: normalized.locations
-                });
-                
-                return normalized;
-              });
-              
-              console.log('👥 FINAL: All managers processed, setting state with:', managersWithLocations.length, 'managers');
-              if (managersWithLocations.length > 0) {
-                console.log('👥 FINAL: First manager final structure:', JSON.stringify(managersWithLocations[0], null, 2));
-              }
-              
-              console.log(`✅ Loaded ${managersWithLocations.length} managers`);
-              setManagers(managersWithLocations);
-            }
-          } catch (error: any) {
-            console.error("❌ Error loading managers:", error);
-            toast({ 
-              title: "Error", 
-              description: error.message || "Failed to load managers",
-              variant: "destructive"
-            });
+            data = JSON.parse(text);
+          } catch (e) {
+            console.error('👥 Failed to parse response as JSON:', e);
+            return;
           }
-        };
+        }
+
+        console.log('👥 Raw response data:', data);
+        console.log('👥 Response is array?', Array.isArray(data));
+        console.log('👥 Response length:', data?.length);
+
+        if (!Array.isArray(data)) {
+          console.error('👥 Response is not an array! Got:', typeof data);
+          return;
+        }
+
+        if (data.length > 0) {
+          console.log('👥 First manager from API:', JSON.stringify(data[0], null, 2));
+          console.log('👥 First manager has locations property?', 'locations' in data[0]);
+          console.log('👥 First manager.locations value:', data[0].locations);
+          console.log('👥 First manager.locations type:', typeof data[0].locations);
+          console.log('👥 First manager.locations is array?', Array.isArray(data[0].locations));
+          if (data[0].locations) {
+            console.log('👥 First manager.locations length:', data[0].locations.length);
+            console.log('👥 First manager.locations content:', JSON.stringify(data[0].locations, null, 2));
+          }
+        }
+
+        // CRITICAL: Ensure every manager has a locations array, even if empty
+        const managersWithLocations = data.map((manager: any, index: number) => {
+          // Extensive validation and logging
+          console.log(`👥 Processing manager ${index}:`, {
+            id: manager.id,
+            username: manager.username,
+            hasLocationsKey: 'locations' in manager,
+            locationsValue: manager.locations,
+            locationsType: typeof manager.locations,
+            locationsIsArray: Array.isArray(manager.locations)
+          });
+
+          // Normalize locations
+          let normalizedLocations = [];
+          if (manager.locations) {
+            if (Array.isArray(manager.locations)) {
+              normalizedLocations = manager.locations;
+            } else if (typeof manager.locations === 'string') {
+              try {
+                normalizedLocations = JSON.parse(manager.locations);
+                if (!Array.isArray(normalizedLocations)) {
+                  normalizedLocations = [];
+                }
+              } catch (e) {
+                console.warn(`👥 Manager ${manager.id}: Failed to parse locations string:`, e);
+                normalizedLocations = [];
+              }
+            } else {
+              console.warn(`👥 Manager ${manager.id}: locations is not array or string, got:`, typeof manager.locations);
+              normalizedLocations = [];
+            }
+          }
+
+          const normalized = {
+            ...manager,
+            locations: normalizedLocations
+          };
+
+          console.log(`👥 Manager ${index} normalized:`, {
+            id: normalized.id,
+            username: normalized.username,
+            locationsCount: normalized.locations.length,
+            locations: normalized.locations
+          });
+
+          return normalized;
+        });
+
+        console.log('👥 FINAL: All managers processed, setting state with:', managersWithLocations.length, 'managers');
+        if (managersWithLocations.length > 0) {
+          console.log('👥 FINAL: First manager final structure:', JSON.stringify(managersWithLocations[0], null, 2));
+        }
+
+        console.log(`✅ Loaded ${managersWithLocations.length} managers`);
+        setManagers(managersWithLocations);
+      }
+    } catch (error: any) {
+      console.error("❌ Error loading managers:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load managers",
+        variant: "destructive"
+      });
+    }
+  };
 
   const loadKitchens = async (locationId: number) => {
     if (!locationId) return;
@@ -316,7 +317,7 @@ export default function AdminManageLocations() {
   const handleUpdateLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLocation) return;
-    
+
     setLoading(true);
     try {
       console.log('📍 Updating location:', editingLocation.id, {
@@ -324,7 +325,7 @@ export default function AdminManageLocations() {
         address: locationForm.address,
         managerId: locationForm.managerId || null,
       });
-      
+
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/locations/${editingLocation.id}`, {
         method: "PUT",
@@ -336,7 +337,7 @@ export default function AdminManageLocations() {
           managerId: locationForm.managerId || null,
         }),
       });
-      
+
       if (response.ok) {
         const updatedLocation = await response.json();
         console.log('✅ Location updated successfully:', updatedLocation);
@@ -344,7 +345,7 @@ export default function AdminManageLocations() {
         setShowLocationForm(false);
         setEditingLocation(null);
         setLocationForm({ name: "", address: "", managerId: "" });
-        
+
         // Reload both locations and managers to reflect any manager assignment changes
         await Promise.all([loadLocations(), loadManagers()]);
       } else {
@@ -362,7 +363,7 @@ export default function AdminManageLocations() {
 
   const handleDeleteLocation = async () => {
     if (!deletingItem) return;
-    
+
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
@@ -436,7 +437,7 @@ export default function AdminManageLocations() {
   const handleUpdateKitchen = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingKitchen) return;
-    
+
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
@@ -472,7 +473,7 @@ export default function AdminManageLocations() {
 
   const handleDeleteKitchen = async () => {
     if (!deletingItem) return;
-    
+
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
@@ -539,14 +540,14 @@ export default function AdminManageLocations() {
   const handleUpdateManager = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingManager) return;
-    
+
     setLoading(true);
     try {
       console.log('👤 Updating manager:', editingManager.id, {
         username: managerForm.username,
         locationNotificationEmails: managerForm.locationNotificationEmails,
       });
-      
+
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/admin/managers/${editingManager.id}`, {
         method: "PUT",
@@ -557,7 +558,7 @@ export default function AdminManageLocations() {
           locationNotificationEmails: managerForm.locationNotificationEmails,
         }),
       });
-      
+
       if (response.ok) {
         const updatedManager = await response.json();
         console.log('✅ Manager updated successfully:', updatedManager);
@@ -565,7 +566,7 @@ export default function AdminManageLocations() {
         setShowManagerForm(false);
         setEditingManager(null);
         setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
-        
+
         // Reload both managers and locations to reflect notification email updates
         await Promise.all([loadManagers(), loadLocations()]);
       } else {
@@ -583,7 +584,7 @@ export default function AdminManageLocations() {
 
   const handleDeleteManager = async () => {
     if (!deletingItem) return;
-    
+
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
@@ -610,22 +611,22 @@ export default function AdminManageLocations() {
 
   const handleEditManager = async (manager: any) => {
     console.log('📝 Editing manager:', manager.id, manager.username);
-    
+
     // CRITICAL: Always fetch locations directly from API to ensure we get the latest notification emails
     // Don't rely on manager.locations or local state - always fetch fresh from database
     let managerLocations: any[] = [];
-    
+
     try {
       console.log('🔍 Fetching locations for manager from API...');
       const headers = await getAuthHeaders();
-      const locationsResponse = await fetch('/api/admin/locations', { 
+      const locationsResponse = await fetch('/api/admin/locations', {
         credentials: 'include',
         headers,
       });
       if (locationsResponse.ok) {
         const allLocations = await locationsResponse.json();
         console.log(`📊 Fetched ${allLocations.length} total locations from API`);
-        
+
         // Filter locations assigned to this manager
         const managerLocs = allLocations.filter((loc: any) => {
           const locManagerId = loc.managerId || loc.manager_id;
@@ -635,25 +636,25 @@ export default function AdminManageLocations() {
           }
           return matches;
         });
-        
+
         console.log(`🔍 Found ${managerLocs.length} location(s) for manager ${manager.id}`);
-        
+
         // Map to consistent structure, ensuring we extract notification emails
         managerLocations = managerLocs.map((loc: any) => {
           const locationId = loc.id;
           const locationName = loc.name;
           // Extract notification email from all possible field variations
           const notificationEmail = loc.notificationEmail || loc.notification_email || null;
-          
+
           console.log(`📍 Mapping location ${locationId} (${locationName}): email = "${notificationEmail}"`);
-          
+
           return {
             locationId: locationId,
             locationName: locationName,
             notificationEmail: notificationEmail
           };
         });
-        
+
         console.log('✅ Final manager locations with emails:', JSON.stringify(managerLocations, null, 2));
       } else {
         console.error('❌ Failed to fetch locations:', locationsResponse.status, locationsResponse.statusText);
@@ -661,30 +662,30 @@ export default function AdminManageLocations() {
     } catch (error) {
       console.error('❌ Error fetching locations for manager:', error);
     }
-    
+
     // Set the manager with locations (even if empty array)
     const managerWithLocations = {
       ...manager,
       locations: managerLocations
     };
-    
+
     setEditingManager(managerWithLocations);
-    
+
     // Pre-populate location notification emails - this is what will be displayed in the form
     const locationEmails = managerLocations.map((loc: any) => {
       const email = loc.notificationEmail || "";
       const locationId = loc.locationId || loc.id;
-      
+
       console.log(`📧 Pre-populating email for location ${locationId}: "${email}"`);
-      
+
       return {
         locationId: locationId,
         notificationEmail: email,
       };
     });
-    
+
     console.log('📧 Final location notification emails array:', JSON.stringify(locationEmails, null, 2));
-    
+
     setManagerForm({
       username: manager.username || "",
       password: "", // Don't pre-fill password
@@ -883,7 +884,7 @@ export default function AdminManageLocations() {
                 <div className="space-y-2">
                   {managers.map((manager: any) => {
                     const managerLocations = manager.locations || [];
-                    
+
                     return (
                       <div key={manager.id} className="p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
                         <div className="flex items-start justify-between">
@@ -1092,15 +1093,13 @@ export default function AdminManageLocations() {
                   </div>
                   {editingKitchen && (
                     <div>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
+                      <div className="flex items-center gap-3">
+                        <Switch
                           checked={kitchenForm.isActive}
-                          onChange={(e) => setKitchenForm({ ...kitchenForm, isActive: e.target.checked })}
-                          className="rounded"
+                          onCheckedChange={(checked) => setKitchenForm({ ...kitchenForm, isActive: checked })}
                         />
                         <span className="text-sm font-medium text-gray-700">Active</span>
-                      </label>
+                      </div>
                     </div>
                   )}
                   <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
@@ -1208,10 +1207,10 @@ export default function AdminManageLocations() {
                       {(() => {
                         // Use locations from editingManager which are fetched fresh from API
                         const locationsArray = Array.isArray(editingManager.locations) ? editingManager.locations : [];
-                        
+
                         console.log('🔍 Modal render - editingManager.locations:', locationsArray);
                         console.log('🔍 Modal render - managerForm.locationNotificationEmails:', managerForm.locationNotificationEmails);
-                        
+
                         // If no locations found, show message
                         if (locationsArray.length === 0) {
                           return (
@@ -1225,7 +1224,7 @@ export default function AdminManageLocations() {
                             </div>
                           );
                         }
-                        
+
                         // Map through locations and show input for each
                         // Use managerForm.locationNotificationEmails as the source of truth for email values
                         return locationsArray.map((loc: any) => {
@@ -1234,19 +1233,19 @@ export default function AdminManageLocations() {
                             console.warn('⚠️ Location missing valid ID:', loc);
                             return null;
                           }
-                          
+
                           // Find corresponding email in form state - this is populated from database
                           const emailEntry = managerForm.locationNotificationEmails.find(
                             (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
                           );
-                          
+
                           // Use email from form state (which we populated from database), or empty string
                           const currentEmail = emailEntry?.notificationEmail || "";
-                          
+
                           const locationName = loc.locationName || loc.name || `Location ${locId}`;
-                          
+
                           console.log(`📍 Rendering location ${locId} (${locationName}): email = "${currentEmail}"`);
-                          
+
                           return (
                             <div key={locId} className="space-y-1">
                               <label className="text-xs font-medium text-gray-600">
@@ -1261,7 +1260,7 @@ export default function AdminManageLocations() {
                                   const existingIndex = newEmails.findIndex(
                                     (e: any) => e.locationId === locId || e.locationId?.toString() === locId?.toString()
                                   );
-                                  
+
                                   if (existingIndex >= 0) {
                                     // Update existing entry
                                     newEmails[existingIndex].notificationEmail = newEmailValue;

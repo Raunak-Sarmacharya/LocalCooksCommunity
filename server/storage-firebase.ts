@@ -12,7 +12,7 @@ import type {
   User
 } from "@shared/schema";
 import { applications, chefKitchenApplications, users, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings, LocationRequirements, UpdateLocationRequirements } from "@shared/schema";
-import { eq, and, inArray, asc, gte, lte, desc, isNull, or } from "drizzle-orm";
+import { eq, and, inArray, asc, gte, lte, desc, isNull, or, not } from "drizzle-orm";
 import { db, pool } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
@@ -4535,18 +4535,18 @@ export class FirebaseStorage {
         };
       }
 
-      // Check if all tiers are completed (tier 4 completed)
-      const allTiersCompleted = !!application.tier4_completed_at;
+      // Check if Tier 2 is completed (only Tier 1 and Tier 2 are in use)
+      const tier2Completed = !!application.tier2_completed_at;
 
       switch (application.status) {
         case 'approved':
           return {
             hasApplication: true,
-            status: allTiersCompleted ? 'approved' : 'inReview',
-            canBook: allTiersCompleted, // Can only book after completing all tiers
-            message: allTiersCompleted
-              ? 'All application tiers completed. You can book kitchens at this location.'
-              : 'Application approved but not all tiers completed. Please complete remaining tiers to book.',
+            status: tier2Completed ? 'approved' : 'inReview',
+            canBook: tier2Completed, // Can book after completing Tier 2 (only Tier 1 and 2 are in use)
+            message: tier2Completed
+              ? 'Application completed. You can book kitchens at this location.'
+              : 'Application approved but Tier 2 is not completed. Please complete Tier 2 to book.',
           };
         case 'inReview':
           return {
@@ -4644,7 +4644,8 @@ export class FirebaseStorage {
         .where(
           and(
             eq(chefKitchenApplications.chefId, chefId),
-            eq(chefKitchenApplications.status, 'approved')
+            eq(chefKitchenApplications.status, 'approved'),
+            not(isNull(chefKitchenApplications.tier2_completed_at)) // Only include where Tier 2 is completed
           )
         );
 

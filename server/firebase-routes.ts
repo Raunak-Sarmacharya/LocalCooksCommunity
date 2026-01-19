@@ -2198,6 +2198,43 @@ export function registerFirebaseRoutes(app: Express) {
         if (tierData) {
           formData.tier_data = tierData;
         }
+
+        // Validate Tier 2 required documents when submitting Tier 2 application
+        const currentTier = parseInt(req.body.current_tier) || 1;
+        if (currentTier === 2) {
+          // Check if Food Establishment Certificate is required and provided
+          if (requirements.tier2_food_establishment_cert_required) {
+            const hasFoodEstablishmentCert = foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl;
+            if (!hasFoodEstablishmentCert) {
+              return res.status(400).json({
+                error: 'Validation error',
+                message: 'Food Establishment Certificate is required for Tier 2',
+                details: [{
+                  code: 'custom',
+                  message: 'Food Establishment Certificate is required',
+                  path: ['foodEstablishmentCert']
+                }]
+              });
+            }
+          }
+
+          // Check if Insurance Document is required and provided
+          if (requirements.tier2_insurance_document_required) {
+            const hasInsuranceDoc = tierFileUrls['tier2_insurance_document'];
+            if (!hasInsuranceDoc) {
+              return res.status(400).json({
+                error: 'Validation error',
+                message: 'Insurance Document is required for Tier 2',
+                details: [{
+                  code: 'custom',
+                  message: 'Insurance Document is required',
+                  path: ['tier2_insurance_document']
+                }]
+              });
+            }
+          }
+        }
+
         // Handle Tier 4 license fields
         if (req.body.government_license_number) {
           formData.government_license_number = req.body.government_license_number;
@@ -2341,7 +2378,7 @@ export function registerFirebaseRoutes(app: Express) {
       res.json({
         ...application,
         hasApplication: true,
-        canBook: !!application.tier4_completed_at, // Can only book after completing all tiers
+        canBook: application.status === 'approved' && !!application.tier2_completed_at, // Can book after completing Tier 2 (only Tier 1 and 2 are in use)
         location: location ? {
           id: (location as any).id,
           name: (location as any).name,
