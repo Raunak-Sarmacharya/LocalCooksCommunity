@@ -1,7 +1,77 @@
-import type { User } from "@shared/schema";
-import { insertApplicationSchema, updateApplicationStatusSchema, updateDocumentVerificationSchema } from "@shared/schema";
 import express, { type Express, type Request, type Response } from "express";
+import fs from "fs";
+import { createServer, type Server } from "http";
+import passport from "passport";
 import path from "path";
+import { fromZodError } from "zod-validation-error";
+import Stripe from "stripe";
+import { eq, inArray, and, desc, count } from "drizzle-orm";
+
+import type { User } from "@shared/schema";
+import {
+  insertApplicationSchema,
+  updateApplicationStatusSchema,
+  updateDocumentVerificationSchema,
+  chefKitchenAccess,
+  chefLocationAccess,
+  chefLocationProfiles,
+  chefKitchenApplications,
+  users,
+  locations,
+  applications,
+  kitchens,
+  portalUserApplications,
+  portalUserLocationAccess
+} from "@shared/schema";
+import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
+import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
+
+import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
+import { setupAuth } from "./auth";
+import {
+  generateApplicationWithDocumentsEmail,
+  generateApplicationWithoutDocumentsEmail,
+  generateChefAllDocumentsApprovedEmail,
+  generateDocumentStatusChangeEmail,
+  generatePromoCodeEmail,
+  generateStatusChangeEmail,
+  sendEmail,
+  generateManagerMagicLinkEmail,
+  generateManagerCredentialsEmail,
+  generateBookingNotificationEmail,
+  generateBookingRequestEmail,
+  generateBookingConfirmationEmail,
+  generateBookingCancellationEmail,
+  generateKitchenAvailabilityChangeEmail,
+  generateKitchenSettingsChangeEmail,
+  generateChefProfileRequestEmail,
+  generateChefLocationAccessApprovedEmail,
+  generateChefKitchenAccessApprovedEmail,
+  generateBookingCancellationNotificationEmail,
+  generateBookingStatusChangeNotificationEmail,
+  generateLocationEmailChangedEmail
+} from "./email";
+import {
+  sendSMS,
+  generateManagerBookingSMS,
+  generateManagerPortalBookingSMS,
+  generateChefBookingConfirmationSMS,
+  generateChefBookingCancellationSMS,
+  generatePortalUserBookingConfirmationSMS,
+  generatePortalUserBookingCancellationSMS,
+  generateManagerBookingCancellationSMS,
+  generateChefSelfCancellationSMS
+} from "./sms";
+import { getManagerPhone, getChefPhone, getPortalUserPhone, normalizePhoneForStorage } from "./phone-utils";
+import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
+import { comparePasswords, hashPassword } from "./passwordUtils";
+import { storage } from "./storage";
+import { firebaseStorage } from "./storage-firebase";
+import { verifyFirebaseToken } from "./firebase-admin";
+import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
+import { deleteConversation } from "./chat-service";
+import { pool, db } from "./db";
+import { getPresignedUrl } from "./r2-storage";
 
 // Note: Express Request.user type is already defined by @types/passport
 // We use type assertions where needed for isChef properties
@@ -28,33 +98,6 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
 
   return null;
 }
-import fs from "fs";
-import { createServer, type Server } from "http";
-import passport from "passport";
-import path from "path";
-import { fromZodError } from "zod-validation-error";
-import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
-import { setupAuth } from "./auth";
-import { generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateChefAllDocumentsApprovedEmail, generateDocumentStatusChangeEmail, generatePromoCodeEmail, generateStatusChangeEmail, sendEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateLocationEmailChangedEmail } from "./email";
-import { sendSMS, generateManagerBookingSMS, generateManagerPortalBookingSMS, generateChefBookingConfirmationSMS, generateChefBookingCancellationSMS, generatePortalUserBookingConfirmationSMS, generatePortalUserBookingCancellationSMS, generateManagerBookingCancellationSMS, generateChefSelfCancellationSMS } from "./sms";
-import { getManagerPhone, getChefPhone, getPortalUserPhone, normalizePhoneForStorage } from "./phone-utils";
-import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
-import { comparePasswords, hashPassword } from "./passwordUtils";
-import { storage } from "./storage";
-import { firebaseStorage } from "./storage-firebase";
-import { verifyFirebaseToken } from "./firebase-admin";
-import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
-import { deleteConversation } from "./chat-service";
-import { pool, db } from "./db";
-import { chefKitchenAccess, chefLocationAccess, chefLocationProfiles, chefKitchenApplications, users, locations, applications, kitchens } from "@shared/schema";
-import { getPresignedUrl } from "./r2-storage";
-import Stripe from "stripe";
-import { eq, inArray, and, desc, count } from "drizzle-orm";
-import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
-import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
-
-// Import portal user applications schema
-import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
 
 /**
  * Normalizes image URLs to ensure they work in both development and production.
