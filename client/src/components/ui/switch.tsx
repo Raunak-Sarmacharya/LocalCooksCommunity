@@ -1,28 +1,37 @@
-import * as SwitchPrimitives from "@radix-ui/react-switch"
-import * as React from "react"
+import * as React from "react";
+import "./switch.css";
 
-import { cn } from "@/lib/utils"
+interface SwitchProps {
+  checked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
+}
 
-const Switch = React.forwardRef<
-  React.ElementRef<typeof SwitchPrimitives.Root>,
-  React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
->(({ className, ...props }, ref) => (
-  <SwitchPrimitives.Root
-    className={cn(
-      "peer inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border border-gray-200 transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=unchecked]:bg-gray-100 data-[state=unchecked]:border-gray-200",
-      className
-    )}
-    {...props}
-    ref={ref}
-  >
-    <SwitchPrimitives.Thumb
-      className={cn(
-        "pointer-events-none block h-3 w-3 rounded-full bg-white shadow-sm ring-0 transition-all duration-200 data-[state=checked]:translate-x-3 data-[state=unchecked]:translate-x-0.5"
-      )}
-    />
-  </SwitchPrimitives.Root>
-))
-Switch.displayName = SwitchPrimitives.Root.displayName
+const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
+  ({ checked, onCheckedChange, disabled, id, className }, ref) => {
+    const uniqueId = id || React.useId();
 
-export { Switch }
+    return (
+      <div className={`switch-parent ${className || ""}`}>
+        <input
+          type="checkbox"
+          className="switch-checkbox"
+          id={uniqueId}
+          checked={checked}
+          onChange={(e) => onCheckedChange?.(e.target.checked)}
+          disabled={disabled}
+          ref={ref}
+        />
+        <label className="switch-label" htmlFor={uniqueId}>
+          <span className="switch-slider" />
+        </label>
+      </div>
+    );
+  }
+);
 
+Switch.displayName = "Switch";
+
+export { Switch };

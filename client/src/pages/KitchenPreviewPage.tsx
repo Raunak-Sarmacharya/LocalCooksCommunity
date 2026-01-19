@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Building2, MapPin, Loader2, ArrowRight, Calendar, Lock, 
+import {
+  Building2, MapPin, Loader2, ArrowRight, Calendar, Lock,
   ChevronLeft, ChevronRight, Utensils, Sparkles, Check, ImageOff, FileText, Clock, XCircle,
   Wrench, Package, Snowflake, DollarSign
 } from "lucide-react";
@@ -21,12 +21,12 @@ import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
 // Component for individual carousel image with presigned URL
 function CarouselImage({ imageUrl, kitchenName, index }: { imageUrl: string; kitchenName: string; index: number }) {
   const presignedUrl = usePresignedImageUrl(imageUrl);
-  
+
   return (
     <div className="flex-[0_0_100%] min-w-0">
       <div className="aspect-[16/9] bg-gray-100">
-        <img 
-          src={presignedUrl || imageUrl} 
+        <img
+          src={presignedUrl || imageUrl}
           alt={`${kitchenName} - Image ${index + 1}`}
           className="w-full h-full object-cover"
           onError={(e) => {
@@ -92,6 +92,24 @@ interface PublicKitchen {
     rental: EquipmentListing[];
   };
   storage?: StorageListing[];
+  availability?: Array<{
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+    isAvailable: boolean;
+  }>;
+}
+
+// Helper to format availability
+function formatAvailability(availability?: PublicKitchen['availability']) {
+  if (!availability || availability.length === 0) return null;
+
+  const availableDays = availability.filter(a => a.isAvailable);
+  if (availableDays.length === 0) return "Not available";
+
+  if (availableDays.length === 7) return "Available 7 days a week";
+
+  return `Available ${availableDays.length} days a week`;
 }
 
 // Helper functions for mini calendar
@@ -107,25 +125,67 @@ function getMiniCalendarDays(year: number, month: number) {
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
   const days: (number | null)[] = [];
-  
+
   for (let i = 0; i < firstDay; i++) {
     days.push(null);
   }
-  
+
   for (let day = 1; day <= daysInMonth; day++) {
     days.push(day);
   }
-  
+
   return days;
 }
 
+// Availability Display Component (Old Eagle 35 Style)
+// https://uiverse.io/CheekyTurtle/old-eagle-35
+function AvailabilityDisplay({ availability }: { availability: PublicKitchen['availability'] }) {
+  if (!availability) return null;
+
+  const days = [
+    { label: 'S', dayIndex: 0 },
+    { label: 'M', dayIndex: 1 },
+    { label: 'T', dayIndex: 2 },
+    { label: 'W', dayIndex: 3 },
+    { label: 'T', dayIndex: 4 },
+    { label: 'F', dayIndex: 5 },
+    { label: 'S', dayIndex: 6 },
+  ];
+
+  return (
+    <div className="flex items-center justify-between w-full max-w-[280px] h-[34px] gap-1">
+      {days.map((day) => {
+        const isAvailable = availability.some(
+          (a) => a.dayOfWeek === day.dayIndex && a.isAvailable
+        );
+
+        return (
+          <div
+            key={day.dayIndex}
+            className={`
+              w-7 h-7 flex items-center justify-center rounded-[20%] text-[11px] font-semibold transition-all duration-200
+              ${isAvailable
+                ? 'bg-[#F51042] bg-gradient-to-br from-[#F51042] to-[#d40d38] text-white shadow-sm scale-110'
+                : 'bg-transparent border-2 border-gray-200 text-gray-300'
+              }
+            `}
+            title={isAvailable ? "Available" : "Not available"}
+          >
+            {day.label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Compact Kitchen Selection Card - Mobile Responsive
-function KitchenSelectionCard({ 
-  kitchen, 
-  isSelected, 
-  onSelect 
-}: { 
-  kitchen: PublicKitchen; 
+function KitchenSelectionCard({
+  kitchen,
+  isSelected,
+  onSelect
+}: {
+  kitchen: PublicKitchen;
   isSelected: boolean;
   onSelect: () => void;
 }) {
@@ -137,8 +197,8 @@ function KitchenSelectionCard({
       className={`
         w-full text-left p-2.5 sm:p-3 rounded-xl border-2 transition-all duration-200
         touch-manipulation
-        ${isSelected 
-          ? 'border-[#F51042] bg-[#F51042]/5 shadow-md' 
+        ${isSelected
+          ? 'border-[#F51042] bg-[#F51042]/5 shadow-md'
           : 'border-gray-200 hover:border-[#F51042]/50 hover:bg-gray-50 bg-white active:bg-gray-50'
         }
       `}
@@ -147,8 +207,8 @@ function KitchenSelectionCard({
         {/* Thumbnail */}
         <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
           {kitchen.imageUrl ? (
-            <img 
-              src={kitchen.imageUrl} 
+            <img
+              src={kitchen.imageUrl}
               alt={kitchen.name}
               className="w-full h-full object-cover"
             />
@@ -158,15 +218,21 @@ function KitchenSelectionCard({
             </div>
           )}
         </div>
-        
+
         {/* Info */}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 text-xs sm:text-sm truncate">{kitchen.name}</h3>
           {kitchen.description && (
             <p className="text-xs text-gray-500 truncate mt-0.5 line-clamp-1">{kitchen.description}</p>
           )}
+          {kitchen.availability && (
+            <div className="flex items-center gap-1 mt-1 text-xs text-green-600 font-medium">
+              <Calendar className="w-3 h-3" />
+              <span>{formatAvailability(kitchen.availability)}</span>
+            </div>
+          )}
         </div>
-        
+
         {/* Selected indicator */}
         {isSelected && (
           <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-[#F51042] flex items-center justify-center flex-shrink-0">
@@ -180,7 +246,7 @@ function KitchenSelectionCard({
 
 // Image Carousel Component - Mobile Optimized
 function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName: string }) {
-  const [emblaRef, emblaApi] = useEmblaCarousel({ 
+  const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: true,
     dragFree: false,
     containScroll: 'trimSnaps',
@@ -263,11 +329,10 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
             <button
               key={index}
               onClick={() => emblaApi?.scrollTo(index)}
-              className={`rounded-full transition-all touch-manipulation ${
-                index === selectedIndex 
-                  ? 'bg-white w-6 sm:w-6 h-2 sm:h-2' 
-                  : 'bg-white/50 hover:bg-white/75 w-2 h-2 sm:w-2 sm:h-2'
-              }`}
+              className={`rounded-full transition-all touch-manipulation ${index === selectedIndex
+                ? 'bg-white w-6 sm:w-6 h-2 sm:h-2'
+                : 'bg-white/50 hover:bg-white/75 w-2 h-2 sm:w-2 sm:h-2'
+                }`}
               aria-label={`Go to image ${index + 1}`}
             />
           ))}
@@ -283,13 +348,13 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
 }
 
 // Mini Calendar Component - Mobile Responsive
-function MiniCalendarPreview({ 
-  isAuthenticated, 
-  canBook, 
-  onBookClick, 
-  onApplyClick 
-}: { 
-  isAuthenticated: boolean; 
+function MiniCalendarPreview({
+  isAuthenticated,
+  canBook,
+  onBookClick,
+  onApplyClick
+}: {
+  isAuthenticated: boolean;
   canBook: boolean;
   onBookClick: () => void;
   onApplyClick: () => void;
@@ -299,7 +364,7 @@ function MiniCalendarPreview({
   const currentMonth = today.getMonth();
   const days = getMiniCalendarDays(currentYear, currentMonth);
   const todayDate = today.getDate();
-  
+
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
 
@@ -313,7 +378,7 @@ function MiniCalendarPreview({
             {monthNames[currentMonth]} {currentYear}
           </h3>
         </div>
-        
+
         {/* Day Headers */}
         <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1.5 sm:mb-2">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
@@ -322,26 +387,26 @@ function MiniCalendarPreview({
             </div>
           ))}
         </div>
-        
+
         {/* Calendar Days */}
         <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
           {days.map((day, index) => {
             if (day === null) {
               return <div key={index} className="aspect-square" />;
             }
-            
+
             const isPast = day < todayDate;
             const isToday = day === todayDate;
-            
+
             return (
-              <div 
+              <div
                 key={index}
                 className={`
                   aspect-square flex items-center justify-center rounded-md text-[10px] sm:text-xs font-medium
                   transition-colors
                   ${isPast ? 'text-gray-300 bg-gray-50' : 'text-gray-700 bg-white'}
-                  ${isToday 
-                    ? 'bg-[#F51042] text-white font-bold ring-2 ring-[#F51042]/30' 
+                  ${isToday
+                    ? 'bg-[#F51042] text-white font-bold ring-2 ring-[#F51042]/30'
                     : ''
                   }
                 `}
@@ -394,7 +459,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
   if (kitchen.galleryImages && Array.isArray(kitchen.galleryImages)) {
     allImages.push(...kitchen.galleryImages.filter(img => img && typeof img === 'string'));
   }
-  
+
   const hasEquipment = kitchen.equipment && (
     (kitchen.equipment.included && kitchen.equipment.included.length > 0) ||
     (kitchen.equipment.rental && kitchen.equipment.rental.length > 0)
@@ -416,13 +481,23 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
       <Card className="border-gray-200 overflow-hidden">
         <CardContent className="p-4 sm:p-6">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2 sm:mb-3">{kitchen.name}</h2>
-          
+
           {kitchen.description ? (
             <p className="text-sm sm:text-base text-gray-600 leading-relaxed mb-4 sm:mb-6">{kitchen.description}</p>
           ) : (
             <p className="text-sm sm:text-base text-gray-400 italic mb-4 sm:mb-6">
               Kitchen details will be available soon. Contact us for more information.
             </p>
+          )}
+
+          {/* Availability Display */}
+          {kitchen.availability && kitchen.availability.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                Weekly Availability
+              </h3>
+              <AvailabilityDisplay availability={kitchen.availability} />
+            </div>
           )}
 
           {/* Amenities */}
@@ -433,7 +508,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
               </h3>
               <div className="flex flex-wrap gap-2">
                 {kitchen.amenities.map((amenity, index) => (
-                  <span 
+                  <span
                     key={index}
                     className="inline-flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm bg-gray-100 text-gray-700"
                   >
@@ -451,7 +526,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
               <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
                 Equipment Available
               </h3>
-              
+
               {kitchen.equipment?.included && kitchen.equipment.included.length > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
                   <div className="flex items-center gap-2 mb-2 sm:mb-3">
@@ -604,7 +679,7 @@ export default function KitchenPreviewPage() {
   const [locationPath, navigate] = useLocation();
   const { user } = useFirebaseAuth();
   const isAuthenticated = !!user;
-  
+
   const locationIdMatch = locationPath.match(/\/kitchen-preview\/(\d+)/);
   const locationId = locationIdMatch ? parseInt(locationIdMatch[1]) : null;
 
@@ -615,11 +690,11 @@ export default function KitchenPreviewPage() {
 
   // Check if chef has an approved application for this location
   // Only check if user is authenticated
-  const { 
-    application, 
-    hasApplication, 
-    canBook, 
-    isLoading: applicationLoading 
+  const {
+    application,
+    hasApplication,
+    canBook,
+    isLoading: applicationLoading
   } = useChefKitchenApplicationForLocation(isAuthenticated ? locationId : null);
 
   // Debug logging
@@ -635,8 +710,8 @@ export default function KitchenPreviewPage() {
     }
   }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
 
-  const { data: locationData, isLoading, error } = useQuery<{ 
-    location: PublicLocation; 
+  const { data: locationData, isLoading, error } = useQuery<{
+    location: PublicLocation;
     kitchens: PublicKitchen[];
   }>({
     queryKey: [`/api/public/locations/${locationId}/details`],
@@ -812,8 +887,8 @@ export default function KitchenPreviewPage() {
             <ImageOff className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Location Not Found</h1>
             <p className="text-sm sm:text-base text-gray-600 mb-6">This kitchen location doesn't exist or has been removed.</p>
-            <Button 
-              onClick={() => navigate('/')} 
+            <Button
+              onClick={() => navigate('/')}
               className="bg-[#F51042] hover:bg-[#D90E3A] w-full sm:w-auto"
             >
               Back to Home
@@ -830,7 +905,7 @@ export default function KitchenPreviewPage() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
-      
+
       <main className="flex-1 pt-16 sm:pt-20 pb-8 sm:pb-12">
         {/* Location Header - Responsive */}
         <div className="bg-white border-b border-gray-200 py-4 sm:py-5">
@@ -838,8 +913,8 @@ export default function KitchenPreviewPage() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
               <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
                 {location.logoUrl ? (
-                  <img 
-                    src={location.logoUrl} 
+                  <img
+                    src={location.logoUrl}
                     alt={location.name}
                     className="h-10 w-auto sm:h-12 rounded-lg flex-shrink-0"
                   />
@@ -870,8 +945,8 @@ export default function KitchenPreviewPage() {
                   </div>
                 </div>
               </div>
-              
-              <Button 
+
+              <Button
                 onClick={handleGetStarted}
                 className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
                 size="sm"
@@ -914,7 +989,7 @@ export default function KitchenPreviewPage() {
                     />
                   ))}
                 </div>
-                
+
                 {kitchens.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <Utensils className="h-8 w-8 mx-auto mb-2 text-gray-300" />
@@ -951,8 +1026,8 @@ export default function KitchenPreviewPage() {
                   </div>
                 </div>
                 <CardContent className="p-0">
-                  <MiniCalendarPreview 
-                    isAuthenticated={isAuthenticated} 
+                  <MiniCalendarPreview
+                    isAuthenticated={isAuthenticated}
                     canBook={canBook}
                     onBookClick={handleBookClick}
                     onApplyClick={handleApplyClick}
@@ -964,8 +1039,8 @@ export default function KitchenPreviewPage() {
               <Card className="border-gray-200 overflow-hidden">
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex items-center gap-2 mb-2 sm:mb-3">
-                    <img 
-                      src={kitchenTableIcon} 
+                    <img
+                      src={kitchenTableIcon}
                       alt="Kitchen"
                       className="h-4 w-auto sm:h-5 flex-shrink-0"
                     />
@@ -975,7 +1050,7 @@ export default function KitchenPreviewPage() {
                     Join LocalCooks and get instant access to professional kitchen spaces. Book your slot today and bring your culinary vision to life.
                   </p>
                   {isAuthenticated && canBook ? (
-                    <Button 
+                    <Button
                       onClick={handleBookClick}
                       className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
                       size="sm"
@@ -985,7 +1060,7 @@ export default function KitchenPreviewPage() {
                       <ArrowRight className="ml-2 h-3.5 w-3.5" />
                     </Button>
                   ) : isAuthenticated ? (
-                    <Button 
+                    <Button
                       onClick={handleApplyClick}
                       className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
                       size="sm"
@@ -996,7 +1071,7 @@ export default function KitchenPreviewPage() {
                     </Button>
                   ) : (
                     <>
-                      <Button 
+                      <Button
                         onClick={handleGetStarted}
                         className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
                         size="sm"
@@ -1006,8 +1081,8 @@ export default function KitchenPreviewPage() {
                       </Button>
                       <p className="text-center text-xs text-gray-500 mt-2 sm:mt-3">
                         Already have an account?{' '}
-                        <button 
-                          onClick={() => navigate('/auth')} 
+                        <button
+                          onClick={() => navigate('/auth')}
                           className="text-[#F51042] hover:underline font-medium"
                         >
                           Log in
@@ -1023,13 +1098,13 @@ export default function KitchenPreviewPage() {
             <div className="lg:col-span-9 order-1 lg:order-2">
               <AnimatePresence mode="wait">
                 {selectedKitchen ? (
-                  <KitchenDetailsSection 
-                    key={selectedKitchen.id} 
+                  <KitchenDetailsSection
+                    key={selectedKitchen.id}
                     kitchen={{
                       ...selectedKitchen,
                       equipment: kitchenEquipment || undefined,
                       storage: kitchenStorage || undefined,
-                    }} 
+                    }}
                   />
                 ) : (
                   <motion.div
