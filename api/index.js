@@ -24871,6 +24871,7 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
         ).filter((url) => url !== null);
         const normalizedLocationBrandImageUrl2 = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
         const normalizedLocationLogoUrl2 = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
+        let availability = [];
         return {
           id: kitchen.id,
           name: kitchen.name,
@@ -24882,9 +24883,20 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
           locationName: kitchen.locationName || kitchen.location_name || location.name,
           locationAddress: kitchen.locationAddress || kitchen.location_address || location.address,
           locationBrandImageUrl: normalizedLocationBrandImageUrl2,
-          locationLogoUrl: normalizedLocationLogoUrl2
+          locationLogoUrl: normalizedLocationLogoUrl2,
+          // We will populate this in the loop below
+          availability: []
         };
       });
+      for (const kitchen of locationKitchens) {
+        try {
+          const availability = await firebaseStorage.getKitchenAvailability(kitchen.id);
+          kitchen.availability = availability;
+        } catch (err) {
+          console.error(`Error fetching availability for kitchen ${kitchen.id}:`, err);
+          kitchen.availability = [];
+        }
+      }
       console.log(`[API] /api/public/locations/${locationId}/details - Found location with ${locationKitchens.length} kitchens`);
       const normalizedLocationLogoUrl = normalizeImageUrl(location.logoUrl || location.logo_url || null, req);
       const normalizedLocationBrandImageUrl = normalizeImageUrl(location.brandImageUrl || location.brand_image_url || null, req);
