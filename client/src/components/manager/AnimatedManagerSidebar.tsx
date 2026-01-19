@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Calendar, Clock, BookOpen, DollarSign, Package, 
-  Wrench, Users, CreditCard, Settings, ChevronLeft, 
-  ChevronRight, MapPin, Plus
+import {
+  Calendar, Clock, BookOpen, DollarSign, Package,
+  Wrench, Users, CreditCard, Settings, ChevronLeft,
+  ChevronRight, MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -49,7 +49,7 @@ export default function AnimatedManagerSidebar({
 }: AnimatedManagerSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [logoLoadError, setLogoLoadError] = useState(false);
-  
+
   // Reset logo error when location changes
   useEffect(() => {
     setLogoLoadError(false);
@@ -82,7 +82,7 @@ export default function AnimatedManagerSidebar({
 
   // Calculate sidebar width
   const sidebarWidth = isMobile ? 256 : (isCollapsed ? 64 : 256);
-  
+
   // Determine if content should be visible
   const isContentVisible = isMobile || !isCollapsed;
 
@@ -92,8 +92,8 @@ export default function AnimatedManagerSidebar({
         initial={false}
         animate={{ width: sidebarWidth }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-        className="relative flex flex-col bg-white border-r border-gray-200"
-        style={{ 
+        className="relative flex flex-col bg-white border-r border-gray-300"
+        style={{
           overflow: 'visible', // Allow button to extend outside
           height: '100%',
           minHeight: '100%',
@@ -124,9 +124,9 @@ export default function AnimatedManagerSidebar({
         <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
           {/* Spacer to prevent navbar overlap - MORE than navbar height to ensure no overlap */}
           {!isMobile && (
-            <div 
+            <div
               className="flex-shrink-0 bg-transparent"
-              style={{ 
+              style={{
                 height: `${headerHeight + 60}px`, // Increased to 60px extra padding to ensure no overlap
                 minHeight: `${headerHeight + 60}px`,
                 width: '100%',
@@ -134,22 +134,22 @@ export default function AnimatedManagerSidebar({
               }}
             />
           )}
-          
+
           {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR SPACER */}
           <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white relative" style={{ marginTop: 0, paddingTop: '1rem', zIndex: 1 }}>
-          <AnimatePresence mode="wait">
-            {isContentVisible ? (
-              <motion.div
-                key="expanded-location"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-2"
-              >
-                <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                  Location
-                </label>
+            <AnimatePresence mode="wait">
+              {isContentVisible ? (
+                <motion.div
+                  key="expanded-location"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-2"
+                >
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                    Location
+                  </label>
                   {isLoadingLocations ? (
                     <div className="text-xs text-gray-400 py-2">Loading...</div>
                   ) : locations.length === 0 ? (
@@ -160,43 +160,25 @@ export default function AnimatedManagerSidebar({
                       No locations
                     </button>
                   ) : locations.length === 1 ? (
-                    <div className="space-y-2">
-                      <div className="px-3 py-2 text-sm font-medium text-gray-900 rounded-md bg-gray-50">
-                        {locations[0].name}
-                      </div>
-                      <button
-                        onClick={onCreateLocation}
-                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#F51042] hover:bg-[#F51042]/5 rounded-md transition-colors border border-[#F51042]/20 hover:border-[#F51042]/40"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Add Location
-                      </button>
+                    <div className="px-3 py-2 text-sm font-medium text-gray-900 rounded-md bg-gray-50">
+                      {locations[0].name}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <select
-                        value={selectedLocation?.id || ""}
-                        onChange={(e) => {
-                          const loc = locations.find((l) => l.id === parseInt(e.target.value));
-                          onLocationChange(loc || null);
-                        }}
-                        className="w-full rounded-md px-3 py-2 text-sm bg-white border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#F51042]/20 focus:border-[#F51042] transition-colors"
-                      >
-                        <option value="">Choose location...</option>
-                        {locations.map((loc) => (
-                          <option key={loc.id} value={loc.id}>
-                            {loc.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={onCreateLocation}
-                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#F51042] hover:bg-[#F51042]/5 rounded-md transition-colors border border-[#F51042]/20 hover:border-[#F51042]/40"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Add Location
-                      </button>
-                    </div>
+                    <select
+                      value={selectedLocation?.id || ""}
+                      onChange={(e) => {
+                        const loc = locations.find((l) => l.id === parseInt(e.target.value));
+                        onLocationChange(loc || null);
+                      }}
+                      className="w-full rounded-md px-3 py-2 text-sm bg-white border border-gray-300 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#F51042]/20 focus:border-[#F51042] transition-colors"
+                    >
+                      <option value="">Choose location...</option>
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
                   )}
                 </motion.div>
               ) : !isMobile && isCollapsed ? (
@@ -227,8 +209,8 @@ export default function AnimatedManagerSidebar({
             </AnimatePresence>
           </div>
 
-        {/* Navigation Items - Scrollable if needed */}
-        <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto overflow-x-hidden min-h-0">
+          {/* Navigation Items - Scrollable if needed */}
+          <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto overflow-x-hidden min-h-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeView === item.id;
@@ -302,93 +284,95 @@ export default function AnimatedManagerSidebar({
           </nav>
 
           {/* Footer/Selected Location Info */}
-          {selectedLocation && (
-            <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
-              <AnimatePresence mode="wait">
-                {isContentVisible ? (
-                  <motion.div
-                    key="expanded-footer"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex items-center gap-3"
-                  >
-                    {/* Location Logo Avatar */}
-                    <div className="flex-shrink-0">
-                      {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
-                        <img
-                          src={selectedLocation.logoUrl}
-                          alt={selectedLocation.name}
-                          className="w-10 h-10 rounded-md object-cover border border-gray-200"
-                          onError={() => {
-                            setLogoLoadError(true);
-                          }}
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center w-10 h-10 rounded-md bg-[#F51042]/10">
-                          <MapPin className="w-5 h-5 text-[#F51042]" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-900 truncate">
-                        {selectedLocation.name}
-                      </p>
-                      {selectedLocation.address && (
-                        <p className="text-xs text-gray-500 truncate">
-                          {selectedLocation.address}
-                        </p>
-                      )}
-                    </div>
-                  </motion.div>
-                ) : !isMobile && isCollapsed ? (
-                  <motion.div
-                    key="collapsed-footer"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex items-center justify-center"
-                  >
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center justify-center cursor-default">
-                          {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
-                            <img
-                              src={selectedLocation.logoUrl}
-                              alt={selectedLocation.name}
-                              className="w-10 h-10 rounded-md object-cover border border-gray-200 cursor-default"
-                              onError={() => {
-                                setLogoLoadError(true);
-                              }}
-                            />
-                          ) : (
-                            <div className="flex items-center justify-center w-10 h-10 rounded-md bg-[#F51042]/10 cursor-default hover:bg-[#F51042]/15 transition-colors">
-                              <MapPin className="w-5 h-5 text-[#F51042]" />
-                            </div>
-                          )}
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent
-                        side="right"
-                        align="center"
-                        sideOffset={8}
-                        className="bg-gray-900 text-white text-sm font-medium px-3 py-2 shadow-lg max-w-[200px]"
-                      >
-                        <p className="font-semibold">{selectedLocation.name}</p>
-                        {selectedLocation.address && (
-                          <p className="text-xs text-gray-300 mt-1">{selectedLocation.address}</p>
+          {
+            selectedLocation && (
+              <div className="flex-shrink-0 px-4 py-3 border-t border-gray-200 bg-gray-50">
+                <AnimatePresence mode="wait">
+                  {isContentVisible ? (
+                    <motion.div
+                      key="expanded-footer"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex items-center gap-3"
+                    >
+                      {/* Location Logo Avatar */}
+                      <div className="flex-shrink-0">
+                        {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
+                          <img
+                            src={selectedLocation.logoUrl}
+                            alt={selectedLocation.name}
+                            className="w-10 h-10 rounded-md object-cover border border-gray-200"
+                            onError={() => {
+                              setLogoLoadError(true);
+                            }}
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center w-10 h-10 rounded-md bg-[#F51042]/10">
+                            <MapPin className="w-5 h-5 text-[#F51042]" />
+                          </div>
                         )}
-                      </TooltipContent>
-                    </Tooltip>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
-            </div>
-          )}
-        </div>
-      </motion.aside>
-    </TooltipProvider>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-900 truncate">
+                          {selectedLocation.name}
+                        </p>
+                        {selectedLocation.address && (
+                          <p className="text-xs text-gray-500 truncate">
+                            {selectedLocation.address}
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  ) : !isMobile && isCollapsed ? (
+                    <motion.div
+                      key="collapsed-footer"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex items-center justify-center"
+                    >
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center justify-center cursor-default">
+                            {selectedLocation.logoUrl && selectedLocation.logoUrl.trim() !== '' && !logoLoadError ? (
+                              <img
+                                src={selectedLocation.logoUrl}
+                                alt={selectedLocation.name}
+                                className="w-10 h-10 rounded-md object-cover border border-gray-200 cursor-default"
+                                onError={() => {
+                                  setLogoLoadError(true);
+                                }}
+                              />
+                            ) : (
+                              <div className="flex items-center justify-center w-10 h-10 rounded-md bg-[#F51042]/10 cursor-default hover:bg-[#F51042]/15 transition-colors">
+                                <MapPin className="w-5 h-5 text-[#F51042]" />
+                              </div>
+                            )}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="right"
+                          align="center"
+                          sideOffset={8}
+                          className="bg-gray-900 text-white text-sm font-medium px-3 py-2 shadow-lg max-w-[200px]"
+                        >
+                          <p className="font-semibold">{selectedLocation.name}</p>
+                          {selectedLocation.address && (
+                            <p className="text-xs text-gray-300 mt-1">{selectedLocation.address}</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            )
+          }
+        </div >
+      </motion.aside >
+    </TooltipProvider >
   );
 }

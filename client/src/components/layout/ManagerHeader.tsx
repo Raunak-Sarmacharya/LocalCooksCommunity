@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  LogOut, HelpCircle, Menu, X, ChevronDown, User, Settings, 
+import {
+  LogOut, HelpCircle, Menu, X, ChevronDown, User, Settings,
   BookOpen, DollarSign, Building2, LayoutDashboard
 } from "lucide-react";
 import { Link } from "wouter";
@@ -30,7 +30,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   // Use Firebase auth for managers (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
-  
+
   const { data: user } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
@@ -45,14 +45,14 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (!response.ok) {
           if (response.status === 401) {
             return null;
           }
           throw new Error(`Firebase auth failed: ${response.status}`);
         }
-        
+
         const userData = await response.json();
         return userData;
       } catch (error) {
@@ -78,7 +78,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
           console.error('No Firebase user available');
           return [];
         }
-        
+
         const token = await currentFirebaseUser.getIdToken();
         const response = await fetch("/api/manager/locations", {
           credentials: "include",
@@ -110,22 +110,22 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
   });
 
   // Get the first location's logo (managers typically have one location)
-  const locationLogoUrl = locations && locations.length > 0 
+  const locationLogoUrl = locations && locations.length > 0
     ? ((locations[0] as any).logoUrl || (locations[0] as any).logo_url || null)
     : null;
-  
+
   console.log('ManagerHeader - locationLogoUrl:', locationLogoUrl);
   console.log('ManagerHeader - Full location object:', locations && locations.length > 0 ? locations[0] : 'no locations');
-  
+
   const { logout } = useFirebaseAuth();
-  
+
   const handleLogout = async () => {
     try {
       console.log('Performing manager logout...');
-      
+
       // Use Firebase logout
       await logout();
-      
+
       console.log('Manager logout successful, redirecting...');
       window.location.href = '/manager/login';
     } catch (error) {
@@ -143,10 +143,10 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
   const userInitials = getUserInitials(userDisplayName, userEmail, userUsername);
 
   return (
-    <header className="bg-white shadow-md fixed top-0 left-0 right-0 z-50 mobile-safe-area">
+    <header className="bg-white border-b border-gray-300 fixed top-0 left-0 right-0 z-50 mobile-safe-area">
       <div className="flex items-center w-full relative" style={{ minHeight: '100%' }}>
         {/* Logo centered above sidebar - FIXED width, does NOT change with sidebar */}
-        <div 
+        <div
           className="hidden lg:flex absolute left-0 items-center justify-center pointer-events-none"
           style={{
             width: '256px', // Fixed at expanded sidebar width - does NOT change when sidebar collapses
@@ -170,7 +170,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
         </div>
 
         {/* Main Header Content - Right aligned, FIXED position - does NOT slide with sidebar */}
-        <div 
+        <div
           className="flex-1 flex items-center justify-end px-3 sm:px-4 py-2 sm:py-3"
           style={{
             marginLeft: '256px', // Fixed margin - does NOT change when sidebar collapses
@@ -190,140 +190,140 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             </div>
           </Link>
 
-        <nav className="hidden md:flex items-center space-x-4 ml-auto">
-          {user && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowHelpCenter(true)}
-                className="gap-2 text-sm sm:text-base"
-              >
-                <HelpCircle className="h-4 w-4" />
-                Help
-              </Button>
-              
-              {/* Profile Dropdown Menu */}
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-[#F51042]/20 focus:ring-offset-2 transition-all hover:opacity-90"
-                    aria-label="User menu"
-                  >
-                    <Avatar className="h-9 w-9 border-2 border-gray-200 hover:border-[#F51042]/40 transition-colors">
-                      <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
-                      <AvatarFallback className="bg-gradient-to-br from-[#F51042] to-[#F51042]/80 text-white font-semibold text-sm">
-                        {userInitials}
-                      </AvatarFallback>
-                    </Avatar>
-                    <ChevronDown className="h-4 w-4 text-gray-600 hidden sm:block" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent 
-                  align="end" 
-                  className="w-72 bg-white border-gray-200 shadow-xl"
+          <nav className="hidden md:flex items-center space-x-4 ml-auto">
+            {user && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowHelpCenter(true)}
+                  className="gap-2 text-sm sm:text-base"
                 >
-                  {/* User Info Section */}
-                  <div className="px-4 py-5 text-center border-b border-gray-200">
-                    <div className="flex justify-center mb-3">
-                      <Avatar className="h-16 w-16 border-2 border-gray-200">
+                  <HelpCircle className="h-4 w-4" />
+                  Help
+                </Button>
+
+                {/* Profile Dropdown Menu */}
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="flex items-center gap-2 rounded-full focus:outline-none focus:ring-2 focus:ring-[#F51042]/20 focus:ring-offset-2 transition-all hover:opacity-90"
+                      aria-label="User menu"
+                    >
+                      <Avatar className="h-9 w-9 border-2 border-gray-200 hover:border-[#F51042]/40 transition-colors">
                         <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
-                        <AvatarFallback className="bg-gradient-to-br from-[#F51042]/90 to-[#F51042]/70 text-white font-semibold text-lg">
+                        <AvatarFallback className="bg-gradient-to-br from-[#F51042] to-[#F51042]/80 text-white font-semibold text-sm">
                           {userInitials}
                         </AvatarFallback>
                       </Avatar>
+                      <ChevronDown className="h-4 w-4 text-gray-600 hidden sm:block" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-72 bg-white border-gray-200 shadow-xl"
+                  >
+                    {/* User Info Section */}
+                    <div className="px-4 py-5 text-center border-b border-gray-200">
+                      <div className="flex justify-center mb-3">
+                        <Avatar className="h-16 w-16 border-2 border-gray-200">
+                          <AvatarImage src={userPhotoURL || undefined} alt={userDisplayName || "User"} />
+                          <AvatarFallback className="bg-gradient-to-br from-[#F51042]/90 to-[#F51042]/70 text-white font-semibold text-lg">
+                            {userInitials}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                      <p className="text-base font-semibold text-gray-900 mb-1">
+                        {userDisplayName || "Manager"}
+                      </p>
+                      <p className="text-xs text-gray-500 break-all px-2">
+                        {userEmail || ""}
+                      </p>
                     </div>
-                    <p className="text-base font-semibold text-gray-900 mb-1">
-                      {userDisplayName || "Manager"}
-                    </p>
-                    <p className="text-xs text-gray-500 break-all px-2">
-                      {userEmail || ""}
-                    </p>
-                  </div>
 
-                  {/* Manager Portal Options */}
-                  <div className="py-1">
-                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                      <Link href="/manager/booking-dashboard" className="flex items-center w-full">
-                        <LayoutDashboard className="mr-3 h-4 w-4" />
-                        <span>Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                      <Link href="/manager/booking-dashboard?view=revenue" className="flex items-center w-full">
-                        <DollarSign className="mr-3 h-4 w-4" />
-                        <span>Revenue</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                      <Link href="/manager/booking-dashboard?view=bookings" className="flex items-center w-full">
-                        <BookOpen className="mr-3 h-4 w-4" />
-                        <span>Bookings</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                      <Link href="/manager/booking-dashboard?view=locations" className="flex items-center w-full">
-                        <Building2 className="mr-3 h-4 w-4" />
-                        <span>Locations</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  </div>
+                    {/* Manager Portal Options */}
+                    <div className="py-1">
+                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
+                        <Link href="/manager/booking-dashboard" className="flex items-center w-full">
+                          <LayoutDashboard className="mr-3 h-4 w-4" />
+                          <span>Dashboard</span>
+                        </Link>
+                      </DropdownMenuItem>
 
-                  <DropdownMenuSeparator className="bg-gray-200" />
+                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
+                        <Link href="/manager/booking-dashboard?view=revenue" className="flex items-center w-full">
+                          <DollarSign className="mr-3 h-4 w-4" />
+                          <span>Revenue</span>
+                        </Link>
+                      </DropdownMenuItem>
 
-                  {/* Account Options */}
-                  <div className="py-1">
-                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                      <Link href="/manager/profile" className="flex items-center w-full">
-                        <User className="mr-3 h-4 w-4" />
-                        <span>Profile</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                      <Link href="/manager/profile" className="flex items-center w-full">
-                        <Settings className="mr-3 h-4 w-4" />
-                        <span>Settings</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  </div>
+                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
+                        <Link href="/manager/booking-dashboard?view=bookings" className="flex items-center w-full">
+                          <BookOpen className="mr-3 h-4 w-4" />
+                          <span>Bookings</span>
+                        </Link>
+                      </DropdownMenuItem>
 
-                  <DropdownMenuSeparator className="bg-gray-200" />
+                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
+                        <Link href="/manager/booking-dashboard?view=locations" className="flex items-center w-full">
+                          <Building2 className="mr-3 h-4 w-4" />
+                          <span>Locations</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    </div>
 
-                  {/* Logout */}
-                  <div className="py-1">
-                    <DropdownMenuItem
-                      onClick={handleLogout}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50 focus:bg-red-50 focus:text-red-700 cursor-pointer"
-                    >
-                      <LogOut className="mr-3 h-4 w-4" />
-                      <span>Log out</span>
-                    </DropdownMenuItem>
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          )}
-        </nav>
+                    <DropdownMenuSeparator className="bg-gray-200" />
 
-        {/* Mobile menu button */}
-        <div className="md:hidden ml-auto">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="mobile-touch-target mobile-no-tap-highlight p-3"
-          >
-            {isMenuOpen ? (
-              <X className="h-5 w-5" />
-            ) : (
-              <Menu className="h-5 w-5" />
+                    {/* Account Options */}
+                    <div className="py-1">
+                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
+                        <Link href="/manager/profile" className="flex items-center w-full">
+                          <User className="mr-3 h-4 w-4" />
+                          <span>Profile</span>
+                        </Link>
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
+                        <Link href="/manager/profile" className="flex items-center w-full">
+                          <Settings className="mr-3 h-4 w-4" />
+                          <span>Settings</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    </div>
+
+                    <DropdownMenuSeparator className="bg-gray-200" />
+
+                    {/* Logout */}
+                    <div className="py-1">
+                      <DropdownMenuItem
+                        onClick={handleLogout}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 focus:bg-red-50 focus:text-red-700 cursor-pointer"
+                      >
+                        <LogOut className="mr-3 h-4 w-4" />
+                        <span>Log out</span>
+                      </DropdownMenuItem>
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
-          </Button>
-        </div>
+          </nav>
+
+          {/* Mobile menu button */}
+          <div className="md:hidden ml-auto">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="mobile-touch-target mobile-no-tap-highlight p-3"
+            >
+              {isMenuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -346,7 +346,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                     <HelpCircle className="h-4 w-4" />
                     Help
                   </Button>
-                  
+
                   {/* Mobile Profile Section */}
                   <div className="pt-2 border-t border-gray-200">
                     <div className="flex items-center gap-3 px-2 py-4 bg-gray-50 rounded-lg mb-2">
