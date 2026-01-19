@@ -173,7 +173,7 @@ export default function KitchenComparisonPage() {
 
   const chefId = chefInfo?.id || null;
 
-  
+
   // Get active application location IDs (inReview or approved only)
   // Allow locations with rejected/cancelled applications so chefs can re-apply
   const appliedLocationIds = new Set(
@@ -182,9 +182,9 @@ export default function KitchenComparisonPage() {
       .map((a) => a.locationId)
   );
   const approvedLocationIds = new Set(approvedLocations.map((loc) => loc.id));
-  
+
   console.log('[KitchenComparisonPage] Approved location IDs:', Array.from(approvedLocationIds));
-  
+
   // Get pending applications (inReview status)
   const pendingApplications = applications.filter((a) => a.status === "inReview");
   const pendingLocationIds = new Set(pendingApplications.map((a) => a.locationId));
@@ -222,19 +222,19 @@ export default function KitchenComparisonPage() {
 
       const kitchens = await response.json();
       console.log('[KitchenComparisonPage] Fetched kitchens:', kitchens.length, 'kitchens');
-      
+
       // Filter kitchens to only include those from approved locations
       const filtered = (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         return approvedLocationIds.has(locationId);
       });
-      
+
       console.log('[KitchenComparisonPage] Filtered to approved locations:', filtered.length, 'kitchens');
-      
+
       return filtered.map((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         const location = approvedLocations.find((loc) => loc.id === locationId);
-        
+
         return {
           id: k.id,
           name: k.name,
@@ -278,12 +278,12 @@ export default function KitchenComparisonPage() {
 
       const kitchens = await response.json();
       console.log('[KitchenComparisonPage] Fetched kitchens for available to apply:', kitchens.length, 'kitchens');
-      
+
       // Filter to locations chef hasn't applied to yet
       const notAppliedLocationIds = (publicLocations || [])
         .filter((loc) => !appliedLocationIds.has(loc.id))
         .map((loc) => loc.id);
-      
+
       const filteredKitchens = (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         return notAppliedLocationIds.includes(locationId);
@@ -293,7 +293,7 @@ export default function KitchenComparisonPage() {
       const kitchenPromises = filteredKitchens.map(async (k: any) => {
         const locationId = k.locationId ?? k.location_id;
         const location = publicLocations.find((loc) => loc.id === locationId);
-        
+
         const baseKitchen = {
           id: k.id,
           name: k.name,
@@ -416,7 +416,7 @@ export default function KitchenComparisonPage() {
 
       const kitchens = await response.json();
       console.log('[KitchenComparisonPage] Fetched kitchens for pending locations:', kitchens.length, 'kitchens');
-      
+
       // Filter to locations with pending applications
       return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
         const locationId = k.locationId ?? k.location_id;
@@ -424,7 +424,7 @@ export default function KitchenComparisonPage() {
       }).map((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         const location = publicLocations?.find((loc) => loc.id === locationId);
-        
+
         return {
           id: k.id,
           name: k.name,
@@ -468,7 +468,7 @@ export default function KitchenComparisonPage() {
 
       const kitchens = await response.json();
       console.log('[KitchenComparisonPage] Fetched kitchens for rejected locations:', kitchens.length, 'kitchens');
-      
+
       // Filter to locations with rejected/cancelled applications
       return (Array.isArray(kitchens) ? kitchens : []).filter((k: any) => {
         const locationId = k.locationId ?? k.location_id;
@@ -476,7 +476,7 @@ export default function KitchenComparisonPage() {
       }).map((k: any) => {
         const locationId = k.locationId ?? k.location_id;
         const location = publicLocations?.find((loc) => loc.id === locationId);
-        
+
         return {
           id: k.id,
           name: k.name,
@@ -509,7 +509,7 @@ export default function KitchenComparisonPage() {
       if (!pendingKitchens || pendingKitchens.length === 0) return [];
 
       const headers = await getAuthHeaders();
-      
+
       const kitchenPromises = pendingKitchens.map(async (kitchen) => {
         // Fetch equipment
         let equipment = { included: [], rental: [] };
@@ -598,7 +598,7 @@ export default function KitchenComparisonPage() {
       if (!approvedKitchens || approvedKitchens.length === 0) return [];
 
       const headers = await getAuthHeaders();
-      
+
       // Fetch pricing, equipment, and storage for all kitchens in parallel
       const kitchenPromises = approvedKitchens.map(async (kitchen) => {
         try {
@@ -610,7 +610,7 @@ export default function KitchenComparisonPage() {
 
           let hourlyRate = kitchen.hourlyRate;
           let currency = kitchen.currency || "CAD";
-          
+
           if (pricingResponse.ok) {
             const pricing = await pricingResponse.json();
             hourlyRate = pricing.hourlyRate > 100 ? pricing.hourlyRate / 100 : pricing.hourlyRate;
@@ -703,9 +703,9 @@ export default function KitchenComparisonPage() {
     staleTime: 60000,
   });
 
-  const isLoading = locationsLoading || kitchensLoading || pricingLoading || authLoading || 
-                    applicationsLoading || publicLocationsLoading || availableKitchensLoading || 
-                    pendingKitchensLoading || rejectedKitchensLoading;
+  const isLoading = locationsLoading || kitchensLoading || pricingLoading || authLoading ||
+    applicationsLoading || publicLocationsLoading || availableKitchensLoading ||
+    pendingKitchensLoading || rejectedKitchensLoading;
 
   // Group approved kitchens by location
   const approvedLocationsWithKitchens: LocationWithKitchens[] = approvedLocations.map((location) => {
@@ -717,12 +717,10 @@ export default function KitchenComparisonPage() {
     const application = applications.find((a) => a.locationId === location.id);
 
 
-    // Check tier completion status
+    // Check tier completion status (only Tier 1 and Tier 2 are in use)
     const tier1Completed = !!application?.tier1_completed_at;
     const tier2Completed = !!application?.tier2_completed_at;
-    const tier3Completed = !!application?.tier3_submitted_at;
-    const tier4Completed = !!application?.tier4_completed_at;
-    const allTiersCompleted = tier4Completed;
+    const allTiersCompleted = tier2Completed; // Tier 2 is the final tier
 
     // Determine next tier to complete
     let nextTierToComplete = "";
@@ -730,8 +728,6 @@ export default function KitchenComparisonPage() {
       nextTierToComplete = "Complete remaining application requirements";
     } else if (!tier1Completed) nextTierToComplete = "Complete application submission (Tier 1)";
     else if (!tier2Completed) nextTierToComplete = "Complete kitchen coordination (Tier 2)";
-    else if (!tier3Completed) nextTierToComplete = "Submit government application (Tier 3)";
-    else if (!tier4Completed) nextTierToComplete = "Enter government license details (Tier 4)";
 
 
     return {
@@ -748,16 +744,16 @@ export default function KitchenComparisonPage() {
       tierProgress: {
         tier1: tier1Completed,
         tier2: tier2Completed,
-        tier3: tier3Completed,
-        tier4: tier4Completed,
+        tier3: false, // Not in use
+        tier4: false, // Not in use
       },
     };
   }).filter((loc) => loc.kitchens.length > 0);
-  
+
   console.log('[KitchenComparisonPage] Approved locations with kitchens:', approvedLocationsWithKitchens.length);
 
   // Group pending application kitchens by location
-  const pendingApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string })[] = 
+  const pendingApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string })[] =
     (publicLocations || [])
       .filter((loc) => pendingLocationIds.has(loc.id))
       .map((location) => {
@@ -782,7 +778,7 @@ export default function KitchenComparisonPage() {
       .filter((loc) => loc.kitchens.length > 0);
 
   // Group rejected application kitchens by location
-  const rejectedApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string; isRejected?: boolean })[] = 
+  const rejectedApplicationLocations: (LocationWithKitchens & { isApproved: boolean; applicationStatus?: string; isRejected?: boolean })[] =
     (publicLocations || [])
       .filter((loc) => rejectedLocationIds.has(loc.id))
       .map((location) => {
@@ -836,7 +832,7 @@ export default function KitchenComparisonPage() {
     ...rejectedApplicationLocations,
     ...availableToApplyLocations,
   ];
-  
+
   console.log('[KitchenComparisonPage] All locations with kitchens:', {
     approved: approvedLocationsWithKitchens.length,
     pending: pendingApplicationLocations.length,
@@ -850,7 +846,7 @@ export default function KitchenComparisonPage() {
     .filter((loc) => {
       if (selectedLocationFilter && loc.id !== selectedLocationFilter) return false;
       if (!searchQuery) return true;
-      
+
       const query = searchQuery.toLowerCase();
       return (
         loc.name.toLowerCase().includes(query) ||
@@ -936,7 +932,7 @@ export default function KitchenComparisonPage() {
   const allLocationsForFilter = [
     ...approvedLocations,
     ...(publicLocations || []).filter((loc) => !appliedLocationIds.has(loc.id)),
-  ].filter((loc, index, self) => 
+  ].filter((loc, index, self) =>
     index === self.findIndex((l) => l.id === loc.id)
   );
 
@@ -1038,17 +1034,16 @@ export default function KitchenComparisonPage() {
                 {filteredLocations.map((location) => (
                   <FadeInSection key={location.id}>
                     <Card className="overflow-hidden">
-                      <CardHeader className={`border-b ${
-                        location.allTiersCompleted
+                      <CardHeader className={`border-b ${location.allTiersCompleted
                           ? "bg-gradient-to-r from-green-50 to-emerald-50"
                           : location.isApproved
-                          ? "bg-gradient-to-r from-blue-50 to-indigo-50"
-                          : location.isPending
-                          ? "bg-gradient-to-r from-yellow-50 to-amber-50"
-                          : (location as any).isRejected
-                          ? "bg-gradient-to-r from-orange-50 to-red-50"
-                          : "bg-gradient-to-r from-gray-50 to-slate-50"
-                      }`}>
+                            ? "bg-gradient-to-r from-blue-50 to-indigo-50"
+                            : location.isPending
+                              ? "bg-gradient-to-r from-yellow-50 to-amber-50"
+                              : (location as any).isRejected
+                                ? "bg-gradient-to-r from-orange-50 to-red-50"
+                                : "bg-gradient-to-r from-gray-50 to-slate-50"
+                        }`}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-4 flex-1">
                             {location.brandImageUrl ? (
@@ -1064,17 +1059,16 @@ export default function KitchenComparisonPage() {
                                 className="w-16 h-16 rounded-lg object-cover"
                               />
                             ) : (
-                              <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                location.allTiersCompleted
+                              <div className={`w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0 ${location.allTiersCompleted
                                   ? "bg-gradient-to-br from-green-500 to-green-600"
                                   : location.isApproved
-                                  ? "bg-gradient-to-br from-blue-500 to-blue-600"
-                                  : location.isPending
-                                  ? "bg-gradient-to-br from-yellow-500 to-amber-600"
-                                  : (location as any).isRejected
-                                  ? "bg-gradient-to-br from-orange-500 to-red-600"
-                                  : "bg-gradient-to-br from-gray-500 to-slate-600"
-                              }`}>
+                                    ? "bg-gradient-to-br from-blue-500 to-blue-600"
+                                    : location.isPending
+                                      ? "bg-gradient-to-br from-yellow-500 to-amber-600"
+                                      : (location as any).isRejected
+                                        ? "bg-gradient-to-br from-orange-500 to-red-600"
+                                        : "bg-gradient-to-br from-gray-500 to-slate-600"
+                                }`}>
                                 <Building2 className="h-8 w-8 text-white" />
                               </div>
                             )}
@@ -1107,290 +1101,288 @@ export default function KitchenComparisonPage() {
                               Rejected
                             </Badge>
                           ) : (
-                            <Badge className={`${
-                              location.kitchenLicenseStatus === 'pending'
+                            <Badge className={`${location.kitchenLicenseStatus === 'pending'
                                 ? "bg-orange-100 text-orange-800 border-orange-200"
                                 : "bg-blue-100 text-blue-800 border-blue-200"
-                            }`}>
+                              }`}>
                               <Plus className="h-3 w-3 mr-1" />
-                              {location.kitchenLicenseStatus === 'pending' 
-                                ? "Pending Approval" 
+                              {location.kitchenLicenseStatus === 'pending'
+                                ? "Pending Approval"
                                 : "Apply to Book"}
                             </Badge>
                           )}
                         </div>
                       </CardHeader>
-                    <CardContent className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {location.kitchens.map((kitchen) => (
-                          <motion.div
-                            key={kitchen.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={`border-2 rounded-lg p-4 transition-all ${
-                              location.allTiersCompleted
-                                ? "border-gray-200 hover:border-green-500 hover:shadow-md"
-                                : location.isApproved
-                                ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
-                                : location.isPending
-                                ? "border-gray-200 hover:border-yellow-500 hover:shadow-md"
-                                : (location as any).isRejected
-                                ? "border-gray-200 hover:border-orange-500 hover:shadow-md"
-                                : "border-gray-200 hover:border-gray-400 hover:shadow-md"
-                            }`}
-                          >
-                            {kitchen.imageUrl && (
-                              <img
-                                src={kitchen.imageUrl}
-                                alt={kitchen.name}
-                                className="w-full h-32 object-cover rounded-lg mb-3"
-                              />
-                            )}
-                            <h3 className="font-semibold text-lg mb-2">{kitchen.name}</h3>
-                            {kitchen.description && (
-                              <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                                {kitchen.description}
-                              </p>
-                            )}
-                            {kitchen.hourlyRate && (
-                              <div className="flex items-center gap-1 mb-3">
-                                <DollarSign className="h-4 w-4 text-green-600" />
-                                <span className="font-semibold text-green-600">
-                                  ${kitchen.hourlyRate.toFixed(2)} {kitchen.currency || "CAD"}
-                                </span>
-                                <span className="text-sm text-gray-500">/hour</span>
-                              </div>
-                            )}
-                            {kitchen.amenities && kitchen.amenities.length > 0 && (
-                              <div className="mb-3">
-                                <p className="text-xs text-gray-500 mb-1">Amenities:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {kitchen.amenities.slice(0, 3).map((amenity, idx) => (
-                                    <Badge
-                                      key={idx}
-                                      variant="outline"
-                                      className="text-xs"
-                                    >
-                                      {amenity}
-                                    </Badge>
-                                  ))}
-                                  {kitchen.amenities.length > 3 && (
-                                    <Badge variant="outline" className="text-xs">
-                                      +{kitchen.amenities.length - 3} more
-                                    </Badge>
-                                  )}
+                      <CardContent className="p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {location.kitchens.map((kitchen) => (
+                            <motion.div
+                              key={kitchen.id}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className={`border-2 rounded-lg p-4 transition-all ${location.allTiersCompleted
+                                  ? "border-gray-200 hover:border-green-500 hover:shadow-md"
+                                  : location.isApproved
+                                    ? "border-gray-200 hover:border-blue-500 hover:shadow-md"
+                                    : location.isPending
+                                      ? "border-gray-200 hover:border-yellow-500 hover:shadow-md"
+                                      : (location as any).isRejected
+                                        ? "border-gray-200 hover:border-orange-500 hover:shadow-md"
+                                        : "border-gray-200 hover:border-gray-400 hover:shadow-md"
+                                }`}
+                            >
+                              {kitchen.imageUrl && (
+                                <img
+                                  src={kitchen.imageUrl}
+                                  alt={kitchen.name}
+                                  className="w-full h-32 object-cover rounded-lg mb-3"
+                                />
+                              )}
+                              <h3 className="font-semibold text-lg mb-2">{kitchen.name}</h3>
+                              {kitchen.description && (
+                                <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                                  {kitchen.description}
+                                </p>
+                              )}
+                              {kitchen.hourlyRate && (
+                                <div className="flex items-center gap-1 mb-3">
+                                  <DollarSign className="h-4 w-4 text-green-600" />
+                                  <span className="font-semibold text-green-600">
+                                    ${kitchen.hourlyRate.toFixed(2)} {kitchen.currency || "CAD"}
+                                  </span>
+                                  <span className="text-sm text-gray-500">/hour</span>
                                 </div>
-                              </div>
-                            )}
-
-                            {/* Equipment Information */}
-                            {kitchen.equipment && (
-                              <div className="mb-3 space-y-2">
-                                {kitchen.equipment.included && kitchen.equipment.included.length > 0 && (
-                                  <div className="bg-green-50 border border-green-200 rounded p-2">
-                                    <div className="flex items-center gap-1 mb-1">
-                                      <Wrench className="h-3 w-3 text-green-600" />
-                                      <p className="text-xs font-medium text-green-800">
-                                        Included Equipment ({kitchen.equipment.included.length})
-                                      </p>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {kitchen.equipment.included.slice(0, 2).map((eq, idx) => (
-                                        <Badge
-                                          key={idx}
-                                          variant="outline"
-                                          className="text-xs bg-white border-green-300 text-green-700"
-                                        >
-                                          {eq.equipmentType}
-                                        </Badge>
-                                      ))}
-                                      {kitchen.equipment.included.length > 2 && (
-                                        <Badge
-                                          variant="outline"
-                                          className="text-xs bg-white border-green-300 text-green-700"
-                                        >
-                                          +{kitchen.equipment.included.length - 2} more
-                                        </Badge>
-                                      )}
-                                    </div>
+                              )}
+                              {kitchen.amenities && kitchen.amenities.length > 0 && (
+                                <div className="mb-3">
+                                  <p className="text-xs text-gray-500 mb-1">Amenities:</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {kitchen.amenities.slice(0, 3).map((amenity, idx) => (
+                                      <Badge
+                                        key={idx}
+                                        variant="outline"
+                                        className="text-xs"
+                                      >
+                                        {amenity}
+                                      </Badge>
+                                    ))}
+                                    {kitchen.amenities.length > 3 && (
+                                      <Badge variant="outline" className="text-xs">
+                                        +{kitchen.amenities.length - 3} more
+                                      </Badge>
+                                    )}
                                   </div>
-                                )}
-                                {kitchen.equipment.rental && kitchen.equipment.rental.length > 0 && (
-                                  <div className="bg-blue-50 border border-blue-200 rounded p-2">
-                                    <div className="flex items-center gap-1 mb-1">
-                                      <Wrench className="h-3 w-3 text-blue-600" />
-                                      <p className="text-xs font-medium text-blue-800">
-                                        Rental Equipment ({kitchen.equipment.rental.length})
-                                      </p>
-                                    </div>
-                                    <div className="space-y-1">
-                                      {kitchen.equipment.rental.slice(0, 2).map((eq, idx) => (
-                                        <div key={idx} className="text-xs text-blue-700">
-                                          <span className="font-medium">{eq.equipmentType}</span>
-                                          {eq.hourlyRate && (
-                                            <span className="ml-1 text-blue-600">
-                                              ${eq.hourlyRate.toFixed(2)}/hr
-                                            </span>
-                                          )}
-                                          {eq.dailyRate && !eq.hourlyRate && (
-                                            <span className="ml-1 text-blue-600">
-                                              ${eq.dailyRate.toFixed(2)}/day
-                                            </span>
-                                          )}
-                                        </div>
-                                      ))}
-                                      {kitchen.equipment.rental.length > 2 && (
-                                        <p className="text-xs text-blue-600 italic">
-                                          +{kitchen.equipment.rental.length - 2} more available
+                                </div>
+                              )}
+
+                              {/* Equipment Information */}
+                              {kitchen.equipment && (
+                                <div className="mb-3 space-y-2">
+                                  {kitchen.equipment.included && kitchen.equipment.included.length > 0 && (
+                                    <div className="bg-green-50 border border-green-200 rounded p-2">
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <Wrench className="h-3 w-3 text-green-600" />
+                                        <p className="text-xs font-medium text-green-800">
+                                          Included Equipment ({kitchen.equipment.included.length})
                                         </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Storage Information */}
-                            {kitchen.storage && kitchen.storage.length > 0 && (
-                              <div className="mb-3 bg-purple-50 border border-purple-200 rounded p-2">
-                                <div className="flex items-center gap-1 mb-1">
-                                  <Package className="h-3 w-3 text-purple-600" />
-                                  <p className="text-xs font-medium text-purple-800">
-                                    Storage Available ({kitchen.storage.length})
-                                  </p>
-                                </div>
-                                <div className="space-y-1">
-                                  {kitchen.storage.slice(0, 2).map((storage, idx) => (
-                                    <div key={idx} className="text-xs text-purple-700">
-                                      <div className="flex items-center justify-between">
-                                        <span className="font-medium">{storage.name || storage.storageType}</span>
-                                        {storage.basePrice && (
-                                          <span className="text-purple-600">
-                                            ${storage.basePrice.toFixed(2)}
-                                            {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
-                                              <span className="text-xs"> + ${storage.pricePerCubicFoot.toFixed(2)}/ft³</span>
-                                            )}
-                                          </span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {kitchen.equipment.included.slice(0, 2).map((eq, idx) => (
+                                          <Badge
+                                            key={idx}
+                                            variant="outline"
+                                            className="text-xs bg-white border-green-300 text-green-700"
+                                          >
+                                            {eq.equipmentType}
+                                          </Badge>
+                                        ))}
+                                        {kitchen.equipment.included.length > 2 && (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-xs bg-white border-green-300 text-green-700"
+                                          >
+                                            +{kitchen.equipment.included.length - 2} more
+                                          </Badge>
                                         )}
                                       </div>
-                                      {storage.climateControl && (
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                          <Snowflake className="h-2.5 w-2.5 text-purple-500" />
-                                          <span className="text-purple-600">Climate Controlled</span>
-                                        </div>
-                                      )}
                                     </div>
-                                  ))}
-                                  {kitchen.storage.length > 2 && (
-                                    <p className="text-xs text-purple-600 italic">
-                                      +{kitchen.storage.length - 2} more storage options
-                                    </p>
+                                  )}
+                                  {kitchen.equipment.rental && kitchen.equipment.rental.length > 0 && (
+                                    <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                                      <div className="flex items-center gap-1 mb-1">
+                                        <Wrench className="h-3 w-3 text-blue-600" />
+                                        <p className="text-xs font-medium text-blue-800">
+                                          Rental Equipment ({kitchen.equipment.rental.length})
+                                        </p>
+                                      </div>
+                                      <div className="space-y-1">
+                                        {kitchen.equipment.rental.slice(0, 2).map((eq, idx) => (
+                                          <div key={idx} className="text-xs text-blue-700">
+                                            <span className="font-medium">{eq.equipmentType}</span>
+                                            {eq.hourlyRate && (
+                                              <span className="ml-1 text-blue-600">
+                                                ${eq.hourlyRate.toFixed(2)}/hr
+                                              </span>
+                                            )}
+                                            {eq.dailyRate && !eq.hourlyRate && (
+                                              <span className="ml-1 text-blue-600">
+                                                ${eq.dailyRate.toFixed(2)}/day
+                                              </span>
+                                            )}
+                                          </div>
+                                        ))}
+                                        {kitchen.equipment.rental.length > 2 && (
+                                          <p className="text-xs text-blue-600 italic">
+                                            +{kitchen.equipment.rental.length - 2} more available
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                            )}
+                              )}
 
-                            <div className="flex gap-2 mt-4">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleViewDetails(location.id)}
-                                className="flex-1"
-                              >
-                                View Details
-                              </Button>
-                              {location.isApproved ? (
-                                <>
-                                  {location.allTiersCompleted ? (
-                                    <div className="flex-1">
-                                      <div className="text-xs text-green-700 font-medium mb-1">
-                                        All tiers completed - ready to book!
+                              {/* Storage Information */}
+                              {kitchen.storage && kitchen.storage.length > 0 && (
+                                <div className="mb-3 bg-purple-50 border border-purple-200 rounded p-2">
+                                  <div className="flex items-center gap-1 mb-1">
+                                    <Package className="h-3 w-3 text-purple-600" />
+                                    <p className="text-xs font-medium text-purple-800">
+                                      Storage Available ({kitchen.storage.length})
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    {kitchen.storage.slice(0, 2).map((storage, idx) => (
+                                      <div key={idx} className="text-xs text-purple-700">
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-medium">{storage.name || storage.storageType}</span>
+                                          {storage.basePrice && (
+                                            <span className="text-purple-600">
+                                              ${storage.basePrice.toFixed(2)}
+                                              {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
+                                                <span className="text-xs"> + ${storage.pricePerCubicFoot.toFixed(2)}/ft³</span>
+                                              )}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {storage.climateControl && (
+                                          <div className="flex items-center gap-1 mt-0.5">
+                                            <Snowflake className="h-2.5 w-2.5 text-purple-500" />
+                                            <span className="text-purple-600">Climate Controlled</span>
+                                          </div>
+                                        )}
                                       </div>
-                                      <Button
-                                        size="sm"
-                                        onClick={() => handleBookKitchen(location.id)}
-                                        className="w-full bg-green-600 hover:bg-green-700"
-                                      >
-                                        <Calendar className="mr-2 h-4 w-4" />
-                                        Book Now
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex-1">
-                                      <div className="text-xs text-amber-700 font-medium mb-1">
-                                        {location.nextTierToComplete}
+                                    ))}
+                                    {kitchen.storage.length > 2 && (
+                                      <p className="text-xs text-purple-600 italic">
+                                        +{kitchen.storage.length - 2} more storage options
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex gap-2 mt-4">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleViewDetails(location.id)}
+                                  className="flex-1"
+                                >
+                                  View Details
+                                </Button>
+                                {location.isApproved ? (
+                                  <>
+                                    {location.allTiersCompleted ? (
+                                      <div className="flex-1">
+                                        <div className="text-xs text-green-700 font-medium mb-1">
+                                          All tiers completed - ready to book!
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          onClick={() => handleBookKitchen(location.id)}
+                                          className="w-full bg-green-600 hover:bg-green-700"
+                                        >
+                                          <Calendar className="mr-2 h-4 w-4" />
+                                          Book Now
+                                        </Button>
                                       </div>
+                                    ) : (
+                                      <div className="flex-1">
+                                        <div className="text-xs text-amber-700 font-medium mb-1">
+                                          {location.nextTierToComplete}
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled
+                                          className="w-full bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed"
+                                        >
+                                          <Clock className="mr-2 h-4 w-4" />
+                                          Complete All Tiers
+                                        </Button>
+                                      </div>
+                                    )}
+                                    {location.hasChatConversation && (
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        disabled
-                                        className="w-full bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed"
+                                        onClick={() => handleOpenChat(location)}
+                                        className="flex-1"
                                       >
-                                        <Clock className="mr-2 h-4 w-4" />
-                                        Complete All Tiers
+                                        <MessageCircle className="mr-2 h-4 w-4" />
+                                        Chat
                                       </Button>
-                                    </div>
-                                  )}
-                                  {location.hasChatConversation && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleOpenChat(location)}
-                                      className="flex-1"
-                                    >
-                                      <MessageCircle className="mr-2 h-4 w-4" />
-                                      Chat
-                                    </Button>
-                                  )}
-                                </>
-                              ) : location.isPending ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled
-                                  className="flex-1 bg-yellow-50 border-yellow-300 text-yellow-700 cursor-not-allowed"
-                                >
-                                  <Clock className="mr-2 h-4 w-4" />
-                                  Pending Review
-                                </Button>
-                              ) : location.isPending ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  disabled
-                                  className="flex-1 bg-yellow-50 border-yellow-300 text-yellow-700 cursor-not-allowed"
-                                >
-                                  <Clock className="mr-2 h-4 w-4" />
-                                  Pending Review
-                                </Button>
-                              ) : (location as any).isRejected ? (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleApplyKitchen(location.id)}
-                                  className="flex-1 bg-orange-600 hover:bg-orange-700"
-                                >
-                                  <FileText className="mr-2 h-4 w-4" />
-                                  Re-apply
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleApplyKitchen(location.id)}
-                                  className="flex-1 bg-blue-600 hover:bg-blue-700"
-                                >
-                                  <Plus className="mr-2 h-4 w-4" />
-                                  Apply Now
-                                </Button>
-                              )}
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </FadeInSection>
-              ))}
-            </div>
+                                    )}
+                                  </>
+                                ) : location.isPending ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled
+                                    className="flex-1 bg-yellow-50 border-yellow-300 text-yellow-700 cursor-not-allowed"
+                                  >
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Pending Review
+                                  </Button>
+                                ) : location.isPending ? (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled
+                                    className="flex-1 bg-yellow-50 border-yellow-300 text-yellow-700 cursor-not-allowed"
+                                  >
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    Pending Review
+                                  </Button>
+                                ) : (location as any).isRejected ? (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleApplyKitchen(location.id)}
+                                    className="flex-1 bg-orange-600 hover:bg-orange-700"
+                                  >
+                                    <FileText className="mr-2 h-4 w-4" />
+                                    Re-apply
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleApplyKitchen(location.id)}
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                                  >
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Apply Now
+                                  </Button>
+                                )}
+                              </div>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </FadeInSection>
+                ))}
+              </div>
             )}
           </FadeInSection>
         </div>

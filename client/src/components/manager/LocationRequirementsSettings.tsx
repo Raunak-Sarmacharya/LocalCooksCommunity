@@ -53,11 +53,11 @@ interface LocationRequirements {
   tier2_food_establishment_cert_required?: boolean;
   tier2_food_establishment_expiry_required?: boolean;
   tier2_insurance_document_required?: boolean;
+  tier2_custom_fields?: CustomField[];
   // Facility Information
   floor_plans_url?: string;
   ventilation_specs?: string;
   ventilation_specs_url?: string;
-
 }
 
 const FIELD_GROUPS = [
@@ -357,6 +357,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
       const updated = { ...prev };
       // Remove from all tier arrays
       (updated.tier1_custom_fields as CustomField[]) = (prev.tier1_custom_fields as CustomField[] || []).filter(f => f.id !== fieldId);
+      (updated.tier2_custom_fields as CustomField[]) = (prev.tier2_custom_fields as CustomField[] || []).filter(f => f.id !== fieldId);
       return updated;
     });
     setHasUnsavedChanges(true);
@@ -795,33 +796,6 @@ export default function LocationRequirementsSettings({ locationId, locationName 
                     )}
                   </Button>
                 )}
-                <div className="pt-4 border-t border-gray-100">
-                  <Label>Available Equipment</Label>
-                  <p className="text-xs text-gray-500 mt-1 mb-3">
-                    List the key equipment available in this kitchen (separated by commas)
-                  </p>
-                  <Input
-                    placeholder="e.g. Convection Oven, 6-Burner Range, Walk-in Cooler"
-                    value={Array.isArray(requirements.equipment_list) ? requirements.equipment_list.join(', ') : ''}
-                    onChange={(e) => {
-                      const list = e.target.value.split(',').map(s => s.trim()).filter(s => s !== '');
-                      handleToggle('equipment_list', list);
-                    }}
-                  />
-                </div>
-
-                <div className="pt-4 border-t border-gray-100">
-                  <Label>Materials & Supplies Description</Label>
-                  <p className="text-xs text-gray-500 mt-1 mb-3">
-                    Describe any additional materials or supplies provided or required
-                  </p>
-                  <Textarea
-                    placeholder="Describe smallwares, cleaning supplies, or storage options..."
-                    value={requirements.materials_description || ''}
-                    onChange={(e) => handleToggle('materials_description', e.target.value)}
-                    className="min-h-[100px]"
-                  />
-                </div>
               </div>
             </div>
           </div>
@@ -852,7 +826,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
           </div>
 
           {/* Existing Custom Fields */}
-          {(requirements.tier1_custom_fields as CustomField[])?.length > 0 && (
+          {((requirements.tier1_custom_fields as CustomField[])?.length > 0 || (requirements.tier2_custom_fields as CustomField[])?.length > 0) && (
             <div className="space-y-4 mb-4">
               {/* Tier 1 Fields */}
               {(requirements.tier1_custom_fields as CustomField[])?.length > 0 && (
@@ -868,6 +842,57 @@ export default function LocationRequirementsSettings({ locationId, locationName 
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-sm text-gray-900">{field.label}</span>
                             <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Tier 1</span>
+                            <span className="text-xs text-gray-500">({field.type})</span>
+                            {field.required && (
+                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Required</span>
+                            )}
+                          </div>
+                          {field.placeholder && (
+                            <p className="text-xs text-gray-500 mt-1">Placeholder: {field.placeholder}</p>
+                          )}
+                          {field.options && field.options.length > 0 && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {field.type === 'select' ? 'Options' : 'Checkable items'}: {field.options.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={() => handleEditField(field)}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            onClick={() => handleDeleteField(field.id)}
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Tier 2 Fields */}
+              {(requirements.tier2_custom_fields as CustomField[])?.length > 0 && (
+                <div>
+                  <h5 className="text-sm font-medium text-gray-700 mb-2">Tier 2 - Kitchen Coordination Fields</h5>
+                  <div className="space-y-2">
+                    {(requirements.tier2_custom_fields as CustomField[]).map((field) => (
+                      <div
+                        key={field.id}
+                        className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-gray-900">{field.label}</span>
+                            <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">Tier 2</span>
                             <span className="text-xs text-gray-500">({field.type})</span>
                             {field.required && (
                               <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Required</span>
@@ -970,6 +995,7 @@ export default function LocationRequirementsSettings({ locationId, locationName 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="1">Tier 1 - Submit Application</SelectItem>
+                      <SelectItem value="2">Tier 2 - Kitchen Coordination</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

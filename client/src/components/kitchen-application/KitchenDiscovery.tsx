@@ -63,7 +63,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
   const { user } = useFirebaseAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("discover");
-  
+
   const {
     applications,
     hasAnyApproved,
@@ -72,7 +72,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
     pendingCount,
     isLoading: applicationsLoading,
   } = useChefKitchenApplicationsStatus();
-  
+
   const { approvedKitchens, isLoading: approvedLoading } = useChefApprovedKitchens();
 
   // Fetch all public locations
@@ -97,7 +97,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
       .filter((a) => a.status === "inReview" || a.status === "approved")
       .map((a) => a.locationId)
   );
-  
+
   const availableLocations = (publicLocations || []).filter(
     (loc) => !activeApplicationLocationIds.has(loc.id)
   );
@@ -184,7 +184,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                 </Button>
               </Link>
             )}
-            
+
             <Link href="/compare-kitchens">
               <Button variant="outline" className="w-full" size="sm">
                 <Plus className="mr-2 h-4 w-4" />
@@ -192,7 +192,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
               </Button>
             </Link>
           </div>
-          
+
           {/* Recent applications */}
           {applications.length > 0 && (
             <div className="pt-2 border-t">
@@ -232,7 +232,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
               Apply to kitchens to start booking. Once approved, you can book anytime.
             </CardDescription>
           </div>
-          
+
           {/* Stats Summary */}
           <div className="flex gap-3">
             <div className="text-center px-3 py-2 bg-green-50 rounded-lg">
@@ -246,7 +246,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4">
@@ -314,7 +314,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               <Building2 className="h-8 w-8 text-white" />
                             </div>
                           )}
-                          
+
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold text-lg truncate">
                               {location.name}
@@ -323,7 +323,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               <MapPin className="h-3.5 w-3.5 mr-1 flex-shrink-0" />
                               <span className="truncate">{location.address}</span>
                             </div>
-                            
+
                             <div className="mt-3 flex gap-2">
                               <Link href={`/kitchen-preview/${location.id}`}>
                                 <Button variant="outline" size="sm">
@@ -371,7 +371,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                 {applications.map((app) => {
                   const config = getStatusConfig(app.status);
                   const StatusIcon = config.icon;
-                  
+
                   return (
                     <motion.div key={app.id} variants={itemVariants}>
                       <Card>
@@ -380,7 +380,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
                               <Building2 className="h-6 w-6 text-white" />
                             </div>
-                            
+
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 className="font-semibold">
@@ -398,9 +398,9 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                 Applied: {new Date(app.createdAt).toLocaleDateString()}
                               </p>
                             </div>
-                            
+
                             <div className="flex gap-2">
-                              {app.tier4_completed_at && (
+                              {app.tier2_completed_at && (
                                 <Link href={`/book-kitchen?location=${app.locationId}`}>
                                   <Button size="sm" className="bg-green-600 hover:bg-green-700">
                                     <Calendar className="mr-2 h-4 w-4" />
@@ -408,7 +408,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                   </Button>
                                 </Link>
                               )}
-                              {app.status === "approved" && !app.tier4_completed_at && (
+                              {app.status === "approved" && !app.tier2_completed_at && (
                                 <Button size="sm" variant="outline" disabled className="cursor-not-allowed">
                                   Complete tiers to book
                                 </Button>
@@ -422,7 +422,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               )}
                             </div>
                           </div>
-                          
+
                           {app.feedback && app.status === "rejected" && (
                             <div className="mt-3 p-3 bg-red-50 rounded-lg text-sm text-red-800">
                               <strong>Feedback:</strong> {app.feedback}
@@ -464,7 +464,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0">
                               <Check className="h-6 w-6 text-white" />
                             </div>
-                            
+
                             <div className="flex-1 min-w-0">
                               <h3 className="font-semibold">
                                 {app.location?.name || "Unknown Location"}
@@ -472,9 +472,9 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               <p className="text-sm text-gray-600 truncate">
                                 {app.location?.address}
                               </p>
-                              
+
                               <div className="mt-3">
-                                {app.tier4_completed_at ? (
+                                {app.tier2_completed_at ? (
                                   <Link href={`/book-kitchen?location=${app.locationId}`}>
                                     <Button className="bg-green-600 hover:bg-green-700" size="sm">
                                       <Calendar className="mr-2 h-4 w-4" />

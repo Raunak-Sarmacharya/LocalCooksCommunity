@@ -2315,7 +2315,7 @@ export default function ApplicantDashboard() {
                       </div>
                       <Badge
                         className={
-                          app.status === 'approved' && app.tier4_completed_at
+                          app.status === 'approved' && app.tier2_completed_at
                             ? 'bg-green-100 text-green-800'
                             : app.status === 'approved'
                               ? 'bg-blue-100 text-blue-800'
@@ -2324,7 +2324,7 @@ export default function ApplicantDashboard() {
                                 : 'bg-red-100 text-red-800'
                         }
                       >
-                        {app.status === 'approved' && app.tier4_completed_at
+                        {app.status === 'approved' && app.tier2_completed_at
                           ? 'Ready to Book'
                           : app.status === 'approved'
                             ? 'Tiers In Progress'
@@ -2358,7 +2358,7 @@ export default function ApplicantDashboard() {
                       )}
                       {app.status === 'approved' && (
                         <>
-                          {app.tier4_completed_at ? (
+                          {app.tier2_completed_at ? (
                             <Button
                               size="sm"
                               onClick={() => window.location.href = `/book-kitchen?location=${app.locationId}`}

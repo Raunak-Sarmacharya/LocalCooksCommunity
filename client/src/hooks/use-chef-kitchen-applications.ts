@@ -311,7 +311,7 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
   const responseData = applicationsQuery.data;
   const hasApplication = responseData?.hasApplication ?? (!!responseData?.id);
   const canBook = responseData?.canBook ?? (responseData?.status === 'approved');
-  
+
   return {
     application: hasApplication ? responseData : null,
     hasApplication,
@@ -328,7 +328,7 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
  */
 export function useChefApprovedKitchens() {
   const { user } = useFirebaseAuth();
-  
+
   const approvedQuery = useQuery<
     Array<{
       id: number;
@@ -378,21 +378,29 @@ export function useChefApprovedKitchens() {
  */
 export function useChefKitchenApplicationsStatus() {
   const { applications, isLoading } = useChefKitchenApplications();
-  
+
+  // Applications with approved status but not fully complete (tier2 not done)
   const approvedCount = applications.filter(a => a.status === "approved").length;
+  // Fully approved = status approved AND tier2_completed_at is set (only Tier 1 and 2 are in use)
+  const fullyApprovedCount = applications.filter(a =>
+    a.status === "approved" && !!(a as any).tier2_completed_at
+  ).length;
   const pendingCount = applications.filter(a => a.status === "inReview").length;
   const rejectedCount = applications.filter(a => a.status === "rejected").length;
-  
+
   const hasAnyApproved = approvedCount > 0;
+  const hasFullyApproved = fullyApprovedCount > 0; // Can actually book kitchens
   const hasAnyPending = pendingCount > 0;
   const hasAnyRejected = rejectedCount > 0;
-  
+
   return {
     applications,
     approvedCount,
+    fullyApprovedCount,
     pendingCount,
     rejectedCount,
     hasAnyApproved,
+    hasFullyApproved,
     hasAnyPending,
     hasAnyRejected,
     isLoading,
