@@ -12670,6 +12670,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin: Get all locations with kitchen licenses (with optional status filter)
+  app.get("/api/admin/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      if (!pool) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+
+      const { status } = req.query;
+      let query = `
+        SELECT 
+          l.id,
+          l.name,
+          l.address,
+          l.kitchen_license_url as "kitchenLicenseUrl",
+          l.kitchen_license_status as "kitchenLicenseStatus",
+          l.kitchen_license_feedback as "kitchenLicenseFeedback",
+          l.kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+          l.kitchen_license_approved_by as "kitchenLicenseApprovedBy",
+          l.kitchen_license_expiry as "kitchenLicenseExpiry",
+          l.kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
+          u.username as "managerUsername",
+          u.id as "managerId"
+        FROM locations l
+        LEFT JOIN users u ON l.manager_id = u.id
+        WHERE l.kitchen_license_url IS NOT NULL
+      `;
+
+      const params: any[] = [];
+      if (status && typeof status === 'string' && status !== 'all') {
+        params.push(status);
+        query += ` AND l.kitchen_license_status = $1::document_verification_status`;
+      }
+
+      query += ` ORDER BY l.kitchen_license_uploaded_at DESC NULLS LAST, l.created_at DESC`;
+
+      const result = await pool.query(query, params);
+      res.json(result.rows);
+    } catch (error: any) {
+      console.error("Error fetching kitchen licenses:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch kitchen licenses" });
+    }
+  });
+
   // Admin: Approve or reject a kitchen license
   app.put("/api/admin/locations/:locationId/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {

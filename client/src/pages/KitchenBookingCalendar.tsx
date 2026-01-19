@@ -15,7 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 // Component for equipment image with presigned URL
 function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
   const presignedUrl = usePresignedImageUrl(imageUrl);
-  
+
   return (
     <div className="flex-shrink-0">
       <img
@@ -44,24 +44,24 @@ function getCalendarDays(year: number, month: number) {
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
   const days: (Date | null)[] = [];
-  
+
   // Add empty cells for days before month starts
   for (let i = 0; i < firstDay; i++) {
     const prevDate = new Date(year, month, -firstDay + i + 1);
     days.push(prevDate);
   }
-  
+
   // Add all days in current month
   for (let day = 1; day <= daysInMonth; day++) {
     days.push(new Date(year, month, day));
   }
-  
+
   // Add empty cells for days after month ends
   const remainingCells = 42 - days.length; // 6 rows * 7 days
   for (let i = 1; i <= remainingCells; i++) {
     days.push(new Date(year, month + 1, i));
   }
-  
+
   return days;
 }
 
@@ -69,33 +69,33 @@ export default function KitchenBookingCalendar() {
   const { kitchens, bookings, isLoadingKitchens, isLoadingBookings, getAvailableSlots, createBooking, cancelBooking, kitchensQuery } = useKitchenBookings();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  
+
   // Filter kitchens by location if location parameter is provided
   // Reads location from URL query parameter fresh on each computation
   const urlParams = new URLSearchParams(window.location.search);
   const locationParam = urlParams.get('location');
   const locationFilterId = locationParam ? parseInt(locationParam) : null;
-  
+
   const filteredKitchens = useMemo(() => {
     if (!locationFilterId) {
       // No filter - return all kitchens (existing behavior)
       return kitchens;
     }
-    
+
     // Filter kitchens to only show those matching the location ID
     return kitchens.filter((kitchen: any) => {
       const kitchenLocationId = kitchen.location?.id || kitchen.locationId || kitchen.location_id;
       return kitchenLocationId === locationFilterId;
     });
   }, [kitchens, locationFilterId]); // Re-compute when kitchens or location filter changes
-  
+
   // Memoize enriched bookings to prevent infinite re-renders
   // Only recalculate when bookings or kitchens data actually changes
   const enrichedBookings = useMemo(() => {
     // Early return for invalid data - always return an array to maintain reference stability
     if (!bookings || !Array.isArray(bookings)) return [];
     if (bookings.length === 0) return [];
-    
+
     // If kitchens not loaded yet, return bookings with location data if available
     if (!kitchens || !Array.isArray(kitchens)) {
       return bookings.map((b: any) => ({
@@ -109,7 +109,7 @@ export default function KitchenBookingCalendar() {
         } : undefined,
       }));
     }
-    
+
     // Enrich with kitchen information while preserving location data
     return bookings.map((booking: any) => {
       if (!booking || typeof booking.kitchenId !== 'number') {
@@ -123,7 +123,7 @@ export default function KitchenBookingCalendar() {
           } : undefined,
         };
       }
-      
+
       const kitchen = kitchens.find((k) => k && k.id === booking.kitchenId) as any;
       return {
         ...booking,
@@ -144,13 +144,13 @@ export default function KitchenBookingCalendar() {
       };
     });
   }, [bookings, kitchens]);
-  
+
   // Memoize kitchens array for BookingControlPanel
   // Return stable empty array if not loaded
   const kitchensForPanel = useMemo(() => {
     if (!kitchens || !Array.isArray(kitchens)) return [];
     if (kitchens.length === 0) return [];
-    
+
     return kitchens
       .map((k) => {
         if (!k) return null;
@@ -163,7 +163,7 @@ export default function KitchenBookingCalendar() {
       })
       .filter((k): k is { id: number; name: string; locationName?: string } => k !== null);
   }, [kitchens]);
-  
+
   // Memoize cancel handler to prevent re-renders
   const handleCancelBooking = useCallback((bookingId: number) => {
     if (window.confirm("Are you sure you want to cancel this booking?")) {
@@ -184,22 +184,22 @@ export default function KitchenBookingCalendar() {
       });
     }
   }, [cancelBooking, toast]);
-  
+
   // Step 1: Kitchen Selection
   const [selectedKitchen, setSelectedKitchen] = useState<any | null>(null);
-  
+
   // Get location ID from selected kitchen
   const selectedLocationId = selectedKitchen?.location?.id || selectedKitchen?.locationId || null;
-  
+
   // Check kitchen application status for the selected location
   const { application, hasApplication, canBook, isLoading: isLoadingApplication } = useChefKitchenApplicationForLocation(selectedLocationId);
-  
+
   // Step 2: Date Selection (Calendar View)
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  
+
   // Step 3: Time Slot Selection (Multi-select, dynamic max per policy)
   const [allSlots, setAllSlots] = useState<Array<{
     time: string;
@@ -210,10 +210,10 @@ export default function KitchenBookingCalendar() {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [maxSlotsPerChef, setMaxSlotsPerChef] = useState<number>(2);
-  
+
   // Step 4: Booking Details
   const [notes, setNotes] = useState<string>("");
-  
+
   // Pricing state
   const [kitchenPricing, setKitchenPricing] = useState<{
     hourlyRate: number | null;
@@ -226,7 +226,7 @@ export default function KitchenBookingCalendar() {
     totalPrice: number;
     durationHours: number;
   } | null>(null);
-  
+
   // Storage and Equipment listings state
   const [storageListings, setStorageListings] = useState<any[]>([]);
   const [equipmentListings, setEquipmentListings] = useState<{
@@ -235,7 +235,7 @@ export default function KitchenBookingCalendar() {
     rental: any[];
   }>({ all: [], included: [], rental: [] });
   const [isLoadingAddons, setIsLoadingAddons] = useState(false);
-  
+
   // Selected add-ons for the booking
   const [selectedStorageIds, setSelectedStorageIds] = useState<number[]>([]); // Legacy - will be removed
   const [selectedStorage, setSelectedStorage] = useState<Array<{
@@ -244,7 +244,7 @@ export default function KitchenBookingCalendar() {
     endDate: Date;
   }>>([]);
   const [selectedEquipmentIds, setSelectedEquipmentIds] = useState<number[]>([]);
-  
+
   // Calculate storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
 
@@ -282,7 +282,7 @@ export default function KitchenBookingCalendar() {
       .map((eqId) => {
         const eq = equipmentListings.rental.find((e: any) => e.id === eqId);
         if (!eq) return null;
-        
+
         // Use sessionRate (flat per-session fee) - API already returns in dollars
         const rate = eq.sessionRate || 0;
 
@@ -366,7 +366,7 @@ export default function KitchenBookingCalendar() {
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
-      
+
       // Fetch policy (max slots per chef)
       try {
         const policyRes = await fetch(`/api/chef/kitchens/${kitchenId}/policy?date=${date}`, {
@@ -394,30 +394,30 @@ export default function KitchenBookingCalendar() {
         headers,
         cache: 'no-store',
       });
-      
+
       if (!response.ok) {
         const text = await response.text().catch(() => '');
         throw new Error(text || "Failed to fetch slots");
       }
-      
+
       const slots = await response.json();
       console.log('📅 All slots for', date, ':', slots);
-      
+
       // Filter out past times and times within minimum booking window
       const now = new Date();
       // Parse date in local timezone to avoid timezone issues
       const [year, month, day] = date.split('-').map(Number);
       const selectedDateObj = new Date(year, month - 1, day);
       const isToday = selectedDateObj.toDateString() === now.toDateString();
-      
+
       // Get minimum booking window from location (default 1 hour)
       const minimumBookingWindowHours = selectedKitchen?.location?.minimumBookingWindowHours ?? 1;
-      
+
       const filteredSlots = slots.filter((slot: any) => {
         const [slotHours, slotMins] = slot.time.split(':').map(Number);
         const slotTime = new Date(selectedDateObj);
         slotTime.setHours(slotHours, slotMins, 0, 0);
-        
+
         // Only apply filtering rules if the date is today
         if (isToday) {
           // Filter out past times
@@ -425,25 +425,25 @@ export default function KitchenBookingCalendar() {
             console.log(`   ⏰ Filtered out ${slot.time} - past time (slotTime: ${slotTime.toISOString()}, now: ${now.toISOString()})`);
             return false;
           }
-          
+
           // Filter out times within minimum booking window (only for today)
           const hoursUntilSlot = (slotTime.getTime() - now.getTime()) / (1000 * 60 * 60);
           if (hoursUntilSlot < minimumBookingWindowHours) {
             console.log(`   ⏰ Filtered out ${slot.time} - within ${minimumBookingWindowHours}h window (${hoursUntilSlot.toFixed(2)} hours until slot)`);
             return false;
           }
-          
+
           console.log(`   ✅ Keeping ${slot.time} - ${hoursUntilSlot.toFixed(2)} hours until slot`);
         }
-        
+
         // For future dates, all slots are available (no time-based filtering needed)
         return true;
       });
-      
+
       console.log(`📅 Filtered ${slots.length} slots to ${filteredSlots.length} (removed past times and times within ${minimumBookingWindowHours}h window)`);
       console.log(`   Current time: ${now.toLocaleTimeString()}, Selected date is today: ${isToday}, Minimum booking window: ${minimumBookingWindowHours}h`);
       setAllSlots(filteredSlots);
-      
+
       if (slots.length === 0) {
         toast({
           title: "Kitchen closed",
@@ -470,14 +470,14 @@ export default function KitchenBookingCalendar() {
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
-      
+
       // Fetch storage listings
       const storageRes = await fetch(`/api/chef/kitchens/${kitchenId}/storage-listings`, {
         credentials: "include",
         headers,
         cache: 'no-store',
       });
-      
+
       if (storageRes.ok) {
         const storageData = await storageRes.json();
         setStorageListings(storageData);
@@ -486,14 +486,14 @@ export default function KitchenBookingCalendar() {
         console.log(`ℹ️ No storage listings available (status: ${storageRes.status})`);
         setStorageListings([]);
       }
-      
+
       // Fetch equipment listings
       const equipmentRes = await fetch(`/api/chef/kitchens/${kitchenId}/equipment-listings`, {
         credentials: "include",
         headers,
         cache: 'no-store',
       });
-      
+
       if (equipmentRes.ok) {
         const equipmentData = await equipmentRes.json();
         setEquipmentListings(equipmentData);
@@ -516,7 +516,7 @@ export default function KitchenBookingCalendar() {
 
   const handleKitchenSelect = async (kitchen: any) => {
     const locationId = kitchen?.location?.id || kitchen?.locationId;
-    
+
     // Check application status before allowing kitchen selection
     if (locationId) {
       // Use a quick check via the hook - it will fetch in the background
@@ -543,7 +543,7 @@ export default function KitchenBookingCalendar() {
       setStorageListings([]);
       setEquipmentListings({ all: [], included: [], rental: [] });
     }
-    
+
     // Fetch kitchen pricing
     try {
       // Use same robust auth pattern as loadAvailableSlots - prefer fresh Firebase token
@@ -571,20 +571,20 @@ export default function KitchenBookingCalendar() {
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authHeader) headers['Authorization'] = authHeader;
-      
+
       console.log('🔍 Fetching pricing for kitchen:', kitchen.id, 'Auth header present:', !!authHeader);
-      
+
       const response = await fetch(`/api/chef/kitchens/${kitchen.id}/pricing`, {
         credentials: "include",
         headers,
         cache: 'no-store',
       });
-      
+
       if (response.ok) {
         const pricing = await response.json();
         console.log('✅ Kitchen pricing fetched:', pricing);
         console.log('✅ Parsed hourlyRate:', pricing.hourlyRate, 'Type:', typeof pricing.hourlyRate);
-        
+
         // Convert to number if it's a string, and handle cents vs dollars
         let hourlyRate = pricing.hourlyRate;
         if (typeof hourlyRate === 'string') {
@@ -595,7 +595,7 @@ export default function KitchenBookingCalendar() {
           console.warn('⚠️ Hourly rate appears to be in cents, converting to dollars:', hourlyRate);
           hourlyRate = hourlyRate / 100;
         }
-        
+
         setKitchenPricing({
           hourlyRate: hourlyRate || null,
           currency: pricing.currency || 'CAD',
@@ -628,7 +628,7 @@ export default function KitchenBookingCalendar() {
         minimumBookingHours: 1,
       });
     }
-    
+
     // Also fetch storage and equipment listings
     if (kitchen) {
       // Get auth header for the addons fetch
@@ -644,7 +644,7 @@ export default function KitchenBookingCalendar() {
         const token = localStorage.getItem('firebaseToken');
         if (token) authHeader = `Bearer ${token}`;
       }
-      
+
       await fetchKitchenAddons(kitchen.id, authHeader);
     }
   };
@@ -652,12 +652,12 @@ export default function KitchenBookingCalendar() {
   const handleDateClick = (date: Date) => {
     if (date < new Date(new Date().setHours(0, 0, 0, 0))) return; // Prevent past dates
     if (date.getMonth() !== currentMonth) return; // Only current month
-    
+
     // Only allow date selection if application is approved
     if (selectedLocationId && (!hasApplication || !canBook)) {
       return; // Overlay will handle the interaction
     }
-    
+
     setSelectedDate(date);
     setSelectedSlots([]);
   };
@@ -668,12 +668,12 @@ export default function KitchenBookingCalendar() {
       setEstimatedPrice(null);
       return;
     }
-    
+
     // Each selected slot represents a 1-hour block
     // Duration = number of slots selected (in hours)
     // This is consistent with booking submission which uses: selectedSlots.length * 60 minutes
     const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours || 1);
-    
+
     // Only calculate price if hourly rate is set
     if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
       // hourlyRate should already be in dollars from the API
@@ -683,14 +683,14 @@ export default function KitchenBookingCalendar() {
         console.warn('⚠️ Hourly rate appears to be in cents, converting:', hourlyRateDollars);
         hourlyRateDollars = hourlyRateDollars / 100;
       }
-      
+
       const basePrice = hourlyRateDollars * durationHours;
       const baseCents = Math.round(basePrice * 100);
       const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
       const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
       const totalPrice = basePrice + serviceFee;
-      
-      
+
+
       setEstimatedPrice({
         basePrice,
         serviceFee,
@@ -718,7 +718,7 @@ export default function KitchenBookingCalendar() {
       });
       return;
     }
-    
+
     setSelectedSlots(prev => {
       if (prev.includes(slot.time)) {
         // Deselect if already selected
@@ -757,7 +757,7 @@ export default function KitchenBookingCalendar() {
     const bookingDateStr = toLocalDateString(selectedDate);
     const [year, month, day] = bookingDateStr.split('-').map(Number);
     const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)); // Use noon UTC to avoid date shifts
-    
+
     createBooking.mutate(
       {
         kitchenId: selectedKitchen.id,
@@ -906,7 +906,7 @@ export default function KitchenBookingCalendar() {
                 {locationFilterId ? "No Kitchens Available at This Location" : "No Kitchens Available"}
               </h2>
               <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto px-4">
-                {locationFilterId 
+                {locationFilterId
                   ? "There are currently no commercial kitchens available for booking at this location. Please check back later or contact support."
                   : "There are currently no commercial kitchens available for booking. Please check back later or contact support."}
               </p>
@@ -925,7 +925,7 @@ export default function KitchenBookingCalendar() {
                       <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 text-blue-600 font-semibold text-sm sm:text-base">1</div>
                       <h2 className="text-lg sm:text-xl font-bold text-gray-900">Select a Kitchen</h2>
                     </div>
-                    
+
                     <div className="space-y-6">
                       {Object.entries(
                         filteredKitchens.reduce((acc: any, kitchen: any) => {
@@ -1025,7 +1025,7 @@ export default function KitchenBookingCalendar() {
                           <ChefHat className="h-5 w-5 text-blue-600" />
                           <h3 className="text-lg font-semibold text-blue-900">Kitchen Add-ons</h3>
                         </div>
-                        
+
                         {/* Equipment - Included (Free with Kitchen) */}
                         {equipmentListings.included.length > 0 && (
                           <div className="mb-6">
@@ -1052,7 +1052,7 @@ export default function KitchenBookingCalendar() {
                             </div>
                           </div>
                         )}
-                        
+
                         {/* Equipment - Rental (Paid Add-on) */}
                         {equipmentListings.rental.length > 0 && (
                           <div className="mb-6">
@@ -1066,7 +1066,7 @@ export default function KitchenBookingCalendar() {
                                 const isSelected = selectedEquipmentIds.includes(equipment.id);
                                 // Use sessionRate (flat per-session fee)
                                 const rate = equipment.sessionRate || 0;
-                                
+
                                 return (
                                   <button
                                     key={equipment.id}
@@ -1077,11 +1077,10 @@ export default function KitchenBookingCalendar() {
                                         setSelectedEquipmentIds(prev => [...prev, equipment.id]);
                                       }
                                     }}
-                                    className={`p-3 border rounded-lg text-left transition-all ${
-                                      isSelected 
-                                        ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-200' 
+                                    className={`p-3 border rounded-lg text-left transition-all ${isSelected
+                                        ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-200'
                                         : 'bg-white border-gray-200 hover:border-amber-300 hover:bg-amber-50'
-                                    }`}
+                                      }`}
                                   >
                                     <div className="flex items-start justify-between gap-3">
                                       {/* Equipment Image */}
@@ -1113,7 +1112,7 @@ export default function KitchenBookingCalendar() {
                             </div>
                           </div>
                         )}
-                        
+
                         {/* Equipment Selection Summary */}
                         {selectedEquipmentIds.length > 0 && (
                           <div className="mt-4 pt-4 border-t border-blue-200">
@@ -1135,14 +1134,14 @@ export default function KitchenBookingCalendar() {
                           <Package className="h-5 w-5 text-purple-600" />
                           <h3 className="text-lg font-semibold text-purple-900">Storage Spaces</h3>
                         </div>
-                        
+
                         <StorageSelection
                           storageListings={storageListings}
                           selectedStorage={selectedStorage}
                           onSelectionChange={setSelectedStorage}
                           kitchenBookingDate={selectedDate || undefined}
                         />
-                        
+
                         {/* Storage Selection Summary */}
                         {selectedStorage.length > 0 && (
                           <div className="mt-4 pt-4 border-t border-purple-200">
@@ -1156,7 +1155,7 @@ export default function KitchenBookingCalendar() {
                         )}
                       </div>
                     )}
-                    
+
                     {/* Loading state for add-ons */}
                     {isLoadingAddons && (
                       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -1183,11 +1182,11 @@ export default function KitchenBookingCalendar() {
                         >
                           <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                         </button>
-                        
+
                         <h3 className="text-base sm:text-lg font-bold text-gray-900 px-2">
                           {monthNames[currentMonth]} {currentYear}
                         </h3>
-                        
+
                         <button
                           onClick={() => navigateMonth('next')}
                           className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors mobile-touch-target"
@@ -1297,12 +1296,12 @@ export default function KitchenBookingCalendar() {
                               {!hasApplication
                                 ? "Submit an application to book this kitchen"
                                 : application?.status === 'inReview'
-                                ? "Your application is pending manager review"
-                                : application?.status === 'rejected'
-                                ? "Your application was rejected. Re-apply with updated documents"
-                                : application?.tier4_completed_at
-                                ? "All tiers completed. You can now book kitchens."
-                                : "Complete all application tiers to book kitchens"}
+                                  ? "Your application is pending manager review"
+                                  : application?.status === 'rejected'
+                                    ? "Your application was rejected. Re-apply with updated documents"
+                                    : application?.tier2_completed_at
+                                      ? "All tiers completed. You can now book kitchens."
+                                      : "Complete all application tiers to book kitchens"}
                             </p>
                             <button
                               onClick={() => setLocation(`/apply-kitchen/${selectedLocationId}`)}
@@ -1338,13 +1337,13 @@ export default function KitchenBookingCalendar() {
                             <button
                               onClick={() => {
                                 if (!selectedKitchen || !selectedDate) return;
-                                
+
                                 // Build query parameters
                                 const params = new URLSearchParams();
                                 params.set('kitchenId', selectedKitchen.id.toString());
                                 params.set('date', toLocalDateString(selectedDate));
                                 params.set('slots', selectedSlots.join(','));
-                                
+
                                 // Add storage if selected
                                 if (selectedStorage.length > 0) {
                                   params.set('storage', encodeURIComponent(JSON.stringify(selectedStorage.map(s => ({
@@ -1353,17 +1352,17 @@ export default function KitchenBookingCalendar() {
                                     endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
                                   })))));
                                 }
-                                
+
                                 // Add equipment if selected
                                 if (selectedEquipmentIds.length > 0) {
                                   params.set('equipment', selectedEquipmentIds.join(','));
                                 }
-                                
+
                                 // Add notes if any
                                 if (notes) {
                                   params.set('notes', notes);
                                 }
-                                
+
                                 setLocation(`/book-kitchen/confirm?${params.toString()}`);
                               }}
                               className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors flex items-center justify-center gap-2 min-h-[44px] text-sm sm:text-base"
@@ -1380,7 +1379,7 @@ export default function KitchenBookingCalendar() {
                             <span className="font-semibold">{formatDate(selectedDate)}</span>
                           </p>
                           <p className="text-[10px] sm:text-xs text-gray-600">
-                                   💡 Daily booking limit: {maxSlotsPerChef} {maxSlotsPerChef === 1 ? 'hour' : 'hours'} per chef
+                            💡 Daily booking limit: {maxSlotsPerChef} {maxSlotsPerChef === 1 ? 'hour' : 'hours'} per chef
                           </p>
                         </div>
 
@@ -1405,13 +1404,13 @@ export default function KitchenBookingCalendar() {
                                 const isFullyBooked = slot.isFullyBooked;
                                 const availability = slot.available;
                                 const capacity = slot.capacity;
-                                
+
                                 // Determine styling based on availability
                                 let statusColor = 'border-gray-200 hover:border-blue-400 hover:bg-blue-50';
                                 let statusBg = 'bg-white';
                                 let statusText = 'text-gray-700';
                                 let cursorStyle = 'cursor-pointer';
-                                
+
                                 if (isSelected) {
                                   statusColor = 'border-blue-600';
                                   statusBg = 'bg-blue-600';
@@ -1430,7 +1429,7 @@ export default function KitchenBookingCalendar() {
                                   statusBg = 'bg-yellow-50';
                                   statusText = 'text-yellow-700';
                                 }
-                                
+
                                 return (
                                   <button
                                     key={slot.time}
@@ -1451,25 +1450,24 @@ export default function KitchenBookingCalendar() {
                                         </div>
                                         <span className="text-[10px] sm:text-xs opacity-75">(1 hour)</span>
                                       </div>
-                                      
+
                                       {/* Capacity indicator */}
                                       {capacity > 1 && (
-                                        <div className={`text-xs font-medium ${
-                                          isSelected ? 'text-white' : 
-                                          isFullyBooked ? 'text-red-600' : 
-                                          availability === 1 ? 'text-orange-600' :
-                                          availability < capacity ? 'text-yellow-600' :
-                                          'text-green-600'
-                                        }`}>
+                                        <div className={`text-xs font-medium ${isSelected ? 'text-white' :
+                                            isFullyBooked ? 'text-red-600' :
+                                              availability === 1 ? 'text-orange-600' :
+                                                availability < capacity ? 'text-yellow-600' :
+                                                  'text-green-600'
+                                          }`}>
                                           {isFullyBooked ? 'Fully Booked' : `${availability}/${capacity} spots`}
                                         </div>
                                       )}
-                                      
+
                                       {capacity === 1 && isFullyBooked && (
                                         <div className="text-xs font-medium text-red-600">Booked</div>
                                       )}
                                     </div>
-                                    
+
                                     {isSelected && (
                                       <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                                         <Check className="h-4 w-4 text-white" />
@@ -1479,7 +1477,7 @@ export default function KitchenBookingCalendar() {
                                 );
                               })}
                             </div>
-                            
+
                             {/* Legend */}
                             <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gray-50 border border-gray-200 rounded-lg">
                               <p className="text-[10px] sm:text-xs font-semibold text-gray-700 mb-2 sm:mb-3">Availability Legend:</p>
@@ -1502,7 +1500,7 @@ export default function KitchenBookingCalendar() {
                                 </div>
                               </div>
                             </div>
-                            
+
                             {selectedSlots.length > 0 && (
                               <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-green-50 border border-green-200 rounded-lg">
                                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">

@@ -8611,7 +8611,7 @@ init_firebase_admin();
 // server/storage-firebase.ts
 init_schema();
 init_db();
-import { eq as eq2, and, inArray, asc, desc, or } from "drizzle-orm";
+import { eq as eq2, and, inArray, asc, desc, isNull, or, not } from "drizzle-orm";
 
 // shared/timezone-utils.ts
 import { TZDate } from "@date-fns/tz";
@@ -11930,15 +11930,15 @@ var FirebaseStorage = class {
           message: "You must apply to this kitchen before booking. Please submit an application first."
         };
       }
-      const allTiersCompleted = !!application.tier4_completed_at;
+      const tier2Completed = !!application.tier2_completed_at;
       switch (application.status) {
         case "approved":
           return {
             hasApplication: true,
-            status: allTiersCompleted ? "approved" : "inReview",
-            canBook: allTiersCompleted,
-            // Can only book after completing all tiers
-            message: allTiersCompleted ? "All application tiers completed. You can book kitchens at this location." : "Application approved but not all tiers completed. Please complete remaining tiers to book."
+            status: tier2Completed ? "approved" : "inReview",
+            canBook: tier2Completed,
+            // Can book after completing Tier 2 (only Tier 1 and 2 are in use)
+            message: tier2Completed ? "Application completed. You can book kitchens at this location." : "Application approved but Tier 2 is not completed. Please complete Tier 2 to book."
           };
         case "inReview":
           return {
@@ -12016,7 +12016,9 @@ var FirebaseStorage = class {
       const approvedApps = await db.select().from(chefKitchenApplications).where(
         and(
           eq2(chefKitchenApplications.chefId, chefId),
-          eq2(chefKitchenApplications.status, "approved")
+          eq2(chefKitchenApplications.status, "approved"),
+          not(isNull(chefKitchenApplications.tier2_completed_at))
+          // Only include where Tier 2 is completed
         )
       );
       console.log(`[getChefApprovedKitchens] Found ${approvedApps.length} approved applications for chef ${chefId}`);
@@ -14734,6 +14736,37 @@ function registerFirebaseRoutes(app3) {
         if (tierData) {
           formData.tier_data = tierData;
         }
+        const currentTier = parseInt(req.body.current_tier) || 1;
+        if (currentTier === 2) {
+          if (requirements.tier2_food_establishment_cert_required) {
+            const hasFoodEstablishmentCert = foodEstablishmentCertUrl || req.body.foodEstablishmentCertUrl;
+            if (!hasFoodEstablishmentCert) {
+              return res.status(400).json({
+                error: "Validation error",
+                message: "Food Establishment Certificate is required for Tier 2",
+                details: [{
+                  code: "custom",
+                  message: "Food Establishment Certificate is required",
+                  path: ["foodEstablishmentCert"]
+                }]
+              });
+            }
+          }
+          if (requirements.tier2_insurance_document_required) {
+            const hasInsuranceDoc = tierFileUrls["tier2_insurance_document"];
+            if (!hasInsuranceDoc) {
+              return res.status(400).json({
+                error: "Validation error",
+                message: "Insurance Document is required for Tier 2",
+                details: [{
+                  code: "custom",
+                  message: "Insurance Document is required",
+                  path: ["tier2_insurance_document"]
+                }]
+              });
+            }
+          }
+        }
         if (req.body.government_license_number) {
           formData.government_license_number = req.body.government_license_number;
         }
@@ -14838,8 +14871,8 @@ function registerFirebaseRoutes(app3) {
       res.json({
         ...application,
         hasApplication: true,
-        canBook: !!application.tier4_completed_at,
-        // Can only book after completing all tiers
+        canBook: application.status === "approved" && !!application.tier2_completed_at,
+        // Can book after completing Tier 2 (only Tier 1 and 2 are in use)
         location: location ? {
           id: location.id,
           name: location.name,
@@ -25306,6 +25339,43 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
     } catch (error) {
       console.error("Error fetching pending licenses:", error);
       res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
+    }
+  });
+  app3.get("/api/admin/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    try {
+      if (!pool) {
+        return res.status(500).json({ error: "Database not available" });
+      }
+      const { status } = req.query;
+      let query = `
+        SELECT 
+          l.id,
+          l.name,
+          l.address,
+          l.kitchen_license_url as "kitchenLicenseUrl",
+          l.kitchen_license_status as "kitchenLicenseStatus",
+          l.kitchen_license_feedback as "kitchenLicenseFeedback",
+          l.kitchen_license_approved_at as "kitchenLicenseApprovedAt",
+          l.kitchen_license_approved_by as "kitchenLicenseApprovedBy",
+          l.kitchen_license_expiry as "kitchenLicenseExpiry",
+          l.kitchen_license_uploaded_at as "kitchenLicenseUploadedAt",
+          u.username as "managerUsername",
+          u.id as "managerId"
+        FROM locations l
+        LEFT JOIN users u ON l.manager_id = u.id
+        WHERE l.kitchen_license_url IS NOT NULL
+      `;
+      const params = [];
+      if (status && typeof status === "string" && status !== "all") {
+        params.push(status);
+        query += ` AND l.kitchen_license_status = $1::document_verification_status`;
+      }
+      query += ` ORDER BY l.kitchen_license_uploaded_at DESC NULLS LAST, l.created_at DESC`;
+      const result = await pool.query(query, params);
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Error fetching kitchen licenses:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch kitchen licenses" });
     }
   });
   app3.put("/api/admin/locations/:locationId/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
