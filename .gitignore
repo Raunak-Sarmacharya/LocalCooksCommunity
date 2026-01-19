@@ -340,3 +340,4 @@ local-settings.json
 .sync-manifest.json
 api/*.backup.*
 scripts/.sync-cache/
+.agent/rules/frontend-architect-protocol.md
