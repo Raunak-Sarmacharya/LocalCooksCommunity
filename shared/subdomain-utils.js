@@ -34,7 +34,7 @@ export function getSubdomainFromHostname(hostname) {
       case 'admin':
         return 'admin';
       default:
-        return 'main'; // Unknown subdomain, treat as main
+        return null; // Unknown subdomain, return null (strict)
     }
   }
 
@@ -43,7 +43,7 @@ export function getSubdomainFromHostname(hostname) {
   // For 'localcooks.ca', parts would be ['localcooks', 'ca']
   if (parts.length >= 3) {
     const subdomain = parts[0].toLowerCase();
-    
+
     switch (subdomain) {
       case 'chef':
         return 'chef';
@@ -119,20 +119,20 @@ export function isRouteAccessibleFromSubdomain(subdomainType, routePath) {
   }
 
   // Chef routes - accessible from chef subdomain
-  if (routePath.startsWith('/apply') || routePath.startsWith('/dashboard') || 
-      routePath.startsWith('/book-kitchen') || routePath.startsWith('/share-profile')) {
+  if (routePath.startsWith('/apply') || routePath.startsWith('/dashboard') ||
+    routePath.startsWith('/book-kitchen') || routePath.startsWith('/share-profile')) {
     return subdomainType === 'chef';
   }
 
   // Auth routes - accessible from all subdomains
-  if (routePath.startsWith('/auth') || 
-      routePath.startsWith('/forgot-password') || routePath.startsWith('/password-reset')) {
+  if (routePath.startsWith('/auth') ||
+    routePath.startsWith('/forgot-password') || routePath.startsWith('/password-reset')) {
     return true;
   }
 
   // Public routes - accessible from all
-  if (routePath === '/' || routePath.startsWith('/terms') || routePath.startsWith('/privacy') || 
-      routePath.startsWith('/success') || routePath.startsWith('/email-action')) {
+  if (routePath === '/' || routePath.startsWith('/terms') || routePath.startsWith('/privacy') ||
+    routePath.startsWith('/success') || routePath.startsWith('/email-action')) {
     return true;
   }
 
@@ -147,7 +147,7 @@ export function isRouteAccessibleFromSubdomain(subdomainType, routePath) {
  */
 export function getRequiredSubdomainForRole(role) {
   if (!role) return null;
-  
+
   switch (role.toLowerCase()) {
     case 'chef':
       return 'chef';
@@ -174,10 +174,10 @@ export function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false,
   if (isPortalUser && subdomain === 'kitchen') {
     return true;
   }
-  
+
   // Determine effective role from role field or flags
   let effectiveRole = role;
-  
+
   // If role is null/undefined, determine from flags
   if (!effectiveRole) {
     if (isManager) {
@@ -186,14 +186,14 @@ export function isRoleAllowedForSubdomain(role, subdomain, isPortalUser = false,
       effectiveRole = 'chef';
     }
   }
-  
+
   const requiredSubdomain = getRequiredSubdomainForRole(effectiveRole);
-  
+
   // If no required subdomain found, deny access (strict enforcement)
   if (!requiredSubdomain) {
     return false;
   }
-  
+
   // Must match the required subdomain exactly
   return subdomain === requiredSubdomain;
 }

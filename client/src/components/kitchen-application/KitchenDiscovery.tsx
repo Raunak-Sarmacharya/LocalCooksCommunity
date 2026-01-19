@@ -330,7 +330,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                   View Details
                                 </Button>
                               </Link>
-                              <Link href={`/apply-kitchen/${location.id}`}>
+                              <Link href={`/kitchen-requirements/${location.id}`}>
                                 <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
                                   Apply Now
                                   <ArrowRight className="ml-2 h-4 w-4" />
@@ -414,7 +414,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                 </Button>
                               )}
                               {(app.status === "rejected" || app.status === "cancelled") && (
-                                <Link href={`/apply-kitchen/${app.locationId}`}>
+                                <Link href={`/kitchen-requirements/${app.locationId}`}>
                                   <Button size="sm" variant="outline">
                                     Re-apply
                                   </Button>

@@ -842,7 +842,7 @@ export default function KitchenApplicationForm({
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-gray-700">Application Progress</h3>
-            <span className="text-xs text-gray-500">Tier {currentTier} of 2</span>
+            <span className="text-xs text-gray-500">Step {currentTier} of 2</span>
           </div>
           <div className="flex items-center gap-2">
             {[1, 2].map((tier) => {
@@ -866,8 +866,8 @@ export default function KitchenApplicationForm({
             })}
           </div>
           <div className="flex justify-between mt-2 text-xs text-gray-600">
-            <span>Tier 1: Submit</span>
-            <span>Tier 2: Coordinate</span>
+            <span>Step 1: Submit</span>
+            <span>Step 2: Coordinate</span>
           </div>
         </div>
       )}
@@ -1546,7 +1546,7 @@ export default function KitchenApplicationForm({
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-6 pb-3 border-b-2 border-[#208D80]/10">
                     <div>
-                      <h3 className="font-semibold text-gray-900">Tier 2: Kitchen Coordination</h3>
+                      <h3 className="font-semibold text-gray-900">Step 2: Kitchen Coordination</h3>
                       <p className="text-sm text-gray-600 mt-1">Upload required documents and coordinate with the manager</p>
                     </div>
                     <Badge variant={application?.tier2_completed_at ? "default" : "secondary"}>
@@ -1563,7 +1563,7 @@ export default function KitchenApplicationForm({
                           <div>
                             <p className="font-medium text-green-900">Documents Submitted Successfully</p>
                             <p className="text-sm text-green-700 mt-1">
-                              Your Tier 2 documents have been submitted and are awaiting manager review.
+                              Your Step 2 documents have been submitted and are awaiting manager review.
                             </p>
                           </div>
                         </div>

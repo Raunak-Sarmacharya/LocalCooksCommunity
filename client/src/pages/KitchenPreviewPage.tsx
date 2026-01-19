@@ -847,7 +847,7 @@ export default function KitchenPreviewPage() {
         navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
       } else {
         // Navigate to application page
-        navigate(`/apply-kitchen/${locationId}`);
+        navigate(`/kitchen-requirements/${locationId}`);
       }
     } else {
       // Navigate to auth page with redirect
@@ -859,12 +859,12 @@ export default function KitchenPreviewPage() {
     if (canBook) {
       navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
     } else {
-      navigate(`/apply-kitchen/${locationId}`);
+      navigate(`/kitchen-requirements/${locationId}`);
     }
   };
 
   const handleApplyClick = () => {
-    navigate(`/apply-kitchen/${locationId}`);
+    navigate(`/kitchen-requirements/${locationId}`);
   };
 
   if (isLoading) {
