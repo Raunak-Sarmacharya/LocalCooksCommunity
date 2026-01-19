@@ -12074,6 +12074,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const normalizedLocationBrandImageUrl = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
           const normalizedLocationLogoUrl = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
 
+          // Fetch availability for this kitchen
+          let availability: any[] = [];
+          // We need to use Promise.all closer to the database call for efficiency, 
+          // but for now we'll do it sequentially or simply assume we can fetch it.
+          // Since map doesn't support async, we loop properly below.
+
           return {
             id: kitchen.id,
             name: kitchen.name,
@@ -12086,8 +12092,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             locationAddress: kitchen.locationAddress || kitchen.location_address || location.address,
             locationBrandImageUrl: normalizedLocationBrandImageUrl,
             locationLogoUrl: normalizedLocationLogoUrl,
+            // We will populate this in the loop below
+            availability: [] as any[],
           };
         });
+
+      // Populate availability for each kitchen
+      for (const kitchen of locationKitchens) {
+        try {
+          const availability = await firebaseStorage.getKitchenAvailability(kitchen.id);
+          kitchen.availability = availability;
+        } catch (err) {
+          console.error(`Error fetching availability for kitchen ${kitchen.id}:`, err);
+          kitchen.availability = [];
+        }
+      }
 
       console.log(`[API] /api/public/locations/${locationId}/details - Found location with ${locationKitchens.length} kitchens`);
 
