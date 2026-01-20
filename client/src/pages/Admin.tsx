@@ -133,10 +133,14 @@ function AdminDashboard() {
       return getPresignedUrl(fileUrl);
     }
 
-    // Check if it's an R2 URL (needs presigning)
+    // Check if it's a public R2 URL - these don't need presigning
+    if (fileUrl.includes('.r2.dev/')) {
+      return fileUrl;
+    }
+
+    // Check if it's a private R2 URL or custom domain (needs presigning)
     const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') ||
-      fileUrl.includes('cloudflare') ||
-      (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+      fileUrl.includes('files.localcooks.ca');
 
     if (!isR2Url) {
       return fileUrl;
@@ -1759,8 +1763,8 @@ function AdminDashboard() {
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'approved')}
                                           className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodSafetyLicenseStatus === 'approved'
-                                              ? 'bg-emerald-100 text-emerald-700 cursor-default'
-                                              : 'text-emerald-600 hover:bg-emerald-50'
+                                            ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                                            : 'text-emerald-600 hover:bg-emerald-50'
                                             }`}
                                           disabled={app.foodSafetyLicenseStatus === 'approved'}
                                         >
@@ -1771,8 +1775,8 @@ function AdminDashboard() {
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodSafetyLicenseStatus', 'rejected')}
                                           className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodSafetyLicenseStatus === 'rejected'
-                                              ? 'bg-red-100 text-red-700 cursor-default'
-                                              : 'text-red-600 hover:bg-red-50'
+                                            ? 'bg-red-100 text-red-700 cursor-default'
+                                            : 'text-red-600 hover:bg-red-50'
                                             }`}
                                           disabled={app.foodSafetyLicenseStatus === 'rejected'}
                                         >
@@ -1867,8 +1871,8 @@ function AdminDashboard() {
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'approved')}
                                           className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodEstablishmentCertStatus === 'approved'
-                                              ? 'bg-emerald-100 text-emerald-700 cursor-default'
-                                              : 'text-emerald-600 hover:bg-emerald-50'
+                                            ? 'bg-emerald-100 text-emerald-700 cursor-default'
+                                            : 'text-emerald-600 hover:bg-emerald-50'
                                             }`}
                                           disabled={app.foodEstablishmentCertStatus === 'approved'}
                                         >
@@ -1879,8 +1883,8 @@ function AdminDashboard() {
                                           variant="ghost"
                                           onClick={() => handleDocumentStatusUpdate(app.id, 'foodEstablishmentCertStatus', 'rejected')}
                                           className={`text-xs px-2 py-1 h-auto rounded transition-colors ${app.foodEstablishmentCertStatus === 'rejected'
-                                              ? 'bg-red-100 text-red-700 cursor-default'
-                                              : 'text-red-600 hover:bg-red-50'
+                                            ? 'bg-red-100 text-red-700 cursor-default'
+                                            : 'text-red-600 hover:bg-red-50'
                                             }`}
                                           disabled={app.foodEstablishmentCertStatus === 'rejected'}
                                         >
@@ -2186,15 +2190,15 @@ function KitchenLicenseApprovalView() {
           <div className="space-y-4">
             {licenses.map((license: any) => (
               <Card key={license.id} className={`border-2 ${license.kitchenLicenseStatus === 'pending' ? 'border-yellow-200' :
-                  license.kitchenLicenseStatus === 'rejected' ? 'border-red-200' : 'border-gray-200'
+                license.kitchenLicenseStatus === 'rejected' ? 'border-red-200' : 'border-gray-200'
                 }`}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-3">
                         <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${license.kitchenLicenseStatus === 'pending' ? 'bg-yellow-100 text-yellow-600' :
-                            license.kitchenLicenseStatus === 'approved' ? 'bg-green-100 text-green-600' :
-                              license.kitchenLicenseStatus === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+                          license.kitchenLicenseStatus === 'approved' ? 'bg-green-100 text-green-600' :
+                            license.kitchenLicenseStatus === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
                           }`}>
                           <FileText className="h-6 w-6" />
                         </div>
@@ -2218,60 +2222,31 @@ function KitchenLicenseApprovalView() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={async () => {
-                              try {
-                                const currentFirebaseUser = auth.currentUser;
-                                if (!currentFirebaseUser) {
-                                  toast({
-                                    title: "Authentication Required",
-                                    description: "Please sign in to view the license document.",
-                                    variant: "destructive",
-                                  });
-                                  return;
-                                }
-
-                                const token = await currentFirebaseUser.getIdToken();
-
-                                // Fetch with redirect handling
-                                const response = await fetch(`/api/files/kitchen-license/${license.id}`, {
-                                  headers: {
-                                    'Authorization': `Bearer ${token}`,
-                                  },
-                                  credentials: 'include',
-                                  redirect: 'follow', // Follow redirects
-                                });
-
-                                if (!response.ok) {
-                                  if (response.status === 401 || response.status === 403) {
-                                    throw new Error('You do not have permission to view this document.');
-                                  }
-                                  throw new Error('Failed to load license document.');
-                                }
-
-                                const finalUrl = response.url;
-
-                                if (finalUrl.includes('/api/files/r2-proxy')) {
-                                  window.open(finalUrl, '_blank');
-                                } else if (finalUrl.includes('r2.cloudflarestorage.com') || finalUrl.includes('presigned')) {
-                                  window.open(finalUrl, '_blank');
-                                } else {
-                                  try {
-                                    const blob = await response.blob();
-                                    const blobUrl = URL.createObjectURL(blob);
-                                    window.open(blobUrl, '_blank');
-                                    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-                                  } catch (blobError) {
-                                    window.open(finalUrl, '_blank');
-                                  }
-                                }
-                              } catch (error: any) {
-                                console.error('Error viewing license:', error);
+                            onClick={() => {
+                              if (!license.kitchenLicenseUrl) {
                                 toast({
-                                  title: "Error",
-                                  description: error.message || "Failed to view license document",
+                                  title: "No License",
+                                  description: "No license document has been uploaded for this location.",
                                   variant: "destructive",
                                 });
+                                return;
                               }
+
+                              // Determine the correct URL based on the stored URL format
+                              let viewUrl = license.kitchenLicenseUrl;
+
+                              // If it's a public R2 URL (.r2.dev), use directly
+                              if (viewUrl.includes('.r2.dev/')) {
+                                window.open(viewUrl, '_blank');
+                                return;
+                              }
+
+                              // If it's a private R2 URL or custom domain, use the proxy
+                              if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
+                                viewUrl = `/api/files/r2-proxy?url=${encodeURIComponent(viewUrl)}`;
+                              }
+
+                              window.open(viewUrl, '_blank');
                             }}
                             className="inline-flex items-center gap-2"
                           >

@@ -85,11 +85,17 @@ export function ImageWithReplace({
 
       // Check if it's already a full URL (R2 public URL or other CDN)
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-        // Check if it's an R2 URL - use the public proxy endpoint
-        const isR2Url = imageUrl.includes('r2.cloudflarestorage.com') || 
-                       imageUrl.includes('cloudflare') ||
-                       (imageUrl.startsWith('http') && !imageUrl.startsWith('/api/files/'));
-        
+        // Check if it's a public R2 URL - use directly
+        if (imageUrl.includes('.r2.dev/')) {
+          setImageSrc(imageUrl);
+          setIsLoading(false);
+          return;
+        }
+
+        // Check if it's a private R2 URL or custom domain - use the public proxy endpoint
+        const isR2Url = imageUrl.includes('r2.cloudflarestorage.com') ||
+          imageUrl.includes('files.localcooks.ca');
+
         if (isR2Url) {
           // Use the public r2-proxy endpoint (no auth required)
           const proxyUrl = getR2ProxyUrl(imageUrl);
@@ -97,7 +103,7 @@ export function ImageWithReplace({
           setIsLoading(false);
           return;
         }
-        
+
         // For non-R2 URLs, use directly
         setImageSrc(imageUrl);
         setIsLoading(false);
@@ -128,8 +134,8 @@ export function ImageWithReplace({
     }
   };
 
-  const aspectRatioClass = aspectRatio 
-    ? `aspect-[${aspectRatio.replace('/', '-')}]` 
+  const aspectRatioClass = aspectRatio
+    ? `aspect-[${aspectRatio.replace('/', '-')}]`
     : '';
 
   return (
@@ -152,7 +158,7 @@ export function ImageWithReplace({
                     resolvedUrl: imageSrc,
                     error: 'Image load failed'
                   });
-                  
+
                   // If presigned URL failed, try the original URL directly
                   if (imageSrc !== imageUrl && imageUrl) {
                     console.log('Retrying with original URL:', imageUrl);
@@ -169,7 +175,7 @@ export function ImageWithReplace({
                 }}
               />
             )}
-            
+
             {/* Overlay with action buttons - visible on hover */}
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
               {showReplaceButton && (
@@ -216,7 +222,7 @@ export function ImageWithReplace({
               )}
             </div>
           </div>
-          
+
           {error && (
             <div className="mt-2 text-sm text-red-600 flex items-center gap-2">
               <ImageIcon className="h-4 w-4" />
