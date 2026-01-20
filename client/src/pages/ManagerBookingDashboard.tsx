@@ -729,10 +729,10 @@ export default function ManagerBookingDashboard() {
                         </h3>
                         {selectedLocation.kitchenLicenseStatus && (
                           <span className={`text-xs px-2 py-0.5 rounded-full ${selectedLocation.kitchenLicenseStatus === "pending"
-                              ? "bg-yellow-200 text-yellow-800"
-                              : selectedLocation.kitchenLicenseStatus === "rejected"
-                                ? "bg-red-200 text-red-800"
-                                : "bg-gray-200 text-gray-800"
+                            ? "bg-yellow-200 text-yellow-800"
+                            : selectedLocation.kitchenLicenseStatus === "rejected"
+                              ? "bg-red-200 text-red-800"
+                              : "bg-gray-200 text-gray-800"
                             }`}>
                             {selectedLocation.kitchenLicenseStatus.toUpperCase()}
                           </span>
@@ -1531,20 +1531,20 @@ function OverviewView({ selectedLocation, onNavigate }: { selectedLocation: Loca
                   <div
                     key={booking.id}
                     className={`p-4 rounded-lg border ${booking.status === 'pending'
-                        ? 'bg-yellow-50 border-yellow-200'
-                        : booking.status === 'confirmed'
-                          ? 'bg-green-50 border-green-200'
-                          : 'bg-gray-50 border-gray-200'
+                      ? 'bg-yellow-50 border-yellow-200'
+                      : booking.status === 'confirmed'
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-gray-50 border-gray-200'
                       }`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <span className={`px-2 py-1 rounded text-xs font-medium ${booking.status === 'pending'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : booking.status === 'confirmed'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : booking.status === 'confirmed'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-gray-100 text-gray-800'
                             }`}>
                             {booking.status.toUpperCase()}
                           </span>
@@ -2477,21 +2477,21 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
                   {location.kitchenLicenseUrl && location.kitchenLicenseStatus !== "rejected" && location.kitchenLicenseStatus !== "expired" ? (
                     <div className={`border rounded-lg p-4 ${location.kitchenLicenseStatus === "approved" && !isLicenseExpired
-                        ? "bg-green-50 border-green-200"
-                        : location.kitchenLicenseStatus === "expired" || isLicenseExpired
-                          ? "bg-red-50 border-red-200"
-                          : isExpiryApproaching(location.kitchenLicenseExpiry)
-                            ? "bg-orange-50 border-orange-200"
-                            : "bg-yellow-50 border-yellow-200"
+                      ? "bg-green-50 border-green-200"
+                      : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                        ? "bg-red-50 border-red-200"
+                        : isExpiryApproaching(location.kitchenLicenseExpiry)
+                          ? "bg-orange-50 border-orange-200"
+                          : "bg-yellow-50 border-yellow-200"
                       }`}>
                       <div className="flex items-start justify-between mb-3">
                         <div className={`flex items-center gap-2 ${location.kitchenLicenseStatus === "approved" && !isLicenseExpired
-                            ? "text-green-800"
-                            : location.kitchenLicenseStatus === "expired" || isLicenseExpired
-                              ? "text-red-800"
-                              : isExpiryApproaching(location.kitchenLicenseExpiry)
-                                ? "text-orange-800"
-                                : "text-yellow-800"
+                          ? "text-green-800"
+                          : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                            ? "text-red-800"
+                            : isExpiryApproaching(location.kitchenLicenseExpiry)
+                              ? "text-orange-800"
+                              : "text-yellow-800"
                           }`}>
                           {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? (
                             <AlertCircle className="h-5 w-5" />
@@ -2501,12 +2501,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           <span className="font-medium">Kitchen License Document</span>
                         </div>
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${location.kitchenLicenseStatus === "approved" && !isLicenseExpired
-                            ? "bg-green-200 text-green-800"
-                            : location.kitchenLicenseStatus === "expired" || isLicenseExpired
-                              ? "bg-red-200 text-red-800"
-                              : location.kitchenLicenseStatus === "pending"
-                                ? "bg-yellow-200 text-yellow-800"
-                                : "bg-gray-200 text-gray-800"
+                          ? "bg-green-200 text-green-800"
+                          : location.kitchenLicenseStatus === "expired" || isLicenseExpired
+                            ? "bg-red-200 text-red-800"
+                            : location.kitchenLicenseStatus === "pending"
+                              ? "bg-yellow-200 text-yellow-800"
+                              : "bg-gray-200 text-gray-800"
                           }`}>
                           {location.kitchenLicenseStatus === "expired" || isLicenseExpired ? "EXPIRED" : (location.kitchenLicenseStatus || "PENDING").toUpperCase()}
                         </span>
@@ -2636,8 +2636,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       {/* Status Messages */}
                       {location.kitchenLicenseStatus === "approved" && !isLicenseExpired && (
                         <div className={`mt-3 p-3 rounded-lg ${isExpiryApproaching(location.kitchenLicenseExpiry)
-                            ? "bg-orange-100 border border-orange-300"
-                            : "bg-green-100 border border-green-300"
+                          ? "bg-orange-100 border border-orange-300"
+                          : "bg-green-100 border border-green-300"
                           }`}>
                           {isExpiryApproaching(location.kitchenLicenseExpiry) ? (
                             <p className="text-xs text-orange-800 font-medium">
@@ -2665,9 +2665,13 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         </div>
                       )}
                       <a
-                        href={location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com')
-                          ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
-                          : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
+                        href={
+                          location.kitchenLicenseUrl?.includes('.r2.dev/')
+                            ? location.kitchenLicenseUrl // Public R2 URLs work directly
+                            : (location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') || location.kitchenLicenseUrl?.includes('files.localcooks.ca'))
+                              ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
+                              : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-blue-600 hover:text-blue-700 mt-2 inline-block"

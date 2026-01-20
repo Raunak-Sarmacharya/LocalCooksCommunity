@@ -15,8 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Building2, MapPin, Mail, Phone, Clock, Calendar, 
+import {
+  Building2, MapPin, Mail, Phone, Clock, Calendar,
   Globe, Image as ImageIcon, Save, Loader2, CheckCircle,
   XCircle, AlertCircle, Upload, FileText
 } from "lucide-react";
@@ -36,7 +36,7 @@ interface LocationEditModalProps {
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const currentFirebaseUser = auth.currentUser;
-  
+
   if (currentFirebaseUser) {
     try {
       const freshToken = await currentFirebaseUser.getIdToken();
@@ -48,7 +48,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       console.error('Error getting Firebase token:', error);
     }
   }
-  
+
   const token = localStorage.getItem('firebaseToken');
   if (token) {
     return {
@@ -56,7 +56,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       'Authorization': `Bearer ${token}`,
     };
   }
-  
+
   return {
     'Content-Type': 'application/json',
   };
@@ -98,7 +98,7 @@ export default function LocationEditModal({
 }: LocationEditModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   // Form state
   const [name, setName] = useState(location.name);
   const [address, setAddress] = useState(location.address);
@@ -146,12 +146,12 @@ export default function LocationEditModal({
         credentials: "include",
         body: JSON.stringify(data),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to update location");
       }
-      
+
       return response.json();
     },
   });
@@ -173,12 +173,12 @@ export default function LocationEditModal({
         credentials: "include",
         body: JSON.stringify(data),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || "Failed to update location settings");
       }
-      
+
       return response.json();
     },
   });
@@ -235,7 +235,7 @@ export default function LocationEditModal({
               {location.logoUrl ? (
                 <ImageWithReplace
                   imageUrl={location.logoUrl}
-                  onImageChange={() => {}} // Read-only in header
+                  onImageChange={() => { }} // Read-only in header
                   alt={location.name}
                   className="w-12 h-12"
                   containerClassName="w-12 h-12"
@@ -467,16 +467,20 @@ export default function LocationEditModal({
                 <div className="space-y-2">
                   <p className="text-sm text-gray-600">
                     Your kitchen license has been uploaded and is{" "}
-                    {location.kitchenLicenseStatus === 'approved' 
-                      ? 'approved' 
+                    {location.kitchenLicenseStatus === 'approved'
+                      ? 'approved'
                       : location.kitchenLicenseStatus === 'rejected'
-                      ? 'rejected'
-                      : 'under review'}.
+                        ? 'rejected'
+                        : 'under review'}.
                   </p>
-                  <a 
-                    href={location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') 
-                      ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
-                      : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
+                  <a
+                    href={
+                      location.kitchenLicenseUrl?.includes('.r2.dev/')
+                        ? location.kitchenLicenseUrl // Public R2 URLs work directly
+                        : (location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') || location.kitchenLicenseUrl?.includes('files.localcooks.ca'))
+                          ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
+                          : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
@@ -518,8 +522,8 @@ export default function LocationEditModal({
             {viewOnly ? "Close" : "Cancel"}
           </Button>
           {!viewOnly && (
-            <Button 
-              onClick={handleSave} 
+            <Button
+              onClick={handleSave}
               disabled={isLoading}
               className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
             >

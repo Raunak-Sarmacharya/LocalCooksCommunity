@@ -22,17 +22,21 @@ export function getR2ProxyUrl(fileUrl: string | null | undefined): string {
     return fileUrl;
   }
 
-  // Check if it's an R2 URL
-  const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') || 
-                  fileUrl.includes('cloudflare') ||
-                  (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+  // If it's a public R2 URL (pub-*.r2.dev), return as-is - these are publicly accessible
+  if (fileUrl.includes('.r2.dev/')) {
+    return fileUrl;
+  }
 
-  // If it's an R2 URL, convert to proxy URL
-  if (isR2Url) {
+  // Check if it's a private R2 URL or custom domain that needs proxying
+  const isPrivateR2Url = fileUrl.includes('r2.cloudflarestorage.com') ||
+    fileUrl.includes('files.localcooks.ca');
+
+  // If it's a private R2 URL or custom domain, convert to proxy URL
+  if (isPrivateR2Url) {
     return `/api/files/r2-proxy?url=${encodeURIComponent(fileUrl)}`;
   }
 
-  // For other URLs, return as-is
+  // For other URLs (including public URLs), return as-is
   return fileUrl;
 }
 
@@ -68,8 +72,13 @@ export async function getAuthenticatedFileUrl(fileUrl: string | null | undefined
     return fileUrl;
   }
 
-  // For R2 URLs, use proxy
-  if (fileUrl.includes('r2.cloudflarestorage.com') || fileUrl.includes('cloudflare')) {
+  // If it's a public R2 URL (pub-*.r2.dev), return as-is - these are publicly accessible
+  if (fileUrl.includes('.r2.dev/')) {
+    return fileUrl;
+  }
+
+  // For private R2 URLs or custom domain, use proxy
+  if (fileUrl.includes('r2.cloudflarestorage.com') || fileUrl.includes('files.localcooks.ca')) {
     return getR2ProxyUrl(fileUrl);
   }
 

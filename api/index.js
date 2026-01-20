@@ -1792,20 +1792,30 @@ async function getPresignedUrl(fileUrl, expiresIn = 3600) {
     if (!key || key.length === 0) {
       throw new Error(`Invalid key extracted from URL: ${fileUrl}`);
     }
-    console.log("\u{1F50D} R2 Presigned URL Debug:", {
-      fileUrl,
-      extractedKey: key,
-      bucketName: R2_BUCKET_NAME,
-      pathname: urlObj.pathname,
-      pathParts,
-      bucketIndex
-    });
+    try {
+      await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
+    } catch (error) {
+      if (error.name === "NotFound" || error.$metadata?.httpStatusCode === 404) {
+        if (key.startsWith("documents/") && (key.includes("foodSafetyLicenseFile") || key.includes("foodEstablishmentCert"))) {
+          const remappedKey = key.replace("documents/", "kitchen-applications/");
+          console.log(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
+          try {
+            await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: remappedKey }));
+            key = remappedKey;
+            console.log(`[R2 Storage] Using remapped key: ${key}`);
+          } catch (remapError) {
+            console.log(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
+          }
+        }
+      } else {
+        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, error.message);
+      }
+    }
     const command = new GetObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: key
     });
     const presignedUrl = await getSignedUrl(client, command, { expiresIn });
-    console.log("\u2705 Generated presigned URL for R2 file:", key);
     return presignedUrl;
   } catch (error) {
     console.error("\u274C Error generating presigned URL:", {
@@ -8240,7 +8250,7 @@ var init_payout_processing_service = __esm({
 // server/index.ts
 init_firebase_admin();
 import "dotenv/config";
-import express2 from "express";
+import express3 from "express";
 
 // server/firebase-routes.ts
 init_schema();
@@ -15450,11 +15460,14 @@ function registerFirebaseRoutes(app3) {
 
 // server/routes.ts
 init_schema();
+import express from "express";
 import fs3 from "fs";
 import { createServer } from "http";
 import passport from "passport";
 import path2 from "path";
 import { fromZodError as fromZodError2 } from "zod-validation-error";
+import Stripe5 from "stripe";
+import { eq as eq5, inArray as inArray2, and as and4, desc as desc2, count } from "drizzle-orm";
 
 // server/alwaysFoodSafeAPI.ts
 async function submitToAlwaysFoodSafe(submission) {
@@ -15819,10 +15832,7 @@ async function comparePasswords(password, hash) {
 // server/routes.ts
 init_firebase_admin();
 init_db();
-init_schema();
-import Stripe5 from "stripe";
-import { eq as eq5, inArray as inArray2, and as and4, desc as desc2, count } from "drizzle-orm";
-init_schema();
+init_r2_storage();
 async function getAuthenticatedUser(req) {
   if (req.neonUser) {
     return {
@@ -15877,6 +15887,51 @@ function normalizeImageUrl(url, req) {
 async function registerRoutes(app3) {
   console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   setupAuth(app3);
+  app3.get("/api/files/r2-proxy", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url || typeof url !== "string") {
+        return res.status(400).send("Missing or invalid url parameter");
+      }
+      console.log(`[R2 Proxy] Request for: ${url}`);
+      const presignedUrl = await getPresignedUrl(url);
+      res.redirect(307, presignedUrl);
+    } catch (error) {
+      console.error("[R2 Proxy] Error:", error);
+      const fallbackUrl = req.query.url;
+      if (fallbackUrl) {
+        console.log(`[R2 Proxy] Falling back to original URL: ${fallbackUrl}`);
+        return res.redirect(fallbackUrl);
+      }
+      res.status(500).send("Failed to proxy image");
+    }
+  });
+  app3.get("/api/files/r2-presigned", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "Missing or invalid url parameter" });
+      }
+      console.log(`[R2 Presigned] Request for: ${url}`);
+      const presignedUrl = await getPresignedUrl(url);
+      return res.json({ url: presignedUrl });
+    } catch (error) {
+      console.error("[R2 Presigned] Error:", error);
+      res.status(500).json({ error: "Failed to generate presigned URL" });
+    }
+  });
+  app3.use("/api/files/documents", express.static(path2.join(process.cwd(), "uploads/documents")));
+  app3.use("/api/files/documents/:filename", async (req, res, next) => {
+    const filename = req.params.filename;
+    console.log(`[Documents] Local file not found, checking R2 for: ${filename}`);
+    try {
+      const r2Key = `documents/${filename}`;
+      console.warn(`[Documents] File not found locally: ${filename}`);
+      res.status(404).send("File not found");
+    } catch (e) {
+      next(e);
+    }
+  });
   app3.get("/api/auth/facebook", (req, res, next) => {
     console.log("Starting Facebook auth flow");
     if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
@@ -25635,7 +25690,7 @@ Please log in to your manager dashboard to confirm or manage this booking.`,
 }
 
 // server/vite.ts
-import express from "express";
+import express2 from "express";
 import fs4 from "fs";
 import { nanoid } from "nanoid";
 import path3 from "path";
@@ -25705,17 +25760,17 @@ function serveStatic(app3) {
       `Could not find the build directory: ${distPath}, make sure to build the client first`
     );
   }
-  app3.use(express.static(distPath));
+  app3.use(express2.static(distPath));
   app3.use("*", (_req, res) => {
     res.sendFile(path3.resolve(distPath, "index.html"));
   });
 }
 
 // server/index.ts
-var app2 = express2();
+var app2 = express3();
 app2.set("env", process.env.NODE_ENV || "development");
-app2.use(express2.json({ limit: "12mb" }));
-app2.use(express2.urlencoded({ limit: "12mb", extended: true }));
+app2.use(express3.json({ limit: "12mb" }));
+app2.use(express3.urlencoded({ limit: "12mb", extended: true }));
 initializeFirebaseAdmin();
 app2.use((req, res, next) => {
   const start = Date.now();

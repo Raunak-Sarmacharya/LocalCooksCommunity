@@ -209,11 +209,14 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
       return getPresignedUrl(fileUrl);
     }
 
-    // Check if it's an R2 URL (needs presigning)
+    // Check if it's a public R2 URL - these don't need presigning
+    if (fileUrl.includes('.r2.dev/')) {
+      return fileUrl;
+    }
+
+    // Check if it's a private R2 URL (needs presigning)
     const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') ||
-      fileUrl.includes('cloudflare') ||
-      fileUrl.includes('files.localcooks.ca') ||
-      (fileUrl.startsWith('http') && !fileUrl.startsWith('/api/files/'));
+      fileUrl.includes('files.localcooks.ca');
 
     if (!isR2Url) {
       // Not an R2 URL, return as-is
