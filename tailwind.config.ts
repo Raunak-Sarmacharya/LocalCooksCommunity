@@ -2,7 +2,7 @@ import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ["class"],
-  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}", "./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
       screens: {
@@ -13,13 +13,13 @@ export default {
         'xl': '1280px',
         '2xl': '1536px',
         // Mobile-first breakpoints
-        'mobile': {'max': '640px'},
-        'tablet': {'min': '641px', 'max': '1024px'},
-        'desktop': {'min': '1025px'},
+        'mobile': { 'max': '640px' },
+        'tablet': { 'min': '641px', 'max': '1024px' },
+        'desktop': { 'min': '1025px' },
         // Specific mobile ranges
-        'mobile-sm': {'max': '480px'},
-        'mobile-md': {'min': '481px', 'max': '640px'},
-        'mobile-lg': {'min': '641px', 'max': '768px'},
+        'mobile-sm': { 'max': '480px' },
+        'mobile-md': { 'min': '481px', 'max': '640px' },
+        'mobile-lg': { 'min': '641px', 'max': '768px' },
       },
       fontFamily: {
         sans: ["Instrument Sans", "system-ui", "sans-serif"],
@@ -176,6 +176,33 @@ export default {
             backgroundPosition: "1000px 0",
           },
         },
+        "auth-loading-shimmer": {
+          "0%": { left: "-100%" },
+          "100%": { left: "100%" },
+        },
+        "auth-error-shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "25%": { transform: "translateX(-4px)" },
+          "75%": { transform: "translateX(4px)" },
+        },
+        "auth-success-pulse": {
+          "0%": { transform: "scale(1)" },
+          "50%": { transform: "scale(1.05)" },
+          "100%": { transform: "scale(1)" },
+        },
+        "auth-strength-grow": {
+          from: { transform: "scaleX(0)" },
+          to: { transform: "scaleX(1)" },
+        },
+        "auth-email-bounce": {
+          "0%, 100%": { transform: "translateY(0) rotate(0deg)" },
+          "25%": { transform: "translateY(-5px) rotate(-2deg)" },
+          "75%": { transform: "translateY(-5px) rotate(2deg)" },
+        },
+        "typewriter-cursor": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -185,15 +212,21 @@ export default {
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "orb-float": "orb-float 20s ease-in-out infinite",
         "shimmer": "shimmer 2s linear infinite",
+        "auth-loading-shimmer": "auth-loading-shimmer 1.5s infinite",
+        "auth-error-shake": "auth-error-shake 0.5s ease-in-out",
+        "auth-success-pulse": "auth-success-pulse 0.6s ease-out",
+        "auth-strength-grow": "auth-strength-grow 0.3s ease-out",
+        "auth-email-bounce": "auth-email-bounce 2s ease-in-out infinite",
+        "typewriter-cursor": "typewriter-cursor 0.8s ease-in-out infinite",
       },
     },
   },
   plugins: [
-    require("tailwindcss-animate"), 
+    require("tailwindcss-animate"),
     require("@tailwindcss/typography"),
-    function({ addUtilities, theme }) {
-      const textShadowUtilities = {};
-      Object.entries(theme('textShadow')).forEach(([key, value]) => {
+    function ({ addUtilities, theme }: { addUtilities: any; theme: any }) {
+      const textShadowUtilities: any = {};
+      Object.entries(theme('textShadow') || {}).forEach(([key, value]) => {
         textShadowUtilities[`.text-shadow-${key}`] = {
           textShadow: value,
         };
@@ -201,7 +234,7 @@ export default {
       addUtilities(textShadowUtilities);
     },
     // Mobile-first responsive utilities
-    function({ addUtilities }) {
+    function ({ addUtilities }: { addUtilities: any }) {
       const mobileUtilities = {
         '.mobile-safe-area': {
           paddingTop: 'env(safe-area-inset-top)',
@@ -233,6 +266,7 @@ export default {
         },
         '.mobile-viewport-units': {
           height: '100vh',
+          // @ts-ignore
           height: '100dvh', // Dynamic viewport height for modern browsers
         },
       };
