@@ -391,14 +391,14 @@ export default function Terms() {
 
               <h2 className="text-2xl font-bold mt-8 mb-4">12. ACCESSIBILITY</h2>
               <p className="mb-4">
-                Local Cooks is committed to accessibility. If you need assistance accessing our Service, please contact support@localcooks.ca.
+                Local Cooks is committed to accessibility. If you need assistance accessing our Service, please contact support@localcook.shop.
               </p>
 
               <h2 className="text-2xl font-bold mt-8 mb-4">13. CONTACT INFORMATION</h2>
 
               <h3 className="text-xl font-semibold mt-6 mb-3">General Inquiries</h3>
               <p className="mb-4">
-                Email: support@localcooks.ca<br/>
+                Email: support@localcook.shop<br/>
                 Phone: [Phone Number]
               </p>
 

@@ -7642,7 +7642,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       let leftY = 120;
       doc.fontSize(14).font("Helvetica-Bold").text("Local Cooks Community", 50, leftY);
       leftY += 18;
-      doc.fontSize(10).font("Helvetica").text("support@localcooks.ca", 50, leftY);
+      doc.fontSize(10).font("Helvetica").text("support@localcook.shop", 50, leftY);
       leftY += 30;
       doc.fontSize(12).font("Helvetica-Bold").text("Bill To:", 50, leftY);
       leftY += 18;
@@ -7729,7 +7729,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       const footerY = pageHeight - 80;
       doc.moveTo(50, footerY).lineTo(550, footerY).stroke("#e5e7eb");
       doc.fontSize(9).fillColor("#6b7280").text("Thank you for your business!", 50, footerY + 15, { align: "center", width: 500 });
-      doc.text("For questions, contact support@localcooks.ca", 50, footerY + 30, { align: "center", width: 500 });
+      doc.text("For questions, contact support@localcook.shop", 50, footerY + 30, { align: "center", width: 500 });
       doc.fillColor("#000000");
       doc.end();
     } catch (error) {
@@ -7832,7 +7832,7 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
       let leftY = 120;
       doc.fontSize(14).font("Helvetica-Bold").text("Local Cooks Community", 50, leftY);
       leftY += 18;
-      doc.fontSize(10).font("Helvetica").text("support@localcooks.ca", 50, leftY);
+      doc.fontSize(10).font("Helvetica").text("support@localcook.shop", 50, leftY);
       leftY += 30;
       doc.fontSize(12).font("Helvetica-Bold").text("Pay To:", 50, leftY);
       leftY += 18;
@@ -7912,7 +7912,7 @@ async function generatePayoutStatementPDF(managerId, managerName, managerEmail, 
         { align: "center", width: doc.page.width - 100 }
       );
       doc.text(
-        "For questions, contact support@localcooks.ca",
+        "For questions, contact support@localcook.shop",
         50,
         footerY + 15,
         { align: "center", width: doc.page.width - 100 }

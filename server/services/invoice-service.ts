@@ -14,12 +14,16 @@ export async function generateInvoicePDF(
   storageBookings: any[],
   equipmentBookings: any[],
   paymentIntentId: string | null,
-  dbPool: Pool | null
+  dbPool: Pool | null,
+  options?: { viewer?: 'chef' | 'manager' }
 ): Promise<Buffer> {
+  const invoiceViewer = options?.viewer ?? 'chef';
   // Get Stripe-synced amounts from payment_transactions if available
   let stripePlatformFee = 0; // Platform fee from Stripe (in cents)
   let stripeTotalAmount = 0; // Total amount from Stripe (in cents)
   let stripeBaseAmount = 0; // Base amount from Stripe (in cents) - for kitchen booking
+  let stripeNetAmount = 0; // Net amount after fees from Stripe (in cents)
+  let stripeProcessingFeeCents = 0; // Stripe processing fee (in cents)
   let stripeStorageBaseAmounts: Map<number, number> = new Map(); // Storage booking ID -> base amount
   let stripeEquipmentBaseAmounts: Map<number, number> = new Map(); // Equipment booking ID -> base amount
   
@@ -32,6 +36,24 @@ export async function generateInvoicePDF(
         stripeTotalAmount = parseInt(paymentTransaction.amount) || 0;
         stripePlatformFee = parseInt(paymentTransaction.service_fee) || 0; // Platform fee from Stripe
         stripeBaseAmount = parseInt(paymentTransaction.base_amount) || 0; // Base amount from Stripe
+        stripeNetAmount = parseInt(paymentTransaction.net_amount) || 0; // Net amount after fees from Stripe
+        
+        if (paymentTransaction.metadata) {
+          try {
+            const parsedMetadata = typeof paymentTransaction.metadata === 'string'
+              ? JSON.parse(paymentTransaction.metadata)
+              : paymentTransaction.metadata;
+            const processingFeeValue = parsedMetadata?.stripeFees?.processingFee;
+            if (processingFeeValue !== undefined && processingFeeValue !== null && processingFeeValue !== '') {
+              const parsedProcessingFee = Number(processingFeeValue);
+              if (!Number.isNaN(parsedProcessingFee)) {
+                stripeProcessingFeeCents = Math.round(parsedProcessingFee);
+              }
+            }
+          } catch (metadataError) {
+            console.warn('[Invoice] Could not parse payment transaction metadata:', metadataError);
+          }
+        }
         
         // For bundle bookings, we need to get individual booking base amounts
         // The base_amount in payment_transactions is the total base for the bundle
@@ -284,10 +306,40 @@ export async function generateInvoicePDF(
     }
   }
 
+  // Tax (applies to combined subtotal)
+  let taxRatePercent: number | null = null;
+  const rawTaxRate = kitchen?.taxRatePercent ?? kitchen?.tax_rate_percent;
+  if (rawTaxRate !== null && rawTaxRate !== undefined && rawTaxRate !== '') {
+    const parsedTaxRate = parseFloat(String(rawTaxRate));
+    if (!Number.isNaN(parsedTaxRate) && parsedTaxRate > 0) {
+      taxRatePercent = parsedTaxRate;
+    }
+  }
+  if (taxRatePercent === null && dbPool && kitchenId) {
+    try {
+      const taxResult = await dbPool.query(
+        'SELECT tax_rate_percent::text as tax_rate_percent FROM kitchens WHERE id = $1',
+        [kitchenId]
+      );
+      if (taxResult.rows.length > 0) {
+        const rawRate = taxResult.rows[0].tax_rate_percent;
+        const parsedRate = rawRate ? parseFloat(String(rawRate)) : NaN;
+        if (!Number.isNaN(parsedRate) && parsedRate > 0) {
+          taxRatePercent = parsedRate;
+        }
+      }
+    } catch (error) {
+      console.warn('[Invoice] Could not fetch tax rate for kitchen:', error);
+    }
+  }
+
+  const taxRate = taxRatePercent && taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+  const taxCents = totalAmount > 0 && taxRate > 0 ? Math.round(totalAmount * 100 * taxRate) : 0;
+  const taxAmount = taxCents / 100;
+
   // Service fee (Platform Fee) - get from Stripe via payment_transactions
   // The invoice shows the platform fee that was actually charged by Stripe
   // This is the application_fee_amount from Stripe Connect, which is the platform fee
-  // Note: The 30 cents Stripe processing fee is added to the displayed platform fee
   let platformFee = 0; // Platform fee in dollars (percentage-based, without 30 cents)
   
   if (stripePlatformFee > 0) {
@@ -316,17 +368,48 @@ export async function generateInvoicePDF(
     }
   }
   
-  // Service fee shown on invoice = platform fee (percentage) + $0.30 Stripe processing fee
-  // This matches what customers see in the UI during booking
-  const stripeProcessingFee = platformFee > 0 ? 0.30 : 0; // $0.30 per transaction when a platform fee exists
-  const serviceFee = platformFee + stripeProcessingFee;
-  
-  // Grand total = base amount + platform fee
-  // If we have Stripe total amount, use it (most accurate)
-  // Otherwise calculate as base + platform fee
-  const grandTotal = stripeTotalAmount > 0 
-    ? stripeTotalAmount / 100  // Use Stripe total amount (most accurate)
-    : totalAmount + serviceFee; // Fallback calculation
+  let processingFee = 0;
+  if (stripeProcessingFeeCents > 0) {
+    processingFee = stripeProcessingFeeCents / 100;
+  } else if (stripeTotalAmount > 0 && stripeNetAmount > 0 && stripeNetAmount < stripeTotalAmount) {
+    const platformFeeCents = stripePlatformFee > 0 ? stripePlatformFee : Math.round(platformFee * 100);
+    const calculatedProcessingFee = stripeTotalAmount - platformFeeCents - stripeNetAmount;
+    if (calculatedProcessingFee > 0) {
+      processingFee = calculatedProcessingFee / 100;
+    }
+  }
+
+  const subtotalCents = Math.round(totalAmount * 100);
+  const subtotalWithTaxCents = subtotalCents + taxCents;
+  const platformFeeCents = Math.round(platformFee * 100);
+  const processingFeeCents = Math.round(processingFee * 100);
+  let chefTotalCents = 0;
+
+  if (invoiceViewer === 'chef') {
+    if (stripeTotalAmount > 0) {
+      chefTotalCents = stripeTotalAmount;
+    } else {
+      const rawBookingTotal = booking.total_price ?? booking.totalPrice;
+      if (rawBookingTotal !== undefined && rawBookingTotal !== null && rawBookingTotal !== '') {
+        const parsedBookingTotal = Number(rawBookingTotal);
+        if (!Number.isNaN(parsedBookingTotal)) {
+          chefTotalCents = Math.round(parsedBookingTotal);
+        }
+      }
+    }
+    if (chefTotalCents <= 0) {
+      chefTotalCents = subtotalWithTaxCents;
+    }
+  }
+
+  const platformFeeForInvoiceCents = invoiceViewer === 'chef'
+    ? Math.max(0, chefTotalCents - subtotalWithTaxCents)
+    : platformFeeCents;
+  const platformFeeForInvoice = platformFeeForInvoiceCents / 100;
+
+  const totalForInvoice = invoiceViewer === 'manager'
+    ? (subtotalWithTaxCents - platformFeeCents - processingFeeCents) / 100
+    : chefTotalCents / 100;
 
   // Now generate PDF
   return new Promise((resolve, reject) => {
@@ -391,7 +474,7 @@ export async function generateInvoicePDF(
       let leftY = 120;
       doc.fontSize(14).font('Helvetica-Bold').text('Local Cooks Community', 50, leftY);
       leftY += 18;
-      doc.fontSize(10).font('Helvetica').text('support@localcooks.ca', 50, leftY);
+      doc.fontSize(10).font('Helvetica').text('support@localcook.shop', 50, leftY);
       leftY += 30;
 
       // Bill To section
@@ -468,24 +551,34 @@ export async function generateInvoicePDF(
       doc.moveTo(50, currentY).lineTo(550, currentY).stroke();
       currentY += 15;
       
-      // Subtotal
       doc.fontSize(10).font('Helvetica');
-      doc.text('Subtotal:', 380, currentY, { width: 110, align: 'right' });
-      doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
-      currentY += 20;
-      
-      // Platform Fee (from Stripe + $0.30 processing fee)
-      // This includes the percentage-based platform fee plus the $0.30 Stripe processing fee
-      doc.text('Platform Fee:', 380, currentY, { width: 110, align: 'right' });
-      doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
-      currentY += 20;
+      const formatAmount = (amount: number, negative = false) => {
+        const normalized = Math.abs(amount);
+        return `${negative ? '-' : ''}$${normalized.toFixed(2)}`;
+      };
+      const addTotalRow = (label: string, amount: number, negative = false) => {
+        doc.text(label, 380, currentY, { width: 110, align: 'right' });
+        doc.text(formatAmount(amount, negative), 500, currentY, { align: 'right', width: 50 });
+        currentY += 20;
+      };
+
+      addTotalRow('Subtotal:', totalAmount);
+      if (taxAmount > 0) {
+        addTotalRow('Tax:', taxAmount);
+      }
+      if (platformFeeForInvoice > 0) {
+        addTotalRow('Platform Fee:', platformFeeForInvoice, invoiceViewer === 'manager');
+      }
+      if (invoiceViewer === 'manager' && processingFee > 0) {
+        addTotalRow('Stripe Processing Fee:', processingFee, true);
+      }
       
       // Total (bold and larger)
       doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
       currentY += 10;
       doc.fontSize(12).font('Helvetica-Bold');
       doc.text('Total:', 380, currentY, { align: 'right', width: 110 });
-      doc.text(`$${grandTotal.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+      doc.text(`$${totalForInvoice.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
       doc.font('Helvetica').fontSize(10);
       
       // Payment info section
@@ -510,7 +603,7 @@ export async function generateInvoicePDF(
       
       doc.moveTo(50, footerY).lineTo(550, footerY).stroke('#e5e7eb');
       doc.fontSize(9).fillColor('#6b7280').text('Thank you for your business!', 50, footerY + 15, { align: 'center', width: 500 });
-      doc.text('For questions, contact support@localcooks.ca', 50, footerY + 30, { align: 'center', width: 500 });
+      doc.text('For questions, contact support@localcook.shop', 50, footerY + 30, { align: 'center', width: 500 });
       doc.fillColor('#000000');
 
       doc.end();

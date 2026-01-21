@@ -55,10 +55,10 @@ export default function Success() {
                 <p className="text-sm md:text-md mb-6 md:mb-8">
                   If you have any questions in the meantime, please contact us at{" "}
                   <a 
-                    href="mailto:support@localcooks.ca" 
+                    href="mailto:support@localcook.shop" 
                     className="text-primary hover:underline hover-text"
                   >
-                    support@localcooks.ca
+                    support@localcook.shop
                   </a>
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center button-group">

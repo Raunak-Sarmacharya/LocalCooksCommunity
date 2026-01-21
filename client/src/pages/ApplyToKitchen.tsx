@@ -164,8 +164,8 @@ export default function ApplyToKitchen() {
           >
             <p>
               Need help? Contact us at{" "}
-              <a href="mailto:support@localcooks.ca" className="text-blue-600 hover:underline">
-                support@localcooks.ca
+              <a href="mailto:support@localcook.shop" className="text-blue-600 hover:underline">
+                support@localcook.shop
               </a>
             </p>
           </motion.div>

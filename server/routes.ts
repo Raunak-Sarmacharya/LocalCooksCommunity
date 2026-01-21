@@ -4825,16 +4825,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate invoice PDF
       const { generateInvoicePDF } = await import('./services/invoice-service');
-      const pdfBuffer = await generateInvoicePDF(
-        booking,
-        chef,
-        { name: booking.kitchen_name },
-        { name: booking.location_name },
-        storageResult.rows,
-        equipmentResult.rows,
-        booking.payment_intent_id,
-        pool
-      );
+        const pdfBuffer = await generateInvoicePDF(
+          booking,
+          chef,
+          { name: booking.kitchen_name },
+          { name: booking.location_name },
+          storageResult.rows,
+          equipmentResult.rows,
+          booking.payment_intent_id,
+          pool,
+          { viewer: 'manager' }
+        );
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="invoice-${bookingId}.pdf"`);
@@ -8961,16 +8962,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate invoice PDF
       const { generateInvoicePDF } = await import('./services/invoice-service');
-      const pdfBuffer = await generateInvoicePDF(
-        booking,
-        chef,
-        kitchen,
-        location,
-        storageBookings,
-        equipmentBookings,
-        paymentIntentId,
-        pool
-      );
+        const pdfBuffer = await generateInvoicePDF(
+          booking,
+          chef,
+          kitchen,
+          location,
+          storageBookings,
+          equipmentBookings,
+          paymentIntentId,
+          pool,
+          { viewer: 'chef' }
+        );
 
       // Set headers for PDF download
       res.setHeader('Content-Type', 'application/pdf');
