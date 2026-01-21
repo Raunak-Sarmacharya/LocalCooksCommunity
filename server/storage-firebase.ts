@@ -4259,8 +4259,7 @@ export class FirebaseStorage {
         .where(
           and(
             eq(chefKitchenApplications.chefId, chefId),
-            eq(chefKitchenApplications.status, 'approved'),
-            not(isNull(chefKitchenApplications.tier2_completed_at)) // Only include where Tier 2 is completed
+            eq(chefKitchenApplications.status, 'approved')
           )
         );
 

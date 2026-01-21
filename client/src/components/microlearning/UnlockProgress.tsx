@@ -38,7 +38,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
       if (!currentUser) return;
 
       const token = await currentUser.getIdToken();
-      const response = await fetch('/api/applications/my-applications', {
+      const response = await fetch('/api/firebase/applications/my', {
         credentials: 'include',
         headers: {
           'Authorization': `Bearer ${token}`
