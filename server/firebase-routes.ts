@@ -648,13 +648,7 @@ export function registerFirebaseRoutes(app: Express) {
       const userId = req.neonUser!.id;
       const firebaseUid = req.firebaseUser!.uid;
 
-      console.log(`[APPLICATIONS] Fetching applications for user ID: ${userId} (Firebase UID: ${firebaseUid})`);
-      console.log(`[APPLICATIONS] User object:`, {
-        id: req.neonUser!.id,
-        username: req.neonUser!.username,
-        role: req.neonUser!.role,
-        isChef: (req.neonUser as any).isChef
-      });
+   
 
       // Get applications for the authenticated Neon user
       const applications = await firebaseStorage.getApplicationsByUserId(userId);
@@ -2301,25 +2295,11 @@ export function registerFirebaseRoutes(app: Express) {
       const chefId = req.neonUser!.id;
       const firebaseUid = req.firebaseUser!.uid;
 
-      console.log(`[KITCHEN APPLICATIONS] Fetching kitchen applications for chef ID: ${chefId} (Firebase UID: ${firebaseUid})`);
-      console.log(`[KITCHEN APPLICATIONS] User object:`, {
-        id: req.neonUser!.id,
-        username: req.neonUser!.username,
-        role: req.neonUser!.role,
-        isChef: (req.neonUser as any).isChef
-      });
+     
 
       const applications = await firebaseStorage.getChefKitchenApplicationsByChefId(chefId);
 
-      console.log(`[KITCHEN APPLICATIONS] Retrieved ${applications.length} kitchen applications for chef ${chefId}`);
-      if (applications.length > 0) {
-        console.log(`[KITCHEN APPLICATIONS] First application sample:`, {
-          id: applications[0].id,
-          chefId: applications[0].chefId,
-          locationId: applications[0].locationId,
-          status: applications[0].status
-        });
-      }
+  
 
       // Enrich with location details
       const enrichedApplications = await Promise.all(
@@ -2560,7 +2540,6 @@ export function registerFirebaseRoutes(app: Express) {
     try {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
-      console.log(`👨‍🍳 GET /api/manager/kitchen-applications - Manager ${user.id}`);
 
       const applications = await firebaseStorage.getChefKitchenApplicationsForManager(user.id);
 
@@ -2588,7 +2567,6 @@ export function registerFirebaseRoutes(app: Express) {
         return res.status(400).json({ error: 'Invalid location ID' });
       }
 
-      console.log(`👨‍🍳 GET /api/manager/kitchen-applications/location/${locationId} - Manager ${user.id}`);
 
       // Verify manager has access to this location
       const location = await firebaseStorage.getLocationById(locationId);
@@ -2621,7 +2599,6 @@ export function registerFirebaseRoutes(app: Express) {
         return res.status(400).json({ error: 'Invalid application ID' });
       }
 
-      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/status - Manager ${user.id}`);
 
       // Validate request body
       const { status, feedback } = req.body;
@@ -2730,8 +2707,6 @@ export function registerFirebaseRoutes(app: Express) {
       if (isNaN(applicationId)) {
         return res.status(400).json({ error: 'Invalid application ID' });
       }
-
-      console.log(`👨‍🍳 PATCH /api/manager/kitchen-applications/${applicationId}/verify-documents - Manager ${user.id}`);
 
       const { foodSafetyLicenseStatus, foodEstablishmentCertStatus } = req.body;
 

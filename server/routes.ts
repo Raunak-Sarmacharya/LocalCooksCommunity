@@ -5131,7 +5131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
       const user = req.neonUser!;
 
-      const { locationId, name, description } = req.body;
+      const { locationId, name, description, taxRatePercent } = req.body;
 
       // Validate required fields
       if (!locationId || !name) {
@@ -5157,11 +5157,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
       }
 
+      let parsedTaxRate: number | null | undefined;
+      if (taxRatePercent !== undefined) {
+        if (taxRatePercent === null || taxRatePercent === '') {
+          parsedTaxRate = null;
+        } else {
+          const taxRateNum = Number(taxRatePercent);
+          if (Number.isNaN(taxRateNum) || taxRateNum < 0 || taxRateNum > 100) {
+            return res.status(400).json({ error: "Tax rate must be between 0 and 100" });
+          }
+          parsedTaxRate = taxRateNum === 0 ? null : taxRateNum;
+        }
+      }
+
       const kitchen = await firebaseStorage.createKitchen({
         locationId: locationIdNum,
         name,
         description: description || undefined,
-        isActive: true
+        isActive: true,
+        taxRatePercent: parsedTaxRate,
       });
 
       console.log(`✅ Kitchen created by manager ${user.id} for location ${locationIdNum}`);
@@ -5385,11 +5399,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
 
-      const { name, description } = req.body;
-      const updates: { name?: string; description?: string } = {};
+      const { name, description, taxRatePercent } = req.body;
+      const updates: { name?: string; description?: string; taxRatePercent?: number | null } = {};
 
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description || null;
+      if (taxRatePercent !== undefined) {
+        if (taxRatePercent === null || taxRatePercent === '') {
+          updates.taxRatePercent = null;
+        } else {
+          const taxRateNum = Number(taxRatePercent);
+          if (Number.isNaN(taxRateNum) || taxRateNum < 0 || taxRateNum > 100) {
+            return res.status(400).json({ error: "Tax rate must be between 0 and 100" });
+          }
+          updates.taxRatePercent = taxRateNum === 0 ? null : taxRateNum;
+        }
+      }
 
       const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
 
@@ -5463,7 +5488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Access denied to this kitchen" });
       }
 
-      const { hourlyRate, currency, minimumBookingHours, pricingModel } = req.body;
+      const { hourlyRate, currency, minimumBookingHours, pricingModel, taxRatePercent } = req.body;
 
       // Validate input
       if (hourlyRate !== undefined && hourlyRate !== null && (typeof hourlyRate !== 'number' || hourlyRate < 0)) {
@@ -5481,9 +5506,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (pricingModel !== undefined && !['hourly', 'daily', 'weekly'].includes(pricingModel)) {
         return res.status(400).json({ error: "Pricing model must be 'hourly', 'daily', or 'weekly'" });
       }
+      if (taxRatePercent !== undefined && taxRatePercent !== null && taxRatePercent !== '') {
+        const taxRateNum = Number(taxRatePercent);
+        if (Number.isNaN(taxRateNum) || taxRateNum < 0 || taxRateNum > 100) {
+          return res.status(400).json({ error: "Tax rate must be between 0 and 100" });
+        }
+      }
 
       // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method)
-      const pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string } = {};
+      const pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string; taxRatePercent?: number | null } = {};
 
       if (hourlyRate !== undefined) {
         pricing.hourlyRate = hourlyRate === null ? null : hourlyRate; // Will be converted to cents in storage method
@@ -5491,6 +5522,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (currency !== undefined) pricing.currency = currency;
       if (minimumBookingHours !== undefined) pricing.minimumBookingHours = minimumBookingHours;
       if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
+      if (taxRatePercent !== undefined) {
+        if (taxRatePercent === null || taxRatePercent === '' || Number(taxRatePercent) === 0) {
+          pricing.taxRatePercent = null;
+        } else {
+          pricing.taxRatePercent = Number(taxRatePercent);
+        }
+      }
 
       const updated = await firebaseStorage.updateKitchenPricing(kitchenId, pricing);
 
@@ -7533,11 +7571,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Import Stripe service and pricing service
       const { createPaymentIntent } = await import('./services/stripe-service');
-      const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
+      const { calculateKitchenBookingPrice } = await import('./services/pricing-service');
 
       // Calculate kitchen booking price (pass pool for compatibility)
       const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
       let totalPriceCents = kitchenPricing.totalPriceCents;
+      const taxRatePercent = kitchenPricing.taxRatePercent ?? null;
 
       // Calculate storage add-ons
       if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0 && pool) {
@@ -7598,11 +7637,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Calculate service fee dynamically from platform_settings + $0.30 flat fee
-      const serviceFeeCents = await calculatePlatformFeeDynamic(totalPriceCents, pool);
-      const stripeProcessingFeeCents = 30; // $0.30 per transaction
-      const totalServiceFeeCents = serviceFeeCents + stripeProcessingFeeCents;
-      const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, totalServiceFeeCents, 0);
+      // Apply tax on the combined subtotal (kitchen + add-ons)
+      const taxRate = taxRatePercent && taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+      const taxCents = totalPriceCents > 0 ? Math.round(totalPriceCents * taxRate) : 0;
+      const taxableSubtotalCents = totalPriceCents + taxCents;
+      const totalWithFeesCents = taxableSubtotalCents;
 
       // Get manager's Stripe Connect account ID if available
       let managerConnectAccountId: string | undefined;
@@ -7634,7 +7673,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Payment intent calculation:', {
         kitchenPriceCents: kitchenPricing.totalPriceCents,
         totalPriceCents,
-        serviceFeeCents,
+        taxRatePercent,
+        taxCents,
+        taxableSubtotalCents,
         totalWithFeesCents,
         totalWithFeesDollars: totalWithFeesCents / 100,
         expectedAmountCents,
@@ -7671,8 +7712,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               kitchenBaseDollars: (kitchenPricing.totalPriceCents / 100).toFixed(2),
               storageEquipmentAddons: totalPriceCents - kitchenPricing.totalPriceCents,
               storageEquipmentAddonsDollars: ((totalPriceCents - kitchenPricing.totalPriceCents) / 100).toFixed(2),
-              serviceFee: serviceFeeCents,
-              serviceFeeDollars: (serviceFeeCents / 100).toFixed(2),
+              tax: taxCents,
+              taxDollars: (taxCents / 100).toFixed(2),
             },
             selectedStorage: selectedStorage?.length || 0,
             selectedEquipment: selectedEquipmentIds?.length || 0,
@@ -7685,17 +7726,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Create PaymentIntent with Connect split if manager has account
+      // Create PaymentIntent with Connect destination if manager has account
       // Only enable cards for direct payments (ACSS disabled)
-      // IMPORTANT: application_fee_amount should ONLY be the platform fee, NOT the Stripe processing fee
-      // Stripe automatically deducts the processing fee separately
       const paymentIntent = await createPaymentIntent({
         amount: finalAmountCents,
         currency: kitchenPricing.currency.toLowerCase(),
         chefId,
         kitchenId,
         managerConnectAccountId: managerConnectAccountId,
-        applicationFeeAmount: managerConnectAccountId ? serviceFeeCents : undefined,
         enableACSS: false, // Disable ACSS - only use card payments with automatic capture
         enableCards: true, // Enable card payments only
         metadata: {
@@ -8019,9 +8057,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 0: Verify payment if paymentIntentId is provided
       let paymentStatus = 'pending';
       if (paymentIntentId) {
-        console.log(`💳 STEP 0: Verifying payment intent ${paymentIntentId}...`);
+      
         const { verifyPaymentIntentForBooking } = await import('./services/stripe-service');
-        const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
+        const { calculateKitchenBookingPrice } = await import('./services/pricing-service');
 
         // Calculate expected total for verification
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
@@ -8074,10 +8112,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        const serviceFee = await calculatePlatformFeeDynamic(expectedTotal, pool);
-        const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
-        const totalServiceFee = serviceFee + stripeProcessingFeeCents;
-        expectedTotal = calculateTotalWithFees(expectedTotal, totalServiceFee, 0);
+        const taxRatePercent = kitchenPricing.taxRatePercent ?? null;
+        const taxRate = taxRatePercent && taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+        const taxCents = expectedTotal > 0 ? Math.round(expectedTotal * taxRate) : 0;
+        const taxableSubtotalCents = expectedTotal + taxCents;
+        expectedTotal = taxableSubtotalCents;
 
         const verification = await verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedTotal);
 
@@ -8092,15 +8131,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // 'succeeded' means payment was successfully captured
         // 'processing' means payment is being processed (will succeed)
         paymentStatus = (verification.status === 'succeeded' || verification.status === 'processing') ? 'paid' : 'pending';
-        console.log(`✅ STEP 0 COMPLETE: Payment verified with status: ${paymentStatus} (Stripe status: ${verification.status})`);
+      
       } else {
         // If no payment intent, check if booking requires payment
-        const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
+        const { calculateKitchenBookingPrice } = await import('./services/pricing-service');
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
-        const serviceFee = await calculatePlatformFeeDynamic(kitchenPricing.totalPriceCents, pool);
-        const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
-        const totalServiceFee = serviceFee + stripeProcessingFeeCents;
-        const total = calculateTotalWithFees(kitchenPricing.totalPriceCents, totalServiceFee, 0);
+        const taxRatePercent = kitchenPricing.taxRatePercent ?? null;
+        const taxRate = taxRatePercent && taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+        const taxCents = kitchenPricing.totalPriceCents > 0 ? Math.round(kitchenPricing.totalPriceCents * taxRate) : 0;
+        const taxableSubtotalCents = kitchenPricing.totalPriceCents + taxCents;
+        const total = taxableSubtotalCents;
 
         if (total > 0) {
           return res.status(400).json({
@@ -8110,8 +8150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Step 1: Create booking in database
-      console.log(`📝 STEP 1: Creating booking in database...`);
+    
       const bookingData: any = {
         chefId: req.user!.id,
         kitchenId,
@@ -8127,14 +8166,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bookingData.paymentStatus = paymentStatus;
       }
       const booking = await firebaseStorage.createKitchenBooking(bookingData);
-      console.log(`✅ STEP 1 COMPLETE: Booking ${booking.id} created successfully`);
-
-      // Step 1.5: Create storage and equipment bookings if selected
+    
       const storageBookingsCreated: any[] = [];
       const equipmentBookingsCreated: any[] = [];
 
       if (pool && ((selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) || selectedStorageIds?.length > 0 || selectedEquipmentIds?.length > 0)) {
-        console.log(`📦 STEP 1.5: Creating add-on bookings...`);
+       
 
         // Parse booking dates for equipment (same as kitchen booking)
         const bookingStartDateTime = new Date(`${bookingDateStr}T${startTime}`);
@@ -8193,11 +8230,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   totalPrice = basePriceCents;
                 }
 
-                // Calculate service fee dynamically from platform_settings + $0.30 flat fee
-                const { calculatePlatformFeeDynamic } = await import('./services/pricing-service');
-                const serviceFeeBase = await calculatePlatformFeeDynamic(totalPrice, pool);
-                const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
-                const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
+                // Service fee removed for chef payments
+                const serviceFee = 0;
 
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
@@ -8257,11 +8291,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
                 // For monthly-flat, use base price directly (pro-rated storage not implemented)
 
-                // Calculate service fee dynamically from platform_settings + $0.30 flat fee
-                const { calculatePlatformFeeDynamic: calcFee2 } = await import('./services/pricing-service');
-                const serviceFeeBase = await calcFee2(totalPrice, pool);
-                const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
-                const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
+                // Service fee removed for chef payments
+                const serviceFee = 0;
 
                 const insertResult = await pool.query(
                   `INSERT INTO storage_bookings 
@@ -8322,11 +8353,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
                 const damageDepositCents = equipmentListing.damage_deposit ? parseInt(equipmentListing.damage_deposit) : 0;
 
-                // Calculate service fee dynamically from platform_settings + $0.30 flat fee
-                const { calculatePlatformFeeDynamic: calcEquipFee2 } = await import('./services/pricing-service');
-                const serviceFeeBase = await calcEquipFee2(totalPrice, pool);
-                const stripeProcessingFeeCents = 30; // $0.30 flat fee per transaction
-                const serviceFee = serviceFeeBase + stripeProcessingFeeCents;
+                // Service fee removed for chef payments
+                const serviceFee = 0;
 
                 const insertResult = await pool.query(
                   `INSERT INTO equipment_bookings 
@@ -8360,11 +8388,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        console.log(`✅ STEP 1.5 COMPLETE: Created ${storageBookingsCreated.length} storage and ${equipmentBookingsCreated.length} equipment bookings`);
+       
       }
 
-      // Step 2: Send email notifications - SEQUENTIAL execution to ensure reliability
-      console.log(`📧 STEP 2: Starting sequential email notification process for booking ${booking.id}`);
+    
 
       let emailResults = {
         chefEmailSent: false,
@@ -8373,8 +8400,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       try {
-        // Step 2.1: Get kitchen details
-        console.log(`📧 STEP 2.1: Fetching kitchen details...`);
+       
         const kitchen = await firebaseStorage.getKitchenById(kitchenId);
         if (!kitchen) {
           const errorMsg = `Kitchen ${kitchenId} not found`;
@@ -8382,10 +8408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           emailResults.errors.push(errorMsg);
           throw new Error(errorMsg);
         }
-        console.log(`✅ STEP 2.1 COMPLETE: Kitchen found - ${kitchen.name || kitchenId}`);
 
-        // Step 2.2: Get location details (DIRECT DATABASE QUERY - emails are in Neon database)
-        console.log(`📧 STEP 2.2: Fetching location details from database...`);
         const kitchenLocationId = (kitchen as any).locationId || (kitchen as any).location_id;
         if (!kitchenLocationId) {
           const errorMsg = `Kitchen ${kitchenId} has no locationId`;
@@ -8393,8 +8416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           emailResults.errors.push(errorMsg);
           throw new Error(errorMsg);
         }
-        console.log(`✅ STEP 2.2 PROGRESS: Kitchen locationId is ${kitchenLocationId}`);
-
+       
         // DIRECT DATABASE QUERY - emails are stored in Neon database, not Firebase
         if (!pool) {
           const errorMsg = `Database pool not available`;
@@ -8417,10 +8439,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const location = locationData.rows[0];
-        console.log(`✅ STEP 2.2 COMPLETE: Location found - ${location.name}, Notification Email: ${location.notification_email || 'NOT SET'}`);
-
+     
         // Step 2.3: Get chef details
-        console.log(`📧 STEP 2.3: Fetching chef details...`);
+     
         const chef = await storage.getUser(req.user!.id);
         if (!chef) {
           const errorMsg = `Chef ${req.user!.id} not found`;
@@ -8431,9 +8452,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✅ STEP 2.3 COMPLETE: Chef found - ${chef.username || 'unknown'}`);
 
         // Step 2.4: Get manager details (DIRECT DATABASE QUERY - managers use session auth)
-        console.log(`📧 STEP 2.4: Fetching manager details from database...`);
+       
         const managerId = location.manager_id;
-        console.log(`📋 STEP 2.4 PROGRESS: Manager ID from location: ${managerId || 'NOT SET'}`);
+      
 
         let manager = null;
         if (managerId) {
@@ -8445,7 +8466,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (managerData.rows.length > 0) {
             manager = managerData.rows[0];
-            console.log(`✅ STEP 2.4 COMPLETE: Manager found - ${manager.username || 'unknown'}`);
+           
           } else {
             console.warn(`⚠️ STEP 2.4 WARNING: Manager ${managerId} not found in database, will use notification email only`);
           }
@@ -8468,26 +8489,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
               chefName = appResult.rows[0].full_name;
             }
-            console.log(`✅ STEP 2.5 COMPLETE: Using application full name "${chefName}"${chefPhone ? `, phone: ${chefPhone}` : ''}`);
+        
           } catch (error) {
             console.debug(`Could not get full name for chef ${req.user!.id} from applications, using username`);
           }
-          if (!chefPhone) {
-            console.log(`✅ STEP 2.5 COMPLETE: No application found, using username`);
-          }
+        
         } else {
           console.log(`✅ STEP 2.5 COMPLETE: Pool not available, using username`);
         }
 
-        // Step 2.6: Send chef email (MUST complete before manager email)
-        console.log(`📧 STEP 2.6: Sending booking request email to chef...`);
+       
         const chefEmailAddress = chef.username; // chef.username is the email
         if (!chefEmailAddress) {
           const errorMsg = `Chef ${req.user!.id} has no email address (username)`;
           console.error(`❌ STEP 2.6 FAILED: ${errorMsg}`);
           emailResults.errors.push(errorMsg);
         } else {
-          console.log(`📧 STEP 2.6 PROGRESS: Attempting to send to chef: ${chefEmailAddress}`);
+         
           try {
             const chefEmail = generateBookingRequestEmail({
               chefEmail: chefEmailAddress,
@@ -8500,12 +8518,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               timezone: location.timezone || timezone,
               locationName: location.name || kitchen.name || 'Kitchen'
             });
-            console.log(`📧 STEP 2.6 PROGRESS: Generated chef email - To: ${chefEmail.to}, Subject: ${chefEmail.subject}`);
-
+          
             // CRITICAL: Wait for email to complete before proceeding
             const emailSent = await sendEmail(chefEmail);
             if (emailSent) {
-              console.log(`✅ STEP 2.6 COMPLETE: Booking request email sent successfully to chef: ${chefEmailAddress}`);
+             
               emailResults.chefEmailSent = true;
             } else {
               const errorMsg = `sendEmail() returned false for chef email: ${chefEmailAddress}`;
@@ -8520,8 +8537,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        // Step 2.7: Send manager email (ONLY after chef email completes)
-        console.log(`📧 STEP 2.7: Sending booking notification email to manager...`);
+        
         // Use notification_email from direct database query (snake_case from DB)
         const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
         if (!notificationEmailAddress) {
@@ -8530,9 +8546,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error(`   Location ID: ${kitchenLocationId}, Manager ID from location: ${managerId || 'NOT SET'}`);
           emailResults.errors.push(errorMsg);
         } else {
-          console.log(`📧 STEP 2.7 PROGRESS: Attempting to send to manager: ${notificationEmailAddress}`);
-          console.log(`   Email source: ${location.notification_email ? 'location.notification_email' : 'manager.username'}`);
-          try {
+                    try {
             const managerEmail = generateBookingNotificationEmail({
               managerEmail: notificationEmailAddress,
               chefName: chefName,
@@ -8637,19 +8651,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
       const chefId = req.user!.id;
-      console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
-      console.log(`[CHEF BOOKINGS] User object:`, { id: req.user!.id, username: req.user!.username, isChef: (req.user as any).isChef });
-
+      
       const bookings = await firebaseStorage.getBookingsByChef(chefId);
-      console.log(`[CHEF BOOKINGS] Found ${bookings.length} bookings for chef ${chefId}`);
-      if (bookings.length > 0) {
-        console.log(`[CHEF BOOKINGS] First booking sample:`, {
-          id: bookings[0].id,
-          chefId: bookings[0].chefId || bookings[0].chef_id,
-          kitchenId: bookings[0].kitchenId || bookings[0].kitchen_id,
-          bookingDate: bookings[0].bookingDate || bookings[0].booking_date
-        });
-      }
+
       res.json(bookings);
     } catch (error) {
       console.error("Error fetching bookings:", error);

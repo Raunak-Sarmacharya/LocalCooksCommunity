@@ -25,6 +25,7 @@ export interface KitchenPricingInfo {
   hourlyRate: number; // in cents
   currency: string;
   minimumBookingHours: number;
+  taxRatePercent: number | null;
 }
 
 export interface BookingDuration {
@@ -67,7 +68,8 @@ export async function getKitchenPricing(kitchenId: number, dbPool?: Pool | null)
       SELECT 
         hourly_rate::text as hourly_rate,
         currency,
-        minimum_booking_hours
+        minimum_booking_hours,
+        tax_rate_percent::text as tax_rate_percent
       FROM kitchens
       WHERE id = $1
     `, [kitchenId]);
@@ -78,11 +80,13 @@ export async function getKitchenPricing(kitchenId: number, dbPool?: Pool | null)
 
     const row = result.rows[0];
     const hourlyRateCents = row.hourly_rate ? parseFloat(row.hourly_rate) : 0;
+    const taxRatePercent = row.tax_rate_percent ? parseFloat(row.tax_rate_percent) : null;
 
     return {
       hourlyRate: hourlyRateCents,
       currency: row.currency || 'CAD',
       minimumBookingHours: row.minimum_booking_hours || 1,
+      taxRatePercent: Number.isNaN(taxRatePercent) ? null : taxRatePercent,
     };
   } catch (error) {
     console.error('Error getting kitchen pricing:', error);
@@ -108,6 +112,7 @@ export async function calculateKitchenBookingPrice(
   durationHours: number;
   hourlyRateCents: number;
   currency: string;
+  taxRatePercent: number | null;
 }> {
   try {
     // Get kitchen pricing
@@ -121,6 +126,7 @@ export async function calculateKitchenBookingPrice(
         durationHours,
         hourlyRateCents: 0,
         currency: pricing?.currency || 'CAD',
+        taxRatePercent: pricing?.taxRatePercent ?? null,
       };
     }
 
@@ -138,6 +144,7 @@ export async function calculateKitchenBookingPrice(
       durationHours: effectiveDuration,
       hourlyRateCents: pricing.hourlyRate,
       currency: pricing.currency,
+      taxRatePercent: pricing.taxRatePercent ?? null,
     };
   } catch (error) {
     console.error('Error calculating kitchen booking price:', error);

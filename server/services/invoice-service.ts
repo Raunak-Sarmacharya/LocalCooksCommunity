@@ -294,9 +294,9 @@ export async function generateInvoicePDF(
     // Use Stripe-synced platform fee (this is what was actually charged)
     platformFee = stripePlatformFee / 100; // Convert cents to dollars
     console.log(`[Invoice] Using Stripe platform fee: $${platformFee.toFixed(2)}`);
-  } else if (booking.service_fee || booking.serviceFee) {
+  } else if (booking.service_fee != null || booking.serviceFee != null) {
     // Fallback: use stored service_fee from booking (should be Stripe-synced)
-    const storedServiceFeeCents = parseFloat(String(booking.service_fee || booking.serviceFee));
+    const storedServiceFeeCents = parseFloat(String(booking.service_fee ?? booking.serviceFee ?? '0'));
     platformFee = storedServiceFeeCents / 100; // Convert cents to dollars
     console.log(`[Invoice] Using stored service_fee from booking: $${platformFee.toFixed(2)}`);
   } else {
@@ -318,7 +318,7 @@ export async function generateInvoicePDF(
   
   // Service fee shown on invoice = platform fee (percentage) + $0.30 Stripe processing fee
   // This matches what customers see in the UI during booking
-  const stripeProcessingFee = 0.30; // $0.30 per transaction
+  const stripeProcessingFee = platformFee > 0 ? 0.30 : 0; // $0.30 per transaction when a platform fee exists
   const serviceFee = platformFee + stripeProcessingFee;
   
   // Grand total = base amount + platform fee

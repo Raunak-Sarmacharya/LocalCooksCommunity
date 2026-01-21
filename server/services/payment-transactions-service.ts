@@ -526,13 +526,12 @@ export async function syncStripeAmountsToBookings(
         const kbBase = parseFloat(kitchenBooking.rows[0].total_price || '0');
         const kbProportion = kbBase / totalBaseAmount;
         const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
-        const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
 
         // Calculate service fee: platform fee portion for this booking
         // For bundle, distribute platform fee proportionally
         const kbServiceFee = stripeAmounts.stripePlatformFee > 0
           ? Math.round(stripeAmounts.stripePlatformFee * kbProportion)
-          : Math.round((kbStripeAmount - kbStripeNet) * 0.5); // Estimate if no platform fee
+          : 0;
         
         await dbPool.query(`
           UPDATE kitchen_bookings
@@ -554,12 +553,11 @@ export async function syncStripeAmountsToBookings(
         if (totalBaseAmount > 0 && sbBase > 0) {
           const sbProportion = sbBase / totalBaseAmount;
           const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
-          const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
           
           // Calculate service fee proportionally
           const sbServiceFee = stripeAmounts.stripePlatformFee > 0
             ? Math.round(stripeAmounts.stripePlatformFee * sbProportion)
-            : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
+            : 0;
 
           await dbPool.query(`
             UPDATE storage_bookings
@@ -582,12 +580,11 @@ export async function syncStripeAmountsToBookings(
         if (totalBaseAmount > 0 && ebBase > 0) {
           const ebProportion = ebBase / totalBaseAmount;
           const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
-          const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
 
           // Calculate service fee proportionally
           const ebServiceFee = stripeAmounts.stripePlatformFee > 0
             ? Math.round(stripeAmounts.stripePlatformFee * ebProportion)
-            : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
+            : 0;
           
           await dbPool.query(`
             UPDATE equipment_bookings
@@ -609,7 +606,7 @@ export async function syncStripeAmountsToBookings(
       // Service fee = platform fee (not including Stripe processing fee)
       const serviceFee = stripeAmounts.stripePlatformFee > 0
         ? stripeAmounts.stripePlatformFee
-        : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
+        : 0;
       
       if (bookingType === 'kitchen') {
         await dbPool.query(`

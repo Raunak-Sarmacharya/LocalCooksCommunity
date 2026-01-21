@@ -1,13 +1,12 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Check, Package, Calendar as CalendarIcon } from "lucide-react";
-import { format, differenceInDays, addDays, startOfToday, isBefore } from "date-fns";
-import { DateRange } from "react-day-picker";
+import { AlertCircle, Check, Package } from "lucide-react";
+import { format, differenceInDays, startOfToday, isBefore } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface StorageBooking {
   id: number;
@@ -16,7 +15,6 @@ interface StorageBooking {
   endDate: string;
   status: string;
   totalPrice: number;
-  serviceFee: number;
   storageName: string;
   storageType: string;
   kitchenName: string;
@@ -54,26 +52,6 @@ export function StorageExtensionDialog({
   const today = startOfToday();
   const minDate = currentEndDate > today ? currentEndDate : today;
 
-  // Fetch service fee rate (public endpoint - no auth required for chefs to see the rate)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-
   // Calculate extension details
   const extensionDetails = useMemo(() => {
     if (!selectedDate || selectedDate <= currentEndDate) {
@@ -92,18 +70,15 @@ export function StorageExtensionDialog({
 
     const basePricePerDay = booking.basePrice || 0;
     const extensionBasePrice = basePricePerDay * extensionDays;
-    const percentageFee = extensionBasePrice * serviceFeeRate; // Percentage-based service fee
-    const extensionServiceFee = percentageFee; // No flat fee
-    const extensionTotalPrice = extensionBasePrice + extensionServiceFee;
+    const extensionTotalPrice = extensionBasePrice;
 
     return {
       valid: true,
       extensionDays,
       extensionBasePrice,
-      extensionServiceFee,
       extensionTotalPrice,
     };
-  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, serviceFeeRate]);
+  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration]);
 
   const extendMutation = useMutation({
     mutationFn: async (newEndDate: Date) => {
@@ -252,10 +227,6 @@ export function StorageExtensionDialog({
                         {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${booking.basePrice.toFixed(2)}/day:
                       </span>
                       <span className="font-medium">${(extensionDetails.extensionBasePrice ?? 0).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-700">Service Fee ({(serviceFeeRate * 100).toFixed(1)}%):</span>
-                      <span className="font-medium">${(extensionDetails.extensionServiceFee ?? 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-green-200 font-semibold text-green-900">
                       <span>Additional Cost:</span>

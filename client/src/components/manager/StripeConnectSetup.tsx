@@ -1,8 +1,7 @@
 /**
  * Stripe Connect Setup Component
  * 
- * Allows managers to set up Stripe Connect to receive payments directly
- * after the platform service fee is deducted.
+ * Allows managers to set up Stripe Connect to receive payments directly.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -42,26 +41,6 @@ export default function StripeConnectSetup() {
   const hasStripeAccount = !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id;
   const onboardingStatus = userProfile?.stripeConnectOnboardingStatus || userProfile?.stripe_connect_onboarding_status;
   const isOnboardingComplete = onboardingStatus === 'complete';
-
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeePercentage = serviceFeeRateData?.percentage ;
 
   // Invalidate user profile query after creating account to refresh the UI
   const handleAccountCreated = () => {
@@ -233,7 +212,6 @@ export default function StripeConnectSetup() {
           </CardTitle>
           <CardDescription>
             Connect your Stripe account to start receiving payments directly for kitchen bookings.
-            The platform service fee ({serviceFeePercentage}%) will be automatically deducted.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -289,9 +267,7 @@ export default function StripeConnectSetup() {
               <Alert className="border-green-200 bg-green-50">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
-                  ✅ You'll receive payments automatically after each booking.
-                  The platform service fee ({serviceFeePercentage}%) will be deducted automatically, and the remaining amount
-                  will be transferred to your bank account within 2-7 business days.
+                  You'll receive payments automatically after each booking. Payouts typically arrive within 2-7 business days.
                 </AlertDescription>
               </Alert>
               {/* {userProfile?.stripeConnectAccountId && (
@@ -373,3 +349,4 @@ export default function StripeConnectSetup() {
   }
 
 }
+

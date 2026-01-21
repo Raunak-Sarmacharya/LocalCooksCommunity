@@ -7,36 +7,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import ACSSDebitPayment from "@/components/payment/ACSSDebitPayment";
-import { useQuery } from "@tanstack/react-query";
 
 export default function BookingConfirmationPage() {
   const [location, setLocation] = useLocation();
   const { kitchens, createBooking } = useKitchenBookings();
   const { toast } = useToast();
 
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeeRate = serviceFeeRateData?.rate ;
-  const serviceFeePercentage = serviceFeeRateData?.percentage ;
-  const flatFeeCents = 30;
-  const flatFeeDollars = (flatFeeCents / 100).toFixed(2);
-  
   // Get query parameters from URL
   const searchParams = new URLSearchParams(window.location.search);
   const kitchenId = searchParams.get('kitchenId') ? parseInt(searchParams.get('kitchenId')!) : null;
@@ -68,6 +44,7 @@ export default function BookingConfirmationPage() {
     hourlyRate: number | null;
     currency: string;
     minimumBookingHours: number;
+    taxRatePercent: number | null;
   } | null>(null);
 
   // Payment state
@@ -80,8 +57,6 @@ export default function BookingConfirmationPage() {
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
-    serviceFee: number;
-    totalPrice: number;
     durationHours: number;
   } | null>(null);
 
@@ -150,22 +125,28 @@ export default function BookingConfirmationPage() {
           }
           
           if (!isCancelled) {
+            let taxRatePercent = pricing.taxRatePercent;
+            if (taxRatePercent === null || taxRatePercent === undefined || taxRatePercent === '') {
+              taxRatePercent = null;
+            } else if (typeof taxRatePercent === 'string') {
+              taxRatePercent = parseFloat(taxRatePercent);
+            }
+            if (typeof taxRatePercent === 'number' && Number.isNaN(taxRatePercent)) {
+              taxRatePercent = null;
+            }
+
             setKitchenPricing({
               hourlyRate,
               currency: pricing.currency || 'CAD',
               minimumBookingHours: pricing.minimumBookingHours || 1,
+              taxRatePercent: taxRatePercent ?? null,
             });
 
             // Calculate estimated price
             if (hourlyRate && selectedSlots.length > 0) {
               const basePrice = hourlyRate * selectedSlots.length;
-              const baseCents = Math.round(basePrice * 100);
-              const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
-              const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
               setEstimatedPrice({
                 basePrice,
-                serviceFee,
-                totalPrice: basePrice + serviceFee,
                 durationHours: selectedSlots.length,
               });
             }
@@ -268,18 +249,19 @@ export default function BookingConfirmationPage() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee (dynamic rate + $0.30 flat fee)
-  const serviceFee = useMemo(() => {
+  const taxAmount = useMemo(() => {
     const subtotalCents = Math.round(combinedSubtotal * 100);
     if (subtotalCents <= 0) return 0;
-    const percentageFeeCents = Math.round(subtotalCents * serviceFeeRate);
-    return (percentageFeeCents + flatFeeCents) / 100;
-  }, [combinedSubtotal, serviceFeeRate, flatFeeCents]);
+    const taxRatePercent = kitchenPricing?.taxRatePercent ?? 0;
+    const taxRate = taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+    const taxCents = Math.round(subtotalCents * taxRate);
+    return taxCents / 100;
+  }, [combinedSubtotal, kitchenPricing?.taxRatePercent]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
-    return combinedSubtotal + serviceFee ;
-  }, [combinedSubtotal, serviceFee]);
+    return combinedSubtotal + taxAmount;
+  }, [combinedSubtotal, taxAmount]);
 
   // Helper functions
   const formatTime = (timeStr: string) => {
@@ -808,7 +790,7 @@ export default function BookingConfirmationPage() {
                       </div>
                     )}
 
-                    {/* Combined Subtotal & Single Service Fee */}
+                    {/* Combined Subtotal & Tax */}
                     {combinedSubtotal > 0 && (
                       <div className="bg-white p-3 rounded-lg border-2 border-gray-300">
                         <div className="space-y-2 text-sm">
@@ -816,15 +798,14 @@ export default function BookingConfirmationPage() {
                             <span className="font-semibold text-gray-900">Combined Subtotal (Kitchen + Equipment + Storage):</span>
                             <span className="font-bold text-gray-900">${combinedSubtotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
-                          <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-                            <span className="text-gray-600">
-                              {`Service Fee:`}
-                            </span>
-                            <span className="font-medium text-gray-900">${serviceFee.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1 italic">
-                            {`* Service fee is calculated once on the combined total`}
-                          </p>
+                          {taxAmount > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">
+                                Tax {kitchenPricing?.taxRatePercent ? `(${kitchenPricing.taxRatePercent.toFixed(2)}%)` : ''}:
+                              </span>
+                              <span className="font-medium text-gray-900">${taxAmount.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

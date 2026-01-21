@@ -114,15 +114,9 @@ export default function AdminProtectedRoute({ children }: AdminProtectedRoutePro
 
   // Check if user has admin role
   if (!isAdmin) {
-    console.log('AdminProtectedRoute - User is not an admin, redirecting to login. User role:', user.role);
-    console.log('AdminProtectedRoute - Full user object:', user);
-    return <Redirect to="/admin/login" />;
+       return <Redirect to="/admin/login" />;
   }
 
-  console.log('AdminProtectedRoute - Admin access granted for user:', {
-    username: user.username || user.displayName || user.email,
-    role: user.role,
-    authMethod: 'firebase'
-  });
+
   return <>{children}</>;
 }

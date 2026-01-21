@@ -675,7 +675,7 @@ export class FirebaseStorage {
 
   // ===== KITCHENS MANAGEMENT =====
 
-  async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean }): Promise<any> {
+  async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean; taxRatePercent?: number | null }): Promise<any> {
     try {
       console.log('Inserting kitchen into database:', kitchenData);
 
@@ -695,6 +695,12 @@ export class FirebaseStorage {
         insertData.isActive = kitchenData.isActive;
       } else {
         insertData.isActive = true;
+      }
+
+      if (kitchenData.taxRatePercent !== undefined) {
+        insertData.taxRatePercent = kitchenData.taxRatePercent === null
+          ? null
+          : kitchenData.taxRatePercent.toString();
       }
 
       console.log('Insert data:', insertData);
@@ -890,13 +896,16 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; galleryImages?: string[]; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; galleryImages?: string[]; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string; taxRatePercent?: number | null }): Promise<any> {
     try {
       // Convert hourlyRate to string for numeric type if provided
       const dbUpdates: any = { ...updates, updatedAt: new Date() };
       if (updates.hourlyRate !== undefined) {
         // Drizzle numeric type expects string representation
         dbUpdates.hourlyRate = updates.hourlyRate === null ? null : updates.hourlyRate.toString();
+      }
+      if (updates.taxRatePercent !== undefined) {
+        dbUpdates.taxRatePercent = updates.taxRatePercent === null ? null : updates.taxRatePercent.toString();
       }
 
       const [updated] = await db
@@ -918,19 +927,21 @@ export class FirebaseStorage {
       if (pool && 'query' in pool) {
         try {
           const directQuery = await pool.query(
-            'SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model FROM kitchens WHERE id = $1',
+            'SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model, tax_rate_percent::text as tax_rate_percent FROM kitchens WHERE id = $1',
             [kitchenId]
           );
           if (directQuery.rows && directQuery.rows[0]) {
             const row = directQuery.rows[0];
             const dbValue = row.hourly_rate;
             const hourlyRateCents = dbValue ? parseFloat(String(dbValue)) : null;
+            const taxRatePercent = row.tax_rate_percent ? parseFloat(String(row.tax_rate_percent)) : null;
 
             return {
               hourlyRate: hourlyRateCents !== null ? hourlyRateCents / 100 : null,
               currency: row.currency || 'CAD',
               minimumBookingHours: row.minimum_booking_hours || 1,
               pricingModel: row.pricing_model || 'hourly',
+              taxRatePercent: Number.isNaN(taxRatePercent) ? null : taxRatePercent,
             };
           }
         } catch (error) {
@@ -944,12 +955,17 @@ export class FirebaseStorage {
 
       const hourlyRateCents = kitchen.hourlyRate ? parseFloat(kitchen.hourlyRate.toString()) : null;
       const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
+      const rawTaxRate = (kitchen as any).taxRatePercent ?? (kitchen as any).tax_rate_percent;
+      const parsedTaxRate = rawTaxRate === null || rawTaxRate === undefined || rawTaxRate === ''
+        ? null
+        : parseFloat(String(rawTaxRate));
 
       return {
         hourlyRate: hourlyRateDollars,
         currency: kitchen.currency || 'CAD',
         minimumBookingHours: kitchen.minimumBookingHours || 1,
         pricingModel: kitchen.pricingModel || 'hourly',
+        taxRatePercent: Number.isNaN(parsedTaxRate) ? null : parsedTaxRate,
       };
     } catch (error) {
       console.error('Error getting kitchen pricing:', error);
@@ -958,7 +974,7 @@ export class FirebaseStorage {
   }
 
   // Update kitchen pricing
-  async updateKitchenPricing(kitchenId: number, pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
+  async updateKitchenPricing(kitchenId: number, pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string; taxRatePercent?: number | null }): Promise<any> {
     try {
       // Convert hourlyRate from dollars to cents (cents) if provided
       const updates: any = {
@@ -983,6 +999,9 @@ export class FirebaseStorage {
       if (pricing.pricingModel !== undefined) {
         updates.pricingModel = pricing.pricingModel;
       }
+      if (pricing.taxRatePercent !== undefined) {
+        updates.taxRatePercent = pricing.taxRatePercent === null ? null : pricing.taxRatePercent.toString();
+      }
 
       const [updated] = await db
         .update(kitchens)
@@ -993,15 +1012,18 @@ export class FirebaseStorage {
       // Query database directly to get the actual stored value (in cents)
       // Drizzle's numeric type may incorrectly interpret the value
       let hourlyRateCents: number | null = null;
+      let taxRatePercent: number | null = null;
       if (pool && 'query' in pool) {
         try {
           const directQuery = await pool.query(
-            'SELECT hourly_rate::text as hourly_rate FROM kitchens WHERE id = $1',
+            'SELECT hourly_rate::text as hourly_rate, tax_rate_percent::text as tax_rate_percent FROM kitchens WHERE id = $1',
             [kitchenId]
           );
           if (directQuery.rows && directQuery.rows[0]) {
             const dbValue = directQuery.rows[0].hourly_rate;
             hourlyRateCents = dbValue ? parseFloat(String(dbValue)) : null;
+            const taxValue = directQuery.rows[0].tax_rate_percent;
+            taxRatePercent = taxValue ? parseFloat(String(taxValue)) : null;
           }
         } catch (error) {
           console.error('Error updating kitchen pricing:', error);
@@ -1017,6 +1039,7 @@ export class FirebaseStorage {
         currency: updated.currency || 'CAD',
         minimumBookingHours: updated.minimumBookingHours || 1,
         pricingModel: updated.pricingModel || 'hourly',
+        taxRatePercent: Number.isNaN(taxRatePercent) ? null : taxRatePercent,
       };
       console.log('[updateKitchenPricing] Final result:', JSON.stringify(result));
       return result;
@@ -2171,22 +2194,21 @@ export class FirebaseStorage {
         throw new Error(`Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}`);
       }
 
-      // Get configurable service fee rate
-      const serviceFeeRate = await this.getServiceFeeRate();
+      // Service fee disabled
 
       // Calculate additional cost (daily rate × extension days)
       const basePricePerDay = storageListing.basePrice || 0; // in dollars
       const extensionBasePrice = basePricePerDay * extensionDays;
-      const extensionServiceFee = extensionBasePrice * serviceFeeRate; // Configurable service fee
-      const extensionTotalPrice = extensionBasePrice + extensionServiceFee;
+      const extensionServiceFee = 0;
+      const extensionTotalPrice = extensionBasePrice;
 
       // Convert to cents for database
       const extensionTotalPriceCents = Math.round(extensionTotalPrice * 100);
-      const extensionServiceFeeCents = Math.round(extensionServiceFee * 100);
+      const extensionServiceFeeCents = 0;
 
       // Calculate new total price (existing + extension)
       const existingTotalPriceCents = Math.round(booking.totalPrice * 100);
-      const existingServiceFeeCents = Math.round(booking.serviceFee * 100);
+      const existingServiceFeeCents = Math.round((booking.serviceFee || 0) * 100);
       const newTotalPriceCents = existingTotalPriceCents + extensionTotalPriceCents;
       const newServiceFeeCents = existingServiceFeeCents + extensionServiceFeeCents;
 
@@ -2273,14 +2295,13 @@ export class FirebaseStorage {
           const basePricePerDay = parseFloat(row.base_price) / 100; // Convert from cents to dollars
           const penaltyRatePerDay = basePricePerDay * 2; // 2x penalty rate
           const penaltyBasePrice = penaltyRatePerDay * daysToCharge;
-          // Get service fee rate dynamically
-          const serviceFeeRate = await this.getServiceFeeRate();
-          const penaltyServiceFee = penaltyBasePrice * serviceFeeRate;
-          const penaltyTotalPrice = penaltyBasePrice + penaltyServiceFee;
+          // Service fee disabled
+          const penaltyServiceFee = 0;
+          const penaltyTotalPrice = penaltyBasePrice;
 
           // Convert to cents
           const penaltyTotalPriceCents = Math.round(penaltyTotalPrice * 100);
-          const penaltyServiceFeeCents = Math.round(penaltyServiceFee * 100);
+          const penaltyServiceFeeCents = 0;
 
           // Get current totals
           const currentTotalPriceCents = Math.round(parseFloat(row.total_price));
@@ -2839,7 +2860,7 @@ export class FirebaseStorage {
       console.log('Inserting kitchen booking into database:', bookingData);
 
       // Calculate pricing using pricing service
-      const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
+      const { calculateKitchenBookingPrice, calculateTotalWithFees } = await import('./services/pricing-service');
       const pricing = await calculateKitchenBookingPrice(
         bookingData.kitchenId,
         bookingData.startTime,
@@ -2847,12 +2868,16 @@ export class FirebaseStorage {
         pool
       );
 
-      // Calculate service fee dynamically from platform_settings
-      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
+      // Service fee removed for chef payments (tax still applies)
+      const taxRatePercent = pricing.taxRatePercent ?? null;
+      const taxRate = taxRatePercent && taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+      const taxCents = pricing.totalPriceCents > 0 ? Math.round(pricing.totalPriceCents * taxRate) : 0;
+      const taxableSubtotalCents = pricing.totalPriceCents + taxCents;
+      const serviceFeeCents = 0;
 
       // Calculate total with fees
       const totalWithFeesCents = calculateTotalWithFees(
-        pricing.totalPriceCents,
+        taxableSubtotalCents,
         serviceFeeCents,
         0 // No damage deposit for kitchen bookings alone
       );
@@ -2920,7 +2945,7 @@ export class FirebaseStorage {
       console.log('Creating booking (with external support):', bookingData);
 
       // Calculate pricing using pricing service
-      const { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } = await import('./services/pricing-service');
+      const { calculateKitchenBookingPrice, calculateTotalWithFees } = await import('./services/pricing-service');
       const pricing = await calculateKitchenBookingPrice(
         bookingData.kitchenId,
         bookingData.startTime,
@@ -2928,12 +2953,16 @@ export class FirebaseStorage {
         pool
       );
 
-      // Calculate service fee dynamically from platform_settings
-      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
+      // Service fee removed for chef payments (tax still applies)
+      const taxRatePercent = pricing.taxRatePercent ?? null;
+      const taxRate = taxRatePercent && taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+      const taxCents = pricing.totalPriceCents > 0 ? Math.round(pricing.totalPriceCents * taxRate) : 0;
+      const taxableSubtotalCents = pricing.totalPriceCents + taxCents;
+      const serviceFeeCents = 0;
 
       // Calculate total with fees
       const totalWithFeesCents = calculateTotalWithFees(
-        pricing.totalPriceCents,
+        taxableSubtotalCents,
         serviceFeeCents,
         0 // No damage deposit for kitchen bookings alone
       );
@@ -3002,9 +3031,6 @@ export class FirebaseStorage {
 
   async getBookingsByChef(chefId: number): Promise<any[]> {
     try {
-      console.log(`[STORAGE] getBookingsByChef called with chefId: ${chefId}`);
-      console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
-
       // Join with kitchens and locations to get cancellation policy
       const results = await db
         .select({
@@ -3018,8 +3044,6 @@ export class FirebaseStorage {
         .where(eq(kitchenBookings.chefId, chefId))
         .orderBy(asc(kitchenBookings.bookingDate));
 
-      console.log(`[STORAGE] Raw query returned ${results.length} results`);
-
       const mappedResults = results.map(r => ({
         ...r.booking,
         kitchen: r.kitchen,
@@ -3031,7 +3055,6 @@ export class FirebaseStorage {
         },
       }));
 
-      console.log(`[STORAGE] Mapped ${mappedResults.length} bookings for chef ${chefId}`);
       return mappedResults;
     } catch (error) {
       console.error('Error getting bookings by chef:', error);

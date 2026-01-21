@@ -249,9 +249,7 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
               The charge will appear in your bank account right away. If you cancel within the cancellation period, 
               you will receive a full refund.
             </p>
-            <p className="text-xs text-blue-700">
-              <strong>Your payment method is saved securely</strong> for faster checkout on future bookings.
-            </p>
+           
           </div>
         </div>
       </div>

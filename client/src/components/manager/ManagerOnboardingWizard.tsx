@@ -36,6 +36,7 @@ import {
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
@@ -87,7 +88,10 @@ export default function ManagerOnboardingWizard() {
     minimumBookingHours: '1',
   });
   const [creatingKitchen, setCreatingKitchen] = useState(false);
-
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxRateInput, setTaxRateInput] = useState('');
+  const [isSavingTaxSettings, setIsSavingTaxSettings] = useState(false);
+  
   // Storage listing form state
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<any[]>([]);
@@ -500,6 +504,32 @@ export default function ManagerOnboardingWizard() {
     }
   }, [selectedLocationId]);
 
+  useEffect(() => {
+    if (!selectedKitchenId) {
+      setTaxEnabled(false);
+      setTaxRateInput('');
+      return;
+    }
+    const selectedKitchen = kitchens.find((k: any) => k.id === selectedKitchenId);
+    if (!selectedKitchen) {
+      setTaxEnabled(false);
+      setTaxRateInput('');
+      return;
+    }
+    const rawTaxRate = selectedKitchen.taxRatePercent ?? selectedKitchen.tax_rate_percent;
+    const parsedTaxRate = rawTaxRate === null || rawTaxRate === undefined || rawTaxRate === ''
+      ? null
+      : Number(rawTaxRate);
+
+    if (parsedTaxRate !== null && !Number.isNaN(parsedTaxRate) && parsedTaxRate > 0) {
+      setTaxEnabled(true);
+      setTaxRateInput(parsedTaxRate.toString());
+    } else {
+      setTaxEnabled(false);
+      setTaxRateInput('');
+    }
+  }, [selectedKitchenId, kitchens]);
+
   // Load storage listings when kitchen is selected and we're on storage step
   useEffect(() => {
     if (selectedKitchenId && currentStep === 5) {
@@ -658,6 +688,74 @@ export default function ManagerOnboardingWizard() {
       });
     },
   });
+
+  const saveTaxSettings = async () => {
+    if (!selectedKitchenId) {
+      toast({
+        title: "Select a Kitchen",
+        description: "Choose a kitchen before saving tax settings.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let taxRateToSend: number | null = null;
+    if (taxEnabled) {
+      const parsedRate = Number(taxRateInput);
+      if (Number.isNaN(parsedRate) || parsedRate <= 0 || parsedRate > 100) {
+        toast({
+          title: "Invalid Tax Rate",
+          description: "Enter a percentage between 0.01 and 100.",
+          variant: "destructive",
+        });
+        return;
+      }
+      taxRateToSend = parsedRate;
+    }
+
+    setIsSavingTaxSettings(true);
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      const token = await currentFirebaseUser.getIdToken();
+
+      const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}`, {
+        method: "PUT",
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          taxRatePercent: taxEnabled ? taxRateToSend : null,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save tax settings");
+      }
+
+      const updated = await response.json();
+  
+      setKitchens((prev) => prev.map((k) => (k.id === updated.id ? updated : k)));
+
+      toast({
+        title: "Tax Settings Saved",
+        description: taxEnabled ? "Tax will be added to new bookings for this kitchen." : "Tax collection is disabled for this kitchen.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Save Failed",
+        description: error.message || "Unable to save tax settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingTaxSettings(false);
+    }
+  };
 
   const updateLocationMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1804,9 +1902,90 @@ export default function ManagerOnboardingWizard() {
                   </div>
                 </div>
 
-                <StripeConnectSetup />
+              <StripeConnectSetup />
+
+              <div className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900">Tax Collection</h4>
+                    <p className="text-xs text-gray-600">
+                      Enable sales tax and set the percentage for bookings made on a specific kitchen.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={taxEnabled}
+                    onCheckedChange={(checked) => setTaxEnabled(checked)}
+                    disabled={!selectedKitchenId}
+                  />
+                </div>
+
+                {kitchens.length === 0 ? (
+                  <p className="text-xs text-gray-500 mt-3">Create a kitchen to configure tax collection.</p>
+                ) : (
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto]">
+                    <div>
+                      <Label htmlFor="tax-kitchen-select">Kitchen</Label>
+                      <Select
+                        value={selectedKitchenId?.toString() || ""}
+                        onValueChange={(value) => setSelectedKitchenId(parseInt(value, 10))}
+                      >
+                        <SelectTrigger className="mt-1" id="tax-kitchen-select">
+                          <SelectValue placeholder="Select a kitchen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {kitchens.map((kitchen) => (
+                            <SelectItem key={kitchen.id} value={kitchen.id.toString()}>
+                              {kitchen.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="tax-rate-input">Tax Percentage</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Input
+                          id="tax-rate-input"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={taxRateInput}
+                          onChange={(e) => setTaxRateInput(e.target.value)}
+                          disabled={!taxEnabled || !selectedKitchenId}
+                          placeholder="0.00"
+                          className="flex-1"
+                        />
+                        <span className="text-sm text-gray-500">%</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-end">
+                      <Button
+                        onClick={saveTaxSettings}
+                        disabled={!selectedKitchenId || isSavingTaxSettings}
+                        className="w-full md:w-auto"
+                      >
+                        {isSavingTaxSettings ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save Tax Settings"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500 mt-2">
+                  Tax is stored per kitchen. Turn off tax collection to charge no tax.
+                </p>
               </div>
-            )}
+            </div>
+          )}
 
             {currentStep === 5 && (
               <div className="space-y-4">

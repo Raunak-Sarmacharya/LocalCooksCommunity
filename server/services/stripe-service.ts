@@ -81,13 +81,14 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
   }
 
   // Validate Connect parameters if provided
-  if (managerConnectAccountId && !applicationFeeAmount) {
-    throw new Error('applicationFeeAmount is required when managerConnectAccountId is provided');
-  }
-  if (applicationFeeAmount && !managerConnectAccountId) {
+  const hasApplicationFee = applicationFeeAmount !== undefined && applicationFeeAmount !== null;
+  if (hasApplicationFee && !managerConnectAccountId) {
     throw new Error('managerConnectAccountId is required when applicationFeeAmount is provided');
   }
-  if (applicationFeeAmount && applicationFeeAmount >= amount) {
+  if (hasApplicationFee && applicationFeeAmount < 0) {
+    throw new Error('Application fee must be 0 or a positive amount');
+  }
+  if (hasApplicationFee && applicationFeeAmount >= amount) {
     throw new Error('Application fee must be less than total amount');
   }
 
@@ -177,15 +178,18 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       paymentIntentParams.customer = customerId;
     }
 
-    // Add Stripe Connect split payment if manager has Connect account
-    if (managerConnectAccountId && applicationFeeAmount) {
-      paymentIntentParams.application_fee_amount = applicationFeeAmount;
+    // Add Stripe Connect destination if manager has Connect account
+    if (managerConnectAccountId) {
       paymentIntentParams.transfer_data = {
         destination: managerConnectAccountId,
       };
       // Add manager account ID to metadata for tracking
       paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-      paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+
+      if (hasApplicationFee) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        paymentIntentParams.metadata.platform_fee = applicationFeeAmount!.toString();
+      }
     }
 
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);

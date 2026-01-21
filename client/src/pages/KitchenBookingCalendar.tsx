@@ -10,7 +10,6 @@ import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useLocation } from "wouter";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
-import { useQuery } from "@tanstack/react-query";
 
 // Component for equipment image with presigned URL
 function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
@@ -219,11 +218,10 @@ export default function KitchenBookingCalendar() {
     hourlyRate: number | null;
     currency: string;
     minimumBookingHours: number;
+    taxRatePercent: number | null;
   } | null>(null);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
-    serviceFee: number;
-    totalPrice: number;
     durationHours: number;
   } | null>(null);
 
@@ -248,28 +246,7 @@ export default function KitchenBookingCalendar() {
   // Calculate storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
 
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-  const flatFeeCents = 30;
-
-  // Calculate equipment pricing (base prices only, no service fees)
+  // Calculate equipment pricing (base prices only)
   const equipmentPricing = useMemo(() => {
     if (!selectedEquipmentIds.length || !equipmentListings.rental.length) {
       return {
@@ -305,23 +282,24 @@ export default function KitchenBookingCalendar() {
   // Calculate combined subtotal (kitchen base + storage base + equipment base)
   const combinedSubtotal = useMemo(() => {
     const kitchenBase = estimatedPrice?.basePrice || 0;
-    const storageBase = storagePricing.subtotal || 0; // Use subtotal (base price without service fee)
+    const storageBase = storagePricing.subtotal || 0; // Use subtotal (base price only)
     const equipmentBase = equipmentPricing.subtotal || 0;
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee on combined subtotal (dynamic rate + $0.30 flat fee)
-  const serviceFee = useMemo(() => {
+  const taxAmount = useMemo(() => {
     const subtotalCents = Math.round(combinedSubtotal * 100);
     if (subtotalCents <= 0) return 0;
-    const percentageFeeCents = Math.round(subtotalCents * serviceFeeRate);
-    return (percentageFeeCents + flatFeeCents) / 100;
-  }, [combinedSubtotal, serviceFeeRate, flatFeeCents]);
+    const taxRatePercent = kitchenPricing?.taxRatePercent ?? 0;
+    const taxRate = taxRatePercent > 0 ? taxRatePercent / 100 : 0;
+    const taxCents = Math.round(subtotalCents * taxRate);
+    return taxCents / 100;
+  }, [combinedSubtotal, kitchenPricing?.taxRatePercent]);
 
-  // Calculate grand total (subtotal + service fee)
+  // Calculate grand total (subtotal + tax)
   const grandTotal = useMemo(() => {
-    return combinedSubtotal + serviceFee;
-  }, [combinedSubtotal, serviceFee]);
+    return combinedSubtotal + taxAmount;
+  }, [combinedSubtotal, taxAmount]);
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -590,6 +568,15 @@ export default function KitchenBookingCalendar() {
         if (typeof hourlyRate === 'string') {
           hourlyRate = parseFloat(hourlyRate);
         }
+        let taxRatePercent = pricing.taxRatePercent;
+        if (taxRatePercent === null || taxRatePercent === undefined || taxRatePercent === '') {
+          taxRatePercent = null;
+        } else if (typeof taxRatePercent === 'string') {
+          taxRatePercent = parseFloat(taxRatePercent);
+        }
+        if (typeof taxRatePercent === 'number' && Number.isNaN(taxRatePercent)) {
+          taxRatePercent = null;
+        }
         // If hourlyRate is in cents (large number), convert to dollars
         if (hourlyRate && hourlyRate > 100) {
           console.warn('⚠️ Hourly rate appears to be in cents, converting to dollars:', hourlyRate);
@@ -600,6 +587,7 @@ export default function KitchenBookingCalendar() {
           hourlyRate: hourlyRate || null,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours || 1,
+          taxRatePercent: taxRatePercent ?? null,
         });
         console.log('✅ Set kitchenPricing state:', { hourlyRate, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
       } else if (response.status === 404) {
@@ -609,6 +597,7 @@ export default function KitchenBookingCalendar() {
           hourlyRate: null,
           currency: 'CAD',
           minimumBookingHours: 1,
+          taxRatePercent: null,
         });
       } else {
         const errorText = await response.text();
@@ -618,6 +607,7 @@ export default function KitchenBookingCalendar() {
           hourlyRate: null,
           currency: 'CAD',
           minimumBookingHours: 1,
+          taxRatePercent: null,
         });
       }
     } catch (error) {
@@ -626,6 +616,7 @@ export default function KitchenBookingCalendar() {
         hourlyRate: null,
         currency: 'CAD',
         minimumBookingHours: 1,
+        taxRatePercent: null,
       });
     }
 
@@ -685,28 +676,18 @@ export default function KitchenBookingCalendar() {
       }
 
       const basePrice = hourlyRateDollars * durationHours;
-      const baseCents = Math.round(basePrice * 100);
-      const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
-      const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
-      const totalPrice = basePrice + serviceFee;
-
-
       setEstimatedPrice({
         basePrice,
-        serviceFee,
-        totalPrice,
         durationHours,
       });
     } else {
       // No pricing set, but still calculate duration for display
       setEstimatedPrice({
         basePrice: 0,
-        serviceFee: 0,
-        totalPrice: 0,
         durationHours,
       });
     }
-  }, [selectedSlots, selectedKitchen, kitchenPricing, serviceFeeRate, flatFeeCents]);
+  }, [selectedSlots, selectedKitchen, kitchenPricing]);
 
   const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
     // Don't allow selecting fully booked slots
@@ -1513,7 +1494,7 @@ export default function KitchenBookingCalendar() {
                                     </p>
                                     {estimatedPrice && (
                                       <p className="text-xs sm:text-sm font-semibold text-green-900 mt-1.5 sm:mt-2">
-                                        Estimated Total: ${estimatedPrice.totalPrice.toFixed(2)} {kitchenPricing?.currency || 'CAD'}
+                                        Estimated Total: ${grandTotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}
                                       </p>
                                     )}
                                   </div>

@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { differenceInDays, differenceInHours } from "date-fns";
-import { useQuery } from "@tanstack/react-query";
 
 interface StorageListing {
   id: number;
@@ -47,26 +46,6 @@ export function useStoragePricing(
   selectedStorage: SelectedStorage[],
   storageListings: StorageListing[]
 ): StoragePricing {
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
-
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-
   return useMemo(() => {
     if (!selectedStorage || selectedStorage.length === 0) {
       return {
@@ -114,8 +93,8 @@ export function useStoragePricing(
           basePrice = listing.basePrice * effectiveDays;
         }
         
-        const serviceFee = basePrice * serviceFeeRate; // Dynamic service fee
-        const total = basePrice + serviceFee;
+        const serviceFee = 0;
+        const total = basePrice;
 
         return {
           listing,
@@ -132,8 +111,8 @@ export function useStoragePricing(
 
     // Calculate totals
     const subtotal = items.reduce((sum, item) => sum + item.basePrice, 0);
-    const totalServiceFee = items.reduce((sum, item) => sum + item.serviceFee, 0);
-    const total = subtotal + totalServiceFee;
+    const totalServiceFee = 0;
+    const total = subtotal;
 
     return {
       items,
@@ -141,6 +120,6 @@ export function useStoragePricing(
       serviceFee: totalServiceFee,
       total,
     };
-  }, [selectedStorage, storageListings, serviceFeeRate]);
+  }, [selectedStorage, storageListings]);
 }
 

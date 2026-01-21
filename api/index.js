@@ -13468,22 +13468,9 @@ function registerFirebaseRoutes(app3) {
     try {
       const userId = req.neonUser.id;
       const firebaseUid = req.firebaseUser.uid;
-      console.log(`[APPLICATIONS] Fetching applications for user ID: ${userId} (Firebase UID: ${firebaseUid})`);
-      console.log(`[APPLICATIONS] User object:`, {
-        id: req.neonUser.id,
-        username: req.neonUser.username,
-        role: req.neonUser.role,
-        isChef: req.neonUser.isChef
-      });
+     
       const applications2 = await firebaseStorage.getApplicationsByUserId(userId);
-      console.log(`[APPLICATIONS] Retrieved ${applications2.length} applications for user ${userId}`);
-      if (applications2.length > 0) {
-        console.log(`[APPLICATIONS] First application sample:`, {
-          id: applications2[0].id,
-          userId: applications2[0].userId,
-          status: applications2[0].status
-        });
-      }
+      
       res.json(applications2);
     } catch (error) {
       console.error("Error getting user applications:", error);
@@ -14824,23 +14811,9 @@ function registerFirebaseRoutes(app3) {
     try {
       const chefId = req.neonUser.id;
       const firebaseUid = req.firebaseUser.uid;
-      console.log(`[KITCHEN APPLICATIONS] Fetching kitchen applications for chef ID: ${chefId} (Firebase UID: ${firebaseUid})`);
-      console.log(`[KITCHEN APPLICATIONS] User object:`, {
-        id: req.neonUser.id,
-        username: req.neonUser.username,
-        role: req.neonUser.role,
-        isChef: req.neonUser.isChef
-      });
+
       const applications2 = await firebaseStorage.getChefKitchenApplicationsByChefId(chefId);
-      console.log(`[KITCHEN APPLICATIONS] Retrieved ${applications2.length} kitchen applications for chef ${chefId}`);
-      if (applications2.length > 0) {
-        console.log(`[KITCHEN APPLICATIONS] First application sample:`, {
-          id: applications2[0].id,
-          chefId: applications2[0].chefId,
-          locationId: applications2[0].locationId,
-          status: applications2[0].status
-        });
-      }
+
       const enrichedApplications = await Promise.all(
         applications2.map(async (app4) => {
           const location = await firebaseStorage.getLocationById(app4.locationId);
@@ -22318,18 +22291,8 @@ If you have questions, please contact the location manager.`,
   app3.get("/api/chef/bookings", requireChef, async (req, res) => {
     try {
       const chefId = req.user.id;
-      console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
-      console.log(`[CHEF BOOKINGS] User object:`, { id: req.user.id, username: req.user.username, isChef: req.user.isChef });
       const bookings = await firebaseStorage.getBookingsByChef(chefId);
-      console.log(`[CHEF BOOKINGS] Found ${bookings.length} bookings for chef ${chefId}`);
-      if (bookings.length > 0) {
-        console.log(`[CHEF BOOKINGS] First booking sample:`, {
-          id: bookings[0].id,
-          chefId: bookings[0].chefId || bookings[0].chef_id,
-          kitchenId: bookings[0].kitchenId || bookings[0].kitchen_id,
-          bookingDate: bookings[0].bookingDate || bookings[0].booking_date
-        });
-      }
+    
       res.json(bookings);
     } catch (error) {
       console.error("Error fetching bookings:", error);

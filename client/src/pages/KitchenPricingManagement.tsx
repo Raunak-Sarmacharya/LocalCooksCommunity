@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 interface Kitchen {
   id: number;
@@ -63,6 +64,8 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
     minimumBookingHours: 1,
     pricingModel: 'hourly',
   });
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxRateInput, setTaxRateInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   // Auto-select location if only one exists
@@ -93,6 +96,8 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         minimumBookingHours: 1,
         pricingModel: 'hourly',
       });
+      setTaxEnabled(false);
+      setTaxRateInput('');
     }
   }, [selectedKitchenId]);
 
@@ -149,6 +154,8 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
             minimumBookingHours: 1,
             pricingModel: 'hourly',
           });
+          setTaxEnabled(false);
+          setTaxRateInput('');
           return;
         }
         const errorText = await response.text();
@@ -171,6 +178,17 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         minimumBookingHours: validMinHours,
         pricingModel: data.pricingModel || 'hourly',
       });
+      const rawTaxRate = data.taxRatePercent ?? data.tax_rate_percent;
+      const parsedTaxRate = rawTaxRate === null || rawTaxRate === undefined || rawTaxRate === ''
+        ? null
+        : Number(rawTaxRate);
+      if (parsedTaxRate !== null && !Number.isNaN(parsedTaxRate) && parsedTaxRate > 0) {
+        setTaxEnabled(true);
+        setTaxRateInput(parsedTaxRate.toString());
+      } else {
+        setTaxEnabled(false);
+        setTaxRateInput('');
+      }
     } catch (error: any) {
       console.error('Error loading pricing:', error);
       toast({
@@ -211,6 +229,27 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
       });
       return;
     }
+    let taxRateToSend: number | null = null;
+    if (taxEnabled) {
+      if (taxRateInput.trim() === '') {
+        toast({
+          title: "Validation Error",
+          description: "Enter a tax percentage between 0.01 and 100",
+          variant: "destructive",
+        });
+        return;
+      }
+      const parsedRate = Number(taxRateInput);
+      if (Number.isNaN(parsedRate) || parsedRate <= 0 || parsedRate > 100) {
+        toast({
+          title: "Validation Error",
+          description: "Enter a tax percentage between 0.01 and 100",
+          variant: "destructive",
+        });
+        return;
+      }
+      taxRateToSend = parsedRate;
+    }
 
     setIsSaving(true);
     try {
@@ -222,6 +261,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         currency: pricing.currency || 'CAD',
         minimumBookingHours: Math.max(1, Math.floor(minBookingHours)), // Ensure it's at least 1 and an integer
         pricingModel: pricing.pricingModel || 'hourly',
+        taxRatePercent: taxEnabled ? taxRateToSend : null,
       };
 
       console.log('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });
@@ -255,6 +295,17 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         minimumBookingHours: updated.minimumBookingHours || 1,
         pricingModel: updated.pricingModel || 'hourly',
       });
+      const updatedTaxRate = updated.taxRatePercent ?? updated.tax_rate_percent;
+      const parsedUpdatedTaxRate = updatedTaxRate === null || updatedTaxRate === undefined || updatedTaxRate === ''
+        ? null
+        : Number(updatedTaxRate);
+      if (parsedUpdatedTaxRate !== null && !Number.isNaN(parsedUpdatedTaxRate) && parsedUpdatedTaxRate > 0) {
+        setTaxEnabled(true);
+        setTaxRateInput(parsedUpdatedTaxRate.toString());
+      } else {
+        setTaxEnabled(false);
+        setTaxRateInput('');
+      }
       
       toast({
         title: "Success",
@@ -472,6 +523,44 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
               />
               <p className="text-xs text-gray-500 mt-1">
                 Minimum number of hours required for a booking (e.g., 2 = minimum 2-hour booking)
+              </p>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900">Tax Collection</h4>
+                  <p className="text-xs text-gray-600">
+                    Enable sales tax and set the percentage for bookings made on this kitchen.
+                  </p>
+                </div>
+                <Switch
+                  checked={taxEnabled}
+                  onCheckedChange={(checked) => setTaxEnabled(checked)}
+                />
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_160px]">
+                <div>
+                  <Label htmlFor="tax-rate-input">Tax Percentage</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Input
+                      id="tax-rate-input"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={taxRateInput}
+                      onChange={(e) => setTaxRateInput(e.target.value)}
+                      disabled={!taxEnabled}
+                      placeholder="0.00"
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Tax is stored per kitchen. Turn off tax collection to charge no tax.
               </p>
             </div>
 
