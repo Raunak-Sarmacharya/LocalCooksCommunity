@@ -961,6 +961,7 @@ export default function ApplicantDashboard() {
     try {
       // 1. Clear all application-related caches more aggressively
       const cacheKeys = [
+        ["/api/firebase/applications/my"],
         ["/api/applications/my-applications"],
         ["/api/applications"],
         ["/api/user"]
@@ -979,6 +980,10 @@ export default function ApplicantDashboard() {
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
         queryClient.refetchQueries({
+          queryKey: ["/api/firebase/applications/my"],
+          type: 'all'
+        }),
+        queryClient.refetchQueries({
           queryKey: ["/api/applications/my-applications"],
           type: 'all'
         }),
@@ -993,7 +998,7 @@ export default function ApplicantDashboard() {
       console.error('ApplicantDashboard: Force refresh failed', error);
       // Fallback: try to refresh just the applicant query
       try {
-        await queryClient.refetchQueries({ queryKey: ["/api/applications/my-applications"] });
+        await queryClient.refetchQueries({ queryKey: ["/api/firebase/applications/my"] });
         console.log('ApplicantDashboard: Fallback refresh completed');
       } catch (fallbackError) {
         console.error('ApplicantDashboard: Fallback refresh also failed', fallbackError);
@@ -1010,7 +1015,7 @@ export default function ApplicantDashboard() {
       });
 
       try {
-        const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`);
+        const res = await apiRequest("PATCH", `/api/firebase/applications/${applicationId}/cancel`);
 
         console.log('🚫 Cancel response received:', {
           status: res.status,

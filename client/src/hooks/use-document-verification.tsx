@@ -272,6 +272,7 @@ export function useDocumentVerification() {
     try {
       // 1. Clear all application-related caches more aggressively
       const cacheKeys = [
+        ["/api/firebase/applications/my"],
         ["/api/applications/my-applications"],
         ["/api/applications"],
         ["/api/user"]
@@ -289,6 +290,10 @@ export function useDocumentVerification() {
 
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
+        queryClient.refetchQueries({
+          queryKey: ["/api/firebase/applications/my"],
+          type: 'all'
+        }),
         queryClient.refetchQueries({
           queryKey: ["/api/applications/my-applications"],
           type: 'all'
@@ -330,11 +335,11 @@ export function useDocumentVerification() {
       // Check if data is FormData (file upload) or JSON object (URL submission)
       if (data instanceof FormData) {
         // Handle file uploads with FormData
-        const res = await apiRequestFormData("PATCH", `/api/applications/${verification.id}/documents`, data);
+        const res = await apiRequestFormData("PATCH", `/api/firebase/applications/${verification.id}/documents`, data);
         return await res.json();
       } else {
         // Handle URL submissions with JSON
-        const res = await apiRequestJSON("PATCH", `/api/applications/${verification.id}/documents`, data);
+        const res = await apiRequestJSON("PATCH", `/api/firebase/applications/${verification.id}/documents`, data);
         return await res.json();
       }
     },
@@ -367,7 +372,7 @@ export function useDocumentVerification() {
   // Admin update mutation (for status changes)
   const adminUpdateMutation = useMutation({
     mutationFn: async ({ id, ...data }: any) => {
-      const res = await apiRequestJSON("PATCH", `/api/applications/${id}/document-verification`, data);
+      const res = await apiRequestJSON("PATCH", `/api/firebase/admin/applications/${id}/document-verification`, data);
       return await res.json();
     },
     onSuccess: async () => {

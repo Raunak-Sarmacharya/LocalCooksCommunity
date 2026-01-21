@@ -96,7 +96,7 @@ export default function Header() {
 
   // Fetch applicant's applications if they are logged in
   const { data: applications } = useQuery<Application[]>({
-    queryKey: ["/api/applications/my-applications"],
+    queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       if (!user || (!user.uid && !user.id)) {
         throw new Error("User not authenticated");

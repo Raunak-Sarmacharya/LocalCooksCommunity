@@ -110,7 +110,7 @@ export default function ApplicationForm() {
 
   // Fetch applicant's applications
   const { data: applications, isLoading: applicationsLoading } = useQuery<Application[]>({
-    queryKey: ["/api/applications/my-applications"],
+    queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;

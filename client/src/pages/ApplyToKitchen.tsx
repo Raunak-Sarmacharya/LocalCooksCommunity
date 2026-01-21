@@ -19,15 +19,7 @@ interface PublicLocation {
   brandImageUrl?: string | null;
 }
 
-// API response type for location details endpoint
-interface LocationDetailsResponse {
-  location: PublicLocation;
-  kitchens: Array<{
-    id: number;
-    name: string;
-    description?: string;
-  }>;
-}
+
 
 export default function ApplyToKitchen() {
   const { user, loading: authLoading } = useFirebaseAuth();
@@ -47,7 +39,7 @@ export default function ApplyToKitchen() {
     }
   }, [user, authLoading, navigate, locationId]);
 
-  // Fetch location details - extract location from the response object
+  // Fetch location details
   const { data: location, isLoading: locationLoading, error: locationError } = useQuery<PublicLocation>({
     queryKey: ["/api/public/locations", locationId, "details"],
     queryFn: async () => {
@@ -60,10 +52,7 @@ export default function ApplyToKitchen() {
         }
         throw new Error("Failed to fetch location");
       }
-      const data: LocationDetailsResponse = await response.json();
-      // The API returns { location: {...}, kitchens: [...] }
-      // We only need the location object for this page
-      return data.location;
+      return response.json();
     },
     enabled: !!locationId,
   });

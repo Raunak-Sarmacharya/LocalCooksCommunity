@@ -265,34 +265,7 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
         }
       );
 
-      if (!response.ok) {
-        // 404 means no application found - that's expected, not an error
-        if (response.status === 404) {
-          try {
-            const errorData = await response.json();
-            // API returns structured error with hasApplication and canBook
-            return {
-              hasApplication: errorData.hasApplication ?? false,
-              canBook: errorData.canBook ?? false,
-              application: null,
-            } as any;
-          } catch {
-            // If JSON parsing fails, return default no application state
-            return {
-              hasApplication: false,
-              canBook: false,
-              application: null,
-            } as any;
-          }
-        }
-        // For other errors, return no application state
-        console.warn(`Failed to fetch application for location ${locationId}: ${response.status}`);
-        return {
-          hasApplication: false,
-          canBook: false,
-          application: null,
-        } as any;
-      }
+
 
       const data = await response.json();
       // Ensure the response has the expected structure

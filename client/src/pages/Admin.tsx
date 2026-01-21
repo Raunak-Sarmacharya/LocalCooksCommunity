@@ -403,7 +403,7 @@ function AdminDashboard() {
           'Content-Type': 'application/json',
         };
 
-        const response = await fetch(`/api/applications/${id}/status`, {
+        const response = await fetch(`/api/firebase/admin/applications/${id}/status`, {
           method: 'PATCH',
           headers,
           credentials: 'include',
@@ -429,7 +429,8 @@ function AdminDashboard() {
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
-        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
+        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] })
       ]);
 
       toast({
@@ -458,7 +459,7 @@ function AdminDashboard() {
       };
 
       const updateData = { [field]: status };
-      const response = await fetch(`/api/applications/${id}/document-verification`, {
+      const response = await fetch(`/api/firebase/admin/applications/${id}/document-verification`, {
         method: 'PATCH',
         headers,
         credentials: 'include',
@@ -479,7 +480,8 @@ function AdminDashboard() {
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
-        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
+        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] })
       ]);
 
       // Additional delayed refresh to catch any async database updates
@@ -804,8 +806,9 @@ function AdminDashboard() {
     try {
       // 1. Clear all application-related caches more aggressively
       const cacheKeys = [
-        ["/api/applications"],
-        ["/api/applications/my-applications"]
+        ["/api/firebase/admin/applications"],
+        ["/api/applications/my-applications"],
+        ["/api/firebase/applications/my"]
       ];
 
       // Remove all related queries from cache
@@ -821,11 +824,15 @@ function AdminDashboard() {
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
         queryClient.refetchQueries({
-          queryKey: ["/api/applications"],
+          queryKey: ["/api/firebase/admin/applications"],
           type: 'all'
         }),
         queryClient.refetchQueries({
           queryKey: ["/api/applications/my-applications"],
+          type: 'all'
+        }),
+        queryClient.refetchQueries({
+          queryKey: ["/api/firebase/applications/my"],
           type: 'all'
         })
       ]);
