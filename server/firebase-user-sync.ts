@@ -19,6 +19,7 @@ interface CreateUserData {
   firebaseUid: string;
   isVerified: boolean;
   hasSeenWelcome?: boolean;
+  managerProfileData: Record<string, any>;
 }
 
 /**
@@ -34,7 +35,7 @@ export async function syncFirebaseUserToNeon(params: {
   role?: string;
 }): Promise<User> {
   const { uid, email, emailVerified, displayName, role } = params;
-  
+
   // Determine if user should be marked as verified
   // Google users are automatically verified, email/password users need email verification
   const isGoogleUser = emailVerified === true;
@@ -63,10 +64,10 @@ export async function syncFirebaseUserToNeon(params: {
     let finalRole: 'admin' | 'chef' | 'manager';
     let isChef = false;
     let isManager = false;
-    
+
     // Log the role received for debugging
     console.log(`🔍 Role received in syncFirebaseUserToNeon: "${role}"`);
-    
+
     // CRITICAL: Don't default to 'chef' - this causes admins/managers to be created as chefs
     if (!role || role === 'null' || role === 'undefined') {
       console.error(`❌ ERROR: No role provided in syncFirebaseUserToNeon during registration. Cannot create user without role.`);
@@ -74,7 +75,7 @@ export async function syncFirebaseUserToNeon(params: {
       console.error(`   - This should not happen - role should be detected from URL path in frontend`);
       throw new Error('Role is required for user registration. Please register from the appropriate page (admin, manager, or chef).');
     }
-    
+
     if (role === 'admin') {
       finalRole = 'admin';
       isChef = true;
@@ -92,10 +93,10 @@ export async function syncFirebaseUserToNeon(params: {
       console.error(`❌ ERROR: Unknown role value "${role}" in syncFirebaseUserToNeon`);
       throw new Error(`Invalid role: ${role}. Valid roles are: admin, manager, chef`);
     }
-    
+
     // Admins and managers should skip the welcome screen
     const hasSeenWelcome = finalRole === 'admin' || finalRole === 'manager';
-    
+
     const userData: CreateUserData = {
       username: email, // Always use email as username to ensure consistency
       password: '', // Empty for Firebase users
@@ -106,6 +107,7 @@ export async function syncFirebaseUserToNeon(params: {
       firebaseUid: uid,
       isVerified: isUserVerified, // Google users are verified, email/password users need verification
       hasSeenWelcome: hasSeenWelcome, // Admins and managers skip welcome screen
+      managerProfileData: {},
     };
 
     console.log(`➕ CREATING NEW USER with data:`, userData);

@@ -32,7 +32,7 @@ router.post("/",
     async (req: Request, res: Response) => {
         try {
             // Require authentication to submit an application
-            if (!req.isAuthenticated()) {
+            if (!req.neonUser) {
                 // Clean up uploaded files on error
                 if (req.files) {
                     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -75,7 +75,7 @@ router.post("/",
             // Normalize phone number before storing (schema already does this via transform, but ensure it's done)
             const applicationData = {
                 ...parsedData.data,
-                userId: req.user!.id,
+                userId: req.neonUser!.id,
                 phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone, // Ensure normalization
             };
 
@@ -111,7 +111,7 @@ router.post("/",
                 if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
                     console.log('📄 Uploading food safety license file...');
                     if (isProduction) {
-                        applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.user!.id);
+                        applicationData.foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser!.id);
                     } else {
                         applicationData.foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
                     }
@@ -121,7 +121,7 @@ router.post("/",
                 if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
                     console.log('📄 Uploading food establishment cert file...');
                     if (isProduction) {
-                        applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.user!.id);
+                        applicationData.foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser!.id);
                     } else {
                         applicationData.foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
                     }
@@ -235,11 +235,11 @@ router.post("/",
 // Get all applications endpoint (for admin view)
 router.get("/", async (req: Request, res: Response) => {
     // Check if user is authenticated and is an admin
-    if (!req.isAuthenticated()) {
+    if (!req.neonUser) {
         return res.status(401).json({ message: "Not authenticated" });
     }
 
-    if (req.user!.role !== "admin") {
+    if (req.neonUser.role !== "admin") {
         return res.status(403).json({ message: "Access denied. Admin role required." });
     }
 
@@ -255,12 +255,12 @@ router.get("/", async (req: Request, res: Response) => {
 // Get applications for the logged-in user (this specific route needs to come before the /:id route)
 router.get("/my-applications", async (req: Request, res: Response) => {
     // Check if user is authenticated
-    if (!req.isAuthenticated()) {
+    if (!req.neonUser) {
         return res.status(401).json({ error: "Not authenticated" });
     }
 
     try {
-        const userId = req.user!.id;
+        const userId = req.neonUser.id;
         const applications = await storage.getApplicationsByUserId(userId);
         return res.status(200).json(applications);
     } catch (error) {
@@ -296,16 +296,16 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
     try {
         // Check if user is authenticated and is an admin
         console.log('Status update request - Auth info:', {
-            isAuthenticated: req.isAuthenticated(),
+            isAuthenticated: !!req.neonUser,
             userRole: req.user?.role,
             userId: req.user?.id
         });
 
-        if (!req.isAuthenticated()) {
+        if (!req.neonUser) {
             return res.status(401).json({ message: "Not authenticated" });
         }
 
-        if (req.user!.role !== "admin") {
+        if (req.neonUser.role !== "admin") {
             return res.status(403).json({ message: "Access denied. Admin role required." });
         }
 
@@ -371,14 +371,12 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
 
 // Cancel application endpoint (for applicants)
 router.patch("/:id/cancel", async (req: Request, res: Response) => {
-    // Check if user is authenticated via session or X-User-ID header
-    const userId = req.isAuthenticated() ? req.user!.id : (req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'] as string) : null);
+    // Check if user is authenticated
+    const userId = req.neonUser?.id;
 
     console.log('Cancel application request - Auth info:', {
-        isAuthenticated: req.isAuthenticated(),
-        sessionUserId: req.isAuthenticated() ? req.user!.id : null,
-        headerUserId: req.headers['x-user-id'],
-        resolvedUserId: userId
+        isAuthenticated: !!req.neonUser,
+        sessionUserId: req.neonUser ? req.neonUser.id : null,
     });
 
     if (!userId) {
@@ -449,11 +447,11 @@ router.patch("/:id/cancel", async (req: Request, res: Response) => {
 router.patch("/:id/document-verification", async (req: Request, res: Response) => {
     try {
         // Check if user is authenticated and is an admin
-        if (!req.isAuthenticated()) {
+        if (!req.neonUser) {
             return res.status(401).json({ message: "Not authenticated" });
         }
 
-        if (req.user!.role !== "admin") {
+        if (req.neonUser.role !== "admin") {
             return res.status(403).json({ message: "Access denied. Admin role required." });
         }
 
@@ -466,7 +464,7 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
         const parsedData = updateDocumentVerificationSchema.safeParse({
             id: applicationId,
             ...req.body,
-            documentsReviewedBy: req.user!.id
+            documentsReviewedBy: req.neonUser.id
         });
 
         if (!parsedData.success) {

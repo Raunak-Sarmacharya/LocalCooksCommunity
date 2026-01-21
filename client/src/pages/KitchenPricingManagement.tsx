@@ -31,7 +31,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
-  
+
   // Get Firebase token for authentication
   const { auth } = await import('@/lib/firebase');
   const currentFirebaseUser = auth.currentUser;
@@ -43,7 +43,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       console.error('Error getting Firebase token:', error);
     }
   }
-  
+
   return headers;
 }
 
@@ -51,11 +51,11 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
-  
+
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
-  
+
   // Pricing form state
   const [pricing, setPricing] = useState<KitchenPricing>({
     hourlyRate: null,
@@ -98,21 +98,21 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
 
   const loadKitchens = async () => {
     if (!selectedLocationId) return;
-    
+
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/kitchens/${selectedLocationId}`, {
         headers,
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to load kitchens');
       }
-      
+
       const data = await response.json();
       setKitchens(data);
-      
+
       // Auto-select first kitchen if only one exists
       if (data.length === 1 && !selectedKitchenId) {
         setSelectedKitchenId(data[0].id);
@@ -129,16 +129,16 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
 
   const loadPricing = async () => {
     if (!selectedKitchenId) return;
-    
+
     try {
       const headers = await getAuthHeaders();
       console.log('Loading pricing for kitchen:', selectedKitchenId);
-      
+
       const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/pricing`, {
         headers,
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           // No pricing set yet, use defaults
@@ -155,18 +155,19 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         console.error('Error loading pricing:', response.status, errorText);
         throw new Error(`Failed to load pricing (${response.status})`);
       }
-      
+
       const data = await response.json();
       console.log('Pricing loaded:', data);
-      
+
       // Ensure proper data types
       const minHours = data.minimumBookingHours;
-      const validMinHours = (minHours !== undefined && minHours !== null && !isNaN(Number(minHours)) && Number(minHours) >= 1) 
-        ? Math.max(1, Math.floor(Number(minHours))) 
+      const validMinHours = (minHours !== undefined && minHours !== null && !isNaN(Number(minHours)) && Number(minHours) >= 1)
+        ? Math.max(1, Math.floor(Number(minHours)))
         : 1;
-      
+
       setPricing({
-        hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null ? Number(data.hourlyRate) : null,
+        // Convert cents to dollars for UI display
+        hourlyRate: data.hourlyRate !== undefined && data.hourlyRate !== null ? Number(data.hourlyRate) / 100 : null,
         currency: data.currency || 'CAD',
         minimumBookingHours: validMinHours,
         pricingModel: data.pricingModel || 'hourly',
@@ -215,17 +216,21 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
     setIsSaving(true);
     try {
       const headers = await getAuthHeaders();
-      
-      // Prepare payload - ensure null values are sent correctly
+
+      // Prepare payload - convert dollars to cents for database storage
+      const hourlyRateInCents = pricing.hourlyRate === null || pricing.hourlyRate === undefined
+        ? null
+        : Math.round(Number(pricing.hourlyRate) * 100); // Convert dollars to cents
+
       const payload = {
-        hourlyRate: pricing.hourlyRate === null || pricing.hourlyRate === undefined ? null : Number(pricing.hourlyRate),
+        hourlyRate: hourlyRateInCents,
         currency: pricing.currency || 'CAD',
         minimumBookingHours: Math.max(1, Math.floor(minBookingHours)), // Ensure it's at least 1 and an integer
         pricingModel: pricing.pricingModel || 'hourly',
       };
 
       console.log('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });
-      
+
       const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/pricing`, {
         method: 'PUT',
         headers,
@@ -247,15 +252,15 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
 
       const updated = await response.json();
       console.log('Pricing saved successfully:', updated);
-      
-      // Update state with the response data
+
+      // Update state with the response data (convert cents back to dollars for UI)
       setPricing({
-        hourlyRate: updated.hourlyRate,
+        hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined ? Number(updated.hourlyRate) / 100 : null,
         currency: updated.currency || 'CAD',
         minimumBookingHours: updated.minimumBookingHours || 1,
         pricingModel: updated.pricingModel || 'hourly',
       });
-      
+
       toast({
         title: "Success",
         description: "Kitchen pricing updated successfully",
@@ -363,7 +368,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
               <Label htmlFor="pricingModel">Pricing Model</Label>
               <Select
                 value={pricing.pricingModel}
-                onValueChange={(value: 'hourly' | 'daily' | 'weekly') => 
+                onValueChange={(value: 'hourly' | 'daily' | 'weekly') =>
                   setPricing({ ...pricing, pricingModel: value })
                 }
               >
@@ -384,8 +389,8 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
             {/* Hourly Rate */}
             <div>
               <Label htmlFor="hourlyRate">
-                {pricing.pricingModel === 'hourly' ? 'Hourly Rate' : 
-                 pricing.pricingModel === 'daily' ? 'Daily Rate' : 'Weekly Rate'} ({pricing.currency})
+                {pricing.pricingModel === 'hourly' ? 'Hourly Rate' :
+                  pricing.pricingModel === 'daily' ? 'Daily Rate' : 'Weekly Rate'} ({pricing.currency})
               </Label>
               <div className="mt-2 relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -409,11 +414,11 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
                 />
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {pricing.pricingModel === 'hourly' 
+                {pricing.pricingModel === 'hourly'
                   ? 'Amount charged per hour (e.g., 50.00 = $50/hour)'
                   : pricing.pricingModel === 'daily'
-                  ? 'Amount charged per day (e.g., 200.00 = $200/day)'
-                  : 'Amount charged per week (e.g., 1000.00 = $1000/week)'}
+                    ? 'Amount charged per day (e.g., 200.00 = $200/day)'
+                    : 'Amount charged per week (e.g., 1000.00 = $1000/week)'}
               </p>
             </div>
 

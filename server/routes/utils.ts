@@ -37,7 +37,7 @@ export function normalizeImageUrl(url: string | null | undefined, req: Request):
         // Extract the path (e.g., "documents/221_file_1768267179125_cafeteria3.jpg")
         const r2Path = url.replace('https://files.localcooks.ca/', '');
         const origin = getOrigin();
-        return `${origin}/api/images/r2/${encodeURIComponent(r2Path)}`;
+        return `${origin}/api/files/images/r2/${encodeURIComponent(r2Path)}`;
     }
 
     // If already an absolute URL (http:// or https://), return as-is

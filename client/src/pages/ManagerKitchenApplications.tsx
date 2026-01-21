@@ -239,9 +239,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      if (currentUser?.uid) {
-        headers['X-User-ID'] = currentUser.uid;
-      }
+
 
       const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
         method: 'GET',

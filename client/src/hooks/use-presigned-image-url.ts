@@ -28,8 +28,8 @@ export function usePresignedImageUrl(imageUrl: string | null | undefined): strin
 
     // For R2 bucket URLs, fetch presigned URL
     setIsLoading(true);
-    
-    fetch('/api/images/presigned-url', {
+
+    fetch('/api/files/images/presigned-url', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

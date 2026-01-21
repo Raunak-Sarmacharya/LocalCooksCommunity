@@ -32,10 +32,16 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
 
   const fetchApplications = async () => {
     try {
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) return;
+
+      const token = await currentUser.getIdToken();
       const response = await fetch('/api/applications/my-applications', {
         credentials: 'include',
         headers: {
-          'X-User-ID': user?.uid || ''
+          'Authorization': `Bearer ${token}`
         }
       });
 
@@ -57,7 +63,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
 
   // Determine current step and progress
   // Only consider active applications (not cancelled or rejected)
-  const activeApplications = applications.filter(app => 
+  const activeApplications = applications.filter(app =>
     app.status !== 'cancelled' && app.status !== 'rejected'
   );
   const hasSubmittedApplication = activeApplications.length > 0;
@@ -65,7 +71,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
   const isApplicationApproved = hasApprovedApplication;
   const isApplicationPending = latestApplication?.status === 'inReview';
   const isApplicationRejected = latestApplication?.status === 'rejected';
-  
+
   // Check if user has any rejected applications (for messaging purposes)
   const hasRejectedApplications = applications.some(app => app.status === 'rejected');
   const hasCancelledApplications = applications.some(app => app.status === 'cancelled');
@@ -77,7 +83,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
   if (hasSubmittedApplication) {
     progressPercentage = 50;
     currentStep = 3; // Waiting for approval
-    
+
     if (isApplicationApproved) {
       progressPercentage = 100;
       currentStep = 4; // Completed
@@ -105,9 +111,9 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
     {
       id: 2,
       title: "Submit Application",
-      description: hasRejectedApplications ? "Submit a new application" : 
-                   hasCancelledApplications ? "Submit a new application" :
-                   "Complete your chef application",
+      description: hasRejectedApplications ? "Submit a new application" :
+        hasCancelledApplications ? "Submit a new application" :
+          "Complete your chef application",
       status: hasSubmittedApplication ? "completed" : "current",
       icon: hasSubmittedApplication ? CheckCircle : FileText,
       color: hasSubmittedApplication ? "text-green-600" : "text-blue-600",
@@ -118,18 +124,18 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
       id: 3,
       title: "Get Approved",
       description: "Wait for application review",
-      status: isApplicationApproved ? "completed" : 
-             isApplicationPending ? "pending" : 
-             isApplicationRejected ? "rejected" : "waiting",
-      icon: isApplicationApproved ? CheckCircle : 
-            isApplicationPending ? Clock : 
-            isApplicationRejected ? AlertCircle : Clock,
-      color: isApplicationApproved ? "text-green-600" : 
-             isApplicationPending ? "text-yellow-600" : 
-             isApplicationRejected ? "text-red-600" : "text-gray-400",
-      bgColor: isApplicationApproved ? "bg-green-100" : 
-               isApplicationPending ? "bg-yellow-100" : 
-               isApplicationRejected ? "bg-red-100" : "bg-gray-100"
+      status: isApplicationApproved ? "completed" :
+        isApplicationPending ? "pending" :
+          isApplicationRejected ? "rejected" : "waiting",
+      icon: isApplicationApproved ? CheckCircle :
+        isApplicationPending ? Clock :
+          isApplicationRejected ? AlertCircle : Clock,
+      color: isApplicationApproved ? "text-green-600" :
+        isApplicationPending ? "text-yellow-600" :
+          isApplicationRejected ? "text-red-600" : "text-gray-400",
+      bgColor: isApplicationApproved ? "bg-green-100" :
+        isApplicationPending ? "bg-yellow-100" :
+          isApplicationRejected ? "bg-red-100" : "bg-gray-100"
     }
   ];
 
@@ -185,19 +191,19 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
               <div className="flex-1 min-w-0 space-y-2">
                 <h3 className="font-semibold text-blue-900 text-sm">
                   {isApplicationApproved ? "🎉 Training Now Available!" :
-                   isApplicationPending ? "⏳ Application Under Review" :
-                   hasSubmittedApplication ? "✅ Application Submitted" :
-                   hasRejectedApplications ? "🔄 Ready to Reapply" :
-                   hasCancelledApplications ? "🔄 Ready to Apply Again" :
-                   "🚀 Ready to Apply"}
+                    isApplicationPending ? "⏳ Application Under Review" :
+                      hasSubmittedApplication ? "✅ Application Submitted" :
+                        hasRejectedApplications ? "🔄 Ready to Reapply" :
+                          hasCancelledApplications ? "🔄 Ready to Apply Again" :
+                            "🚀 Ready to Apply"}
                 </h3>
                 <p className="text-blue-700 text-sm leading-relaxed">
                   {isApplicationApproved ? "You now have access to all training videos!" :
-                   isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved." :
-                   hasSubmittedApplication ? "Great! Your application is in our system." :
-                   hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime." :
-                   hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!" :
-                   "Complete your chef application to access all training videos."}
+                    isApplicationPending ? "Our team is reviewing your application. You'll be notified once approved." :
+                      hasSubmittedApplication ? "Great! Your application is in our system." :
+                        hasRejectedApplications ? "Your previous application was not approved. You can submit a new application anytime." :
+                          hasCancelledApplications ? "Your previous application was cancelled. Feel free to submit a new one!" :
+                            "Complete your chef application to access all training videos."}
                 </p>
               </div>
             </div>
@@ -208,7 +214,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
             {steps.map((step, index) => {
               const Icon = step.icon;
               const isActive = currentStep === step.id;
-              
+
               return (
                 <motion.div
                   key={step.id}
@@ -224,7 +230,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                   <div className={`p-2 rounded-lg ${step.bgColor} flex-shrink-0`}>
                     <Icon className={`h-4 w-4 ${step.color}`} />
                   </div>
-                  
+
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="font-medium text-sm text-gray-900">{step.title}</h4>
@@ -239,14 +245,14 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                         `}
                       >
                         {step.status === 'completed' ? 'Done' :
-                         step.status === 'current' ? 'Action' :
-                         step.status === 'pending' ? 'Review' :
-                         step.status === 'rejected' ? 'Update' :
-                         'Wait'}
+                          step.status === 'current' ? 'Action' :
+                            step.status === 'pending' ? 'Review' :
+                              step.status === 'rejected' ? 'Update' :
+                                'Wait'}
                       </Badge>
                     </div>
                     <p className="text-xs text-gray-600 leading-relaxed">{step.description}</p>
-                    
+
                     {step.action && step.status === 'current' && (
                       <Button asChild size="sm" className="mt-2 h-8 text-xs">
                         <Link href={step.action}>
@@ -281,7 +287,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                       Check Application Status
                     </Link>
                   </Button>
-                  
+
                   <Button asChild variant="ghost" size="sm" className="h-8 text-xs text-gray-600">
                     <Link href="/">
                       Learn More About LocalCooks
@@ -300,7 +306,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
                 <div className="min-w-0 flex-1 space-y-1">
                   <span className="font-medium block">Fresh Start Available</span>
                   <span className="leading-relaxed">
-                    {hasRejectedApplications ? 
+                    {hasRejectedApplications ?
                       "Submit a new application anytime with updated information." :
                       "You can submit a new application whenever you're ready!"}
                   </span>

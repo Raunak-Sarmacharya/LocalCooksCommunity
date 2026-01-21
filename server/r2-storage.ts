@@ -160,7 +160,7 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
 
     // Extract key from URL using robust logic (same as getPresignedUrl)
     const urlObj = new URL(actualFileUrl);
-    let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
     const pathParts = pathname.split('/').filter(p => p);
 
     // Find the bucket name index
@@ -266,7 +266,7 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
 
     // Extract key from URL using robust logic
     const urlObj = new URL(fileUrl);
-    let pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
+    const pathname = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
     const pathParts = pathname.split('/').filter(p => p);
 
     // Find the bucket name index

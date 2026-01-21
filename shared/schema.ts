@@ -60,12 +60,14 @@ export const users = pgTable("users", {
   // Support dual roles - users can be both chef and manager
   isChef: boolean("is_chef").default(false).notNull(),
   isManager: boolean("is_manager").default(false).notNull(),
-  isPortalUser: boolean("is_portal_user").default(false).notNull(), // Portal user (third-party kitchen users)
+  isPortalUser: boolean("is_portal_user").default(false).notNull(),
   applicationType: applicationTypeEnum("application_type"), // DEPRECATED: kept for backward compatibility
   // Manager onboarding fields
   managerOnboardingCompleted: boolean("manager_onboarding_completed").default(false).notNull(), // Whether manager completed onboarding
   managerOnboardingSkipped: boolean("manager_onboarding_skipped").default(false).notNull(), // Whether manager skipped onboarding
   managerOnboardingStepsCompleted: jsonb("manager_onboarding_steps_completed").default({}).notNull(), // JSON object tracking completed onboarding steps
+  // Manager profile data (bespoke fields)
+  managerProfileData: jsonb("manager_profile_data").default({}).notNull(),
   // Stripe Connect fields for manager payments
   stripeConnectAccountId: text("stripe_connect_account_id").unique(), // Stripe Connect Express account ID
   stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(), // Status: 'not_started', 'in_progress', 'complete', 'failed'
@@ -162,10 +164,29 @@ export const insertUserSchema = z.object({
   isChef: z.boolean().default(false),
   isManager: z.boolean().default(false),
   isPortalUser: z.boolean().default(false),
+  managerProfileData: z.record(z.any()).default({}),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export interface UserWithFlags extends User {
+  uid?: string;
+  displayName?: string | null;
+  fullName?: string | null;
+  emailVerified?: boolean;
+}
+
+// Define email verification tokens table
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  token: text("token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
 
 // Remove old document verification schemas and types since they're now part of applications
 // The document verification functionality is now integrated into the applications table

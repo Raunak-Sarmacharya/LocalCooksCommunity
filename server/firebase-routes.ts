@@ -1,13 +1,12 @@
-import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema, updateLocationRequirementsSchema, updateApplicationTierSchema, chefKitchenApplications } from '@shared/schema';
+import { insertApplicationSchema, insertChefKitchenApplicationSchema, updateChefKitchenApplicationStatusSchema, updateChefKitchenApplicationDocumentsSchema, updateLocationRequirementsSchema, updateApplicationTierSchema, chefKitchenApplications, users, applications } from '@shared/schema';
 import { initializeConversation, sendSystemNotification, notifyTierTransition } from './chat-service';
 import { platformSettings } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc, isNotNull, ne } from 'drizzle-orm';
 import { chefLocationAccess } from '@shared/schema';
 import { db } from './db';
 import { Express, Request, Response, NextFunction } from 'express';
 import fs from 'fs';
 import { fromZodError } from 'zod-validation-error';
-import { pool } from './db';
 import { upload, uploadToBlob } from './fileUpload';
 import { handleFileUpload } from './upload-handler';
 import { initializeFirebaseAdmin } from './firebase-admin';
@@ -21,74 +20,12 @@ import { syncFirebaseUserToNeon } from './firebase-user-sync';
 import { firebaseStorage } from './storage-firebase';
 import { storage } from './storage';
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from '@shared/subdomain-utils';
+import { normalizeImageUrl } from './routes/utils';
 
 export function registerFirebaseRoutes(app: Express) {
 
-  // Helper function to get authenticated user from session (for admin endpoints)
-  async function getAuthenticatedUserFromSession(req: Request): Promise<{ id: number; username: string; role: string | null } | null> {
-    // Check Passport session first
-    if ((req as any).isAuthenticated?.() && (req as any).user) {
-      return (req as any).user as any;
-    }
-
-    // Check direct session data (for admin login via req.session.userId)
-    if ((req.session as any)?.userId) {
-      const userId = (req.session as any).userId;
-      const user = await storage.getUser(userId);
-      if (user) {
-        return user;
-      }
-    }
-
-    // Check session user object
-    if ((req.session as any)?.user) {
-      return (req.session as any).user;
-    }
-
-    return null;
-  }
-
-  // Session-based admin middleware (for admin endpoints that use session auth)
-  // IMPORTANT: This middleware ONLY checks session auth and IGNORES any Firebase tokens
-  async function requireSessionAdmin(req: Request, res: Response, next: NextFunction) {
-    try {
-      // Explicitly ignore any Authorization headers - this endpoint uses session auth only
-      // Delete any Firebase-related request properties to prevent accidental Firebase auth
-      delete (req as any).firebaseUser;
-
-      const user = await getAuthenticatedUserFromSession(req);
-
-      if (!user) {
-        console.log('❌ Session admin auth failed: No session found');
-        return res.status(401).json({
-          error: 'Unauthorized',
-          message: 'Session authentication required. Please login as an admin.'
-        });
-      }
-
-      if (user.role !== 'admin') {
-        console.log(`❌ Session admin auth failed: User ${user.id} is not an admin (role: ${user.role})`);
-        return res.status(403).json({
-          error: 'Forbidden',
-          message: 'Admin access required',
-          userRole: user.role || 'none'
-        });
-      }
-
-      // Set user on request for use in handlers
-      (req as any).sessionUser = user;
-      (req as any).neonUser = user; // For backward compatibility with existing code
-
-      console.log(`✅ Session admin auth: User ${user.id} (${user.username}) authenticated as admin`);
-      next();
-    } catch (error) {
-      console.error('Session admin auth error:', error);
-      return res.status(500).json({
-        error: 'Internal server error',
-        message: 'Authentication verification failed'
-      });
-    }
-  }
+  // Session-based admin middleware has been removed.
+  // Use requireAdmin and verifyFirebaseAuth instead.
 
   // 🔥 Firebase User Registration Endpoint
   // This is called during registration to create new users
@@ -295,15 +232,11 @@ export function registerFirebaseRoutes(app: Express) {
           const bcrypt = require('bcryptjs');
           const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-          // Update using raw query since password might not be in schema
-          const { pool } = await import('./db');
-          if (pool) {
-            await pool.query(
-              'UPDATE users SET password = $1 WHERE firebase_uid = $2',
-              [hashedPassword, userRecord.uid]
-            );
-            console.log(`✅ Password hash updated in Neon DB for user: ${neonUser.id}`);
-          }
+          await db.update(users)
+            .set({ password: hashedPassword })
+            .where(eq(users.firebaseUid, userRecord.uid));
+
+          console.log(`✅ Password hash updated in Neon DB for user: ${neonUser.id}`);
         }
 
         return res.status(200).json({
@@ -435,29 +368,24 @@ export function registerFirebaseRoutes(app: Express) {
       let stripeConnectAccountId = null;
       let stripeConnectOnboardingStatus = null;
 
-      if (pool) {
-        try {
-          // Get full name from chef applications
-          const chefAppResult = await pool.query(
-            'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-            [req.neonUser!.id]
-          );
-          if (chefAppResult.rows.length > 0 && chefAppResult.rows[0].full_name) {
-            userFullName = chefAppResult.rows[0].full_name;
-          }
+      try {
+        // Get full name from chef applications
+        const [chefApp] = await db
+          .select({ fullName: applications.fullName })
+          .from(applications)
+          .where(eq(applications.userId, req.neonUser!.id))
+          .orderBy(desc(applications.createdAt))
+          .limit(1);
 
-          // Fetch Stripe Connect account information
-          const stripeResult = await pool.query(
-            'SELECT stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1',
-            [req.neonUser!.id]
-          );
-          if (stripeResult.rows.length > 0) {
-            stripeConnectAccountId = stripeResult.rows[0].stripe_connect_account_id || null;
-            stripeConnectOnboardingStatus = stripeResult.rows[0].stripe_connect_onboarding_status || null;
-          }
-        } catch (dbError) {
-          console.error('Error fetching user data:', dbError);
+        if (chefApp?.fullName) {
+          userFullName = chefApp.fullName;
         }
+
+        // Use Stripe info from req.neonUser which is already populated by middleware
+        stripeConnectAccountId = req.neonUser!.stripeConnectAccountId || null;
+        stripeConnectOnboardingStatus = req.neonUser!.stripeConnectOnboardingStatus || null;
+      } catch (dbError) {
+        console.error('Error fetching user data from Drizzle:', dbError);
       }
 
       // Log user data for debugging
@@ -475,9 +403,13 @@ export function registerFirebaseRoutes(app: Express) {
         id: req.neonUser!.id,
         username: req.neonUser!.username,
         role: req.neonUser!.role,
+        isVerified: req.neonUser!.isVerified !== undefined ? req.neonUser!.isVerified : req.firebaseUser!.email_verified,
         is_verified: req.neonUser!.isVerified !== undefined ? req.neonUser!.isVerified : req.firebaseUser!.email_verified,
+        hasSeenWelcome: req.neonUser!.has_seen_welcome || false,
         has_seen_welcome: req.neonUser!.has_seen_welcome || false,
         isChef: req.neonUser!.isChef || false,
+        isManager: req.neonUser!.isManager || false,
+        isPortalUser: (req.neonUser! as any).isPortalUser || false,
         displayName: userFullName || null, // User's full name from application
         fullName: userFullName || null, // Alias for compatibility
         stripeConnectAccountId: stripeConnectAccountId, // Stripe Connect account ID
@@ -489,6 +421,9 @@ export function registerFirebaseRoutes(app: Express) {
           id: req.neonUser!.id,
           username: req.neonUser!.username,
           role: req.neonUser!.role,
+          isChef: req.neonUser!.isChef,
+          isManager: req.neonUser!.isManager,
+          isVerified: req.neonUser!.isVerified,
         },
         firebaseUser: {
           uid: req.firebaseUser!.uid,
@@ -532,6 +467,38 @@ export function registerFirebaseRoutes(app: Express) {
     } catch (error) {
       console.error('Error getting user:', error);
       res.status(500).json({ error: 'Failed to get user data' });
+    }
+  });
+
+  // 🔥 Sync Verification Status (Manual trigger from frontend)
+  app.post('/api/sync-verification-status', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+    try {
+      if (!req.firebaseUser || !req.neonUser) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const firebaseVerified = req.firebaseUser.email_verified === true;
+      const neonUserId = req.neonUser.id;
+      const currentDbVerified = req.neonUser.isVerified === true;
+
+      console.log(`🔄 SYNC VERIFICATION: User ${neonUserId} (Firebase verified: ${firebaseVerified}, DB verified: ${currentDbVerified})`);
+
+      if (firebaseVerified && !currentDbVerified) {
+        await db.update(users)
+          .set({ isVerified: true })
+          .where(eq(users.id, neonUserId));
+        console.log(`✅ SYNC SUCCESS: User ${neonUserId} marked as verified in database`);
+      }
+
+      res.json({
+        success: true,
+        firebaseVerified,
+        databaseVerified: firebaseVerified || currentDbVerified,
+        message: firebaseVerified ? 'Verification status synchronized' : 'User not yet verified in Firebase'
+      });
+    } catch (error) {
+      console.error('❌ Error syncing verification status:', error);
+      res.status(500).json({ error: 'Failed to sync verification status' });
     }
   });
 
@@ -981,8 +948,16 @@ export function registerFirebaseRoutes(app: Express) {
       if (emailMode === 'all') {
         // Get all user emails from database
         try {
-          const result = await pool.query('SELECT email FROM users WHERE email IS NOT NULL AND email != \'\'');
-          targetEmails = result.rows.map(row => row.email);
+          const result = await db
+            .select({ email: users.username })
+            .from(users)
+            .where(
+              and(
+                isNotNull(users.username),
+                ne(users.username, '')
+              )
+            );
+          targetEmails = result.map(row => row.email as string);
         } catch (error) {
           console.error('🔥 Error fetching user emails:', error);
           return res.status(500).json({ error: 'Failed to fetch user emails' });
@@ -1651,6 +1626,130 @@ export function registerFirebaseRoutes(app: Express) {
       }
     });
 
+  // 🔥 Public Locations List
+  app.get('/api/public/locations', async (req: Request, res: Response) => {
+    try {
+      // Fetch all locations
+      const allLocations = await firebaseStorage.getAllLocations();
+
+      // Filter and sanitize for public consumption
+      // Ideally we should filter for "active" or "public" locations if such a status exists
+      // For now, we'll return all locations but sanitize the fields
+
+      const publicLocations = allLocations.map(location => {
+        // Normalize images using the request object for host information
+        const brandImageUrl = normalizeImageUrl(
+          location.brandImageUrl || location.brand_image_url || null,
+          req
+        );
+        const logoUrl = normalizeImageUrl(
+          location.logoUrl || location.logo_url || null,
+          req
+        );
+
+        return {
+          id: location.id,
+          name: location.name,
+          address: location.address,
+          brandImageUrl,
+          brand_image_url: brandImageUrl, // compatibility
+          logoUrl,
+          logo_url: logoUrl, // compatibility
+          // Include coordinates if available in the future
+          // include descriptive fields that are safe
+          description: location.description || null,
+        };
+      });
+
+      res.json(publicLocations);
+    } catch (error) {
+      console.error('Error fetching public locations:', error);
+      res.status(500).json({ error: 'Failed to fetch locations' });
+    }
+  });
+
+  // 🔥 Public Location Details
+  app.get('/api/public/locations/:locationId/details', async (req: Request, res: Response) => {
+    try {
+      const locationId = parseInt(req.params.locationId);
+      if (isNaN(locationId)) {
+        return res.status(400).json({ error: 'Invalid location ID' });
+      }
+
+      const location = await firebaseStorage.getLocationById(locationId);
+      if (!location) {
+        return res.status(404).json({ error: 'Location not found' });
+      }
+
+      // Get kitchens for this location
+      const allKitchens = await firebaseStorage.getKitchensByLocation(locationId);
+
+      // Filter for active kitchens
+      const activeKitchens = allKitchens.filter((kitchen: any) => {
+        const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
+        return isActive !== false; // Default to true if undefined
+      });
+
+      // Normalize location images
+      const brandImageUrl = normalizeImageUrl(
+        location.brandImageUrl || location.brand_image_url || null,
+        req
+      );
+      const logoUrl = normalizeImageUrl(
+        location.logoUrl || location.logo_url || null,
+        req
+      );
+
+      // Sanitize and normalize kitchens
+      const sanitizedKitchens = activeKitchens.map((kitchen: any) => {
+        const kImageUrl = normalizeImageUrl(
+          kitchen.imageUrl || kitchen.image_url || null,
+          req
+        );
+        const kGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) =>
+          normalizeImageUrl(img, req)
+        ).filter((url: string | null): url is string => url !== null);
+
+        // Handle hourly rate conversion (cents to dollars)
+        const hourlyRateCents = kitchen.hourlyRate || kitchen.hourly_rate;
+        const hourlyRate = hourlyRateCents !== null && hourlyRateCents !== undefined
+          ? (typeof hourlyRateCents === 'string' ? parseFloat(hourlyRateCents) : hourlyRateCents) / 100
+          : null;
+
+        return {
+          id: kitchen.id,
+          name: kitchen.name,
+          description: kitchen.description,
+          imageUrl: kImageUrl,
+          image_url: kImageUrl,
+          galleryImages: kGalleryImages,
+          gallery_images: kGalleryImages, // compatibility
+          amenities: kitchen.amenities || [],
+          hourlyRate,
+          hourly_rate: hourlyRate, // compatibility
+          pricingModel: kitchen.pricingModel || kitchen.pricing_model || 'hourly',
+          currency: kitchen.currency || 'CAD'
+        };
+      });
+
+      res.json({
+        id: location.id,
+        name: location.name,
+        address: location.address,
+        description: location.description || null,
+        brandImageUrl,
+        brand_image_url: brandImageUrl, // compatibility
+        logoUrl,
+        logo_url: logoUrl, // compatibility
+        kitchens: sanitizedKitchens
+      });
+
+    } catch (error) {
+      console.error('Error fetching location details:', error);
+      res.status(500).json({ error: 'Failed to fetch location details' });
+    }
+  });
+
   // 🔥 Public Platform Settings Endpoint (for chefs to see service fee rate)
   app.get('/api/platform-settings/service-fee-rate', async (req: Request, res: Response) => {
     try {
@@ -1693,7 +1792,7 @@ export function registerFirebaseRoutes(app: Express) {
   // 🔥 Admin Platform Settings Endpoints
   // Get service fee rate (admin endpoint with full details)
   // NOTE: Admins use session-based auth, not Firebase auth
-  app.get('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req: Request, res: Response) => {
+  app.get('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
       const [setting] = await db
         .select()
@@ -1734,7 +1833,7 @@ export function registerFirebaseRoutes(app: Express) {
 
   // Update service fee rate
   // NOTE: Admins use session-based auth, not Firebase auth
-  app.put('/api/admin/platform-settings/service-fee-rate', requireSessionAdmin, async (req: Request, res: Response) => {
+  app.put('/api/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
       const { rate } = req.body;
 

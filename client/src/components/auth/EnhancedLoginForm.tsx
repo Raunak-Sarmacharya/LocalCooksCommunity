@@ -241,7 +241,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       setAuthState('error');
       
       // Handle different Firebase error types with user-friendly messages via custom alerts
-      let errorTitle = "Sign In Failed";
+      const errorTitle = "Sign In Failed";
       let errorMessage = "";
       
       if (e.message.includes('too-many-requests')) {
@@ -290,7 +290,7 @@ export default function EnhancedLoginForm({ onSuccess, setHasAttemptedLogin }: E
       setGoogleAuthState('error');
       
       // Handle Google sign-in errors with user-friendly messages via custom alerts
-      let errorTitle = "Google Sign In Failed";
+      const errorTitle = "Google Sign In Failed";
       let errorMessage = "";
       
       if (e.message.includes('popup-closed-by-user')) {

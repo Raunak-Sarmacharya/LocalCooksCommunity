@@ -95,7 +95,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
       setAuthState('error');
       
       // Handle Firebase-specific errors with user-friendly messages via custom alerts
-      let errorTitle = "Registration Failed";
+      const errorTitle = "Registration Failed";
       let errorMessage = "";
       
       if (e.message.includes('EMAIL_EXISTS') || e.message.includes('email-already-in-use')) {
@@ -211,7 +211,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
       setAuthState('error');
       
       // Handle Google registration errors with user-friendly messages via custom alerts
-      let errorTitle = "Google Registration Failed";
+      const errorTitle = "Google Registration Failed";
       let errorMessage = "";
       
       if (e.message.includes('popup-closed-by-user')) {

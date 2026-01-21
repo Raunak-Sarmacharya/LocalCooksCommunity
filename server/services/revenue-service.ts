@@ -10,7 +10,7 @@
  * All amounts are in cents (integers) to avoid floating-point precision issues.
  */
 
-import type { Pool } from '@neondatabase/serverless';
+import { sql } from "drizzle-orm";
 
 export interface RevenueMetrics {
   totalRevenue: number;        // Total booking revenue (cents)
@@ -60,7 +60,7 @@ export function calculateManagerRevenue(
     console.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
     return totalRevenue; // If invalid, manager gets 100%
   }
-  
+
   // Manager gets (100% - service_fee_rate)
   const managerRate = 1 - serviceFeeRate;
   return Math.round(totalRevenue * managerRate);
@@ -70,7 +70,7 @@ export function calculateManagerRevenue(
  * Get revenue metrics for a manager
  * 
  * @param managerId - Manager user ID
- * @param dbPool - Database pool (required)
+ * @param db - Drizzle database instance
  * @param startDate - Optional start date filter (ISO string or Date)
  * @param endDate - Optional end date filter (ISO string or Date)
  * @param locationId - Optional location filter
@@ -78,7 +78,7 @@ export function calculateManagerRevenue(
  */
 export async function getRevenueMetrics(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   startDate?: string | Date,
   endDate?: string | Date,
   locationId?: number
@@ -89,30 +89,22 @@ export async function getRevenueMetrics(
     // Future bookings with processing payments should be included in stats
     // Date filters are optional and only apply to completed payments for breakdown purposes
     // But ALL pending/processing payments (including future bookings) should always be counted
-    let whereClause = `
-      WHERE l.manager_id = $1
-        AND kb.status != 'cancelled'
-    `;
-    const params: any[] = [managerId];
-    let paramIndex = 2;
 
-    // For the main query, we'll include ALL bookings regardless of date
-    // Date filters will only be applied to completed payments for breakdown
-    // This ensures future bookings with pending payments are always shown
-    // Note: We don't apply date filters here to include all bookings
+    // Base conditions
+    const whereConditions = [sql`l.manager_id = ${managerId}`, sql`kb.status != 'cancelled'`];
 
     if (locationId) {
-      whereClause += ` AND l.id = $${paramIndex}`;
-      params.push(locationId);
-      paramIndex++;
+      whereConditions.push(sql`l.id = ${locationId}`);
     }
+
+    const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
 
     // Get service fee rate (for reference, but we use direct subtraction now)
     const { getServiceFeeRate } = await import('./pricing-service.js');
-    const serviceFeeRate = await getServiceFeeRate(dbPool);
+    const serviceFeeRate = await getServiceFeeRate();
 
     // Debug: Check if there are any bookings for this manager
-    const debugQuery = await dbPool.query(`
+    const debugQuery = await db.execute(sql`
       SELECT 
         COUNT(*) as total_bookings,
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
@@ -126,14 +118,13 @@ export async function getRevenueMetrics(
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
-      WHERE l.manager_id = $1
-    `, [managerId]);
-    
+      WHERE l.manager_id = ${managerId}
+    `);
+
     console.log('[Revenue Service] Debug - Manager bookings:', {
       managerId,
       debug: debugQuery.rows[0],
-      whereClause,
-      params,
+      locationId,
       startDate,
       endDate
     });
@@ -142,7 +133,7 @@ export async function getRevenueMetrics(
     // This ensures future bookings are included in all metrics
     // Calculate effective total_price: use total_price if available, otherwise calculate from hourly_rate * duration_hours
     // Also handle numeric type properly by casting to numeric first, then to bigint
-    const result = await dbPool.query(`
+    const result = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -201,26 +192,23 @@ export async function getRevenueMetrics(
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${whereClause}
-    `, params);
+    `);
 
     // Query processing payments (payments still being processed, not pre-authorized)
     // With automatic capture, we only count 'processing' status (not 'pending')
     // 'pending' status is no longer used for pre-authorization - payments are immediately captured
-    let pendingWhereClause = `
-      WHERE l.manager_id = $1
-        AND kb.status != 'cancelled'
-        AND kb.payment_status = 'processing'
-    `;
-    const pendingParams: any[] = [managerId];
-    let pendingParamIndex = 2;
 
+    const pendingWhereConditions = [
+      sql`l.manager_id = ${managerId}`,
+      sql`kb.status != 'cancelled'`,
+      sql`kb.payment_status = 'processing'`
+    ];
     if (locationId) {
-      pendingWhereClause += ` AND l.id = $${pendingParamIndex}`;
-      pendingParams.push(locationId);
-      pendingParamIndex++;
+      pendingWhereConditions.push(sql`l.id = ${locationId}`);
     }
+    const pendingWhereClause = sql`WHERE ${sql.join(pendingWhereConditions, sql` AND `)}`;
 
-    const pendingResult = await dbPool.query(`
+    const pendingResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -237,36 +225,30 @@ export async function getRevenueMetrics(
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
-    `, pendingParams);
+    `);
 
     // Debug: Log pending payments query results
-    console.log('[Revenue Service] Pending payments query:', {
+    console.log('[Revenue Service] Pending payments query result:', {
       managerId,
       locationId,
       pendingCount: pendingResult.rows[0]?.pending_count_all || 0,
-      pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0,
-      whereClause: pendingWhereClause,
-      params: pendingParams
+      pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0
     });
 
     // Query ALL completed payments regardless of booking date
     // This ensures old completed payments are always visible to managers
     // Only count 'paid' status - payments are immediately captured with automatic capture
-    let completedWhereClause = `
-      WHERE l.manager_id = $1
-        AND kb.status != 'cancelled'
-        AND kb.payment_status = 'paid'
-    `;
-    const completedParams: any[] = [managerId];
-    let completedParamIndex = 2;
-
+    const completedWhereConditions = [
+      sql`l.manager_id = ${managerId}`,
+      sql`kb.status != 'cancelled'`,
+      sql`kb.payment_status = 'paid'`
+    ];
     if (locationId) {
-      completedWhereClause += ` AND l.id = $${completedParamIndex}`;
-      completedParams.push(locationId);
-      completedParamIndex++;
+      completedWhereConditions.push(sql`l.id = ${locationId}`);
     }
+    const completedWhereClause = sql`WHERE ${sql.join(completedWhereConditions, sql` AND `)}`;
 
-    const completedResult = await dbPool.query(`
+    const completedResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -283,10 +265,10 @@ export async function getRevenueMetrics(
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${completedWhereClause}
-    `, completedParams);
+    `);
 
     // Get processing payments (payments still being processed)
-    const pendingRow = pendingResult.rows[0] || {};
+    const pendingRow: any = pendingResult.rows[0] || {};
     const allPendingPayments = typeof pendingRow.pending_payments_all === 'string'
       ? parseInt(pendingRow.pending_payments_all) || 0
       : (pendingRow.pending_payments_all ? parseInt(String(pendingRow.pending_payments_all)) : 0);
@@ -299,7 +281,7 @@ export async function getRevenueMetrics(
     });
 
     // Get ALL completed payments regardless of booking date
-    const completedRow = completedResult.rows[0] || {};
+    const completedRow: any = completedResult.rows[0] || {};
     const allCompletedPayments = typeof completedRow.completed_payments_all === 'string'
       ? parseInt(completedRow.completed_payments_all) || 0
       : (completedRow.completed_payments_all ? parseInt(String(completedRow.completed_payments_all)) : 0);
@@ -307,19 +289,20 @@ export async function getRevenueMetrics(
     // Debug: Log query results
     console.log('[Revenue Service] Main query result count:', result.rows.length);
     if (result.rows.length > 0) {
+      const dbgRow: any = result.rows[0];
       console.log('[Revenue Service] Main query result:', {
-        total_revenue: result.rows[0].total_revenue,
-        platform_fee: result.rows[0].platform_fee,
-        booking_count: result.rows[0].booking_count,
+        total_revenue: dbgRow.total_revenue,
+        platform_fee: dbgRow.platform_fee,
+        booking_count: dbgRow.booking_count,
       });
     }
-    
+
     if (result.rows.length === 0) {
       console.log('[Revenue Service] No bookings in date range, checking for payments outside date range...');
       // Even if no bookings in date range, check if there are pending or completed payments
       // Calculate revenue based on all payments (completed + pending)
       // We need to get the service fees for these payments too
-      const pendingServiceFeeResult = await dbPool.query(`
+      const pendingServiceFeeResult = await db.execute(sql`
         SELECT 
           COALESCE(SUM(
             COALESCE(kb.service_fee, 0)::numeric
@@ -328,9 +311,9 @@ export async function getRevenueMetrics(
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
-      `, pendingParams);
-      
-      const completedServiceFeeResult = await dbPool.query(`
+      `);
+
+      const completedServiceFeeResult = await db.execute(sql`
         SELECT 
           COALESCE(SUM(
             COALESCE(kb.service_fee, 0)::numeric
@@ -339,23 +322,25 @@ export async function getRevenueMetrics(
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
         ${completedWhereClause}
-      `, completedParams);
-      
-      const pendingServiceFee = typeof pendingServiceFeeResult.rows[0]?.pending_service_fee === 'string'
-        ? parseInt(pendingServiceFeeResult.rows[0].pending_service_fee) || 0
-        : (pendingServiceFeeResult.rows[0]?.pending_service_fee ? parseInt(String(pendingServiceFeeResult.rows[0].pending_service_fee)) : 0);
-      
-      const completedServiceFee = typeof completedServiceFeeResult.rows[0]?.completed_service_fee === 'string'
-        ? parseInt(completedServiceFeeResult.rows[0].completed_service_fee) || 0
-        : (completedServiceFeeResult.rows[0]?.completed_service_fee ? parseInt(String(completedServiceFeeResult.rows[0].completed_service_fee)) : 0);
-      
+      `);
+
+      const pSFr: any = pendingServiceFeeResult.rows[0] || {};
+      const pendingServiceFee = typeof pSFr.pending_service_fee === 'string'
+        ? parseInt(pSFr.pending_service_fee) || 0
+        : (pSFr.pending_service_fee ? parseInt(String(pSFr.pending_service_fee)) : 0);
+
+      const cSFr: any = completedServiceFeeResult.rows[0] || {};
+      const completedServiceFee = typeof cSFr.completed_service_fee === 'string'
+        ? parseInt(cSFr.completed_service_fee) || 0
+        : (cSFr.completed_service_fee ? parseInt(String(cSFr.completed_service_fee)) : 0);
+
       const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
       const totalServiceFee = pendingServiceFee + completedServiceFee;
       // Manager revenue = total_price - service_fee (total_price already includes service_fee)
       const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
       // Deposited manager revenue = only from paid bookings (succeeded transactions)
       const depositedManagerRevenue = allCompletedPayments - completedServiceFee;
-      
+
       return {
         totalRevenue: totalRevenueWithAllPayments || 0,
         platformFee: totalServiceFee || 0,
@@ -371,8 +356,8 @@ export async function getRevenueMetrics(
       };
     }
 
-    const row = result.rows[0];
-    
+    const row: any = result.rows[0];
+
     // Debug logging
     console.log('[Revenue Service] Query result:', {
       total_revenue: row.total_revenue,
@@ -382,23 +367,23 @@ export async function getRevenueMetrics(
       serviceFeeRate,
       rowData: row
     });
-    
+
     // Handle numeric values properly - they come as strings from PostgreSQL numeric type
-    const totalRevenue = typeof row.total_revenue === 'string' 
-      ? parseInt(row.total_revenue) 
+    const totalRevenue = typeof row.total_revenue === 'string'
+      ? parseInt(row.total_revenue)
       : (row.total_revenue ? parseInt(String(row.total_revenue)) : 0);
     const platformFee = typeof row.platform_fee === 'string'
       ? parseInt(row.platform_fee)
       : (row.platform_fee ? parseInt(String(row.platform_fee)) : 0);
-    
+
     // Use ALL completed payments (regardless of booking date) instead of just those in date range
     // This ensures managers can see all their historical completed payments
     // Total revenue should include both ALL completed payments and ALL pending payments
     // This gives managers complete visibility into all revenue (historical + future committed)
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-    
+
     // Get service fees for all payments (pending + completed)
-    const pendingServiceFeeResult = await dbPool.query(`
+    const pendingServiceFeeResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
           COALESCE(kb.service_fee, 0)::numeric
@@ -407,9 +392,9 @@ export async function getRevenueMetrics(
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
-    `, pendingParams);
-    
-    const completedServiceFeeResult = await dbPool.query(`
+    `);
+
+    const completedServiceFeeResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
           COALESCE(kb.service_fee, 0)::numeric
@@ -418,18 +403,20 @@ export async function getRevenueMetrics(
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${completedWhereClause}
-    `, completedParams);
-    
-    const pendingServiceFee = typeof pendingServiceFeeResult.rows[0]?.pending_service_fee === 'string'
-      ? parseInt(pendingServiceFeeResult.rows[0].pending_service_fee) || 0
-      : (pendingServiceFeeResult.rows[0]?.pending_service_fee ? parseInt(String(pendingServiceFeeResult.rows[0].pending_service_fee)) : 0);
-    
-    const completedServiceFee = typeof completedServiceFeeResult.rows[0]?.completed_service_fee === 'string'
-      ? parseInt(completedServiceFeeResult.rows[0].completed_service_fee) || 0
-      : (completedServiceFeeResult.rows[0]?.completed_service_fee ? parseInt(String(completedServiceFeeResult.rows[0].completed_service_fee)) : 0);
-    
+    `);
+
+    const pSFr: any = pendingServiceFeeResult.rows[0] || {};
+    const pendingServiceFee = typeof pSFr.pending_service_fee === 'string'
+      ? parseInt(pSFr.pending_service_fee) || 0
+      : (pSFr.pending_service_fee ? parseInt(String(pSFr.pending_service_fee)) : 0);
+
+    const cSFr: any = completedServiceFeeResult.rows[0] || {};
+    const completedServiceFee = typeof cSFr.completed_service_fee === 'string'
+      ? parseInt(cSFr.completed_service_fee) || 0
+      : (cSFr.completed_service_fee ? parseInt(String(cSFr.completed_service_fee)) : 0);
+
     const totalServiceFee = pendingServiceFee + completedServiceFee;
-    
+
     // Manager revenue = total_price - service_fee (total_price already includes service_fee)
     const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
     // Deposited manager revenue = only from paid bookings (succeeded transactions)
@@ -442,7 +429,7 @@ export async function getRevenueMetrics(
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : (depositedManagerRevenue || 0),
       pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
       completedPayments: allCompletedPayments, // Use ALL completed payments, not just those in date range
-      averageBookingValue: row.avg_booking_value 
+      averageBookingValue: row.avg_booking_value
         ? (isNaN(Math.round(parseFloat(String(row.avg_booking_value)))) ? 0 : Math.round(parseFloat(String(row.avg_booking_value))))
         : 0,
       bookingCount: isNaN(parseInt(row.booking_count)) ? 0 : (parseInt(row.booking_count) || 0),
@@ -469,39 +456,32 @@ export async function getRevenueMetrics(
  */
 export async function getRevenueByLocation(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   startDate?: string | Date,
   endDate?: string | Date
 ): Promise<RevenueByLocation[]> {
   try {
     // Build WHERE clause
-    let whereClause = `
-      WHERE l.manager_id = $1
-        AND kb.status != 'cancelled'
-    `;
-    const params: any[] = [managerId];
-    let paramIndex = 2;
+    const whereConditions = [sql`l.manager_id = ${managerId}`, sql`kb.status != 'cancelled'`];
 
     if (startDate) {
       const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(kb.booking_date) >= $${paramIndex}::date`;
-      params.push(start);
-      paramIndex++;
+      whereConditions.push(sql`DATE(kb.booking_date) >= ${start}::date`);
     }
 
     if (endDate) {
       const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(kb.booking_date) <= $${paramIndex}::date`;
-      params.push(end);
-      paramIndex++;
+      whereConditions.push(sql`DATE(kb.booking_date) <= ${end}::date`);
     }
+
+    const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
 
     // Get service fee rate (for reference, but we use direct subtraction now)
     const { getServiceFeeRate } = await import('./pricing-service.js');
-    const serviceFeeRate = await getServiceFeeRate(dbPool);
+    const serviceFeeRate = await getServiceFeeRate();
 
     // Query revenue by location
-    const result = await dbPool.query(`
+    const result = await db.execute(sql`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -524,7 +504,7 @@ export async function getRevenueByLocation(
       ${whereClause}
       GROUP BY l.id, l.name
       ORDER BY total_revenue DESC
-    `, params);
+    `);
 
     return result.rows.map((row: any) => {
       const totalRevenue = typeof row.total_revenue === 'string'
@@ -562,7 +542,7 @@ export async function getRevenueByLocation(
  */
 export async function getRevenueByDate(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   startDate: string | Date,
   endDate: string | Date
 ): Promise<RevenueByDate[]> {
@@ -572,10 +552,11 @@ export async function getRevenueByDate(
 
     // Get service fee rate (for reference, but we use direct subtraction now)
     const { getServiceFeeRate } = await import('./pricing-service.js');
-    const serviceFeeRate = await getServiceFeeRate(dbPool);
+    const serviceFeeRate = await getServiceFeeRate();
 
     // Query revenue by date
-    const result = await dbPool.query(`
+    // Note: Drizzle SQL template params are positional $1, $2, etc. automatically
+    const result = await db.execute(sql`
       SELECT 
         DATE(kb.booking_date)::text as date,
         COALESCE(SUM(
@@ -593,14 +574,14 @@ export async function getRevenueByDate(
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
-      WHERE l.manager_id = $1
+      WHERE l.manager_id = ${managerId}
         AND kb.status != 'cancelled'
-        AND DATE(kb.booking_date) >= $2::date
-        AND DATE(kb.booking_date) <= $3::date
+        AND DATE(kb.booking_date) >= ${start}::date
+        AND DATE(kb.booking_date) <= ${end}::date
       GROUP BY DATE(kb.booking_date)
       ORDER BY date ASC
-    `, [managerId, start, end]);
-    
+    `);
+
     console.log('[Revenue Service] Revenue by date query:', {
       managerId,
       start,
@@ -645,7 +626,7 @@ export async function getRevenueByDate(
  */
 export async function getTransactionHistory(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   startDate?: string | Date,
   endDate?: string | Date,
   locationId?: number,
@@ -654,42 +635,30 @@ export async function getTransactionHistory(
 ): Promise<any[]> {
   try {
     // Build WHERE clause
-    // Include all bookings for the manager, with optional date filtering
-    // Use created_at for date filtering to include recent bookings regardless of booking_date
-    let whereClause = `
-      WHERE l.manager_id = $1
-        AND kb.status != 'cancelled'
-    `;
-    const params: any[] = [managerId];
-    let paramIndex = 2;
+    const whereConditions = [sql`l.manager_id = ${managerId}`, sql`kb.status != 'cancelled'`];
 
-    // Date filters apply to either booking_date OR created_at to catch all recent bookings
     if (startDate) {
       const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      whereClause += ` AND (DATE(kb.booking_date) >= $${paramIndex}::date OR DATE(kb.created_at) >= $${paramIndex}::date)`;
-      params.push(start);
-      paramIndex++;
+      whereConditions.push(sql`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
 
     if (endDate) {
       const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      whereClause += ` AND (DATE(kb.booking_date) <= $${paramIndex}::date OR DATE(kb.created_at) <= $${paramIndex}::date)`;
-      params.push(end);
-      paramIndex++;
+      whereConditions.push(sql`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
 
     if (locationId) {
-      whereClause += ` AND l.id = $${paramIndex}`;
-      params.push(locationId);
-      paramIndex++;
+      whereConditions.push(sql`l.id = ${locationId}`);
     }
+
+    const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
 
     // Get service fee rate (for reference, but we use direct subtraction now)
     const { getServiceFeeRate } = await import('./pricing-service.js');
-    const serviceFeeRate = await getServiceFeeRate(dbPool);
+    const serviceFeeRate = await getServiceFeeRate();
 
     // Query transactions
-    const result = await dbPool.query(`
+    const result = await db.execute(sql`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -720,8 +689,8 @@ export async function getTransactionHistory(
       LEFT JOIN users u ON kb.chef_id = u.id
       ${whereClause}
       ORDER BY kb.booking_date DESC, kb.created_at DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `, [...params, limit, offset]);
+      LIMIT ${limit} OFFSET ${offset}
+    `);
 
     return result.rows.map((row: any) => {
       // Handle null/undefined total_price gracefully
@@ -729,7 +698,7 @@ export async function getTransactionHistory(
       const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
       // Manager revenue = total_price - service_fee (total_price already includes service_fee)
       const managerRevenue = totalPriceCents - serviceFeeCents;
-      
+
       return {
         id: row.id,
         bookingDate: row.booking_date,
@@ -762,7 +731,7 @@ export async function getTransactionHistory(
  */
 export async function getCompleteRevenueMetrics(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   startDate?: string | Date,
   endDate?: string | Date,
   locationId?: number
@@ -774,58 +743,46 @@ export async function getCompleteRevenueMetrics(
       endDate,
       locationId
     });
-    
+
     // Try to use payment_transactions first (more accurate and faster)
     try {
       const { getRevenueMetricsFromTransactions } = await import('./revenue-service-v2.js');
-      const metrics = await getRevenueMetricsFromTransactions(managerId, dbPool, startDate, endDate, locationId);
+      const metrics = await getRevenueMetricsFromTransactions(managerId, db, startDate, endDate, locationId);
       console.log('[Revenue Service] Using payment_transactions for revenue metrics');
       return metrics;
     } catch (error) {
       console.warn('[Revenue Service] Failed to use payment_transactions, falling back to booking tables:', error);
       // Fall through to legacy method
     }
-    
+
     // Get kitchen booking metrics (legacy method)
-    const kitchenMetrics = await getRevenueMetrics(managerId, dbPool, startDate, endDate, locationId);
-    
+    const kitchenMetrics = await getRevenueMetrics(managerId, db, startDate, endDate, locationId);
+
     console.log('[Revenue Service] Kitchen metrics:', kitchenMetrics);
 
-    // Build WHERE clause for storage/equipment
-    let whereClause = `
-      WHERE l.manager_id = $1
-    `;
-    const params: any[] = [managerId];
-    let paramIndex = 2;
+    // Build WHERE clause for storage and equipment
+    const whereConditions = [sql`l.manager_id = ${managerId}`];
 
     if (startDate) {
       const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(sb.start_date) >= $${paramIndex}::date`;
-      params.push(start);
-      paramIndex++;
+      whereConditions.push(sql`DATE(sb.start_date) >= ${start}::date`);
     }
 
     if (endDate) {
       const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      whereClause += ` AND DATE(sb.start_date) <= $${paramIndex}::date`;
-      params.push(end);
-      paramIndex++;
+      whereConditions.push(sql`DATE(sb.start_date) <= ${end}::date`);
     }
 
     if (locationId) {
-      whereClause += ` AND l.id = $${paramIndex}`;
-      params.push(locationId);
-      paramIndex++;
+      whereConditions.push(sql`l.id = ${locationId}`);
     }
 
-    // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service.js');
-    const serviceFeeRate = await getServiceFeeRate(dbPool);
+    const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
 
     // Get storage booking revenue
     // Remove the total_price IS NOT NULL filter to include all bookings
     // Use COALESCE to handle NULL total_price values
-    const storageResult = await dbPool.query(`
+    const storageResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(COALESCE(sb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(sb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -839,37 +796,29 @@ export async function getCompleteRevenueMetrics(
       JOIN locations l ON k.location_id = l.id
       ${whereClause}
         AND sb.status != 'cancelled'
-    `, params);
+    `);
 
     // Get equipment booking revenue
     // Note: Equipment bookings use start_date for date filtering
-    let equipmentWhereClause = `
-      WHERE l.manager_id = $1
-    `;
-    const equipmentParams: any[] = [managerId];
-    let equipmentParamIndex = 2;
+    const equipmentWhereConditions = [sql`l.manager_id = ${managerId}`];
 
     if (startDate) {
       const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      equipmentWhereClause += ` AND DATE(eb.start_date) >= $${equipmentParamIndex}::date`;
-      equipmentParams.push(start);
-      equipmentParamIndex++;
+      equipmentWhereConditions.push(sql`DATE(eb.start_date) >= ${start}::date`);
     }
 
     if (endDate) {
       const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      equipmentWhereClause += ` AND DATE(eb.start_date) <= $${equipmentParamIndex}::date`;
-      equipmentParams.push(end);
-      equipmentParamIndex++;
+      equipmentWhereConditions.push(sql`DATE(eb.start_date) <= ${end}::date`);
     }
 
     if (locationId) {
-      equipmentWhereClause += ` AND l.id = $${equipmentParamIndex}`;
-      equipmentParams.push(locationId);
-      equipmentParamIndex++;
+      equipmentWhereConditions.push(sql`l.id = ${locationId}`);
     }
 
-    const equipmentResult = await dbPool.query(`
+    const equipmentWhereClause = sql`WHERE ${sql.join(equipmentWhereConditions, sql` AND `)}`;
+
+    const equipmentResult = await db.execute(sql`
       SELECT 
         COALESCE(SUM(COALESCE(eb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(eb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -883,10 +832,10 @@ export async function getCompleteRevenueMetrics(
       JOIN locations l ON k.location_id = l.id
       ${equipmentWhereClause}
         AND eb.status != 'cancelled'
-    `, equipmentParams);
+    `);
 
-    const storageRow = storageResult.rows[0] || {};
-    const equipmentRow = equipmentResult.rows[0] || {};
+    const storageRow: any = storageResult.rows[0] || {};
+    const equipmentRow: any = equipmentResult.rows[0] || {};
 
     // Helper to parse numeric values from PostgreSQL
     const parseNumeric = (value: any): number => {
@@ -896,36 +845,36 @@ export async function getCompleteRevenueMetrics(
     };
 
     // Aggregate all revenue sources
-    const totalRevenue = kitchenMetrics.totalRevenue + 
-      parseNumeric(storageRow.total_revenue) + 
+    const totalRevenue = kitchenMetrics.totalRevenue +
+      parseNumeric(storageRow.total_revenue) +
       parseNumeric(equipmentRow.total_revenue);
 
-    const platformFee = kitchenMetrics.platformFee + 
-      parseNumeric(storageRow.platform_fee) + 
+    const platformFee = kitchenMetrics.platformFee +
+      parseNumeric(storageRow.platform_fee) +
       parseNumeric(equipmentRow.platform_fee);
 
     // Manager revenue = total_price - service_fee (total_price already includes service_fee)
     const managerRevenue = totalRevenue - platformFee;
-    
+
     // Ensure all values are numbers (not NaN or undefined)
-    const pendingPaymentsTotal = kitchenMetrics.pendingPayments + 
-      parseNumeric(storageRow.processing_payments) + 
+    const pendingPaymentsTotal = kitchenMetrics.pendingPayments +
+      parseNumeric(storageRow.processing_payments) +
       parseNumeric(equipmentRow.processing_payments);
-    const completedPaymentsTotal = kitchenMetrics.completedPayments + 
-      parseNumeric(storageRow.completed_payments) + 
+    const completedPaymentsTotal = kitchenMetrics.completedPayments +
+      parseNumeric(storageRow.completed_payments) +
       parseNumeric(equipmentRow.completed_payments);
-    
+
     // Deposited manager revenue = only from paid bookings (succeeded transactions)
     // Calculate from completed payments minus platform fee from paid bookings only
     const completedPlatformFee = kitchenMetrics.platformFee * (kitchenMetrics.completedPayments / (kitchenMetrics.totalRevenue || 1));
     const storageCompletedPlatformFee = parseNumeric(storageRow.platform_fee) * (parseNumeric(storageRow.completed_payments) / (parseNumeric(storageRow.total_revenue) || 1));
     const equipmentCompletedPlatformFee = parseNumeric(equipmentRow.platform_fee) * (parseNumeric(equipmentRow.completed_payments) / (parseNumeric(equipmentRow.total_revenue) || 1));
     const depositedManagerRevenue = completedPaymentsTotal - (completedPlatformFee + storageCompletedPlatformFee + equipmentCompletedPlatformFee);
-    const totalBookingCount = kitchenMetrics.bookingCount + 
-      parseNumeric(storageRow.booking_count) + 
+    const totalBookingCount = kitchenMetrics.bookingCount +
+      parseNumeric(storageRow.booking_count) +
       parseNumeric(equipmentRow.booking_count);
-    const totalPaidCount = kitchenMetrics.paidBookingCount + 
-      parseNumeric(storageRow.paid_count) + 
+    const totalPaidCount = kitchenMetrics.paidBookingCount +
+      parseNumeric(storageRow.paid_count) +
       parseNumeric(equipmentRow.paid_count);
 
     const finalMetrics = {
@@ -943,9 +892,9 @@ export async function getCompleteRevenueMetrics(
       cancelledBookingCount: isNaN(kitchenMetrics.cancelledBookingCount) ? 0 : kitchenMetrics.cancelledBookingCount,
       refundedAmount: isNaN(kitchenMetrics.refundedAmount) ? 0 : kitchenMetrics.refundedAmount,
     };
-    
+
     console.log('[Revenue Service] Final complete metrics:', finalMetrics);
-    
+
     return finalMetrics;
   } catch (error) {
     console.error('Error getting complete revenue metrics:', error);

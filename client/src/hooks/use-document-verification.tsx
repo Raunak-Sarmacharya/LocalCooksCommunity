@@ -1,9 +1,9 @@
 import { useToast } from "@/hooks/use-toast";
 import { Application } from "@shared/schema";
 import {
-    useMutation,
-    UseMutationResult,
-    useQuery,
+  useMutation,
+  UseMutationResult,
+  useQuery,
 } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { queryClient } from "../lib/queryClient";
@@ -21,33 +21,23 @@ type DocumentVerificationContextType = {
 
 // Helper function for file uploads
 const apiRequestFormData = async (method: string, url: string, data?: FormData) => {
-  // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
   const headers: Record<string, string> = {};
-  
+
   try {
     const { auth } = await import('@/lib/firebase');
     const currentUser = auth.currentUser;
-    if (currentUser?.uid) {
-      headers['X-User-ID'] = currentUser.uid;
-      console.log('Including current Firebase UID in FormData request headers:', currentUser.uid);
-    } else {
-      // Fallback to localStorage only if Firebase auth is not ready yet
-      const storedUserId = localStorage.getItem('userId');
-      if (storedUserId) {
-        console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
-        headers['X-User-ID'] = storedUserId;
-      } else {
-        console.log('No current Firebase user and no stored userId - not including X-User-ID header');
+    if (currentUser) {
+      try {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (tokenError) {
+        console.error('Failed to get Firebase token for FormData request:', tokenError);
       }
     }
   } catch (error) {
     console.error('Error getting current Firebase user:', error);
-    // Fallback to localStorage if Firebase import fails
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      console.log('Firebase error, using stored userId as fallback:', storedUserId);
-      headers['X-User-ID'] = storedUserId;
-    }
   }
 
   const response = await fetch(url, {
@@ -67,35 +57,25 @@ const apiRequestFormData = async (method: string, url: string, data?: FormData) 
 
 // Helper function for JSON requests
 const apiRequestJSON = async (method: string, url: string, data?: any) => {
-  // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  
+
   try {
     const { auth } = await import('@/lib/firebase');
     const currentUser = auth.currentUser;
-    if (currentUser?.uid) {
-      headers['X-User-ID'] = currentUser.uid;
-      console.log('Including current Firebase UID in JSON request headers:', currentUser.uid);
-    } else {
-      // Fallback to localStorage only if Firebase auth is not ready yet
-      const storedUserId = localStorage.getItem('userId');
-      if (storedUserId) {
-        console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
-        headers['X-User-ID'] = storedUserId;
-      } else {
-        console.log('No current Firebase user and no stored userId - not including X-User-ID header');
+    if (currentUser) {
+      try {
+        const token = await currentUser.getIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (tokenError) {
+        console.error('Failed to get Firebase token for JSON request:', tokenError);
       }
     }
   } catch (error) {
     console.error('Error getting current Firebase user:', error);
-    // Fallback to localStorage if Firebase import fails
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      console.log('Firebase error, using stored userId as fallback:', storedUserId);
-      headers['X-User-ID'] = storedUserId;
-    }
   }
 
   const response = await fetch(url, {
@@ -127,11 +107,11 @@ export function useDocumentVerification() {
     queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       console.log('Document verification: Fetching applications data from Firebase endpoint...');
-      
+
       // Use Firebase authentication for the Firebase endpoint
       const { auth } = await import('@/lib/firebase');
       const currentUser = auth.currentUser;
-      
+
       if (!currentUser) {
         throw new Error('Firebase user not authenticated');
       }
@@ -160,7 +140,7 @@ export function useDocumentVerification() {
 
       const rawData = await response.json();
       console.log('Document verification: Fresh data fetched', rawData);
-      
+
       // Convert snake_case to camelCase for database fields
       const normalizedData = rawData.map((app: any) => ({
         id: app.id,
@@ -195,25 +175,25 @@ export function useDocumentVerification() {
 
       // Find the approved application for document verification
       const verification = data.find(app => app.status === "approved");
-      
+
       if (!verification) {
         // No approved application, check moderately
         return 30000; // 30 seconds
       }
 
       // Check if any documents are pending review
-      const hasPendingDocuments = 
+      const hasPendingDocuments =
         verification.foodSafetyLicenseStatus === "pending" ||
         verification.foodEstablishmentCertStatus === "pending";
-      
+
       // Check if documents need attention (rejected)
-      const hasRejectedDocuments = 
+      const hasRejectedDocuments =
         verification.foodSafetyLicenseStatus === "rejected" ||
         verification.foodEstablishmentCertStatus === "rejected";
 
       // Check if all uploaded documents are approved
-      const isFullyApproved = 
-        verification.foodSafetyLicenseStatus === "approved" && 
+      const isFullyApproved =
+        verification.foodSafetyLicenseStatus === "approved" &&
         (!verification.foodEstablishmentCertUrl || verification.foodEstablishmentCertStatus === "approved");
 
       if (hasPendingDocuments) {
@@ -248,7 +228,7 @@ export function useDocumentVerification() {
   useEffect(() => {
     if (verification && prevVerificationRef.current) {
       const prev = prevVerificationRef.current;
-      
+
       // Check for status changes
       if (prev.foodSafetyLicenseStatus !== verification.foodSafetyLicenseStatus) {
         if (verification.foodSafetyLicenseStatus === "approved") {
@@ -264,7 +244,7 @@ export function useDocumentVerification() {
           });
         }
       }
-      
+
       if (prev.foodEstablishmentCertStatus !== verification.foodEstablishmentCertStatus) {
         if (verification.foodEstablishmentCertStatus === "approved") {
           toast({
@@ -280,7 +260,7 @@ export function useDocumentVerification() {
         }
       }
     }
-    
+
     // Update the ref for next comparison
     prevVerificationRef.current = verification;
   }, [verification, toast]);
@@ -288,7 +268,7 @@ export function useDocumentVerification() {
   // Enhanced force refresh function that ensures fresh data
   const forceRefresh = async () => {
     console.log('Document verification: Forcing comprehensive refresh...');
-    
+
     try {
       // 1. Clear all application-related caches more aggressively
       const cacheKeys = [
@@ -296,32 +276,32 @@ export function useDocumentVerification() {
         ["/api/applications"],
         ["/api/user"]
       ];
-      
+
       // Remove all related queries from cache
-      await Promise.all(cacheKeys.map(key => 
+      await Promise.all(cacheKeys.map(key =>
         queryClient.removeQueries({ queryKey: key })
       ));
-      
+
       // 2. Invalidate all related queries
-      await Promise.all(cacheKeys.map(key => 
+      await Promise.all(cacheKeys.map(key =>
         queryClient.invalidateQueries({ queryKey: key })
       ));
-      
+
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
-        queryClient.refetchQueries({ 
+        queryClient.refetchQueries({
           queryKey: ["/api/applications/my-applications"],
           type: 'all'
         }),
-        queryClient.refetchQueries({ 
+        queryClient.refetchQueries({
           queryKey: ["/api/applications"],
           type: 'all'
         })
       ]);
-      
+
       // 4. Also trigger a direct refetch of this specific query
       await refetch();
-      
+
       console.log('Document verification: Comprehensive refresh completed');
     } catch (error) {
       console.error('Document verification: Force refresh failed', error);
@@ -341,12 +321,12 @@ export function useDocumentVerification() {
       if (!verification) {
         throw new Error("No application found for document upload");
       }
-      
+
       // Check if application status allows document uploads
       if (verification.status === 'cancelled' || verification.status === 'rejected') {
         throw new Error("Document uploads are not permitted for cancelled or rejected applications");
       }
-      
+
       // Check if data is FormData (file upload) or JSON object (URL submission)
       if (data instanceof FormData) {
         // Handle file uploads with FormData
@@ -361,12 +341,12 @@ export function useDocumentVerification() {
     onSuccess: async () => {
       // Immediate comprehensive refresh after document update
       await forceRefresh();
-      
+
       toast({
         title: "Documents updated successfully",
         description: "Your updated documents have been submitted for review.",
       });
-      
+
       // Additional delayed refresh to catch any async database updates
       setTimeout(async () => {
         await forceRefresh();
@@ -393,7 +373,7 @@ export function useDocumentVerification() {
     onSuccess: async () => {
       // Comprehensive refresh for admin actions
       await forceRefresh();
-      
+
       toast({
         title: "Verification updated",
         description: "Document verification status has been updated.",

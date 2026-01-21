@@ -1,13 +1,9 @@
 import { applications, locationRequirements, microlearningCompletions, users, videoProgress, type Application, type InsertApplication, type InsertUser, type UpdateApplicationDocuments, type UpdateApplicationStatus, type UpdateDocumentVerification, type User } from "@shared/schema";
-import connectPg from "connect-pg-simple";
 import { and, eq } from "drizzle-orm";
-import session from "express-session";
-import createMemoryStore from "memorystore";
-import { db, pool } from "./db";
+import { db } from "./db";
 import { cleanupApplicationDocuments } from "./fileUpload";
 
-// Memory store implementation for in-memory sessions
-const MemoryStore = createMemoryStore(session);
+
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -54,10 +50,6 @@ export interface IStorage {
   updateVideoProgress(progressData: any): Promise<void>;
   createMicrolearningCompletion(completionData: any): Promise<any>;
 
-
-  // Session store for authentication
-  sessionStore: session.Store;
-
   setUserHasSeenWelcome(userId: number | string): Promise<void>;
 }
 
@@ -68,9 +60,6 @@ export class MemStorage implements IStorage {
   private microlearningCompletions: Map<number, any>; // key: userId
   private userCurrentId: number;
   private applicationCurrentId: number;
-  sessionStore: session.Store;
-  // TypeScript fixes for instagramId and twitterId
-
   constructor() {
     this.users = new Map();
     this.applications = new Map();
@@ -78,9 +67,6 @@ export class MemStorage implements IStorage {
     this.microlearningCompletions = new Map();
     this.userCurrentId = 1;
     this.applicationCurrentId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000 // 24hrs
-    });
 
     // Initialize with a default admin user for development
     this.initializeDefaultAdmin();
@@ -108,6 +94,7 @@ export class MemStorage implements IStorage {
       applicationType: null,
       stripeConnectAccountId: null,
       stripeConnectOnboardingStatus: 'not_started',
+      managerProfileData: {},
     };
     this.users.set(adminUser.id, adminUser);
     console.log("Development: Default admin user created (username: admin, password: localcooks)");
@@ -182,6 +169,7 @@ export class MemStorage implements IStorage {
       managerOnboardingStepsCompleted: (insertUser as any).managerOnboardingStepsCompleted !== undefined ? (insertUser as any).managerOnboardingStepsCompleted : {},
       stripeConnectAccountId: (insertUser as any).stripeConnectAccountId || null,
       stripeConnectOnboardingStatus: (insertUser as any).stripeConnectOnboardingStatus || 'not_started',
+      managerProfileData: (insertUser as any).managerProfileData || {},
     };
 
     this.users.set(user.id, user);
@@ -401,10 +389,11 @@ export class MemStorage implements IStorage {
 
   async setUserHasSeenWelcome(userId: number | string): Promise<void> {
     try {
-      await pool.query(
-        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
-        [userId]
-      );
+      const id = typeof userId === 'string' ? parseInt(userId, 10) : userId;
+      await db
+        .update(users)
+        .set({ has_seen_welcome: true })
+        .where(eq(users.id, id));
     } catch (error) {
       console.error('Error setting has_seen_welcome:', error);
       throw new Error('Failed to set has_seen_welcome');
@@ -414,14 +403,7 @@ export class MemStorage implements IStorage {
 
 // PostgreSQL-based database storage implementation
 export class DatabaseStorage implements IStorage {
-  sessionStore: session.Store;
-
   constructor() {
-    const PostgresSessionStore = connectPg(session);
-    this.sessionStore = new PostgresSessionStore({
-      pool,
-      createTableIfMissing: true
-    });
   }
 
   async getUser(id: number): Promise<User | undefined> {
@@ -501,25 +483,25 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Username and password are required");
     }
 
-    // Use raw query to include firebase_uid since it's not in the schema
-    if (pool && insertUser.firebaseUid) {
+    // Use Drizzle ORM to create user with firebase_uid
+    if (insertUser.firebaseUid) {
       try {
-        const result = await pool.query(
-          'INSERT INTO users (username, password, role, google_id, facebook_id, firebase_uid, is_verified, has_seen_welcome, is_chef, is_manager) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *',
-          [
-            insertUser.username,
-            insertUser.password,
-            insertUser.role || 'chef',
-            insertUser.googleId || null,
-            insertUser.facebookId || null,
-            insertUser.firebaseUid,
-            insertUser.isVerified !== undefined ? insertUser.isVerified : false,
-            insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
-            insertUser.isChef || false,
-            insertUser.isManager || false
-          ]
-        );
-        return result.rows[0];
+        const [user] = await db
+          .insert(users)
+          .values({
+            username: insertUser.username,
+            password: insertUser.password,
+            role: insertUser.role || 'chef',
+            googleId: insertUser.googleId || null,
+            facebookId: insertUser.facebookId || null,
+            firebaseUid: insertUser.firebaseUid,
+            isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
+            has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
+            isChef: insertUser.isChef || false,
+            isManager: insertUser.isManager || false,
+          })
+          .returning();
+        return user;
       } catch (error) {
         console.error('Error creating user with firebase_uid:', error);
         throw error;
@@ -786,10 +768,11 @@ export class DatabaseStorage implements IStorage {
 
   async setUserHasSeenWelcome(userId: number | string): Promise<void> {
     try {
-      await pool.query(
-        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
-        [userId]
-      );
+      const id = typeof userId === 'string' ? parseInt(userId, 10) : userId;
+      await db
+        .update(users)
+        .set({ has_seen_welcome: true })
+        .where(eq(users.id, id));
     } catch (error) {
       console.error('Error setting has_seen_welcome:', error);
       throw new Error('Failed to set has_seen_welcome');
@@ -818,127 +801,4 @@ export const storage = process.env.DATABASE_URL
   ? new DatabaseStorage()
   : new MemStorage();
 
-// TEMPORARILY DISABLED - Missing DatabaseUser type
-/*
-export const getUserByEmail = async (email: string): Promise<DatabaseUser | null> => {
-  try {
-    const result = await pool.query(
-      'SELECT * FROM users WHERE email = $1',
-      [email]
-    );
-    return result.rows[0] || null;
-  } catch (error) {
-    console.error('Error getting user by email:', error);
-    return null;
-  }
-};
-*/
 
-// TEMPORARILY DISABLED - Password reset functionality incomplete
-/*
-export const storePasswordResetToken = async (userId: string, token: string, expiry: Date): Promise<void> => {
-  try {
-    await pool.query(
-      'INSERT INTO password_reset_tokens (user_id, token, expires_at, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (user_id) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()',
-      [userId, token, expiry]
-    );
-  } catch (error) {
-    console.error('Error storing password reset token:', error);
-    throw new Error('Failed to store reset token');
-  }
-};
-*/
-
-// TEMPORARILY DISABLED - Missing DatabaseUser type
-/*
-export const getUserByResetToken = async (token: string): Promise<DatabaseUser | null> => {
-  try {
-    const result = await pool.query(
-      `SELECT u.* FROM users u
-       JOIN password_reset_tokens prt ON u.id = prt.user_id
-       WHERE prt.token = $1 AND prt.expires_at > NOW()`,
-      [token]
-    );
-    return result.rows[0] || null;
-  } catch (error) {
-    console.error('Error getting user by reset token:', error);
-    return null;
-  }
-};
-*/
-
-// TEMPORARILY DISABLED - Password reset and email verification functionality incomplete
-/*
-export const updateUserPassword = async (userId: string, hashedPassword: string): Promise<void> => {
-  try {
-    await pool.query(
-      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
-      [hashedPassword, userId]
-    );
-  } catch (error) {
-    console.error('Error updating user password:', error);
-    throw new Error('Failed to update password');
-  }
-};
-
-export const clearPasswordResetToken = async (userId: string): Promise<void> => {
-  try {
-    await pool.query(
-      'DELETE FROM password_reset_tokens WHERE user_id = $1',
-      [userId]
-    );
-  } catch (error) {
-    console.error('Error clearing password reset token:', error);
-    throw new Error('Failed to clear reset token');
-  }
-};
-
-export const storeEmailVerificationToken = async (email: string, token: string, expiry: Date): Promise<void> => {
-  try {
-    await pool.query(
-      'INSERT INTO email_verification_tokens (email, token, expires_at, created_at) VALUES ($1, $2, $3, NOW()) ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()',
-      [email, token, expiry]
-    );
-  } catch (error) {
-    console.error('Error storing email verification token:', error);
-    throw new Error('Failed to store verification token');
-  }
-};
-
-export const getEmailVerificationToken = async (token: string): Promise<{email: string} | null> => {
-  try {
-    const result = await pool.query(
-      'SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()',
-      [token]
-    );
-    return result.rows[0] || null;
-  } catch (error) {
-    console.error('Error getting email verification token:', error);
-    return null;
-  }
-};
-
-export const markEmailAsVerified = async (email: string): Promise<void> => {
-  try {
-    await pool.query(
-      'UPDATE users SET email_verified = true, updated_at = NOW() WHERE email = $1',
-      [email]
-    );
-  } catch (error) {
-    console.error('Error marking email as verified:', error);
-    throw new Error('Failed to mark email as verified');
-  }
-};
-
-export const clearEmailVerificationToken = async (token: string): Promise<void> => {
-  try {
-    await pool.query(
-      'DELETE FROM email_verification_tokens WHERE token = $1',
-      [token]
-    );
-  } catch (error) {
-    console.error('Error clearing email verification token:', error);
-    throw new Error('Failed to clear verification token');
-  }
-};
-*/

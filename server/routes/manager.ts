@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
-import { eq, inArray, and, desc, count } from "drizzle-orm";
-import { pool, db } from "../db";
+import { eq, inArray, and, desc, count, ne, sql } from "drizzle-orm";
+import { db } from "../db";
 import { storage } from "../storage";
 import { firebaseStorage } from "../storage-firebase";
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
@@ -40,6 +40,16 @@ import {
 import { deleteConversation } from "../chat-service";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { getPresignedUrl, deleteFromR2 } from "../r2-storage";
+import { logger } from "../logger";
+import { errorResponse } from "../api-response";
+
+import {
+    storageBookings as storageBookingsTable,
+    equipmentBookings as equipmentBookingsTable,
+    storageListings,
+    equipmentListings,
+    kitchenBookings
+} from "@shared/schema";
 
 const router = Router();
 
@@ -53,110 +63,90 @@ router.get("/revenue/invoices", requireFirebaseAuthWithUser, requireManager, asy
         const managerId = req.neonUser!.id;
         const { startDate, endDate, locationId, limit = '50', offset = '0' } = req.query;
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
+        // Build conditions
+        const conditions = [
+            eq(locations.managerId, managerId),
+            ne(kitchenBookings.status, 'cancelled'),
+            eq(kitchenBookings.paymentStatus, 'paid')
+        ];
 
-        // Get bookings with invoice data
-        // Only show paid bookings (invoices should only be for completed payments)
-        // Use both booking_date and created_at for date filtering to catch all recent bookings
-        let whereClause = `
-      WHERE l.manager_id = $1
-      AND kb.status != 'cancelled'
-      AND kb.payment_status = 'paid'
-      AND (kb.total_price IS NOT NULL OR kb.payment_intent_id IS NOT NULL)
-    `;
-        const params: any[] = [managerId];
-        let paramIndex = 2;
-
-        // Date filters apply to either booking_date OR created_at to include recent bookings
-        // This ensures bookings show up even if booking_date is in the future
         if (startDate) {
-            const start = typeof startDate === 'string'
-                ? startDate
-                : (Array.isArray(startDate) ? startDate[0] : String(startDate));
-            whereClause += ` AND (DATE(kb.booking_date) >= $${paramIndex}::date OR DATE(kb.created_at) >= $${paramIndex}::date)`;
-            params.push(start);
-            paramIndex++;
+            const startStr = Array.isArray(startDate) ? startDate[0] : String(startDate);
+            conditions.push(sql`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
         }
 
         if (endDate) {
-            const end = typeof endDate === 'string'
-                ? endDate
-                : (Array.isArray(endDate) ? endDate[0] : String(endDate));
-            whereClause += ` AND (DATE(kb.booking_date) <= $${paramIndex}::date OR DATE(kb.created_at) <= $${paramIndex}::date)`;
-            params.push(end);
-            paramIndex++;
+            const endStr = Array.isArray(endDate) ? endDate[0] : String(endDate);
+            conditions.push(sql`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
         }
 
         if (locationId) {
-            whereClause += ` AND l.id = $${paramIndex}`;
-            params.push(parseInt(locationId as string));
-            paramIndex++;
+            conditions.push(eq(locations.id, parseInt(locationId as string)));
         }
 
-        const result = await pool.query(`
-      SELECT 
-        kb.id,
-        kb.booking_date,
-        kb.start_time,
-        kb.end_time,
-        COALESCE(
-          kb.total_price,
-          CASE 
-            WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
-            THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
-            ELSE 0
-          END
-        )::bigint as total_price,
-        COALESCE(kb.service_fee, 0)::bigint as service_fee,
-        kb.payment_status,
-        kb.payment_intent_id,
-        kb.currency,
-        k.name as kitchen_name,
-        l.name as location_name,
-        u.username as chef_name,
-        u.username as chef_email,
-        kb.created_at
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      LEFT JOIN users u ON kb.chef_id = u.id
-      ${whereClause}
-      ORDER BY kb.created_at DESC, kb.booking_date DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `, [...params, parseInt(limit as string), parseInt(offset as string)]);
+        const rows = await db
+            .select({
+                id: kitchenBookings.id,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                totalPrice: kitchenBookings.totalPrice,
+                hourlyRate: kitchenBookings.hourlyRate,
+                durationHours: kitchenBookings.durationHours,
+                serviceFee: kitchenBookings.serviceFee,
+                paymentStatus: kitchenBookings.paymentStatus,
+                paymentIntentId: kitchenBookings.paymentIntentId,
+                currency: kitchenBookings.currency,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                chefName: users.username,
+                chefEmail: users.username, // Using username as email fallback if needed, or users.email
+                createdAt: kitchenBookings.createdAt
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+            .where(and(...conditions))
+            .orderBy(desc(kitchenBookings.createdAt), desc(kitchenBookings.bookingDate))
+            .limit(parseInt(limit as string))
+            .offset(parseInt(offset as string));
 
-        console.log(`[Revenue] Invoices query for manager ${managerId}: Found ${result.rows.length} invoices`);
+        logger.info(`[Revenue] Invoices query for manager ${managerId}: Found ${rows.length} invoices`);
 
         res.json({
-            invoices: result.rows.map((row: any) => {
-                // Handle null/undefined total_price gracefully
-                const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
-                const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
+            invoices: rows.map(row => {
+                // Calculate total price if not explicitly stored (fallback logic)
+                let totalPriceCents = 0;
+                if (row.totalPrice != null) {
+                    totalPriceCents = parseInt(String(row.totalPrice));
+                } else if (row.hourlyRate != null && row.durationHours != null) {
+                    totalPriceCents = Math.round(parseFloat(String(row.hourlyRate)) * parseFloat(String(row.durationHours)));
+                }
+
+                const serviceFeeCents = row.serviceFee != null ? parseInt(String(row.serviceFee)) : 0;
 
                 return {
                     bookingId: row.id,
-                    bookingDate: row.booking_date,
-                    startTime: row.start_time,
-                    endTime: row.end_time,
+                    bookingDate: row.bookingDate,
+                    startTime: row.startTime,
+                    endTime: row.endTime,
                     totalPrice: totalPriceCents / 100,
                     serviceFee: serviceFeeCents / 100,
-                    paymentStatus: row.payment_status,
-                    paymentIntentId: row.payment_intent_id,
+                    paymentStatus: row.paymentStatus,
+                    paymentIntentId: row.paymentIntentId,
                     currency: row.currency || 'CAD',
-                    kitchenName: row.kitchen_name,
-                    locationName: row.location_name,
-                    chefName: row.chef_name || 'Guest',
-                    chefEmail: row.chef_email,
-                    createdAt: row.created_at,
+                    kitchenName: row.kitchenName,
+                    locationName: row.locationName,
+                    chefName: row.chefName || 'Guest',
+                    chefEmail: row.chefEmail,
+                    createdAt: row.createdAt,
                 };
             }),
-            total: result.rows.length
+            total: rows.length
         });
-    } catch (error: any) {
-        console.error('Error getting invoices:', error);
-        res.status(500).json({ error: error.message || 'Failed to get invoices' });
+    } catch (error) {
+        return errorResponse(res, error);
     }
 });
 
@@ -170,77 +160,108 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
             return res.status(400).json({ error: "Invalid booking ID" });
         }
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
         // Verify manager has access to this booking
-        const bookingResult = await pool.query(`
-      SELECT kb.*, k.name as kitchen_name, l.name as location_name, l.manager_id
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      WHERE kb.id = $1
-    `, [bookingId]);
+        const [booking] = await db
+            .select({
+                id: kitchenBookings.id,
+                chefId: kitchenBookings.chefId,
+                kitchenId: kitchenBookings.kitchenId,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                status: kitchenBookings.status,
+                totalPrice: kitchenBookings.totalPrice,
+                hourlyRate: kitchenBookings.hourlyRate,
+                durationHours: kitchenBookings.durationHours,
+                serviceFee: kitchenBookings.serviceFee,
+                paymentStatus: kitchenBookings.paymentStatus,
+                paymentIntentId: kitchenBookings.paymentIntentId,
+                currency: kitchenBookings.currency,
+                createdAt: kitchenBookings.createdAt,
+                updatedAt: kitchenBookings.updatedAt,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                managerId: locations.managerId
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(kitchenBookings.id, bookingId))
+            .limit(1);
 
-        if (bookingResult.rows.length === 0) {
+        if (!booking) {
             return res.status(404).json({ error: "Booking not found" });
         }
 
-        const booking = bookingResult.rows[0];
-        if (booking.manager_id !== managerId) {
+        if (booking.managerId !== managerId) {
             return res.status(403).json({ error: "Access denied to this booking" });
         }
 
         // Allow invoice download for all bookings (managers should be able to download invoices for their bookings)
         // Only block cancelled bookings that have no payment information at all
-        if (booking.status === 'cancelled' && !booking.payment_intent_id && !booking.total_price) {
+        if (booking.status === 'cancelled' && !booking.paymentIntentId && !booking.totalPrice) {
             return res.status(400).json({ error: "Invoice cannot be downloaded for cancelled bookings without payment information" });
         }
 
-        // Allow all other bookings - invoice service will handle missing payment info gracefully
-
         // Get chef info
         let chef = null;
-        if (booking.chef_id) {
-            const chefResult = await pool.query('SELECT id, username FROM users WHERE id = $1', [booking.chef_id]);
-            chef = chefResult.rows[0] || null;
+        if (booking.chefId) {
+            const [chefData] = await db
+                .select({ id: users.id, username: users.username })
+                .from(users)
+                .where(eq(users.id, booking.chefId))
+                .limit(1);
+            chef = chefData || null;
         }
 
         // Get storage and equipment bookings
-        const storageResult = await pool.query(`
-      SELECT sb.*, sl.name as storage_name
-      FROM storage_bookings sb
-      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-      WHERE sb.kitchen_booking_id = $1
-    `, [bookingId]);
+        const storageRows = await db
+            .select({
+                id: storageBookingsTable.id,
+                kitchenBookingId: storageBookingsTable.kitchenBookingId,
+                storageListingId: storageBookingsTable.storageListingId,
+                startDate: storageBookingsTable.startDate,
+                endDate: storageBookingsTable.endDate,
+                status: storageBookingsTable.status,
+                totalPrice: storageBookingsTable.totalPrice,
+                storageName: storageListings.name
+            })
+            .from(storageBookingsTable)
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .where(eq(storageBookingsTable.kitchenBookingId, bookingId));
 
-        const equipmentResult = await pool.query(`
-      SELECT eb.*, el.equipment_type, el.brand, el.model
-      FROM equipment_bookings eb
-      JOIN equipment_listings el ON eb.equipment_listing_id = el.id
-      WHERE eb.kitchen_booking_id = $1
-    `, [bookingId]);
+        const equipmentRows = await db
+            .select({
+                id: equipmentBookingsTable.id,
+                kitchenBookingId: equipmentBookingsTable.kitchenBookingId,
+                equipmentListingId: equipmentBookingsTable.equipmentListingId,
+                status: equipmentBookingsTable.status,
+                totalPrice: equipmentBookingsTable.totalPrice,
+                equipmentType: equipmentListings.equipmentType,
+                brand: equipmentListings.brand,
+                model: equipmentListings.model
+            })
+            .from(equipmentBookingsTable)
+            .innerJoin(equipmentListings, eq(equipmentBookingsTable.equipmentListingId, equipmentListings.id))
+            .where(eq(equipmentBookingsTable.kitchenBookingId, bookingId));
 
         // Generate invoice PDF
         const { generateInvoicePDF } = await import('../services/invoice-service');
         const pdfBuffer = await generateInvoicePDF(
             booking,
             chef,
-            { name: booking.kitchen_name },
-            { name: booking.location_name },
-            storageResult.rows,
-            equipmentResult.rows,
-            booking.payment_intent_id,
-            pool
+            { name: booking.kitchenName },
+            { name: booking.locationName },
+            storageRows,
+            equipmentRows,
+            booking.paymentIntentId
         );
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="invoice-${bookingId}.pdf"`);
         res.send(pdfBuffer);
-    } catch (error: any) {
-        console.error('Error generating invoice PDF:', error);
-        res.status(500).json({ error: error.message || 'Failed to generate invoice' });
+    } catch (error) {
+        return errorResponse(res, error);
     }
 });
 
@@ -250,17 +271,14 @@ router.get("/revenue/payouts", requireFirebaseAuthWithUser, requireManager, asyn
         const managerId = req.neonUser!.id;
         const { limit = '50' } = req.query;
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
         // Get manager's Stripe Connect account ID
-        const userResult = await pool.query(
-            'SELECT stripe_connect_account_id FROM users WHERE id = $1',
-            [managerId]
-        );
+        const [userResult] = await db
+            .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+            .from(users)
+            .where(eq(users.id, managerId))
+            .limit(1);
 
-        if (!userResult.rows[0]?.stripe_connect_account_id) {
+        if (!userResult?.stripeConnectAccountId) {
             return res.json({
                 payouts: [],
                 total: 0,
@@ -268,7 +286,7 @@ router.get("/revenue/payouts", requireFirebaseAuthWithUser, requireManager, asyn
             });
         }
 
-        const accountId = userResult.rows[0].stripe_connect_account_id;
+        const accountId = userResult.stripeConnectAccountId;
         const { getPayouts } = await import('../services/stripe-connect-service');
 
         const payouts = await getPayouts(accountId, parseInt(limit as string));
@@ -287,9 +305,8 @@ router.get("/revenue/payouts", requireFirebaseAuthWithUser, requireManager, asyn
             })),
             total: payouts.length
         });
-    } catch (error: any) {
-        console.error('Error getting payouts:', error);
-        res.status(500).json({ error: error.message || 'Failed to get payouts' });
+    } catch (error) {
+        return errorResponse(res, error);
     }
 });
 
@@ -299,21 +316,18 @@ router.get("/revenue/payouts/:payoutId", requireFirebaseAuthWithUser, requireMan
         const managerId = req.neonUser!.id;
         const payoutId = req.params.payoutId;
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
         // Get manager's Stripe Connect account ID
-        const userResult = await pool.query(
-            'SELECT stripe_connect_account_id FROM users WHERE id = $1',
-            [managerId]
-        );
+        const [userResult] = await db
+            .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+            .from(users)
+            .where(eq(users.id, managerId))
+            .limit(1);
 
-        if (!userResult.rows[0]?.stripe_connect_account_id) {
+        if (!userResult?.stripeConnectAccountId) {
             return res.status(404).json({ error: 'No Stripe Connect account linked' });
         }
 
-        const accountId = userResult.rows[0].stripe_connect_account_id;
+        const accountId = userResult.stripeConnectAccountId;
         const { getPayout } = await import('../services/stripe-connect-service');
 
         const payout = await getPayout(accountId, payoutId);
@@ -336,30 +350,34 @@ router.get("/revenue/payouts/:payoutId", requireFirebaseAuthWithUser, requireMan
         );
 
         // Get bookings for this period
-        const bookingsResult = await pool.query(`
-      SELECT 
-        kb.id,
-        kb.booking_date,
-        kb.start_time,
-        kb.end_time,
-        kb.total_price,
-        kb.service_fee,
-        kb.payment_status,
-        kb.payment_intent_id,
-        k.name as kitchen_name,
-        l.name as location_name,
-        u.username as chef_name,
-        u.email as chef_email
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      LEFT JOIN users u ON kb.chef_id = u.id
-      WHERE l.manager_id = $1
-        AND kb.payment_status = 'paid'
-        AND kb.booking_date >= $2::date
-        AND kb.booking_date <= $3::date
-      ORDER BY kb.booking_date DESC
-    `, [managerId, periodStart.toISOString().split('T')[0], payoutDate.toISOString().split('T')[0]]);
+        const bookingRows = await db
+            .select({
+                id: kitchenBookings.id,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                totalPrice: kitchenBookings.totalPrice,
+                serviceFee: kitchenBookings.serviceFee,
+                paymentStatus: kitchenBookings.paymentStatus,
+                paymentIntentId: kitchenBookings.paymentIntentId,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                chefName: users.username,
+                chefEmail: users.username
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+            .where(
+                and(
+                    eq(locations.managerId, managerId),
+                    eq(kitchenBookings.paymentStatus, 'paid'),
+                    sql`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split('T')[0]}::date`,
+                    sql`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split('T')[0]}::date`
+                )
+            )
+            .orderBy(desc(kitchenBookings.bookingDate));
 
         res.json({
             payout: {
@@ -384,24 +402,23 @@ router.get("/revenue/payouts/:payoutId", requireFirebaseAuthWithUser, requireMan
                 type: t.type,
                 created: new Date(t.created * 1000).toISOString(),
             })),
-            bookings: bookingsResult.rows.map((row: any) => ({
+            bookings: bookingRows.map(row => ({
                 id: row.id,
-                bookingDate: row.booking_date,
-                startTime: row.start_time,
-                endTime: row.end_time,
-                totalPrice: (parseInt(row.total_price) || 0) / 100,
-                serviceFee: (parseInt(row.service_fee) || 0) / 100,
-                paymentStatus: row.payment_status,
-                paymentIntentId: row.payment_intent_id,
-                kitchenName: row.kitchen_name,
-                locationName: row.location_name,
-                chefName: row.chef_name || 'Guest',
-                chefEmail: row.chef_email,
+                bookingDate: row.bookingDate,
+                startTime: row.startTime,
+                endTime: row.endTime,
+                totalPrice: (parseInt(String(row.totalPrice)) || 0) / 100,
+                serviceFee: (parseInt(String(row.serviceFee)) || 0) / 100,
+                paymentStatus: row.paymentStatus,
+                paymentIntentId: row.paymentIntentId,
+                kitchenName: row.kitchenName,
+                locationName: row.locationName,
+                chefName: row.chefName || 'Guest',
+                chefEmail: row.chefEmail,
             }))
         });
-    } catch (error: any) {
-        console.error('Error getting payout details:', error);
-        res.status(500).json({ error: error.message || 'Failed to get payout details' });
+    } catch (error) {
+        return errorResponse(res, error);
     }
 });
 
@@ -411,23 +428,22 @@ router.get("/revenue/payouts/:payoutId/statement", requireFirebaseAuthWithUser, 
         const managerId = req.neonUser!.id;
         const payoutId = req.params.payoutId;
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
         // Get manager info
-        const userResult = await pool.query(
-            'SELECT id, username, stripe_connect_account_id FROM users WHERE id = $1',
-            [managerId]
-        );
+        const [manager] = await db
+            .select({
+                id: users.id,
+                username: users.username,
+                stripeConnectAccountId: users.stripeConnectAccountId
+            })
+            .from(users)
+            .where(eq(users.id, managerId))
+            .limit(1);
 
-        if (!userResult.rows[0]?.stripe_connect_account_id) {
+        if (!manager?.stripeConnectAccountId) {
             return res.status(404).json({ error: 'No Stripe Connect account linked' });
         }
 
-        const manager = userResult.rows[0];
-        const accountId = manager.stripe_connect_account_id;
-
+        const accountId = manager.stripeConnectAccountId;
         const { getPayout } = await import('../services/stripe-connect-service');
         const payout = await getPayout(accountId, payoutId);
 
@@ -440,30 +456,34 @@ router.get("/revenue/payouts/:payoutId/statement", requireFirebaseAuthWithUser, 
         const periodStart = new Date(payoutDate);
         periodStart.setDate(periodStart.getDate() - 7); // Week before payout
 
-        const bookingsResult = await pool.query(`
-      SELECT 
-        kb.id,
-        kb.booking_date,
-        kb.start_time,
-        kb.end_time,
-        kb.total_price,
-        kb.service_fee,
-        kb.payment_status,
-        kb.payment_intent_id,
-        k.name as kitchen_name,
-        l.name as location_name,
-        u.username as chef_name,
-        u.email as chef_email
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      LEFT JOIN users u ON kb.chef_id = u.id
-      WHERE l.manager_id = $1
-        AND kb.payment_status = 'paid'
-        AND kb.booking_date >= $2::date
-        AND kb.booking_date <= $3::date
-      ORDER BY kb.booking_date DESC
-    `, [managerId, periodStart.toISOString().split('T')[0], payoutDate.toISOString().split('T')[0]]);
+        const bookingRows = await db
+            .select({
+                id: kitchenBookings.id,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                totalPrice: kitchenBookings.totalPrice,
+                serviceFee: kitchenBookings.serviceFee,
+                paymentStatus: kitchenBookings.paymentStatus,
+                paymentIntentId: kitchenBookings.paymentIntentId,
+                kitchenName: kitchens.name,
+                locationName: locations.name,
+                chefName: users.username,
+                chefEmail: users.username
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+            .where(
+                and(
+                    eq(locations.managerId, managerId),
+                    eq(kitchenBookings.paymentStatus, 'paid'),
+                    sql`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split('T')[0]}::date`,
+                    sql`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split('T')[0]}::date`
+                )
+            )
+            .orderBy(desc(kitchenBookings.bookingDate));
 
         // Get balance transactions
         const { getBalanceTransactions } = await import('../services/stripe-connect-service');
@@ -479,19 +499,17 @@ router.get("/revenue/payouts/:payoutId/statement", requireFirebaseAuthWithUser, 
         const pdfBuffer = await generatePayoutStatementPDF(
             managerId,
             manager.username || 'Manager',
-            manager.email || '',
+            manager.username || '',
             payout,
             transactions,
-            bookingsResult.rows,
-            pool
+            bookingRows
         );
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="payout-statement-${payoutId.substring(3)}.pdf"`);
         res.send(pdfBuffer);
-    } catch (error: any) {
-        console.error('Error generating payout statement PDF:', error);
-        res.status(500).json({ error: error.message || 'Failed to generate payout statement' });
+    } catch (error) {
+        return errorResponse(res, error);
     }
 });
 
@@ -516,13 +534,7 @@ router.get("/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager,
         }
 
         const kitchens = await firebaseStorage.getKitchensByLocation(locationId);
-        const kitchen = kitchens[0]; // Currently assuming 1 kitchen per location
-
-        if (!kitchen) {
-            return res.json({ name: location.name, description: location.description });
-        }
-
-        res.json(kitchen);
+        res.json(kitchens);
     } catch (error: any) {
         console.error("Error fetching kitchen settings:", error);
         res.status(500).json({ error: error.message || "Failed to fetch kitchen settings" });
@@ -850,69 +862,41 @@ router.get("/bookings", requireFirebaseAuthWithUser, requireManager, async (req:
 // Manager: Get manager profile
 router.get("/profile", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
-        const user = req.neonUser!;
-        if (!pool) return res.status(500).json({ error: "Database not available" });
+        const managerId = req.neonUser!.id;
 
-        const result = await pool.query(
-            `SELECT 
-          COALESCE((manager_profile_data->>'profileImageUrl')::text, NULL) as "profileImageUrl",
-          COALESCE((manager_profile_data->>'phone')::text, NULL) as phone,
-          COALESCE((manager_profile_data->>'displayName')::text, NULL) as "displayName"
-        FROM users 
-        WHERE id = $1`,
-            [user.id]
-        );
+        const [user] = await db
+            .select({
+                managerProfileData: users.managerProfileData
+            })
+            .from(users)
+            .where(eq(users.id, managerId))
+            .limit(1);
 
-        if (result.rows.length === 0) {
+        if (!user) {
             return res.status(404).json({ error: "Manager profile not found" });
         }
 
-        const profile = result.rows[0];
+        const profile: any = user.managerProfileData || {};
         res.json({
-            profileImageUrl: profile.profileImageUrl,
-            phone: profile.phone,
-            displayName: profile.displayName,
+            profileImageUrl: profile.profileImageUrl || null,
+            phone: profile.phone || null,
+            displayName: profile.displayName || null,
         });
-    } catch (error: any) {
-        console.error("Error getting manager profile:", error);
-        // If column doesn't exist, return empty
-        if (error.message?.includes('does not exist') || error.message?.includes('column')) {
-            return res.json({ profileImageUrl: null, phone: null, displayName: null });
-        }
-        res.status(500).json({ error: error.message || "Failed to get profile" });
+    } catch (error) {
+        return errorResponse(res, error);
     }
 });
 
 // Manager: Update manager profile
 router.put("/profile", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
-    // Implementation of profile update
-    // ... including column creation if needed ...
     try {
         const user = req.neonUser!;
-        if (!pool) return res.status(500).json({ error: "Database not available" });
-
         const { username, displayName, phone, profileImageUrl } = req.body;
-
-        // Ensure column exists
-        try {
-            await pool.query(`
-              DO $$ 
-              BEGIN
-                IF NOT EXISTS (
-                  SELECT 1 FROM information_schema.columns 
-                  WHERE table_name = 'users' AND column_name = 'manager_profile_data'
-                ) THEN
-                  ALTER TABLE users ADD COLUMN manager_profile_data JSONB DEFAULT '{}'::jsonb;
-                END IF;
-              END $$;
-            `);
-        } catch (e: any) { console.log('Column check result:', e.message); }
 
         const profileUpdates: any = {};
         if (displayName !== undefined) profileUpdates.displayName = displayName;
         if (phone !== undefined) {
             if (phone && phone.trim() !== '') {
-                // Need normalizePhoneForStorage
                 const normalized = normalizePhoneForStorage(phone);
                 if (!normalized) return res.status(400).json({ error: "Invalid phone" });
                 profileUpdates.phone = normalized;
@@ -931,34 +915,38 @@ router.put("/profile", requireFirebaseAuthWithUser, requireManager, async (req: 
         }
 
         if (Object.keys(profileUpdates).length > 0) {
-            await pool.query(
-                `UPDATE users 
-                SET manager_profile_data = COALESCE(manager_profile_data, '{}'::jsonb) || $1::jsonb
-                WHERE id = $2`,
-                [JSON.stringify(profileUpdates), user.id]
-            );
+            // Get current profile data first to merge
+            const [currentUser] = await db
+                .select({ managerProfileData: users.managerProfileData })
+                .from(users)
+                .where(eq(users.id, user.id))
+                .limit(1);
+
+            const currentData: any = currentUser?.managerProfileData || {};
+            const newData = { ...currentData, ...profileUpdates };
+
+            await db
+                .update(users)
+                .set({ managerProfileData: newData })
+                .where(eq(users.id, user.id));
         }
 
-        // Return updated
-        const result = await pool.query(
-            `SELECT 
-              COALESCE((manager_profile_data->>'profileImageUrl')::text, NULL) as "profileImageUrl",
-              COALESCE((manager_profile_data->>'phone')::text, NULL) as phone,
-              COALESCE((manager_profile_data->>'displayName')::text, NULL) as "displayName"
-            FROM users 
-            WHERE id = $1`,
-            [user.id]
-        );
+        // Return updated profile
+        const [updatedUser] = await db
+            .select({ managerProfileData: users.managerProfileData })
+            .from(users)
+            .where(eq(users.id, user.id))
+            .limit(1);
 
+        const finalProfile: any = updatedUser?.managerProfileData || {};
         res.json({
-            profileImageUrl: result.rows[0]?.profileImageUrl || null,
-            phone: result.rows[0]?.phone || null,
-            displayName: result.rows[0]?.displayName || null,
+            profileImageUrl: finalProfile.profileImageUrl || null,
+            phone: finalProfile.phone || null,
+            displayName: finalProfile.displayName || null,
         });
 
-    } catch (error: any) {
-        console.error("Error updating manager profile:", error);
-        res.status(500).json({ error: error.message || "Failed to update profile" });
+    } catch (error) {
+        return errorResponse(res, error);
     }
 });
 
@@ -1650,6 +1638,70 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
         console.error("❌ Error updating location:", error);
         console.error("Error stack:", error.stack);
         res.status(500).json({ error: error.message || "Failed to update location" });
+    }
+});
+
+// Complete manager onboarding
+router.post("/complete-onboarding", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const { skipped } = req.body;
+
+        console.log(`[POST] /api/manager/complete-onboarding - User: ${user.id}, skipped: ${skipped}`);
+
+        const updatedUser = await firebaseStorage.updateManagerOnboarding(user.id, {
+            completed: true,
+            skipped: !!skipped
+        });
+
+        if (!updatedUser) {
+            return res.status(500).json({ error: "Failed to update onboarding status" });
+        }
+
+        res.json({ success: true, user: updatedUser });
+    } catch (error: any) {
+        console.error("Error completing manager onboarding:", error);
+        res.status(500).json({ error: error.message || "Failed to complete onboarding" });
+    }
+});
+
+// Track onboarding step completion
+router.post("/onboarding/step", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const { stepId, locationId } = req.body;
+
+        if (stepId === undefined) {
+            return res.status(400).json({ error: "stepId is required" });
+        }
+
+        console.log(`[POST] /api/manager/onboarding/step - User: ${user.id}, stepId: ${stepId}, locationId: ${locationId}`);
+
+        // Get current steps
+        const currentSteps = (user as any).managerOnboardingStepsCompleted || {};
+
+        // Create new step key
+        const stepKey = locationId ? `step_${stepId}_location_${locationId}` : `step_${stepId}`;
+        const newSteps = {
+            ...currentSteps,
+            [stepKey]: true
+        };
+
+        const updatedUser = await firebaseStorage.updateManagerOnboarding(user.id, {
+            steps: newSteps
+        });
+
+        if (!updatedUser) {
+            return res.status(500).json({ error: "Failed to update onboarding step" });
+        }
+
+        res.json({
+            success: true,
+            stepsCompleted: (updatedUser as any).managerOnboardingStepsCompleted
+        });
+    } catch (error: any) {
+        console.error("Error tracking onboarding step:", error);
+        res.status(500).json({ error: error.message || "Failed to track onboarding step" });
     }
 });
 
