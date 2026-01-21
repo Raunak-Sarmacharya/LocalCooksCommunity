@@ -5,16 +5,11 @@ import ws from "ws";
 
 neonConfig.webSocketConstructor = ws;
 
-// Only throw error if database URL is missing when trying to use database
 if (!process.env.DATABASE_URL) {
-  console.warn("DATABASE_URL not set - falling back to in-memory storage");
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
 }
 
-// Create pool and database connection if DATABASE_URL exists
-export const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
-  : {} as Pool;
-
-export const db = process.env.DATABASE_URL
-  ? drizzle(pool, { schema })
-  : {} as ReturnType<typeof drizzle>;
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool, { schema });

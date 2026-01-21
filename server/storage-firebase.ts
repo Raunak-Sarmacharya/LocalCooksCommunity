@@ -675,7 +675,7 @@ export class FirebaseStorage {
 
   // ===== KITCHENS MANAGEMENT =====
 
-  async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean }): Promise<any> {
+  async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean; amenities?: string[] }): Promise<any> {
     try {
       console.log('Inserting kitchen into database:', kitchenData);
 
@@ -695,6 +695,11 @@ export class FirebaseStorage {
         insertData.isActive = kitchenData.isActive;
       } else {
         insertData.isActive = true;
+      }
+
+      // Include amenities if provided
+      if (kitchenData.amenities) {
+        insertData.amenities = kitchenData.amenities;
       }
 
       console.log('Insert data:', insertData);
@@ -890,13 +895,17 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; galleryImages?: string[]; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; galleryImages?: string[]; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string; amenities?: string[] }): Promise<any> {
     try {
       // Convert hourlyRate to string for numeric type if provided
       const dbUpdates: any = { ...updates, updatedAt: new Date() };
       if (updates.hourlyRate !== undefined) {
         // Drizzle numeric type expects string representation
         dbUpdates.hourlyRate = updates.hourlyRate === null ? null : updates.hourlyRate.toString();
+      }
+
+      if (updates.amenities !== undefined) {
+        dbUpdates.amenities = updates.amenities;
       }
 
       const [updated] = await db

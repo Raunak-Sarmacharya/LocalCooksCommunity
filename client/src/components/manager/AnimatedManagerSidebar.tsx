@@ -31,7 +31,6 @@ interface AnimatedManagerSidebarProps {
   isLoadingLocations?: boolean;
   isMobile?: boolean;
   onCollapseChange?: (isCollapsed: boolean) => void;
-  headerHeight?: number;
 }
 
 export default function AnimatedManagerSidebar({
@@ -45,7 +44,6 @@ export default function AnimatedManagerSidebar({
   isLoadingLocations = false,
   isMobile = false,
   onCollapseChange,
-  headerHeight = 96,
 }: AnimatedManagerSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [logoLoadError, setLogoLoadError] = useState(false);
@@ -92,23 +90,13 @@ export default function AnimatedManagerSidebar({
         initial={false}
         animate={{ width: sidebarWidth }}
         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-        className="relative flex flex-col bg-white border-r border-gray-300"
-        style={{
-          overflow: 'visible', // Allow button to extend outside
-          height: '100%',
-          minHeight: '100%',
-        }}
+        className="relative flex flex-col bg-white border-r border-gray-300 h-full min-h-full overflow-visible"
       >
         {/* Collapse Toggle Button - Positioned at edge, half inside half outside, relative to aside */}
         {!isMobile && (
           <button
             onClick={handleToggle}
-            className="absolute z-[100] flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#F51042]/20"
-            style={{
-              right: '-12px', // Half outside (12px = half of 24px button width)
-              top: `${headerHeight + 60 + 16 + 24}px`, // Position: navbar spacer + location padding-top (1rem) + button offset (1.5rem)
-              zIndex: 1000, // Higher z-index to ensure it appears above main content
-            }}
+            className="absolute z-[1000] flex items-center justify-center w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm hover:shadow-md transition-all hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-[#F51042]/20 top-[calc(var(--header-height)+100px)] -right-3"
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!isCollapsed}
           >
@@ -121,22 +109,10 @@ export default function AnimatedManagerSidebar({
         )}
 
         {/* Sidebar Content Container - Scrollable, starts from top */}
-        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden" style={{ minHeight: 0 }}>
-          {/* Spacer to prevent navbar overlap - MORE than navbar height to ensure no overlap */}
-          {!isMobile && (
-            <div
-              className="flex-shrink-0 bg-transparent"
-              style={{
-                height: `${headerHeight + 60}px`, // Increased to 60px extra padding to ensure no overlap
-                minHeight: `${headerHeight + 60}px`,
-                width: '100%',
-                pointerEvents: 'none' // Allow clicks to pass through
-              }}
-            />
-          )}
+        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden min-h-0">
 
-          {/* Location Selection - Always visible at top - NOW STARTS BELOW NAVBAR SPACER */}
-          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white relative" style={{ marginTop: 0, paddingTop: '1rem', zIndex: 1 }}>
+          {/* Location Selection - Always visible at top */}
+          <div className="flex-shrink-0 px-4 pt-4 pb-4 border-b border-gray-200 bg-white relative z-1">
             <AnimatePresence mode="wait">
               {isContentVisible ? (
                 <motion.div

@@ -140,14 +140,7 @@ export default function ManagerBookingDashboard() {
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const headerRef = useRef<HTMLElement>(null);
-  const [headerHeight, setHeaderHeight] = useState(96); // Default header height
-  const [sidebarStyle, setSidebarStyle] = useState<React.CSSProperties>({
-    position: 'sticky',
-    top: '96px', // Start with default header height, will be updated when measured
-    left: 0,
-    alignSelf: 'flex-start',
-  });
+
 
   // Helper function to extract filename from URL
   const getDocumentFilename = (url?: string): string => {
@@ -181,57 +174,7 @@ export default function ManagerBookingDashboard() {
     return daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
   };
 
-  // Measure header height and track scroll position
-  useEffect(() => {
-    const handleScroll = () => {
-      const header = headerRef.current || document.querySelector('header');
-
-      if (!header) return;
-
-      // Measure actual header height dynamically
-      const headerRect = header.getBoundingClientRect();
-      const measuredHeaderHeight = headerRect.height;
-      setHeaderHeight(measuredHeaderHeight); // Store for use in content padding
-      const viewportHeight = window.innerHeight;
-      const sidebarAvailableHeight = viewportHeight - measuredHeaderHeight;
-
-      // Sidebar sticky positioning is now handled directly in the JSX
-      // No need to update sidebarStyle for top position
-    };
-
-    // Measure header on mount and resize
-    const measureHeader = () => {
-      const header = headerRef.current || document.querySelector('header');
-      if (header) {
-        const headerRect = header.getBoundingClientRect();
-        const measuredHeaderHeight = headerRect.height;
-        setHeaderHeight(measuredHeaderHeight);
-        handleScroll();
-      }
-    };
-
-    // Measure immediately
-    measureHeader();
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', measureHeader);
-
-    // Also measure after DOM is ready
-    requestAnimationFrame(() => {
-      measureHeader();
-    });
-
-    // Measure after a short delay to catch any dynamic header changes
-    const timeoutId = setTimeout(() => {
-      measureHeader();
-    }, 100);
-
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', measureHeader);
-      clearTimeout(timeoutId);
-    };
-  }, []);
+  // Helper function to check if expiry is approaching (within 30 days)
 
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
@@ -536,31 +479,20 @@ export default function ManagerBookingDashboard() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
       <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-      <div ref={headerRef as React.RefObject<HTMLDivElement>}>
+      <div>
         <ManagerHeader sidebarWidth={isSidebarCollapsed ? 64 : 256} />
       </div>
       <ManagerOnboardingWizard />
 
       {/* Content area - no marginTop, sidebar will handle positioning */}
       <main
-        className="flex-1 pb-8 relative z-10 flex min-h-0"
-        style={{
-          marginTop: `${headerHeight}px`,
-          overflow: 'visible', // Allow sidebar button to be visible
-        }}
+        className="flex-1 pb-8 relative z-10 flex min-h-0 overflow-visible"
       >
         {/* Animated Sidebar - positioned below navbar, starts from top of visible area */}
         <div
-          className="hidden lg:block z-20 flex-shrink-0"
+          className="hidden lg:block z-20 flex-shrink-0 fixed left-0 top-[var(--header-height)] transition-[width] duration-300 ease-out h-[calc(100vh-var(--header-height))] max-h-[calc(100vh-var(--header-height))] overflow-visible"
           style={{
-            position: 'fixed',
-            top: `${headerHeight}px`, // Fixed below the navbar
-            left: 0,
             width: isSidebarCollapsed ? '64px' : '256px',
-            transition: 'width 0.3s ease-out',
-            height: `calc(100vh - ${headerHeight}px)`,
-            maxHeight: `calc(100vh - ${headerHeight}px)`,
-            overflow: 'visible', // Allow collapse button to extend outside
             clipPath: 'none', // Ensure no clipping
           }}
         >
@@ -586,7 +518,6 @@ export default function ManagerBookingDashboard() {
             onCreateLocation={() => setShowCreateLocation(true)}
             isLoadingLocations={isLoadingLocations}
             onCollapseChange={setIsSidebarCollapsed}
-            headerHeight={headerHeight}
           />
         </div>
 
@@ -626,10 +557,7 @@ export default function ManagerBookingDashboard() {
 
         {/* Mobile Menu Button */}
         <div
-          className="lg:hidden fixed left-3 sm:left-4 z-30"
-          style={{
-            top: `${headerHeight + 8}px`, // Position below header with small gap
-          }}
+          className="lg:hidden fixed left-3 sm:left-4 z-30 top-[calc(var(--header-height)+8px)]"
         >
           <Button
             variant="outline"
