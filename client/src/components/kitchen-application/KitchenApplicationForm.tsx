@@ -426,7 +426,7 @@ export default function KitchenApplicationForm({
     // Section 3 includes file upload
     const section3Progress = () => {
       let filled = 0;
-      let total = 2; // file + expiry date
+      const total = 2; // file + expiry date
       if (foodHandlerFile) filled++;
       if (watchedValues.foodHandlerCertExpiry) filled++;
       return Math.round((filled / total) * 100);

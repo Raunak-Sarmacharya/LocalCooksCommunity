@@ -58,6 +58,10 @@ secrets.json
 # Railway deployment
 .railway/
 
+# Build Artifacts & Backups (Clean Repo)
+api/
+
+
 # ===================================
 # Build Outputs & Distribution
 # ===================================
@@ -341,3 +345,4 @@ local-settings.json
 api/*.backup.*
 scripts/.sync-cache/
 .agent/rules/frontend-architect-protocol.md
+.agent/rules/seniorfrontend.md

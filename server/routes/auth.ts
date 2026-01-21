@@ -1,96 +1,15 @@
 import { Router, Request, Response } from "express";
-import passport from "passport";
 import crypto from 'crypto';
-import { pool } from '../db';
+import { db } from '../db';
 import { sendEmail, generateEmailVerificationEmail } from '../email';
 import { storage } from "../storage";
-import bcrypt from 'bcryptjs';
+import { getAuthenticatedUser } from "./middleware";
+import { emailVerificationTokens, users } from "@shared/schema";
+import { eq, and, gt } from "drizzle-orm";
 
 const router = Router();
 
-// Facebook authentication
-router.get("/facebook", (req, res, next) => {
-  console.log("Starting Facebook auth flow");
-  if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
-    passport.authenticate("facebook", {
-      scope: ["email"],
-      failureRedirect: "/login?error=facebook_auth_failed",
-      state: Date.now().toString() // Add state parameter for security
-    })(req, res, next);
-  } else {
-    console.error("Facebook OAuth credentials not configured");
-    res.redirect("/login?error=facebook_not_configured");
-  }
-});
-
-router.get(
-  "/facebook/callback",
-  (req: any, res: any, next: any) => {
-    console.log("Facebook OAuth callback received:", req.query);
-    // Check for error in the callback
-    if (req.query.error) {
-      console.error("Facebook OAuth error:", req.query.error);
-      return res.redirect(`/login?error=${req.query.error}`);
-    }
-    next();
-  },
-  passport.authenticate("facebook", {
-    failureRedirect: "/login?error=facebook_callback_failed",
-    failWithError: true
-  }),
-  (req: any, res: any) => {
-    // Successful authentication
-    console.log("Facebook authentication successful");
-    res.redirect("/");
-  },
-  // Error handler
-  (err: any, req: any, res: any, next: any) => {
-    console.error("Facebook authentication error:", err);
-    res.redirect("/login?error=internal_error");
-  }
-);
-
-// Instagram authentication
-router.get("/instagram", (req, res, next) => {
-  console.log("Starting Instagram auth flow");
-  if (process.env.INSTAGRAM_CLIENT_ID && process.env.INSTAGRAM_CLIENT_SECRET) {
-    passport.authenticate("instagram", {
-      failureRedirect: "/login?error=instagram_auth_failed",
-      state: Date.now().toString() // Add state parameter for security
-    })(req, res, next);
-  } else {
-    console.error("Instagram OAuth credentials not configured");
-    res.redirect("/login?error=instagram_not_configured");
-  }
-});
-
-router.get(
-  "/instagram/callback",
-  (req: any, res: any, next: any) => {
-    console.log("Instagram OAuth callback received:", req.query);
-    // Check for error in the callback
-    if (req.query.error) {
-      console.error("Instagram OAuth error:", req.query.error);
-      return res.redirect(`/login?error=${req.query.error}`);
-    }
-    next();
-  },
-  passport.authenticate("instagram", {
-    failureRedirect: "/login?error=instagram_callback_failed",
-    failWithError: true
-  }),
-  (req: any, res: any) => {
-    // Successful authentication
-    console.log("Instagram authentication successful");
-    res.redirect("/");
-  },
-  // Error handler
-  (err: any, req: any, res: any, next: any) => {
-    console.error("Instagram authentication error:", err);
-    res.redirect("/login?error=internal_error");
-  }
-);
-
+// Facebook and Instagram auth routes removed in favor of client-side Firebase Auth
 
 // Email verification endpoint
 router.post("/send-verification-email", async (req: Request, res: Response) => {
@@ -105,12 +24,22 @@ router.post("/send-verification-email", async (req: Request, res: Response) => {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationTokenExpiry = new Date(Date.now() + 86400000); // 24 hours from now
 
-    // Store verification token in database directly (bypassing storage interface for now)
-    await pool.query(`
-        INSERT INTO email_verification_tokens (email, token, expires_at, created_at) 
-        VALUES ($1, $2, $3, NOW()) 
-        ON CONFLICT (email) DO UPDATE SET token = $2, expires_at = $3, created_at = NOW()
-      `, [email, verificationToken, verificationTokenExpiry]);
+    // Store verification token in database using Drizzle ORM (upsert)
+    await db
+      .insert(emailVerificationTokens)
+      .values({
+        email,
+        token: verificationToken,
+        expiresAt: verificationTokenExpiry,
+      })
+      .onConflictDoUpdate({
+        target: emailVerificationTokens.email,
+        set: {
+          token: verificationToken,
+          expiresAt: verificationTokenExpiry,
+          createdAt: new Date(),
+        },
+      });
 
     // Generate verification URL
     const verificationUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/auth/verify-email?token=${verificationToken}`;
@@ -155,26 +84,34 @@ router.get("/verify-email", async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Verification token is required" });
     }
 
-    // Verify token and get email - using direct database query
-    const result = await pool.query(
-      'SELECT email FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()',
-      [token]
-    );
+    // Verify token and get email using Drizzle ORM
+    const [tokenRecord] = await db
+      .select({ email: emailVerificationTokens.email })
+      .from(emailVerificationTokens)
+      .where(
+        and(
+          eq(emailVerificationTokens.token, token),
+          gt(emailVerificationTokens.expiresAt, new Date())
+        )
+      )
+      .limit(1);
 
-    if (result.rows.length === 0) {
+    if (!tokenRecord) {
       return res.status(400).json({ message: "Invalid or expired verification token" });
     }
 
-    const { email } = result.rows[0];
+    const { email } = tokenRecord;
 
-    // Mark email as verified - need to update Firebase user too
-    await pool.query('UPDATE users SET is_verified = true, updated_at = NOW() WHERE email = $1', [email]);
+    // Mark email as verified using Drizzle ORM
+    await db
+      .update(users)
+      .set({ isVerified: true })
+      .where(eq(users.username, email));
 
-    // Also update the user in the users table (using Firebase UID)
-    await pool.query('UPDATE users SET is_verified = true, updated_at = NOW() WHERE email = $1', [email]);
-
-    // Clear verification token
-    await pool.query('DELETE FROM email_verification_tokens WHERE token = $1', [token]);
+    // Clear verification token using Drizzle ORM
+    await db
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.token, token));
 
     console.log(`Email verified successfully: ${email}`);
 
@@ -192,10 +129,12 @@ router.get("/verify-email", async (req: Request, res: Response) => {
 // Update has seen welcome endpoint
 router.post('/seen-welcome', async (req, res) => {
   try {
-    if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
+    const user = await getAuthenticatedUser(req);
+
+    if (!user) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
-    const user = req.user;
+
     await storage.setUserHasSeenWelcome(user.id);
     res.json({ success: true });
   } catch (error) {

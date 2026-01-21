@@ -1178,7 +1178,7 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
 
                             let bgColor = 'bg-white hover:bg-gray-50';
                             let borderColor = 'border-gray-200';
-                            let textColor = isCurrent ? 'text-gray-900' : 'text-gray-400';
+                            const textColor = isCurrent ? 'text-gray-900' : 'text-gray-400';
 
                             // Visual indicators based on availability
                             // Date exceptions (overrides) get different styling

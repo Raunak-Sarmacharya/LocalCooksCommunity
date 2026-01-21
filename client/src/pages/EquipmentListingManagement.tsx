@@ -78,15 +78,12 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  
+
   try {
     const { auth } = await import('@/lib/firebase');
     const currentUser = auth.currentUser;
-    
-    if (currentUser?.uid) {
-      // Include X-User-ID header as fallback
-      headers['X-User-ID'] = currentUser.uid;
-      
+
+    if (currentUser) {
       // Get fresh Firebase token
       try {
         const token = await currentUser.getIdToken();
@@ -97,14 +94,9 @@ async function getAuthHeaders(): Promise<HeadersInit> {
         console.error('Failed to get Firebase token:', tokenError);
       }
     } else {
-      // Fallback to localStorage if Firebase auth not ready
-      const storedUserId = localStorage.getItem('userId');
+      // Fallback to localStorage token if Firebase auth not ready
       const storedToken = localStorage.getItem('firebaseToken');
-      
-      if (storedUserId) {
-        headers['X-User-ID'] = storedUserId;
-      }
-      
+
       if (storedToken) {
         headers['Authorization'] = `Bearer ${storedToken}`;
       }
@@ -112,18 +104,13 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   } catch (error) {
     console.error('Error getting auth headers:', error);
     // Fallback to localStorage
-    const storedUserId = localStorage.getItem('userId');
     const storedToken = localStorage.getItem('firebaseToken');
-    
-    if (storedUserId) {
-      headers['X-User-ID'] = storedUserId;
-    }
-    
+
     if (storedToken) {
       headers['Authorization'] = `Bearer ${storedToken}`;
     }
   }
-  
+
   return headers;
 }
 
@@ -131,13 +118,13 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
-  
+
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 4;
-  
+
   // Form state
   const [formData, setFormData] = useState<Partial<EquipmentListing>>({
     category: 'cooking',
@@ -157,7 +144,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     dimensions: {},
     specifications: {},
   });
-  
+
   const [isSaving, setIsSaving] = useState(false);
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listings, setListings] = useState<EquipmentListing[]>([]);
@@ -192,21 +179,21 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
 
   const loadKitchens = async () => {
     if (!selectedLocationId) return;
-    
+
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/kitchens/${selectedLocationId}`, {
         headers,
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to load kitchens');
       }
-      
+
       const data = await response.json();
       setKitchens(data);
-      
+
       if (data.length === 1 && !selectedKitchenId) {
         setSelectedKitchenId(data[0].id);
       }
@@ -222,18 +209,18 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
 
   const loadListings = async () => {
     if (!selectedKitchenId) return;
-    
+
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
         headers,
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to load equipment listings');
       }
-      
+
       const data = await response.json();
       setListings(Array.isArray(data) ? data : []);
     } catch (error: any) {
@@ -253,11 +240,11 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
         headers,
         credentials: "include",
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to load listing');
       }
-      
+
       const data = await response.json();
       setFormData(data);
       setEditingListingId(listingId);
@@ -339,10 +326,10 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     setIsSaving(true);
     try {
       const headers = await getAuthHeaders();
-      const url = editingListingId 
+      const url = editingListingId
         ? `/api/manager/equipment-listings/${editingListingId}`
         : '/api/manager/equipment-listings';
-      
+
       const method = editingListingId ? 'PUT' : 'POST';
       const payload = {
         kitchenId: selectedKitchenId,
@@ -362,7 +349,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
       }
 
       const saved = await response.json();
-      
+
       toast({
         title: "Success",
         description: editingListingId ? "Equipment listing updated successfully" : "Equipment listing created successfully",
@@ -389,7 +376,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
       });
       setEditingListingId(null);
       setCurrentStep(1);
-      
+
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
     } catch (error: any) {
@@ -454,7 +441,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
 
   const handleToggleActive = (listingId: number, currentStatus: boolean) => {
     const newStatus = !currentStatus;
-    
+
     // If deactivating, show confirmation dialog
     if (!newStatus) {
       setPendingToggle({ id: listingId, isActive: newStatus });
@@ -555,10 +542,10 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-medium">{listing.equipmentType}</h4>
-                      <Badge 
+                      <Badge
                         variant={listing.isActive !== false ? "default" : "secondary"}
-                        className={listing.isActive !== false 
-                          ? "bg-green-100 text-green-700 border-green-300" 
+                        className={listing.isActive !== false
+                          ? "bg-green-100 text-green-700 border-green-300"
                           : "bg-gray-100 text-gray-600 border-gray-300"
                         }
                       >
@@ -567,8 +554,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                     </div>
                     <p className="text-sm text-gray-500">
                       {listing.category} • {listing.condition} • {
-                        listing.availabilityType === 'included' 
-                          ? 'Included (Free with kitchen)' 
+                        listing.availabilityType === 'included'
+                          ? 'Included (Free with kitchen)'
                           : `$${(listing.sessionRate || 0).toFixed(2)}/session`
                       }
                     </p>
@@ -618,17 +605,15 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
             <div className="flex items-center justify-between mb-6">
               {[1, 2, 3, 4].map((step) => (
                 <div key={step} className="flex items-center flex-1">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                    step === currentStep ? 'bg-rose-500 text-white' :
-                    step < currentStep ? 'bg-green-500 text-white' :
-                    'bg-gray-200 text-gray-600'
-                  }`}>
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${step === currentStep ? 'bg-rose-500 text-white' :
+                      step < currentStep ? 'bg-green-500 text-white' :
+                        'bg-gray-200 text-gray-600'
+                    }`}>
                     {step < currentStep ? <Check className="h-5 w-5" /> : step}
                   </div>
                   {step < totalSteps && (
-                    <div className={`flex-1 h-1 mx-2 ${
-                      step < currentStep ? 'bg-green-500' : 'bg-gray-200'
-                    }`} />
+                    <div className={`flex-1 h-1 mx-2 ${step < currentStep ? 'bg-green-500' : 'bg-gray-200'
+                      }`} />
                   )}
                 </div>
               ))}
@@ -638,7 +623,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
             {currentStep === 1 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Category & Type</h3>
-                
+
                 <div>
                   <Label htmlFor="availabilityType">Availability Type *</Label>
                   <Select
@@ -665,7 +650,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500 mt-1">
-                    {formData.availabilityType === 'included' 
+                    {formData.availabilityType === 'included'
                       ? 'This equipment comes free with kitchen bookings - no additional charge'
                       : 'Chefs will pay to rent this equipment when booking the kitchen'}
                   </p>
@@ -675,7 +660,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   <Label htmlFor="category">Category *</Label>
                   <Select
                     value={formData.category}
-                    onValueChange={(value: 'food-prep' | 'cooking' | 'refrigeration' | 'cleaning' | 'specialty') => 
+                    onValueChange={(value: 'food-prep' | 'cooking' | 'refrigeration' | 'cleaning' | 'specialty') =>
                       setFormData({ ...formData, category: value })
                     }
                   >
@@ -743,7 +728,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                     <Label htmlFor="condition">Condition *</Label>
                     <Select
                       value={formData.condition}
-                      onValueChange={(value: 'excellent' | 'good' | 'fair' | 'needs-repair') => 
+                      onValueChange={(value: 'excellent' | 'good' | 'fair' | 'needs-repair') =>
                         setFormData({ ...formData, condition: value })
                       }
                     >
@@ -798,20 +783,20 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                 <p className="text-sm text-gray-600 mb-4">
                   Set a flat session rate for this equipment. Chefs pay this amount once per kitchen booking, regardless of booking duration.
                 </p>
-                
+
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <div className="flex items-start gap-2">
                     <Info className="h-5 w-5 text-blue-500 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-blue-800">Flat Session Pricing</p>
                       <p className="text-sm text-blue-600">
-                        Equipment is charged as a one-time fee per kitchen booking session. 
+                        Equipment is charged as a one-time fee per kitchen booking session.
                         For example, if a chef books the kitchen for 2 hours or 8 hours, they pay the same equipment fee.
                       </p>
                     </div>
                   </div>
                 </div>
-                
+
                 <div>
                   <Label htmlFor="sessionRate">Session Rate (CAD) *</Label>
                   <p className="text-sm text-gray-500 mb-2">Flat fee charged per kitchen booking session</p>
@@ -892,7 +877,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
             {currentStep === 3 && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Specifications & Features</h3>
-                
+
                 <div>
                   <Label htmlFor="powerRequirements">Power Requirements</Label>
                   <Input
@@ -912,8 +897,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       type="number"
                       step="0.1"
                       value={formData.dimensions?.width || ''}
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
+                      onChange={(e) => setFormData({
+                        ...formData,
                         dimensions: { ...formData.dimensions, width: parseFloat(e.target.value) || undefined }
                       })}
                       className="mt-2"
@@ -926,8 +911,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       type="number"
                       step="0.1"
                       value={formData.dimensions?.depth || ''}
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
+                      onChange={(e) => setFormData({
+                        ...formData,
                         dimensions: { ...formData.dimensions, depth: parseFloat(e.target.value) || undefined }
                       })}
                       className="mt-2"
@@ -943,8 +928,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       type="number"
                       step="0.1"
                       value={formData.dimensions?.height || ''}
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
+                      onChange={(e) => setFormData({
+                        ...formData,
                         dimensions: { ...formData.dimensions, height: parseFloat(e.target.value) || undefined }
                       })}
                       className="mt-2"
@@ -957,8 +942,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       type="number"
                       step="0.1"
                       value={formData.dimensions?.weight || ''}
-                      onChange={(e) => setFormData({ 
-                        ...formData, 
+                      onChange={(e) => setFormData({
+                        ...formData,
                         dimensions: { ...formData.dimensions, weight: parseFloat(e.target.value) || undefined }
                       })}
                       className="mt-2"
@@ -1092,7 +1077,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Terms & Conditions</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  {formData.availabilityType === 'included' 
+                  {formData.availabilityType === 'included'
                     ? 'Configure usage terms for equipment that comes free with kitchen bookings.'
                     : 'Configure rental terms and conditions for this equipment.'}
                 </p>
@@ -1102,7 +1087,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   <Label htmlFor="cleaningResponsibility">Cleaning Responsibility</Label>
                   <Select
                     value={formData.cleaningResponsibility || ''}
-                    onValueChange={(value: 'renter' | 'host' | 'shared' | '') => 
+                    onValueChange={(value: 'renter' | 'host' | 'shared' | '') =>
                       setFormData({ ...formData, cleaningResponsibility: value || undefined })
                     }
                   >

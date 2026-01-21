@@ -1,6 +1,10 @@
 import { Router, Request, Response } from "express";
 import Stripe from "stripe";
-import { pool } from "../db";
+import { db, pool } from "../db";
+import { users, kitchenBookings, storageBookings, equipmentBookings } from "@shared/schema";
+import { eq, and, ne, notInArray } from "drizzle-orm";
+import { logger } from "../logger";
+import { errorResponse } from "../api-response";
 
 const router = Router();
 
@@ -24,9 +28,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
         });
 
         if (!webhookSecret) {
-            console.warn('⚠️ STRIPE_WEBHOOK_SECRET not configured - webhook verification disabled');
-            // In development, allow webhooks without verification
-            // In production, this should be required
+            if (process.env.NODE_ENV === 'production') {
+                logger.error('❌ CRITICAL: STRIPE_WEBHOOK_SECRET is required in production!');
+                return res.status(500).json({ error: 'Webhook configuration error' });
+            }
+            logger.warn('⚠️ STRIPE_WEBHOOK_SECRET not configured - webhook verification disabled (development only)');
         }
 
         let event: Stripe.Event;
@@ -34,13 +40,13 @@ router.post("/stripe", async (req: Request, res: Response) => {
         // Verify webhook signature if secret is configured
         if (webhookSecret && sig) {
             try {
-                event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+                event = stripe.webhooks.constructEvent(req.body, sig as string, webhookSecret);
             } catch (err: any) {
-                console.error('⚠️ Webhook signature verification failed:', err.message);
+                logger.error('⚠️ Webhook signature verification failed:', err.message);
                 return res.status(400).json({ error: `Webhook Error: ${err.message}` });
             }
         } else {
-            // In development, parse event without verification
+            // In development, handle it as body cast if no secret
             event = req.body as Stripe.Event;
         }
 
@@ -69,21 +75,21 @@ router.post("/stripe", async (req: Request, res: Response) => {
                 if (event.type.startsWith('charge.')) {
                     await handleChargeRefunded(event.data.object as Stripe.Charge, webhookEventId);
                 } else {
-                    console.log(`Unhandled event type: ${event.type}`);
+                    logger.info(`Unhandled event type: ${event.type}`);
                 }
         }
 
         res.json({ received: true });
-    } catch (error: any) {
-        console.error('Error handling webhook:', error);
-        res.status(500).json({ error: error.message || 'Webhook handler failed' });
+    } catch (err: any) {
+        logger.error('Unhandled webhook error:', err);
+        return errorResponse(res, err);
     }
 });
 
 // Webhook event handlers
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session, webhookEventId: string) {
     if (!pool) {
-        console.error('Database pool not available for webhook');
+        logger.error('Database pool not available for webhook');
         return;
     }
 
@@ -93,7 +99,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session, 
         // Retrieve full session with expanded line_items and payment_intent
         const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
         if (!stripeSecretKey) {
-            console.error('Stripe secret key not available');
+            logger.error('Stripe secret key not available');
             return;
         }
 
@@ -129,7 +135,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session, 
                         : pi.latest_charge.id;
                 }
             } catch (error) {
-                console.warn('Could not fetch payment intent details:', error);
+                logger.warn('Could not fetch payment intent details:', { error });
             }
         }
 
@@ -154,28 +160,27 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session, 
         const updatedTransaction = await updateTransactionBySessionId(
             session.id,
             updateParams,
-            pool
+            db
         );
 
         if (updatedTransaction) {
-            console.log(`[Webhook] Updated transaction for Checkout session ${session.id}:`, {
+            logger.info(`[Webhook] Updated transaction for Checkout session ${session.id}:`, {
                 paymentIntentId,
                 chargeId,
                 amount: `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}`,
                 managerReceives: `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}`,
             });
         } else {
-            console.warn(`[Webhook] Transaction not found for Checkout session ${session.id}`);
+            logger.warn(`[Webhook] Transaction not found for Checkout session ${session.id}`);
         }
     } catch (error: any) {
-        console.error(`[Webhook] Error handling checkout.session.completed:`, error);
-        // Don't throw - webhook should return 200 even if processing fails
+        logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
     }
 }
 
 async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent, webhookEventId: string) {
     if (!pool) {
-        console.error('Database pool not available for webhook');
+        logger.error('Database pool not available for webhook');
         return;
     }
 
@@ -184,21 +189,27 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent,
         const { getStripePaymentAmounts } = await import('../services/stripe-service');
 
         // Update payment_transactions table
-        const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
+        const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, db);
         if (transaction) {
             // Get manager's Stripe Connect account ID if available
             let managerConnectAccountId: string | undefined;
             try {
-                const managerResult = await pool.query(`
-            SELECT stripe_connect_account_id 
-            FROM users 
-            WHERE id = $1 AND stripe_connect_account_id IS NOT NULL
-          `, [transaction.manager_id]);
-                if (managerResult.rows.length > 0) {
-                    managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
+                const [manager] = await db
+                    .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+                    .from(users)
+                    .where(
+                        and(
+                            eq(users.id, transaction.manager_id as number),
+                            ne(users.stripeConnectAccountId, '')
+                        )
+                    )
+                    .limit(1);
+
+                if (manager?.stripeConnectAccountId) {
+                    managerConnectAccountId = manager.stripeConnectAccountId;
                 }
             } catch (error) {
-                console.warn(`[Webhook] Could not fetch manager Connect account:`, error);
+                logger.warn(`[Webhook] Could not fetch manager Connect account:`, { error });
             }
 
             // Fetch actual Stripe amounts
@@ -219,7 +230,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent,
                 updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
                 updateParams.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
                 updateParams.stripePlatformFee = stripeAmounts.stripePlatformFee;
-                console.log(`[Webhook] Syncing Stripe amounts for ${paymentIntent.id}:`, {
+                logger.info(`[Webhook] Syncing Stripe amounts for ${paymentIntent.id}:`, {
                     amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
                     netAmount: `$${(stripeAmounts.stripeNetAmount / 100).toFixed(2)}`,
                     processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
@@ -227,55 +238,65 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent,
                 });
             }
 
-            await updatePaymentTransaction(transaction.id, updateParams, pool);
-            console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}${stripeAmounts ? ' with Stripe amounts' : ''}`);
+            await updatePaymentTransaction(transaction.id, updateParams, db);
+            logger.info(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}${stripeAmounts ? ' with Stripe amounts' : ''}`);
 
             // Sync Stripe amounts to all related booking tables
             if (stripeAmounts) {
                 const { syncStripeAmountsToBookings } = await import('../services/payment-transactions-service');
-                await syncStripeAmountsToBookings(paymentIntent.id, stripeAmounts, pool);
+                await syncStripeAmountsToBookings(paymentIntent.id, stripeAmounts, db);
             }
         }
 
         // Also update booking tables payment status for backward compatibility
-        await pool.query(`
-        UPDATE kitchen_bookings
-        SET 
-          payment_status = 'paid',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status != 'paid'
-      `, [paymentIntent.id]);
+        // Wrap in transaction for integrity
+        await db.transaction(async (tx) => {
+            await tx.update(kitchenBookings)
+                .set({
+                    paymentStatus: 'paid',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(kitchenBookings.paymentIntentId, paymentIntent.id),
+                        ne(kitchenBookings.paymentStatus, 'paid')
+                    )
+                );
 
-        // Update storage_bookings
-        await pool.query(`
-        UPDATE storage_bookings
-        SET 
-          payment_status = 'paid',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status != 'paid'
-      `, [paymentIntent.id]);
+            await tx.update(storageBookings)
+                .set({
+                    paymentStatus: 'paid',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(storageBookings.paymentIntentId, paymentIntent.id),
+                        ne(storageBookings.paymentStatus, 'paid')
+                    )
+                );
 
-        // Update equipment_bookings
-        await pool.query(`
-        UPDATE equipment_bookings
-        SET 
-          payment_status = 'paid',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status != 'paid'
-      `, [paymentIntent.id]);
+            await tx.update(equipmentBookings)
+                .set({
+                    paymentStatus: 'paid',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(equipmentBookings.paymentIntentId, paymentIntent.id),
+                        ne(equipmentBookings.paymentStatus, 'paid')
+                    )
+                );
+        });
 
-        console.log(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`);
+        logger.info(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`);
     } catch (error: any) {
-        console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+        logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
     }
 }
 
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent, webhookEventId: string) {
     if (!pool) {
-        console.error('Database pool not available for webhook');
+        logger.error('Database pool not available for webhook');
         return;
     }
 
@@ -283,7 +304,7 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent, we
         const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('../services/payment-transactions-service');
 
         // Update payment_transactions table
-        const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
+        const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, db);
         if (transaction) {
             await updatePaymentTransaction(transaction.id, {
                 status: 'failed',
@@ -291,47 +312,60 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent, we
                 failureReason: paymentIntent.last_payment_error?.message || 'Payment failed',
                 lastSyncedAt: new Date(),
                 webhookEventId: webhookEventId,
-            }, pool);
-            console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+            }, db);
+            logger.info(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
         }
 
         // Also update booking tables for backward compatibility
-        await pool.query(`
-        UPDATE kitchen_bookings
-        SET 
-          payment_status = 'failed',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
-      `, [paymentIntent.id]);
+        await db.transaction(async (tx) => {
+            const excludedStatuses: ("pending" | "paid" | "refunded" | "failed" | "partially_refunded")[] = ['paid', 'refunded', 'partially_refunded'];
 
-        await pool.query(`
-        UPDATE storage_bookings
-        SET 
-          payment_status = 'failed',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
-      `, [paymentIntent.id]);
+            await tx.update(kitchenBookings)
+                .set({
+                    paymentStatus: 'failed',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(kitchenBookings.paymentIntentId, paymentIntent.id),
+                        notInArray(kitchenBookings.paymentStatus, excludedStatuses)
+                    )
+                );
 
-        await pool.query(`
-        UPDATE equipment_bookings
-        SET 
-          payment_status = 'failed',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
-      `, [paymentIntent.id]);
+            await tx.update(storageBookings)
+                .set({
+                    paymentStatus: 'failed',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(storageBookings.paymentIntentId, paymentIntent.id),
+                        notInArray(storageBookings.paymentStatus, excludedStatuses)
+                    )
+                );
 
-        console.log(`[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`);
+            await tx.update(equipmentBookings)
+                .set({
+                    paymentStatus: 'failed',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(equipmentBookings.paymentIntentId, paymentIntent.id),
+                        notInArray(equipmentBookings.paymentStatus, excludedStatuses)
+                    )
+                );
+        });
+
+        logger.info(`[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`);
     } catch (error: any) {
-        console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+        logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
     }
 }
 
 async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent, webhookEventId: string) {
     if (!pool) {
-        console.error('Database pool not available for webhook');
+        logger.error('Database pool not available for webhook');
         return;
     }
 
@@ -339,54 +373,67 @@ async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent, 
         const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('../services/payment-transactions-service');
 
         // Update payment_transactions table
-        const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, pool);
+        const transaction = await findPaymentTransactionByIntentId(paymentIntent.id, db);
         if (transaction) {
             await updatePaymentTransaction(transaction.id, {
                 status: 'canceled',
                 stripeStatus: paymentIntent.status,
                 lastSyncedAt: new Date(),
                 webhookEventId: webhookEventId,
-            }, pool);
-            console.log(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+            }, db);
+            logger.info(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
         }
 
         // Also update booking tables for backward compatibility
-        await pool.query(`
-        UPDATE kitchen_bookings
-        SET 
-          payment_status = 'canceled',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
-      `, [paymentIntent.id]);
+        await db.transaction(async (tx) => {
+            const excludedStatuses: ("pending" | "paid" | "refunded" | "failed" | "partially_refunded")[] = ['paid', 'refunded', 'partially_refunded'];
 
-        await pool.query(`
-        UPDATE storage_bookings
-        SET 
-          payment_status = 'canceled',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
-      `, [paymentIntent.id]);
+            await tx.update(kitchenBookings)
+                .set({
+                    paymentStatus: 'failed', // Map cancel to failed for backward compatibility
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(kitchenBookings.paymentIntentId, paymentIntent.id),
+                        notInArray(kitchenBookings.paymentStatus, excludedStatuses)
+                    )
+                );
 
-        await pool.query(`
-        UPDATE equipment_bookings
-        SET 
-          payment_status = 'canceled',
-          updated_at = NOW()
-        WHERE payment_intent_id = $1
-          AND payment_status NOT IN ('paid', 'refunded', 'partially_refunded')
-      `, [paymentIntent.id]);
+            await tx.update(storageBookings)
+                .set({
+                    paymentStatus: 'failed',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(storageBookings.paymentIntentId, paymentIntent.id),
+                        notInArray(storageBookings.paymentStatus, excludedStatuses)
+                    )
+                );
 
-        console.log(`[Webhook] Updated booking payment status to 'canceled' for PaymentIntent ${paymentIntent.id}`);
+            await tx.update(equipmentBookings)
+                .set({
+                    paymentStatus: 'failed',
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(equipmentBookings.paymentIntentId, paymentIntent.id),
+                        notInArray(equipmentBookings.paymentStatus, excludedStatuses)
+                    )
+                );
+        });
+
+        logger.info(`[Webhook] Updated booking payment status for PaymentIntent ${paymentIntent.id}`);
     } catch (error: any) {
-        console.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+        logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
     }
 }
 
 async function handleChargeRefunded(charge: Stripe.Charge, webhookEventId: string) {
     if (!pool) {
-        console.error('Database pool not available for webhook');
+        logger.error('Database pool not available for webhook');
         return;
     }
 
@@ -399,7 +446,7 @@ async function handleChargeRefunded(charge: Stripe.Charge, webhookEventId: strin
             : charge.payment_intent?.id;
 
         if (!paymentIntentId) {
-            console.warn(`[Webhook] Charge ${charge.id} has no payment_intent`);
+            logger.warn(`[Webhook] Charge ${charge.id} has no payment_intent`);
             return;
         }
 
@@ -409,7 +456,7 @@ async function handleChargeRefunded(charge: Stripe.Charge, webhookEventId: strin
         const refundAmountCents = charge.amount_refunded;
 
         // Update payment_transactions table
-        const transaction = await findPaymentTransactionByIntentId(paymentIntentId, pool);
+        const transaction = await findPaymentTransactionByIntentId(paymentIntentId, db);
         if (transaction) {
             await updatePaymentTransaction(transaction.id, {
                 status: refundStatus,
@@ -418,41 +465,52 @@ async function handleChargeRefunded(charge: Stripe.Charge, webhookEventId: strin
                 refundedAt: new Date(),
                 lastSyncedAt: new Date(),
                 webhookEventId: webhookEventId,
-            }, pool);
-            console.log(`[Webhook] Updated payment_transactions for refund on PaymentIntent ${paymentIntentId}`);
+            }, db);
+            logger.info(`[Webhook] Updated payment_transactions for refund on PaymentIntent ${paymentIntentId}`);
         }
 
         // Also update booking tables for backward compatibility
-        await pool.query(`
-        UPDATE kitchen_bookings
-        SET 
-          payment_status = $1,
-          updated_at = NOW()
-        WHERE payment_intent_id = $2
-          AND payment_status = 'paid'
-      `, [refundStatus, paymentIntentId]);
+        await db.transaction(async (tx) => {
+            await tx.update(kitchenBookings)
+                .set({
+                    paymentStatus: refundStatus,
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(kitchenBookings.paymentIntentId, paymentIntentId),
+                        eq(kitchenBookings.paymentStatus, 'paid')
+                    )
+                );
 
-        await pool.query(`
-        UPDATE storage_bookings
-        SET 
-          payment_status = $1,
-          updated_at = NOW()
-        WHERE payment_intent_id = $2
-          AND payment_status = 'paid'
-      `, [refundStatus, paymentIntentId]);
+            await tx.update(storageBookings)
+                .set({
+                    paymentStatus: refundStatus,
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(storageBookings.paymentIntentId, paymentIntentId),
+                        eq(storageBookings.paymentStatus, 'paid')
+                    )
+                );
 
-        await pool.query(`
-        UPDATE equipment_bookings
-        SET 
-          payment_status = $1,
-          updated_at = NOW()
-        WHERE payment_intent_id = $2
-          AND payment_status = 'paid'
-      `, [refundStatus, paymentIntentId]);
+            await tx.update(equipmentBookings)
+                .set({
+                    paymentStatus: refundStatus,
+                    updatedAt: new Date()
+                })
+                .where(
+                    and(
+                        eq(equipmentBookings.paymentIntentId, paymentIntentId),
+                        eq(equipmentBookings.paymentStatus, 'paid')
+                    )
+                );
+        });
 
-        console.log(`[Webhook] Updated booking payment status to '${refundStatus}' for PaymentIntent ${paymentIntentId}`);
+        logger.info(`[Webhook] Updated booking payment status to '${refundStatus}' for PaymentIntent ${paymentIntentId}`);
     } catch (error: any) {
-        console.error(`[Webhook] Error updating refund status for charge ${charge.id}:`, error);
+        logger.error(`[Webhook] Error updating refund status for charge ${charge.id}:`, error);
     }
 }
 

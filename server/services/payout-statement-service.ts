@@ -13,31 +13,28 @@ export async function generatePayoutStatementPDF(
   managerEmail: string,
   payout: Stripe.Payout,
   balanceTransactions: Stripe.BalanceTransaction[],
-  bookings: any[],
-  dbPool: Pool | null
+  bookings: any[]
 ): Promise<Buffer> {
   // Calculate totals
   let totalEarnings = 0;
   let totalPlatformFees = 0;
-  let totalBookings = bookings.length;
+  const totalBookings = bookings.length;
 
   // Get service fee rate
   let serviceFeeRate = 0.05; // Default
-  if (dbPool) {
-    try {
-      const { getServiceFeeRate } = await import('./pricing-service.js');
-      serviceFeeRate = await getServiceFeeRate(dbPool);
-    } catch (error) {
-      console.error('Error getting service fee rate for payout statement:', error);
-    }
+  try {
+    const { getServiceFeeRate } = await import('./pricing-service');
+    serviceFeeRate = await getServiceFeeRate();
+  } catch (error) {
+    console.error('Error getting service fee rate for payout statement:', error);
   }
 
   // Calculate from bookings
   bookings.forEach((booking: any) => {
-    const totalPrice = (booking.total_price || 0) / 100; // Convert cents to dollars
-    const serviceFee = (booking.service_fee || 0) / 100;
+    const totalPrice = (booking.totalPrice || booking.total_price || 0) / 100; // Convert cents to dollars
+    const serviceFee = (booking.serviceFee || booking.service_fee || 0) / 100;
     const managerRevenue = totalPrice * (1 - serviceFeeRate);
-    
+
     totalEarnings += managerRevenue;
     totalPlatformFees += serviceFee;
   });
@@ -48,7 +45,7 @@ export async function generatePayoutStatementPDF(
   const payoutStatus = payout.status;
 
   // Calculate period (from earliest booking to payout date)
-  const periodStart = bookings.length > 0 
+  const periodStart = bookings.length > 0
     ? new Date(Math.min(...bookings.map((b: any) => new Date(b.booking_date || b.created_at).getTime())))
     : payoutDate;
   const periodEnd = payoutDate;
@@ -56,7 +53,7 @@ export async function generatePayoutStatementPDF(
   // Generate PDF
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ 
+      const doc = new PDFDocument({
         margin: 50,
         size: 'LETTER'
       });
@@ -72,36 +69,36 @@ export async function generatePayoutStatementPDF(
       // Header Section
       doc.fontSize(28).font('Helvetica-Bold').text('PAYOUT STATEMENT', 50, 50);
       doc.fontSize(10).font('Helvetica');
-      
+
       // Statement details (right-aligned)
-      const statementDate = new Date().toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+      const statementDate = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
       });
       const statementNumber = `PS-${payout.id.substring(3)}-${payoutDate.getFullYear()}`;
-      
+
       const pageWidth = doc.page.width;
       const rightMargin = pageWidth - 50;
       const labelWidth = 100;
       const valueStartX = rightMargin - 200;
-      
+
       let rightY = 50;
-      
+
       // Statement Number
       doc.fontSize(10).font('Helvetica-Bold');
       doc.text('Statement #:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
       doc.text(statementNumber, valueStartX + labelWidth + 5, rightY);
       rightY += 15;
-      
+
       // Date
       doc.font('Helvetica-Bold');
       doc.text('Date:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
       doc.text(statementDate, valueStartX + labelWidth + 5, rightY);
       rightY += 15;
-      
+
       // Payout ID
       doc.font('Helvetica-Bold');
       doc.text('Payout ID:', valueStartX, rightY, { width: labelWidth, align: 'right' });
@@ -109,22 +106,22 @@ export async function generatePayoutStatementPDF(
       const payoutIdDisplay = payout.id.length > 20 ? payout.id.substring(0, 20) + '...' : payout.id;
       doc.text(payoutIdDisplay, valueStartX + labelWidth + 5, rightY);
       rightY += 15;
-      
+
       // Payout Status
       doc.font('Helvetica-Bold');
       doc.text('Status:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
       doc.text(payoutStatus.charAt(0).toUpperCase() + payoutStatus.slice(1), valueStartX + labelWidth + 5, rightY);
       rightY += 15;
-      
+
       // Payout Date
       doc.font('Helvetica-Bold');
       doc.text('Payout Date:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
-      doc.text(payoutDate.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+      doc.text(payoutDate.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
       }), valueStartX + labelWidth + 5, rightY);
 
       // Company info section
@@ -202,11 +199,12 @@ export async function generatePayoutStatementPDF(
             leftY = 50;
           }
 
-          const bookingDate = new Date(booking.booking_date || booking.created_at);
+          const bookingDateRaw = booking.bookingDate || booking.booking_date || booking.createdAt || booking.created_at;
+          const bookingDate = new Date(bookingDateRaw);
           const dateStr = bookingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          const kitchenName = (booking.kitchen_name || 'Kitchen').substring(0, 20);
-          const chefName = (booking.chef_name || 'Guest').substring(0, 20);
-          const amount = ((booking.total_price || 0) / 100) * (1 - serviceFeeRate);
+          const kitchenName = (booking.kitchenName || booking.kitchen_name || 'Kitchen').substring(0, 20);
+          const chefName = (booking.chefName || booking.chef_name || 'Guest').substring(0, 20);
+          const amount = ((booking.totalPrice || booking.total_price || 0) / 100) * (1 - serviceFeeRate);
 
           doc.text(dateStr, 50, leftY);
           doc.text(kitchenName, 120, leftY, { width: 120 });

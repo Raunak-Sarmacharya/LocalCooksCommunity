@@ -11,9 +11,9 @@ import type {
   UpdateDocumentVerification,
   User
 } from "@shared/schema";
-import { applications, chefKitchenApplications, users, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings, LocationRequirements, UpdateLocationRequirements } from "@shared/schema";
-import { eq, and, inArray, asc, gte, lte, desc, isNull, or, not } from "drizzle-orm";
-import { db, pool } from "./db";
+import { applications, chefKitchenApplications, users, locations, locationRequirements, kitchens, kitchenAvailability, kitchenDateOverrides, kitchenBookings, chefKitchenAccess, chefLocationAccess, chefKitchenProfiles, chefLocationProfiles, storageListings, equipmentListings, storageBookings, equipmentBookings, platformSettings, LocationRequirements, UpdateLocationRequirements, videoProgress, microlearningCompletions } from "@shared/schema";
+import { eq, and, inArray, asc, gte, lte, desc, isNull, or, not, lt } from "drizzle-orm";
+import { db } from "./db";
 import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 
 /**
@@ -112,66 +112,60 @@ export class FirebaseStorage {
       throw new Error("Username is required");
     }
 
-    // Use raw query to include firebase_uid, is_verified, and has_seen_welcome
-    if (pool && insertUser.firebaseUid) {
-      try {
-        const result = await pool.query(
-          'INSERT INTO users (username, password, role, firebase_uid, is_verified, has_seen_welcome, is_chef, is_manager, is_portal_user) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
-          [
-            insertUser.username,
-            insertUser.password || '', // Empty password for Firebase users
-            insertUser.role || (() => {
-              console.error(`❌ CRITICAL ERROR: No role provided to createUser in storage-firebase.ts!`);
-              console.error(`   - This should not happen - role should always be provided for Firebase users`);
-              throw new Error('Role is required when creating a Firebase user. This is a programming error.');
-            })(),
-            insertUser.firebaseUid,
-            insertUser.isVerified !== undefined ? insertUser.isVerified : false,
-            insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
-            insertUser.isChef !== undefined ? insertUser.isChef : false,
-            insertUser.isManager !== undefined ? insertUser.isManager : false,
-            (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false
-          ]
-        );
-        return result.rows[0];
-      } catch (error) {
-        console.error('Error creating user with firebase_uid:', error);
-        throw error;
-      }
+    try {
+      const [user] = await db
+        .insert(users)
+        .values({
+          username: insertUser.username,
+          password: insertUser.password || '',
+          role: insertUser.role || (() => {
+            console.error(`❌ CRITICAL ERROR: No role provided to createUser in storage-firebase.ts!`);
+            throw new Error('Role is required when creating a Firebase user. This is a programming error.');
+          })(),
+          firebaseUid: insertUser.firebaseUid,
+          isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
+          has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
+          isChef: insertUser.isChef !== undefined ? insertUser.isChef : false,
+          isManager: insertUser.isManager !== undefined ? insertUser.isManager : false,
+          isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
+        })
+        .returning();
+
+      return user;
+    } catch (error) {
+      console.error('Error creating user with drizzle:', error);
+      throw error;
     }
-
-    // Fallback to schema-based insert without firebase_uid
-    const [user] = await db
-      .insert(users)
-      .values({
-        username: insertUser.username,
-        password: insertUser.password || '',
-        role: insertUser.role || (() => {
-          console.error(`❌ CRITICAL ERROR: No role provided to createUser (fallback) in storage-firebase.ts!`);
-          throw new Error('Role is required when creating a Firebase user. This is a programming error.');
-        })(),
-        isVerified: insertUser.isVerified !== undefined ? insertUser.isVerified : false,
-        has_seen_welcome: insertUser.has_seen_welcome !== undefined ? insertUser.has_seen_welcome : false,
-        isChef: insertUser.isChef !== undefined ? insertUser.isChef : false,
-        isManager: insertUser.isManager !== undefined ? insertUser.isManager : false,
-        isPortalUser: (insertUser as any).isPortalUser !== undefined ? (insertUser as any).isPortalUser : false,
-      })
-      .returning();
-
-    return user;
   }
 
   async setUserHasSeenWelcome(userId: number): Promise<void> {
-    if (!pool) return;
-
     try {
-      await pool.query(
-        'UPDATE users SET has_seen_welcome = true WHERE id = $1',
-        [userId]
-      );
+      await db
+        .update(users)
+        .set({ has_seen_welcome: true })
+        .where(eq(users.id, userId));
     } catch (error) {
       console.error('Error setting has_seen_welcome:', error);
       throw new Error('Failed to set has_seen_welcome');
+    }
+  }
+
+  async updateManagerOnboarding(userId: number, updates: { completed?: boolean; skipped?: boolean; steps?: any }): Promise<User | undefined> {
+    try {
+      const dbUpdates: any = {};
+      if (updates.completed !== undefined) dbUpdates.managerOnboardingCompleted = updates.completed;
+      if (updates.skipped !== undefined) dbUpdates.managerOnboardingSkipped = updates.skipped;
+      if (updates.steps !== undefined) dbUpdates.managerOnboardingStepsCompleted = updates.steps;
+
+      const [updated] = await db
+        .update(users)
+        .set(dbUpdates)
+        .where(eq(users.id, userId))
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error('Error updating manager onboarding:', error);
+      throw error;
     }
   }
 
@@ -188,7 +182,7 @@ export class FirebaseStorage {
 
   async getApplicationsByUserId(userId: number): Promise<Application[]> {
     console.log(`[STORAGE] getApplicationsByUserId called with userId: ${userId}`);
-    console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
+    console.log(`[STORAGE] Database connection check - db exists: ${!!db}`);
 
     const results = await db.select().from(applications).where(eq(applications.userId, userId));
     console.log(`[STORAGE] Found ${results.length} applications for user ${userId}`);
@@ -257,14 +251,12 @@ export class FirebaseStorage {
   // ===== MICROLEARNING =====
 
   async getMicrolearningProgress(userId: number): Promise<any[]> {
-    if (!pool) return [];
-
     try {
-      const result = await pool.query(
-        'SELECT * FROM video_progress WHERE user_id = $1 ORDER BY updated_at DESC',
-        [userId]
-      );
-      return result.rows;
+      return await db
+        .select()
+        .from(videoProgress)
+        .where(eq(videoProgress.userId, userId))
+        .orderBy(desc(videoProgress.updatedAt));
     } catch (error) {
       console.error('Error getting microlearning progress:', error);
       return [];
@@ -272,14 +264,12 @@ export class FirebaseStorage {
   }
 
   async getMicrolearningCompletion(userId: number): Promise<any | undefined> {
-    if (!pool) return undefined;
-
     try {
-      const result = await pool.query(
-        'SELECT * FROM microlearning_completions WHERE user_id = $1',
-        [userId]
-      );
-      return result.rows[0] || undefined;
+      const [completion] = await db
+        .select()
+        .from(microlearningCompletions)
+        .where(eq(microlearningCompletions.userId, userId));
+      return completion || undefined;
     } catch (error) {
       console.error('Error getting microlearning completion:', error);
       return undefined;
@@ -287,28 +277,28 @@ export class FirebaseStorage {
   }
 
   async updateVideoProgress(progressData: any): Promise<void> {
-    if (!pool) return;
-
     try {
-      await pool.query(
-        `INSERT INTO video_progress (user_id, video_id, progress, completed, watched_percentage, is_rewatching, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
-         ON CONFLICT (user_id, video_id) 
-         DO UPDATE SET 
-           progress = EXCLUDED.progress,
-           completed = EXCLUDED.completed,
-           watched_percentage = EXCLUDED.watched_percentage,
-           is_rewatching = EXCLUDED.is_rewatching,
-           updated_at = NOW()`,
-        [
-          progressData.userId,
-          progressData.videoId,
-          progressData.progress || 0,
-          progressData.completed || false,
-          progressData.watchedPercentage || 0,
-          progressData.isRewatching || false
-        ]
-      );
+      await db
+        .insert(videoProgress)
+        .values({
+          userId: progressData.userId,
+          videoId: progressData.videoId,
+          progress: progressData.progress ? String(progressData.progress) : '0',
+          completed: progressData.completed || false,
+          watchedPercentage: progressData.watchedPercentage ? String(progressData.watchedPercentage) : '0',
+          isRewatching: progressData.isRewatching || false,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [videoProgress.userId, videoProgress.videoId],
+          set: {
+            progress: progressData.progress ? String(progressData.progress) : '0',
+            completed: progressData.completed || false,
+            watchedPercentage: progressData.watchedPercentage ? String(progressData.watchedPercentage) : '0',
+            isRewatching: progressData.isRewatching || false,
+            updatedAt: new Date(),
+          },
+        });
     } catch (error) {
       console.error('Error updating video progress:', error);
       throw error;
@@ -316,21 +306,19 @@ export class FirebaseStorage {
   }
 
   async createMicrolearningCompletion(completionData: any): Promise<any> {
-    if (!pool) return null;
-
     try {
-      const result = await pool.query(
-        `INSERT INTO microlearning_completions (user_id, confirmed, certificate_generated, video_progress, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, NOW(), NOW())
-         RETURNING *`,
-        [
-          completionData.userId,
-          completionData.confirmed || false,
-          completionData.certificateGenerated || false,
-          JSON.stringify(completionData.videoProgress || {})
-        ]
-      );
-      return result.rows[0];
+      const [result] = await db
+        .insert(microlearningCompletions)
+        .values({
+          userId: completionData.userId,
+          confirmed: completionData.confirmed || false,
+          certificateGenerated: completionData.certificateGenerated || false,
+          videoProgress: completionData.videoProgress || {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      return result;
     } catch (error) {
       console.error('Error creating microlearning completion:', error);
       throw error;
@@ -342,7 +330,7 @@ export class FirebaseStorage {
   async updateUserRoles(userId: number, roles: { isChef: boolean }): Promise<void> {
     try {
       // Determine the main role based on selected roles
-      let mainRole = roles.isChef ? 'chef' : null;
+      const mainRole = roles.isChef ? 'chef' : null;
 
       console.log(`🎯 Updating user ${userId} roles:`, {
         isChef: roles.isChef,
@@ -924,35 +912,13 @@ export class FirebaseStorage {
   async getKitchenPricing(kitchenId: number): Promise<any | undefined> {
     try {
       // Query database directly to avoid Drizzle's numeric type issues
-      if (pool && 'query' in pool) {
-        try {
-          const directQuery = await pool.query(
-            'SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model FROM kitchens WHERE id = $1',
-            [kitchenId]
-          );
-          if (directQuery.rows && directQuery.rows[0]) {
-            const row = directQuery.rows[0];
-            const dbValue = row.hourly_rate;
-            const hourlyRateCents = dbValue ? parseFloat(String(dbValue)) : null;
 
-            return {
-              hourlyRate: hourlyRateCents !== null ? hourlyRateCents / 100 : null,
-              currency: row.currency || 'CAD',
-              minimumBookingHours: row.minimum_booking_hours || 1,
-              pricingModel: row.pricing_model || 'hourly',
-            };
-          }
-        } catch (error) {
-          console.error('Error getting kitchen pricing:', error);
-        }
-      }
 
       // Fallback to Drizzle if direct query fails
       const kitchen = await this.getKitchenById(kitchenId);
       if (!kitchen) return undefined;
 
-      const hourlyRateCents = kitchen.hourlyRate ? parseFloat(kitchen.hourlyRate.toString()) : null;
-      const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
+      const hourlyRateDollars = kitchen.hourlyRate ? parseFloat(kitchen.hourlyRate.toString()) : null;
 
       return {
         hourlyRate: hourlyRateDollars,
@@ -1002,20 +968,7 @@ export class FirebaseStorage {
       // Query database directly to get the actual stored value (in cents)
       // Drizzle's numeric type may incorrectly interpret the value
       let hourlyRateCents: number | null = null;
-      if (pool && 'query' in pool) {
-        try {
-          const directQuery = await pool.query(
-            'SELECT hourly_rate::text as hourly_rate FROM kitchens WHERE id = $1',
-            [kitchenId]
-          );
-          if (directQuery.rows && directQuery.rows[0]) {
-            const dbValue = directQuery.rows[0].hourly_rate;
-            hourlyRateCents = dbValue ? parseFloat(String(dbValue)) : null;
-          }
-        } catch (error) {
-          console.error('Error updating kitchen pricing:', error);
-        }
-      }
+
 
       // Convert cents to dollars for API response
       const hourlyRateDollars = hourlyRateCents !== null ? hourlyRateCents / 100 : null;
@@ -1040,62 +993,7 @@ export class FirebaseStorage {
   // Get storage listing by ID (using direct SQL for numeric fields)
   async getStorageListingById(id: number): Promise<any | undefined> {
     try {
-      if (pool && 'query' in pool) {
-        try {
-          const directQuery = await pool.query(
-            `SELECT 
-              id, kitchen_id, storage_type, name, description,
-              dimensions_length::text as dimensions_length,
-              dimensions_width::text as dimensions_width,
-              dimensions_height::text as dimensions_height,
-              total_volume::text as total_volume,
-              shelf_count, shelf_material, access_type,
-              features, security_features, climate_control,
-              temperature_range, humidity_control, power_outlets,
-              pricing_model,
-              base_price::text as base_price,
-              price_per_cubic_foot::text as price_per_cubic_foot,
-              minimum_booking_duration, booking_duration_unit, currency,
-              status, approved_by, approved_at, rejection_reason,
-              is_active, availability_calendar,
-              certifications, photos, documents,
-              house_rules, prohibited_items, insurance_required,
-              created_at, updated_at
-            FROM storage_listings 
-            WHERE id = $1`,
-            [id]
-          );
-          if (directQuery.rows && directQuery.rows[0]) {
-            const row = directQuery.rows[0];
-            // Convert numeric fields from cents to dollars
-            return {
-              ...row,
-              basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
-              pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
-              dimensionsLength: row.dimensions_length ? parseFloat(String(row.dimensions_length)) : null,
-              dimensionsWidth: row.dimensions_width ? parseFloat(String(row.dimensions_width)) : null,
-              dimensionsHeight: row.dimensions_height ? parseFloat(String(row.dimensions_height)) : null,
-              totalVolume: row.total_volume ? parseFloat(String(row.total_volume)) : null,
-              kitchenId: row.kitchen_id,
-              storageType: row.storage_type,
-              minimumBookingDuration: row.minimum_booking_duration || 1,
-              bookingDurationUnit: row.booking_duration_unit || 'monthly',
-              pricingModel: row.pricing_model,
-              isActive: row.is_active,
-              climateControl: row.climate_control,
-              humidityControl: row.humidity_control,
-              powerOutlets: row.power_outlets,
-              insuranceRequired: row.insurance_required,
-              approvedBy: row.approved_by,
-              approvedAt: row.approved_at,
-              createdAt: row.created_at,
-              updatedAt: row.updated_at,
-            };
-          }
-        } catch (error) {
-          console.error('Error getting storage listing by ID (direct query):', error);
-        }
-      }
+
 
       // Fallback to Drizzle
       const [listing] = await db.select().from(storageListings).where(eq(storageListings.id, id));
@@ -1119,57 +1017,7 @@ export class FirebaseStorage {
   // Get storage listings by kitchen ID
   async getStorageListingsByKitchen(kitchenId: number): Promise<any[]> {
     try {
-      if (pool && 'query' in pool) {
-        try {
-          const directQuery = await pool.query(
-            `SELECT 
-              id, kitchen_id, storage_type, name, description,
-              base_price::text as base_price,
-              price_per_cubic_foot::text as price_per_cubic_foot,
-              pricing_model, 
-              COALESCE(minimum_booking_duration, 1) as minimum_booking_duration,
-              COALESCE(booking_duration_unit, 'monthly') as booking_duration_unit,
-              currency,
-              dimensions_length::text as dimensions_length,
-              dimensions_width::text as dimensions_width,
-              dimensions_height::text as dimensions_height,
-              total_volume::text as total_volume,
-              climate_control, temperature_range,
-              status, is_active, created_at, updated_at
-            FROM storage_listings 
-            WHERE kitchen_id = $1
-            ORDER BY created_at DESC`,
-            [kitchenId]
-          );
 
-          return directQuery.rows.map(row => ({
-            id: row.id,
-            kitchenId: row.kitchen_id,
-            storageType: row.storage_type,
-            name: row.name,
-            description: row.description,
-            // Convert cents to dollars for frontend display
-            basePrice: row.base_price ? parseFloat(String(row.base_price)) / 100 : null,
-            pricePerCubicFoot: row.price_per_cubic_foot ? parseFloat(String(row.price_per_cubic_foot)) / 100 : null,
-            pricingModel: row.pricing_model,
-            minimumBookingDuration: row.minimum_booking_duration ?? 1,
-            bookingDurationUnit: row.booking_duration_unit ?? 'monthly',
-            currency: row.currency || 'CAD',
-            dimensionsLength: row.dimensions_length ? parseFloat(row.dimensions_length) : null,
-            dimensionsWidth: row.dimensions_width ? parseFloat(row.dimensions_width) : null,
-            dimensionsHeight: row.dimensions_height ? parseFloat(row.dimensions_height) : null,
-            totalVolume: row.total_volume ? parseFloat(row.total_volume) : null,
-            climateControl: row.climate_control ?? false,
-            temperatureRange: row.temperature_range,
-            status: row.status,
-            isActive: row.is_active,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at,
-          }));
-        } catch (error) {
-          console.error('Error getting storage listings by kitchen (direct query):', error);
-        }
-      }
 
       // Fallback to Drizzle
       const listings = await db.select().from(storageListings).where(eq(storageListings.kitchenId, kitchenId));
@@ -1399,71 +1247,7 @@ export class FirebaseStorage {
   // Get equipment listing by ID
   async getEquipmentListingById(id: number): Promise<any | undefined> {
     try {
-      if (pool && 'query' in pool) {
-        try {
-          const directQuery = await pool.query(
-            `SELECT 
-              id, kitchen_id, category, equipment_type, brand, model, description,
-              condition, age, service_history,
-              dimensions::text as dimensions,
-              power_requirements,
-              specifications::text as specifications,
-              certifications, safety_features,
-              pricing_model,
-              hourly_rate::text as hourly_rate,
-              daily_rate::text as daily_rate,
-              weekly_rate::text as weekly_rate,
-              monthly_rate::text as monthly_rate,
-              availability_type,
-              minimum_rental_hours, minimum_rental_days, currency,
-              usage_restrictions, training_required, cleaning_responsibility,
-              status, approved_by, approved_at, rejection_reason,
-              is_active, availability_calendar, prep_time_hours,
-              photos, manuals, maintenance_log,
-              damage_deposit::text as damage_deposit,
-              insurance_required,
-              created_at, updated_at
-            FROM equipment_listings 
-            WHERE id = $1`,
-            [id]
-          );
-          if (directQuery.rows && directQuery.rows[0]) {
-            const row = directQuery.rows[0];
-            // Convert numeric fields from cents to dollars
-            return {
-              ...row,
-              kitchenId: row.kitchen_id,
-              equipmentType: row.equipment_type,
-              powerRequirements: row.power_requirements,
-              serviceHistory: row.service_history,
-              cleaningResponsibility: row.cleaning_responsibility,
-              prepTimeHours: row.prep_time_hours,
-              insuranceRequired: row.insurance_required,
-              trainingRequired: row.training_required,
-              isActive: row.is_active,
-              approvedBy: row.approved_by,
-              approvedAt: row.approved_at,
-              rejectionReason: row.rejection_reason,
-              minimumRentalHours: row.minimum_rental_hours,
-              minimumRentalDays: row.minimum_rental_days,
-              availabilityCalendar: row.availability_calendar,
-              maintenanceLog: row.maintenance_log,
-              availabilityType: row.availability_type || 'rental',
-              // Convert prices from cents to dollars
-              hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
-              dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
-              weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
-              monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
-              damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : null,
-              // Parse JSONB fields
-              dimensions: row.dimensions ? JSON.parse(row.dimensions) : {},
-              specifications: row.specifications ? JSON.parse(row.specifications) : {},
-            };
-          }
-        } catch (error) {
-          console.error('Error getting equipment listing by ID (direct query):', error);
-        }
-      }
+
 
       // Fallback to Drizzle
       const [listing] = await db.select().from(equipmentListings).where(eq(equipmentListings.id, id));
@@ -1492,60 +1276,7 @@ export class FirebaseStorage {
   // Get equipment listings by kitchen ID
   async getEquipmentListingsByKitchen(kitchenId: number): Promise<any[]> {
     try {
-      if (pool && 'query' in pool) {
-        try {
-          const directQuery = await pool.query(
-            `SELECT 
-              id, kitchen_id, category, equipment_type, brand, model, description,
-              condition, availability_type, pricing_model,
-              session_rate::text as session_rate,
-              hourly_rate::text as hourly_rate,
-              daily_rate::text as daily_rate,
-              weekly_rate::text as weekly_rate,
-              monthly_rate::text as monthly_rate,
-              damage_deposit::text as damage_deposit,
-              minimum_rental_hours, minimum_rental_days, currency,
-              training_required, cleaning_responsibility,
-              status, is_active, created_at, updated_at
-            FROM equipment_listings 
-            WHERE kitchen_id = $1
-            ORDER BY created_at DESC`,
-            [kitchenId]
-          );
 
-          return directQuery.rows.map(row => ({
-            id: row.id,
-            kitchenId: row.kitchen_id,
-            category: row.category,
-            equipmentType: row.equipment_type,
-            brand: row.brand,
-            model: row.model,
-            description: row.description,
-            condition: row.condition,
-            availabilityType: row.availability_type || 'rental',
-            pricingModel: row.pricing_model,
-            // PRIMARY: Flat session rate (convert cents to dollars)
-            sessionRate: row.session_rate ? parseFloat(String(row.session_rate)) / 100 : 0,
-            // Legacy rates (kept for backwards compatibility)
-            hourlyRate: row.hourly_rate ? parseFloat(String(row.hourly_rate)) / 100 : null,
-            dailyRate: row.daily_rate ? parseFloat(String(row.daily_rate)) / 100 : null,
-            weeklyRate: row.weekly_rate ? parseFloat(String(row.weekly_rate)) / 100 : null,
-            monthlyRate: row.monthly_rate ? parseFloat(String(row.monthly_rate)) / 100 : null,
-            damageDeposit: row.damage_deposit ? parseFloat(String(row.damage_deposit)) / 100 : 0,
-            minimumRentalHours: row.minimum_rental_hours,
-            minimumRentalDays: row.minimum_rental_days,
-            trainingRequired: row.training_required ?? false,
-            cleaningResponsibility: row.cleaning_responsibility,
-            currency: row.currency || 'CAD',
-            status: row.status,
-            isActive: row.is_active,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at,
-          }));
-        } catch (error) {
-          console.error('Error getting equipment listings by kitchen (direct query):', error);
-        }
-      }
 
       // Fallback to Drizzle
       const listings = await db.select().from(equipmentListings).where(eq(equipmentListings.kitchenId, kitchenId));
@@ -1893,53 +1624,48 @@ export class FirebaseStorage {
    */
   async getStorageBookingsByKitchenBooking(kitchenBookingId: number): Promise<any[]> {
     try {
-      if (pool && 'query' in pool) {
-        const result = await pool.query(
-          `SELECT 
-            sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
-            sb.start_date, sb.end_date, sb.status,
-            sb.total_price::text as total_price,
-            sb.pricing_model, sb.payment_status, sb.payment_intent_id,
-            sb.service_fee::text as service_fee,
-            sb.currency, sb.created_at, sb.updated_at,
-            sl.name as storage_name, sl.storage_type
-          FROM storage_bookings sb
-          JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-          WHERE sb.kitchen_booking_id = $1
-          ORDER BY sb.created_at DESC`,
-          [kitchenBookingId]
-        );
-
-        return result.rows.map(row => ({
-          id: row.id,
-          storageListingId: row.storage_listing_id,
-          kitchenBookingId: row.kitchen_booking_id,
-          chefId: row.chef_id,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          status: row.status,
-          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0, // Convert cents to dollars
-          pricingModel: row.pricing_model,
-          paymentStatus: row.payment_status,
-          paymentIntentId: row.payment_intent_id,
-          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0, // Convert cents to dollars
-          currency: row.currency,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          storageName: row.storage_name,
-          storageType: row.storage_type,
-        }));
-      }
-
-      // Fallback to Drizzle ORM
-      const result = await db.select()
+      const result = await db.select({
+        id: storageBookings.id,
+        storageListingId: storageBookings.storageListingId,
+        kitchenBookingId: storageBookings.kitchenBookingId,
+        chefId: storageBookings.chefId,
+        startDate: storageBookings.startDate,
+        endDate: storageBookings.endDate,
+        status: storageBookings.status,
+        totalPrice: storageBookings.totalPrice,
+        pricingModel: storageBookings.pricingModel,
+        paymentStatus: storageBookings.paymentStatus,
+        paymentIntentId: storageBookings.paymentIntentId,
+        serviceFee: storageBookings.serviceFee,
+        currency: storageBookings.currency,
+        createdAt: storageBookings.createdAt,
+        updatedAt: storageBookings.updatedAt,
+        storageName: storageListings.name,
+        storageType: storageListings.storageType,
+      })
         .from(storageBookings)
-        .where(eq(storageBookings.kitchenBookingId, kitchenBookingId));
+        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+        .where(eq(storageBookings.kitchenBookingId, kitchenBookingId))
+        .orderBy(desc(storageBookings.createdAt));
 
       return result.map(row => ({
-        ...row,
-        totalPrice: row.totalPrice ? parseFloat(row.totalPrice) / 100 : 0,
-        serviceFee: row.serviceFee ? parseFloat(row.serviceFee) / 100 : 0,
+        id: row.id,
+        storageListingId: row.storageListingId,
+        kitchenBookingId: row.kitchenBookingId,
+        chefId: row.chefId,
+        startDate: row.startDate,
+        endDate: row.endDate,
+        status: row.status,
+        totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
+        pricingModel: row.pricingModel,
+        paymentStatus: row.paymentStatus,
+        paymentIntentId: row.paymentIntentId,
+        serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+        currency: row.currency,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        storageName: row.storageName,
+        storageType: row.storageType,
       }));
     } catch (error) {
       console.error('Error getting storage bookings:', error);
@@ -1947,55 +1673,47 @@ export class FirebaseStorage {
     }
   }
 
+
+
   /**
    * Get storage bookings by chef ID
    * Returns prices in dollars for API response
    */
   async getStorageBookingsByChef(chefId: number): Promise<any[]> {
     try {
-      if (pool && 'query' in pool) {
-        const result = await pool.query(
-          `SELECT 
-            sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
-            sb.start_date, sb.end_date, sb.status,
-            sb.total_price::text as total_price,
-            sb.pricing_model, sb.payment_status, sb.payment_intent_id,
-            sb.service_fee::text as service_fee,
-            sb.currency, sb.created_at, sb.updated_at,
-            sl.name as storage_name, sl.storage_type, sl.kitchen_id,
-            k.name as kitchen_name
-          FROM storage_bookings sb
-          JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-          JOIN kitchens k ON sl.kitchen_id = k.id
-          WHERE sb.chef_id = $1
-          ORDER BY sb.start_date DESC`,
-          [chefId]
-        );
+      const result = await db
+        .select({
+          id: storageBookings.id,
+          storageListingId: storageBookings.storageListingId,
+          kitchenBookingId: storageBookings.kitchenBookingId,
+          chefId: storageBookings.chefId,
+          startDate: storageBookings.startDate,
+          endDate: storageBookings.endDate,
+          status: storageBookings.status,
+          totalPrice: storageBookings.totalPrice,
+          pricingModel: storageBookings.pricingModel,
+          paymentStatus: storageBookings.paymentStatus,
+          paymentIntentId: storageBookings.paymentIntentId,
+          serviceFee: storageBookings.serviceFee,
+          currency: storageBookings.currency,
+          createdAt: storageBookings.createdAt,
+          updatedAt: storageBookings.updatedAt,
+          storageName: storageListings.name,
+          storageType: storageListings.storageType,
+          kitchenId: storageListings.kitchenId,
+          kitchenName: kitchens.name,
+        })
+        .from(storageBookings)
+        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .where(eq(storageBookings.chefId, chefId))
+        .orderBy(desc(storageBookings.startDate));
 
-        return result.rows.map(row => ({
-          id: row.id,
-          storageListingId: row.storage_listing_id,
-          kitchenBookingId: row.kitchen_booking_id,
-          chefId: row.chef_id,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          status: row.status,
-          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0,
-          pricingModel: row.pricing_model,
-          paymentStatus: row.payment_status,
-          paymentIntentId: row.payment_intent_id,
-          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0,
-          currency: row.currency,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          storageName: row.storage_name,
-          storageType: row.storage_type,
-          kitchenId: row.kitchen_id,
-          kitchenName: row.kitchen_name,
-        }));
-      }
-
-      return [];
+      return result.map(row => ({
+        ...row,
+        totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
+        serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+      }));
     } catch (error) {
       console.error('Error getting storage bookings by chef:', error);
       throw error;
@@ -2059,62 +1777,68 @@ export class FirebaseStorage {
    */
   async getStorageBookingById(id: number): Promise<any | undefined> {
     try {
-      if (pool && 'query' in pool) {
-        const result = await pool.query(
-          `SELECT 
-            sb.id, sb.storage_listing_id, sb.kitchen_booking_id, sb.chef_id,
-            sb.start_date, sb.end_date, sb.status,
-            sb.total_price::text as total_price,
-            sb.pricing_model, sb.payment_status, sb.payment_intent_id,
-            sb.service_fee::text as service_fee,
-            sb.currency, sb.created_at, sb.updated_at,
-            sl.name as storage_name, sl.storage_type, sl.kitchen_id,
-            sl.base_price::text as base_price,
-            sl.minimum_booking_duration,
-            k.name as kitchen_name
-          FROM storage_bookings sb
-          JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-          JOIN kitchens k ON sl.kitchen_id = k.id
-          WHERE sb.id = $1`,
-          [id]
-        );
+      const dbResult = await db
+        .select({
+          id: storageBookings.id,
+          storageListingId: storageBookings.storageListingId,
+          kitchenBookingId: storageBookings.kitchenBookingId,
+          chefId: storageBookings.chefId,
+          startDate: storageBookings.startDate,
+          endDate: storageBookings.endDate,
+          status: storageBookings.status,
+          totalPrice: storageBookings.totalPrice,
+          pricingModel: storageBookings.pricingModel,
+          paymentStatus: storageBookings.paymentStatus,
+          paymentIntentId: storageBookings.paymentIntentId,
+          serviceFee: storageBookings.serviceFee,
+          currency: storageBookings.currency,
+          createdAt: storageBookings.createdAt,
+          updatedAt: storageBookings.updatedAt,
+          storageName: storageListings.name,
+          storageType: storageListings.storageType,
+          kitchenId: storageListings.kitchenId,
+          basePrice: storageListings.basePrice,
+          minimumBookingDuration: storageListings.minimumBookingDuration,
+          kitchenName: kitchens.name,
+        })
+        .from(storageBookings)
+        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .where(eq(storageBookings.id, id));
 
-        if (result.rows.length === 0) {
-          return undefined;
-        }
+      if (dbResult.length === 0) return undefined;
 
-        const row = result.rows[0];
-        return {
-          id: row.id,
-          storageListingId: row.storage_listing_id,
-          kitchenBookingId: row.kitchen_booking_id,
-          chefId: row.chef_id,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          status: row.status,
-          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0,
-          pricingModel: row.pricing_model,
-          paymentStatus: row.payment_status,
-          paymentIntentId: row.payment_intent_id,
-          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0,
-          currency: row.currency,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          storageName: row.storage_name,
-          storageType: row.storage_type,
-          kitchenId: row.kitchen_id,
-          kitchenName: row.kitchen_name,
-          basePrice: row.base_price ? parseFloat(row.base_price) / 100 : 0,
-          minimumBookingDuration: row.minimum_booking_duration,
-        };
-      }
-
-      return undefined;
+      const row = dbResult[0];
+      return {
+        id: row.id,
+        storageListingId: row.storageListingId,
+        kitchenBookingId: row.kitchenBookingId,
+        chefId: row.chefId,
+        startDate: row.startDate,
+        endDate: row.endDate,
+        status: row.status,
+        totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
+        pricingModel: row.pricingModel,
+        paymentStatus: row.paymentStatus,
+        paymentIntentId: row.paymentIntentId,
+        serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+        currency: row.currency,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        storageName: row.storageName,
+        storageType: row.storageType,
+        kitchenId: row.kitchenId,
+        kitchenName: row.kitchenName,
+        basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) / 100 : 0,
+        minimumBookingDuration: row.minimumBookingDuration || 1,
+      };
     } catch (error) {
       console.error('Error getting storage booking by ID:', error);
       throw error;
     }
   }
+
+
 
   /**
    * Get platform service fee rate from settings
@@ -2242,35 +1966,38 @@ export class FirebaseStorage {
    */
   async processOverstayerPenalties(maxDaysToCharge: number = 7): Promise<any[]> {
     try {
-      if (!pool || !('query' in pool)) {
-        console.warn('Database pool not available for overstayer penalty processing');
-        return [];
-      }
-
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       // Find expired storage bookings that haven't been cancelled
-      const result = await pool.query(
-        `SELECT 
-          sb.id, sb.storage_listing_id, sb.chef_id, sb.end_date, sb.total_price::text as total_price,
-          sb.service_fee::text as service_fee, sb.payment_status, sb.payment_intent_id,
-          sl.base_price::text as base_price, sl.minimum_booking_duration
-        FROM storage_bookings sb
-        JOIN storage_listings sl ON sb.storage_listing_id = sl.id
-        WHERE sb.end_date < $1
-          AND sb.status != 'cancelled'
-          AND sb.payment_status != 'failed'
-        ORDER BY sb.end_date ASC`,
-        [today]
-      );
+      const result = await db
+        .select({
+          id: storageBookings.id,
+          storageListingId: storageBookings.storageListingId,
+          chefId: storageBookings.chefId,
+          endDate: storageBookings.endDate,
+          totalPrice: storageBookings.totalPrice,
+          serviceFee: storageBookings.serviceFee,
+          paymentStatus: storageBookings.paymentStatus,
+          paymentIntentId: storageBookings.paymentIntentId,
+          basePrice: storageListings.basePrice,
+          minimumBookingDuration: storageListings.minimumBookingDuration,
+        })
+        .from(storageBookings)
+        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+        .where(and(
+          lt(storageBookings.endDate, today),
+          not(eq(storageBookings.status, 'cancelled')),
+          not(eq(storageBookings.paymentStatus, 'failed'))
+        ))
+        .orderBy(asc(storageBookings.endDate));
 
       const processedBookings: any[] = [];
 
-      for (const row of result.rows) {
+      for (const row of result) {
         try {
           const bookingId = row.id;
-          const endDate = new Date(row.end_date);
+          const endDate = new Date(row.endDate);
           const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
 
           // Only charge up to maxDaysToCharge
@@ -2279,7 +2006,7 @@ export class FirebaseStorage {
           if (daysToCharge <= 0) continue;
 
           // Calculate penalty (2x daily rate)
-          const basePricePerDay = parseFloat(row.base_price) / 100; // Convert from cents to dollars
+          const basePricePerDay = parseFloat(row.basePrice.toString()) / 100; // Convert from cents to dollars
           const penaltyRatePerDay = basePricePerDay * 2; // 2x penalty rate
           const penaltyBasePrice = penaltyRatePerDay * daysToCharge;
           // Get service fee rate dynamically
@@ -2292,8 +2019,8 @@ export class FirebaseStorage {
           const penaltyServiceFeeCents = Math.round(penaltyServiceFee * 100);
 
           // Get current totals
-          const currentTotalPriceCents = Math.round(parseFloat(row.total_price));
-          const currentServiceFeeCents = Math.round(parseFloat(row.service_fee) || 0);
+          const currentTotalPriceCents = Math.round(parseFloat(row.totalPrice.toString()));
+          const currentServiceFeeCents = Math.round(parseFloat(row.serviceFee?.toString() || '0'));
 
           // Calculate new totals
           const newTotalPriceCents = currentTotalPriceCents + penaltyTotalPriceCents;
@@ -2313,7 +2040,7 @@ export class FirebaseStorage {
 
           processedBookings.push({
             bookingId,
-            chefId: row.chef_id,
+            chefId: row.chefId,
             daysOverdue,
             daysCharged: daysToCharge,
             penaltyAmount: penaltyTotalPrice,
@@ -2383,47 +2110,7 @@ export class FirebaseStorage {
    */
   async getEquipmentBookingsByKitchenBooking(kitchenBookingId: number): Promise<any[]> {
     try {
-      if (pool && 'query' in pool) {
-        const result = await pool.query(
-          `SELECT 
-            eb.id, eb.equipment_listing_id, eb.kitchen_booking_id, eb.chef_id,
-            eb.start_date, eb.end_date, eb.status,
-            eb.total_price::text as total_price,
-            eb.pricing_model, eb.payment_status, eb.payment_intent_id,
-            eb.damage_deposit::text as damage_deposit,
-            eb.service_fee::text as service_fee,
-            eb.currency, eb.created_at, eb.updated_at,
-            el.equipment_type, el.brand, el.model, el.availability_type
-          FROM equipment_bookings eb
-          JOIN equipment_listings el ON eb.equipment_listing_id = el.id
-          WHERE eb.kitchen_booking_id = $1
-          ORDER BY eb.created_at DESC`,
-          [kitchenBookingId]
-        );
 
-        return result.rows.map(row => ({
-          id: row.id,
-          equipmentListingId: row.equipment_listing_id,
-          kitchenBookingId: row.kitchen_booking_id,
-          chefId: row.chef_id,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          status: row.status,
-          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0, // Convert cents to dollars
-          pricingModel: row.pricing_model,
-          paymentStatus: row.payment_status,
-          paymentIntentId: row.payment_intent_id,
-          damageDeposit: row.damage_deposit ? parseFloat(row.damage_deposit) / 100 : 0, // Convert cents to dollars
-          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0, // Convert cents to dollars
-          currency: row.currency,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          equipmentType: row.equipment_type,
-          brand: row.brand,
-          model: row.model,
-          availabilityType: row.availability_type,
-        }));
-      }
 
       // Fallback to Drizzle ORM
       const result = await db.select()
@@ -2448,53 +2135,43 @@ export class FirebaseStorage {
    */
   async getEquipmentBookingsByChef(chefId: number): Promise<any[]> {
     try {
-      if (pool && 'query' in pool) {
-        const result = await pool.query(
-          `SELECT 
-            eb.id, eb.equipment_listing_id, eb.kitchen_booking_id, eb.chef_id,
-            eb.start_date, eb.end_date, eb.status,
-            eb.total_price::text as total_price,
-            eb.pricing_model, eb.payment_status, eb.payment_intent_id,
-            eb.damage_deposit::text as damage_deposit,
-            eb.service_fee::text as service_fee,
-            eb.currency, eb.created_at, eb.updated_at,
-            el.equipment_type, el.brand, el.model, el.availability_type, el.kitchen_id,
-            k.name as kitchen_name
-          FROM equipment_bookings eb
-          JOIN equipment_listings el ON eb.equipment_listing_id = el.id
-          JOIN kitchens k ON el.kitchen_id = k.id
-          WHERE eb.chef_id = $1
-          ORDER BY eb.start_date DESC`,
-          [chefId]
-        );
+      const result = await db
+        .select({
+          id: equipmentBookings.id,
+          equipmentListingId: equipmentBookings.equipmentListingId,
+          kitchenBookingId: equipmentBookings.kitchenBookingId,
+          chefId: equipmentBookings.chefId,
+          startDate: equipmentBookings.startDate,
+          endDate: equipmentBookings.endDate,
+          status: equipmentBookings.status,
+          totalPrice: equipmentBookings.totalPrice,
+          pricingModel: equipmentBookings.pricingModel,
+          paymentStatus: equipmentBookings.paymentStatus,
+          paymentIntentId: equipmentBookings.paymentIntentId,
+          damageDeposit: equipmentBookings.damageDeposit,
+          serviceFee: equipmentBookings.serviceFee,
+          currency: equipmentBookings.currency,
+          createdAt: equipmentBookings.createdAt,
+          updatedAt: equipmentBookings.updatedAt,
+          equipmentType: equipmentListings.equipmentType,
+          brand: equipmentListings.brand,
+          model: equipmentListings.model,
+          availabilityType: equipmentListings.availabilityType,
+          kitchenId: equipmentListings.kitchenId,
+          kitchenName: kitchens.name,
+        })
+        .from(equipmentBookings)
+        .innerJoin(equipmentListings, eq(equipmentBookings.equipmentListingId, equipmentListings.id))
+        .innerJoin(kitchens, eq(equipmentListings.kitchenId, kitchens.id))
+        .where(eq(equipmentBookings.chefId, chefId))
+        .orderBy(desc(equipmentBookings.startDate));
 
-        return result.rows.map(row => ({
-          id: row.id,
-          equipmentListingId: row.equipment_listing_id,
-          kitchenBookingId: row.kitchen_booking_id,
-          chefId: row.chef_id,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          status: row.status,
-          totalPrice: row.total_price ? parseFloat(row.total_price) / 100 : 0,
-          pricingModel: row.pricing_model,
-          paymentStatus: row.payment_status,
-          paymentIntentId: row.payment_intent_id,
-          damageDeposit: row.damage_deposit ? parseFloat(row.damage_deposit) / 100 : 0,
-          serviceFee: row.service_fee ? parseFloat(row.service_fee) / 100 : 0,
-          currency: row.currency,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-          equipmentType: row.equipment_type,
-          brand: row.brand,
-          model: row.model,
-          availabilityType: row.availability_type,
-          kitchenId: row.kitchen_id,
-          kitchenName: row.kitchen_name,
-        }));
-      }
-
-      return [];
+      return result.map(row => ({
+        ...row,
+        totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
+        damageDeposit: row.damageDeposit ? parseFloat(row.damageDeposit.toString()) / 100 : 0,
+        serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+      }));
     } catch (error) {
       console.error('Error getting equipment bookings by chef:', error);
       throw error;
@@ -2728,7 +2405,7 @@ export class FirebaseStorage {
 
   async getKitchenDateOverrides(kitchenId: number, startDate?: Date, endDate?: Date): Promise<any[]> {
     try {
-      let query = db
+      const query = db
         .select()
         .from(kitchenDateOverrides)
         .where(eq(kitchenDateOverrides.kitchenId, kitchenId));
@@ -2843,7 +2520,20 @@ export class FirebaseStorage {
 
   // ===== KITCHEN BOOKINGS MANAGEMENT =====
 
-  async createKitchenBooking(bookingData: { chefId: number; kitchenId: number; bookingDate: Date; startTime: string; endTime: string; specialNotes?: string }): Promise<any> {
+  async createKitchenBooking(bookingData: {
+    chefId: number;
+    kitchenId: number;
+    bookingDate: Date;
+    startTime: string;
+    endTime: string;
+    specialNotes?: string;
+    status?: string;
+    paymentStatus?: string;
+    paymentIntentId?: string;
+    selectedStorageIds?: any[];
+    selectedStorage?: any[];
+    selectedEquipmentIds?: any[];
+  }): Promise<any> {
     try {
       console.log('Inserting kitchen booking into database:', bookingData);
 
@@ -2852,12 +2542,11 @@ export class FirebaseStorage {
       const pricing = await calculateKitchenBookingPrice(
         bookingData.kitchenId,
         bookingData.startTime,
-        bookingData.endTime,
-        pool
+        bookingData.endTime
       );
 
       // Calculate service fee dynamically from platform_settings
-      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
+      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents);
 
       // Calculate total with fees
       const totalWithFeesCents = calculateTotalWithFees(
@@ -2913,7 +2602,7 @@ export class FirebaseStorage {
     startTime: string;
     endTime: string;
     specialNotes?: string;
-    bookingType?: 'chef' | 'external' | 'manager_blocked';
+    bookingType?: 'chef' | 'external' | 'manager_blocked' | 'portal';
     createdBy?: number | null;
     chefId?: number | null;
     paymentIntentId?: string;
@@ -2933,12 +2622,11 @@ export class FirebaseStorage {
       const pricing = await calculateKitchenBookingPrice(
         bookingData.kitchenId,
         bookingData.startTime,
-        bookingData.endTime,
-        pool
+        bookingData.endTime
       );
 
       // Calculate service fee dynamically from platform_settings
-      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
+      const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents);
 
       // Calculate total with fees
       const totalWithFeesCents = calculateTotalWithFees(
@@ -3012,7 +2700,7 @@ export class FirebaseStorage {
   async getBookingsByChef(chefId: number): Promise<any[]> {
     try {
       console.log(`[STORAGE] getBookingsByChef called with chefId: ${chefId}`);
-      console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
+      console.log(`[STORAGE] Database connection check - db exists: ${!!db}`);
 
       // Join with kitchens and locations to get cancellation policy
       const results = await db
@@ -3063,146 +2751,64 @@ export class FirebaseStorage {
 
   async getBookingsByManager(managerId: number): Promise<any[]> {
     try {
-      if (!pool) {
-        return [];
-      }
-
-      // Get all locations for this manager (using raw SQL like chef profiles)
-      const locationsResult = await pool.query(
-        'SELECT id FROM locations WHERE manager_id = $1',
-        [managerId]
-      );
-
-      const locationIds = locationsResult.rows.map(row => row.id);
-
-      if (locationIds.length === 0) {
-        return [];
-      }
-
-      // Get all kitchens for these locations
-      const kitchensResult = await pool.query(
-        'SELECT id FROM kitchens WHERE location_id = ANY($1::int[])',
-        [locationIds]
-      );
-
-      const kitchenIds = kitchensResult.rows.map(row => row.id);
-
-      if (kitchenIds.length === 0) {
-        return [];
-      }
-
-      // Get all bookings for these kitchens (fetch bookings first, then enrich like chef profiles)
-      // Include payment fields so managers can see payment statistics
-      const bookingsResult = await pool.query(
-        `SELECT 
-          id, chef_id, kitchen_id, booking_date, start_time, end_time, 
-          status, special_notes, created_at, updated_at,
-          total_price, payment_status, payment_intent_id, service_fee, currency
-        FROM kitchen_bookings 
-        WHERE kitchen_id = ANY($1::int[])
-        ORDER BY booking_date DESC, start_time ASC`,
-        [kitchenIds]
-      );
-
-      // Enrich each booking with chef, kitchen, and location details (exactly like chef profiles)
-      const enrichedBookings = await Promise.all(
-        bookingsResult.rows.map(async (booking) => {
-          // Get chef details
-          let chefName = null;
-          if (booking.chef_id) {
-            try {
-              const chefResult = await pool.query(
-                'SELECT id, username FROM users WHERE id = $1',
-                [booking.chef_id]
-              );
-              const chef = chefResult.rows[0];
-
-              if (chef) {
-                chefName = chef.username;
-
-                // Try to get chef's full name from their application
-                const appResult = await pool.query(
-                  'SELECT full_name FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-                  [booking.chef_id]
-                );
-                if (appResult.rows.length > 0 && appResult.rows[0].full_name) {
-                  chefName = appResult.rows[0].full_name;
-                }
-              }
-            } catch (error) {
-              // Silently handle errors
-            }
-          }
-
-          // Get kitchen details
-          let kitchenName = 'Kitchen';
-          let locationId = null;
-          if (booking.kitchen_id) {
-            try {
-              const kitchenResult = await pool.query(
-                'SELECT id, name, location_id FROM kitchens WHERE id = $1',
-                [booking.kitchen_id]
-              );
-              const kitchen = kitchenResult.rows[0];
-              if (kitchen) {
-                kitchenName = kitchen.name || 'Kitchen';
-                locationId = kitchen.location_id;
-              }
-            } catch (error) {
-              // Silently handle errors
-            }
-          }
-
-          // Get location details including timezone
-          let locationName = null;
-          let locationTimezone = DEFAULT_TIMEZONE;
-          if (locationId) {
-            try {
-              const locationResult = await pool.query(
-                'SELECT id, name, timezone FROM locations WHERE id = $1',
-                [locationId]
-              );
-              const location = locationResult.rows[0];
-              if (location) {
-                locationName = location.name;
-                locationTimezone = location.timezone || DEFAULT_TIMEZONE;
-              }
-            } catch (error) {
-              // Silently handle errors
-            }
-          }
-
-          return {
-            id: booking.id,
-            chefId: booking.chef_id,
-            kitchenId: booking.kitchen_id,
-            bookingDate: booking.booking_date,
-            startTime: booking.start_time,
-            endTime: booking.end_time,
-            status: booking.status,
-            specialNotes: booking.special_notes,
-            createdAt: booking.created_at,
-            updatedAt: booking.updated_at,
-            chefName: chefName,
-            kitchenName: kitchenName,
-            locationName: locationName,
-            locationTimezone: locationTimezone,
-            // Include payment fields for revenue dashboard
-            totalPrice: booking.total_price ? parseInt(String(booking.total_price)) || 0 : null,
-            paymentStatus: booking.payment_status || null,
-            paymentIntentId: booking.payment_intent_id || null,
-            serviceFee: booking.service_fee ? parseInt(String(booking.service_fee)) || 0 : null,
-            currency: booking.currency || 'CAD',
-          };
+      // Use Drizzle with joins to fetch everything in one query
+      // Join Kitchens -> Locations -> where Locations.managerId = managerId
+      const results = await db
+        .select({
+          booking: kitchenBookings,
+          kitchen: kitchens,
+          location: locations,
+          chef: users,
         })
-      );
+        .from(kitchenBookings)
+        .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+        .where(eq(locations.managerId, managerId))
+        .orderBy(desc(kitchenBookings.bookingDate), asc(kitchenBookings.startTime));
 
+      // Fetch applications separately
+      const enrichedBookings = await Promise.all(results.map(async (row) => {
+        let chefName = row.chef?.username || null;
+        if (row.booking.chefId) {
+          const [app] = await db
+            .select({ fullName: applications.fullName })
+            .from(applications)
+            .where(eq(applications.userId, row.booking.chefId))
+            .orderBy(desc(applications.createdAt))
+            .limit(1);
+          if (app?.fullName) chefName = app.fullName;
+        }
+        return {
+          id: row.booking.id,
+          chefId: row.booking.chefId,
+          kitchenId: row.booking.kitchenId,
+          bookingDate: row.booking.bookingDate,
+          startTime: row.booking.startTime,
+          endTime: row.booking.endTime,
+          status: row.booking.status,
+          specialNotes: row.booking.specialNotes,
+          createdAt: row.booking.createdAt,
+          updatedAt: row.booking.updatedAt,
+          chefName: chefName,
+          kitchenName: row.kitchen.name,
+          locationName: row.location.name,
+          locationTimezone: row.location.timezone || 'UTC', // Default
+          totalPrice: row.booking.totalPrice ? parseInt(row.booking.totalPrice) || 0 : null,
+          paymentStatus: row.booking.paymentStatus || null,
+          paymentIntentId: row.booking.paymentIntentId || null,
+          serviceFee: row.booking.serviceFee ? parseInt(row.booking.serviceFee) || 0 : null,
+          currency: row.booking.currency || 'CAD',
+        };
+      }));
       return enrichedBookings;
     } catch (error) {
       console.error('Error getting bookings by manager:', error);
       throw error;
     }
   }
+
+
 
   async updateKitchenBookingStatus(id: number, status: 'pending' | 'confirmed' | 'cancelled'): Promise<any> {
     try {
@@ -4212,7 +3818,7 @@ export class FirebaseStorage {
   async getChefKitchenApplicationsByChefId(chefId: number): Promise<ChefKitchenApplication[]> {
     try {
       console.log(`[STORAGE] getChefKitchenApplicationsByChefId called with chefId: ${chefId}`);
-      console.log(`[STORAGE] Database connection check - pool exists: ${!!pool}, db exists: ${!!db}`);
+      console.log(`[STORAGE] Database connection check - db exists: ${!!db}`);
 
       const applications = await db
         .select()

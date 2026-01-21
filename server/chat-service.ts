@@ -1,7 +1,7 @@
 import admin from 'firebase-admin';
 import { initializeFirebaseAdmin } from './firebase-admin';
-import { db, pool } from './db';
-import { chefKitchenApplications } from '@shared/schema';
+import { db } from './db';
+import { chefKitchenApplications, locations } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 let adminDb: any = null;
@@ -37,21 +37,19 @@ export async function initializeConversation(applicationData: {
   try {
     const adminDb = await getAdminDb();
 
-    // Get manager ID from location
-    if (!pool || !('query' in pool)) {
-      throw new Error('Database pool not available');
-    }
-    const locationResult = await pool.query(
-      `SELECT manager_id FROM locations WHERE id = $1`,
-      [applicationData.locationId]
-    );
-    const location = locationResult.rows[0] as any;
-    if (!location || !location.manager_id) {
+    // Get manager ID from location using Drizzle ORM
+    const [location] = await db
+      .select({ managerId: locations.managerId })
+      .from(locations)
+      .where(eq(locations.id, applicationData.locationId))
+      .limit(1);
+
+    if (!location || !location.managerId) {
       console.error('Location not found or has no manager');
       return null;
     }
 
-    const managerId = location.manager_id;
+    const managerId = location.managerId;
 
     // Check if conversation already exists
     const existingQuery = await adminDb

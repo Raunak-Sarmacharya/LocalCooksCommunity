@@ -1,4 +1,7 @@
 import { validateAndNormalizePhone } from '@shared/phone-validation';
+import { db } from './db';
+import { applications, portalUserApplications } from '@shared/schema';
+import { eq, and, desc } from 'drizzle-orm';
 
 /**
  * Utility functions for phone number handling across the application
@@ -12,11 +15,11 @@ import { validateAndNormalizePhone } from '@shared/phone-validation';
 export async function getManagerPhone(
   location: any,
   managerId: number | null | undefined,
-  pool: any
+  pool?: any
 ): Promise<string | null> {
   // First, check location's notification phone
   let phone = location?.notificationPhone || location?.notification_phone || null;
-  
+
   if (phone) {
     const normalized = validateAndNormalizePhone(phone);
     if (normalized) {
@@ -24,17 +27,18 @@ export async function getManagerPhone(
     }
     console.warn(`⚠️ Location notification phone is invalid format: ${phone}`);
   }
-  
+
   // Fallback: Get phone from manager's application
-  if (!phone && managerId && pool) {
+  if (!phone && managerId) {
     try {
-      const result = await pool.query(
-        'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-        [managerId]
-      );
-      
-      if (result.rows.length > 0 && result.rows[0].phone) {
-        phone = result.rows[0].phone;
+      const result = await db.select({ phone: applications.phone })
+        .from(applications)
+        .where(eq(applications.userId, managerId))
+        .orderBy(desc(applications.createdAt))
+        .limit(1);
+
+      if (result.length > 0 && result[0].phone) {
+        phone = result[0].phone;
         const normalized = validateAndNormalizePhone(phone);
         if (normalized) {
           return normalized;
@@ -46,7 +50,7 @@ export async function getManagerPhone(
       console.warn('Could not retrieve manager phone from application:', error);
     }
   }
-  
+
   return null;
 }
 
@@ -55,18 +59,19 @@ export async function getManagerPhone(
  */
 export async function getChefPhone(
   chefId: number,
-  pool: any
+  pool?: any
 ): Promise<string | null> {
-  if (!chefId || !pool) return null;
-  
+  if (!chefId) return null;
+
   try {
-    const result = await pool.query(
-      'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-      [chefId]
-    );
-    
-    if (result.rows.length > 0 && result.rows[0].phone) {
-      const phone = result.rows[0].phone;
+    const result = await db.select({ phone: applications.phone })
+      .from(applications)
+      .where(eq(applications.userId, chefId))
+      .orderBy(desc(applications.createdAt))
+      .limit(1);
+
+    if (result.length > 0 && result[0].phone) {
+      const phone = result[0].phone;
       const normalized = validateAndNormalizePhone(phone);
       if (normalized) {
         return normalized;
@@ -76,7 +81,7 @@ export async function getChefPhone(
   } catch (error) {
     console.warn('Could not retrieve chef phone from application:', error);
   }
-  
+
   return null;
 }
 
@@ -87,22 +92,28 @@ export async function getChefPhone(
 export async function getPortalUserPhone(
   userId: number,
   locationId: number,
-  pool: any
+  pool?: any
 ): Promise<string | null> {
-  if (!userId || !pool) return null;
-  
+  if (!userId) return null;
+
   let phone: string | null = null;
-  
+
   // First, try portal_user_applications table (if locationId is provided)
   if (locationId) {
     try {
-      const result = await pool.query(
-        'SELECT phone FROM portal_user_applications WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC LIMIT 1',
-        [userId, locationId]
-      );
-      
-      if (result.rows.length > 0 && result.rows[0].phone) {
-        phone = result.rows[0].phone;
+      const result = await db.select({ phone: portalUserApplications.phone })
+        .from(portalUserApplications)
+        .where(
+          and(
+            eq(portalUserApplications.userId, userId),
+            eq(portalUserApplications.locationId, locationId)
+          )
+        )
+        .orderBy(desc(portalUserApplications.createdAt))
+        .limit(1);
+
+      if (result.length > 0 && result[0].phone) {
+        phone = result[0].phone;
         const normalized = validateAndNormalizePhone(phone);
         if (normalized) {
           return normalized;
@@ -114,17 +125,18 @@ export async function getPortalUserPhone(
       console.warn('Could not retrieve portal user phone from portal_user_applications:', error);
     }
   }
-  
+
   // Fallback: Get phone from applications table (if not found in portal_user_applications)
   if (!phone) {
     try {
-      const result = await pool.query(
-        'SELECT phone FROM applications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
-        [userId]
-      );
-      
-      if (result.rows.length > 0 && result.rows[0].phone) {
-        phone = result.rows[0].phone;
+      const result = await db.select({ phone: applications.phone })
+        .from(applications)
+        .where(eq(applications.userId, userId))
+        .orderBy(desc(applications.createdAt))
+        .limit(1);
+
+      if (result.length > 0 && result[0].phone) {
+        phone = result[0].phone;
         const normalized = validateAndNormalizePhone(phone);
         if (normalized) {
           return normalized;
@@ -135,7 +147,7 @@ export async function getPortalUserPhone(
       console.warn('Could not retrieve phone from applications table:', error);
     }
   }
-  
+
   return null;
 }
 

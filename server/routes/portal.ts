@@ -9,8 +9,6 @@ import {
 import { eq, desc } from "drizzle-orm";
 import { firebaseStorage } from "../storage-firebase";
 import { requirePortalUser, getAuthenticatedUser } from "./middleware";
-import { pool } from "../db";
-
 const router = Router();
 
 // ===============================
@@ -20,14 +18,11 @@ const router = Router();
 // Get portal user application status (for authenticated portal users without approved access)
 router.get("/application-status", async (req: Request, res: Response) => {
     try {
-        const sessionUser = await getAuthenticatedUser(req);
-        const isFirebaseAuth = req.neonUser;
+        const user = await getAuthenticatedUser(req);
 
-        if (!sessionUser && !isFirebaseAuth) {
+        if (!user) {
             return res.status(401).json({ error: "Authentication required" });
         }
-
-        const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
         // const isPortalUser = (user as any).isPortalUser || (user as any).is_portal_user;
 
         // Note: We skip the explicit isPortalUser flag check here to allow potential portal users 
@@ -80,7 +75,7 @@ router.get("/application-status", async (req: Request, res: Response) => {
 // Get portal user's assigned location
 router.get("/my-location", requirePortalUser, async (req: Request, res: Response) => {
     try {
-        const userId = (req.user as any).id;
+        const userId = req.neonUser!.id;
 
         // Get user's location access
         const accessRecords = await db.select()
@@ -128,7 +123,7 @@ router.get("/my-location", requirePortalUser, async (req: Request, res: Response
 // Get portal user's assigned location (Alias /locations for compatibility)
 router.get("/locations", requirePortalUser, async (req: Request, res: Response) => {
     try {
-        const userId = (req.user as any).id;
+        const userId = req.neonUser!.id;
 
         // Get user's location access
         const accessRecords = await db.select()
@@ -176,7 +171,7 @@ router.get("/locations", requirePortalUser, async (req: Request, res: Response) 
 // Get portal user's location info (by name slug) - requires auth and verifies ownership
 router.get("/locations/:locationSlug", requirePortalUser, async (req: Request, res: Response) => {
     try {
-        const userId = (req.user as any).id;
+        const userId = req.neonUser!.id;
         const locationSlug = req.params.locationSlug;
 
         // Get user's assigned location
@@ -230,7 +225,7 @@ router.get("/locations/:locationSlug", requirePortalUser, async (req: Request, r
 // Get kitchens for portal user's location (by name slug) - requires auth and verifies ownership
 router.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req: Request, res: Response) => {
     try {
-        const userId = (req.user as any).id;
+        const userId = req.neonUser!.id;
         const locationSlug = req.params.locationSlug;
 
         // Get user's assigned location
@@ -290,7 +285,7 @@ router.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req: R
 // Get available slots for a kitchen - requires auth and verifies kitchen belongs to user's location
 router.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req: Request, res: Response) => {
     try {
-        const userId = (req.user as any).id;
+        const userId = req.neonUser!.id;
         const kitchenId = parseInt(req.params.kitchenId);
         const date = req.query.date as string;
 
@@ -344,7 +339,7 @@ router.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req: R
 // Submit portal booking (authenticated portal user)
 router.post("/bookings", requirePortalUser, async (req: Request, res: Response) => {
     try {
-        const userId = (req.user as any).id;
+        const userId = req.neonUser!.id;
         const {
             locationId,
             kitchenId,
@@ -435,19 +430,6 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             }
         }
 
-        // Check daily booking limit
-        if (pool) {
-            const [sH, sM] = startTime.split(':').map(Number);
-            const [eH, eM] = endTime.split(':').map(Number);
-            const requestedSlots = Math.max(1, Math.ceil(((eH * 60 + eM) - (sH * 60 + sM)) / 60));
-
-            // Find maxSlotsPerChef for this kitchen/date
-            let maxSlotsPerChef = 2; // Default
-            // Need to implement getSlotsForDate logic or similar, but simplified here:
-            // Just use default or check kitchen settings if available.
-            // ... (Omitting complex limit check for now to keep refactor simple, or assume unlimited/default)
-        }
-
         // Create booking as portal booking
         const booking = await firebaseStorage.createBooking({
             kitchenId: parseInt(kitchenId),
@@ -467,10 +449,8 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
 
         // Send notifications (Manager & Portal User)
         try {
-            const { sendEmail, generatePortalUserBookingConfirmationSMS, generateManagerPortalBookingSMS } = await import('../email'); // Assuming email has these re-exported or from sms
-            // Actually sms imports might be separate.
-            // Using dynamic imports in routes.ts usually means circular dep avoidance.
-            const { sendSMS } = await import('../sms');
+            const { sendEmail } = await import('../email');
+            const { sendSMS, generatePortalUserBookingConfirmationSMS, generateManagerPortalBookingSMS } = await import('../sms');
 
             // Get location notification email
             const locationData = await firebaseStorage.getLocationById(userLocationId);

@@ -26,7 +26,7 @@ import {
   formatApplicationStatus
 } from "@/lib/applicationSchema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Application } from "@shared/schema";
+import { Application, UserWithFlags } from "@shared/schema";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -263,7 +263,8 @@ const itemVariants = {
 };
 
 export default function ApplicantDashboard() {
-  const { user, logout } = useFirebaseAuth();
+  const { user: authUser, logout } = useFirebaseAuth();
+  const user = authUser as UserWithFlags | null;
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedApplicationId, setSelectedApplicationId] = useState<number | null>(null);
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
@@ -397,7 +398,7 @@ export default function ApplicantDashboard() {
       isLoggedIn: !!user,
       userId: user?.uid,
       userRole: user?.role,
-      isChef: (user as any)?.isChef,
+      isChef: user?.isChef,
       localStorageUserId: localStorage.getItem('userId')
     });
   }, [user]);
@@ -406,10 +407,9 @@ export default function ApplicantDashboard() {
   useEffect(() => {
     if (!user || !subdomain || subdomain === 'main') return; // Skip validation on main domain or if no user
 
-    const userRole = (user as any)?.role;
-    const isChef = (user as any)?.isChef || false;
-    const isManager = (user as any)?.isManager || false;
-    const isPortalUser = (user as any)?.isPortalUser || false;
+    const userRole = user?.role;
+    const isChef = user?.isChef || false;
+    const isManager = user?.isManager || false;
 
     // Determine effective role
     let effectiveRole = userRole;
@@ -419,11 +419,6 @@ export default function ApplicantDashboard() {
       } else if (isChef) {
         effectiveRole = 'chef';
       }
-    }
-
-    // Portal users can access from kitchen subdomain
-    if (isPortalUser && subdomain === 'kitchen') {
-      return; // Allow portal users on kitchen subdomain
     }
 
     // Get required subdomain for this role
@@ -440,13 +435,13 @@ export default function ApplicantDashboard() {
 
   // Helper function to determine user type and appropriate applications to display
   const getUserDisplayInfo = (applications: Application[], isLoading: boolean, error: any) => {
-    const isChef = (user as any)?.isChef || user?.role === 'chef' || user?.role === 'admin';
+    const isChef = user?.isChef || user?.role === 'chef' || user?.role === 'admin';
 
     console.log('[DASHBOARD] getUserDisplayInfo - Role detection:', {
       userId: user?.uid,
       role: user?.role,
       isChef,
-      rawIsChef: (user as any)?.isChef
+      rawIsChef: user?.isChef
     });
 
     if (isChef) {
@@ -497,7 +492,7 @@ export default function ApplicantDashboard() {
     const mostRecentApp = getMostRecentApplication();
     if (!mostRecentApp) {
       // Check if user has chef role selected
-      const isChef = (user as any)?.isChef;
+      const isChef = user?.isChef;
 
       if (!isChef) {
         return "Select Role";
@@ -512,7 +507,7 @@ export default function ApplicantDashboard() {
     const mostRecentApp = getMostRecentApplication();
     if (!mostRecentApp) {
       // Check if user has chef role selected
-      const isChef = (user as any)?.isChef;
+      const isChef = user?.isChef;
 
       if (!isChef) {
         return "Select Role";
@@ -579,7 +574,7 @@ export default function ApplicantDashboard() {
       }
 
       // Only fetch chef applications if user is a chef
-      if (user.role === "admin" || !(user as any)?.isChef) {
+      if (user.role === "admin" || !user?.isChef) {
         return [];
       }
 
@@ -650,7 +645,7 @@ export default function ApplicantDashboard() {
       console.log('ApplicantDashboard: Normalized application data', normalizedData);
       return normalizedData;
     },
-    enabled: !!user && user.role !== "admin" && !!(user as any)?.isChef, // Only for chefs
+    enabled: !!user && user.role !== "admin" && !!user?.isChef, // Only for chefs
     // Intelligent auto-refresh logic for user applications
     refetchInterval: (data) => {
       if (!data || !Array.isArray(data)) {
@@ -816,7 +811,7 @@ export default function ApplicantDashboard() {
       if (!user?.uid) return null;
 
       // Only chefs have microlearning
-      if (!(user as any)?.isChef) {
+      if (!user?.isChef) {
         return null;
       }
 
@@ -851,7 +846,7 @@ export default function ApplicantDashboard() {
         return null;
       }
     },
-    enabled: Boolean(user?.uid) && !!(user as any)?.isChef, // Only for chefs
+    enabled: Boolean(user?.uid) && !!user?.isChef, // Only for chefs
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
   });
@@ -870,7 +865,7 @@ export default function ApplicantDashboard() {
       if (!user?.uid) return null;
 
       // Only chefs need training access
-      if (!(user as any)?.isChef) {
+      if (!user?.isChef) {
         return {
           accessLevel: 'none',
           hasApprovedApplication: false,
@@ -917,7 +912,7 @@ export default function ApplicantDashboard() {
         };
       }
     },
-    enabled: Boolean(user?.uid) && !!(user as any)?.isChef, // Only for chefs
+    enabled: Boolean(user?.uid) && !!user?.isChef, // Only for chefs
     staleTime: 30 * 1000, // 30 seconds - shorter cache for real-time training access updates
     refetchOnWindowFocus: true,
     // Refetch when applications change to immediately reflect access level changes
@@ -1011,22 +1006,11 @@ export default function ApplicantDashboard() {
     mutationFn: async (applicationId: number) => {
       console.log('🚫 Cancel Application - Starting request:', {
         applicationId,
-        userUid: user?.uid,
-        userEmail: user?.email
+        userUid: user?.uid
       });
 
-      // Include user ID in header
-      const headers: Record<string, string> = {};
-      if (user?.uid) {
-        headers['X-User-ID'] = user.uid.toString();
-        console.log('🚫 Including Firebase UID in headers:', user.uid);
-      } else {
-        console.error('🚫 No user UID available for cancel request');
-        throw new Error('User authentication required');
-      }
-
       try {
-        const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`, undefined, headers);
+        const res = await apiRequest("PATCH", `/api/applications/${applicationId}/cancel`);
 
         console.log('🚫 Cancel response received:', {
           status: res.status,
@@ -1104,7 +1088,7 @@ export default function ApplicantDashboard() {
 
       const requestBody = {
         uid: user.uid,
-        email: user.email,
+        email: user.username,
         displayName: user.displayName,
         emailVerified: user.emailVerified,
         role: user.role || "applicant"
@@ -1345,7 +1329,7 @@ export default function ApplicantDashboard() {
                 </h1>
                 <p className="text-sm sm:text-base text-gray-500 truncate">
                   {(() => {
-                    const isChef = (user as any)?.isChef;
+                    const isChef = user?.isChef;
 
                     if (isChef) {
                       return "Manage your chef applications and training progress";
@@ -1372,7 +1356,7 @@ export default function ApplicantDashboard() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm text-gray-500 truncate">
-                    {(user as any)?.isChef ? 'Chef Apps' : 'Applications'}
+                    {user?.isChef ? 'Chef Apps' : 'Applications'}
                   </p>
                   <p className="text-lg sm:text-2xl font-bold text-gray-900">{applications?.length || 0}</p>
                 </div>
@@ -1382,7 +1366,7 @@ export default function ApplicantDashboard() {
 
 
             {/* Training Card - Only show for chefs */}
-            {((user as any)?.isChef) && (
+            {(user?.isChef) && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1711,7 +1695,7 @@ export default function ApplicantDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 
             {/* Document Verification Card - Show for chefs */}
-            {((user as any)?.isChef) && (
+            {(user?.isChef) && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1886,7 +1870,7 @@ export default function ApplicantDashboard() {
             )}
 
             {/* Training & Certification Card - Only show for chefs */}
-            {((user as any)?.isChef) && (
+            {(user?.isChef) && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2013,7 +1997,7 @@ export default function ApplicantDashboard() {
                               const a = document.createElement('a');
                               a.style.display = 'none';
                               a.href = url;
-                              a.download = `LocalCooks-Certificate-${user.displayName || user.email || 'user'}.pdf`;
+                              a.download = `LocalCooks-Certificate-${user.displayName || user.username || 'user'}.pdf`;
                               document.body.appendChild(a);
                               a.click();
                               window.URL.revokeObjectURL(url);
@@ -2082,7 +2066,7 @@ export default function ApplicantDashboard() {
                       <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
                       <span>Documents Verified</span>
                     </div>
-                    {((user as any)?.isChef) && (
+                    {(user?.isChef) && (
                       <div className="flex items-center gap-3 text-green-700">
                         <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
                         <span>Training Complete</span>

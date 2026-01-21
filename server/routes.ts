@@ -1,7 +1,6 @@
 import express, { type Express, type Request, type Response } from "express";
 import fs from "fs";
 import { createServer, type Server } from "http";
-import passport from "passport";
 import path from "path";
 import { fromZodError } from "zod-validation-error";
 import Stripe from "stripe";
@@ -27,7 +26,6 @@ import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shar
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
 
 import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
-import { setupAuth } from "./auth";
 import {
   generateApplicationWithDocumentsEmail,
   generateApplicationWithoutDocumentsEmail,
@@ -79,27 +77,7 @@ import { normalizeImageUrl } from "./routes/utils";
 // We use type assertions where needed for isChef properties
 
 // Helper function to get authenticated user (supports both session and Firebase auth)
-async function getAuthenticatedUser(req: Request): Promise<{ id: number; username: string; role: string } | null> {
-  // Try Firebase auth first
-  if (req.neonUser) {
-    return {
-      id: req.neonUser.id,
-      username: req.neonUser.username,
-      role: req.neonUser.role || '',
-    };
-  }
 
-  // Fall back to session auth
-  if (req.isAuthenticated && req.isAuthenticated() && req.user) {
-    return {
-      id: req.user.id,
-      username: req.user.username,
-      role: req.user.role,
-    };
-  }
-
-  return null;
-}
 
 /**
  * Normalizes image URLs to ensure they work in both development and production.
@@ -115,7 +93,12 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   // Set up authentication routes and middleware
-  setupAuth(app);
+  // Session auth removed in favor of Firebase Auth
+
+  // Enable optional Firebase auth globally for all routes
+  // This populates req.firebaseUser and req.neonUser if a token is present
+  app.use(optionalFirebaseAuth);
+
 
 
 
@@ -123,8 +106,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // NOTE: Google OAuth now handled entirely by Firebase Auth
   // No session-based Google OAuth needed for users
 
-  // Mount Auth Router
-  app.use("/api/auth", (await import("./routes/auth")).default);
+  // Mount Auth Router (Legacy - removed in favor of Firebase Auth)
+  // app.use("/api/auth", (await import("./routes/auth")).default);
 
   // Mount Applications Router
   app.use("/api/applications", (await import("./routes/applications")).default);

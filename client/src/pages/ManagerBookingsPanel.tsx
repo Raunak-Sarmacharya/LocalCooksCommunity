@@ -417,7 +417,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               { key: 'cancelled', label: 'Cancelled' },
             ].map((filter) => {
               // Calculate counts considering location filter
-              let baseBookings = locationFilter === 'all' 
+              const baseBookings = locationFilter === 'all' 
                 ? bookings 
                 : bookings.filter((b: Booking) => b.locationName === locationFilter);
               

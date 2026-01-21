@@ -1,6 +1,6 @@
 
 import { Router, Request, Response } from "express";
-import { pool, db } from "../db";
+import { db } from "../db";
 import { firebaseStorage } from "../storage-firebase";
 import { storage } from "../storage";
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from "../firebase-auth-middleware";
@@ -9,7 +9,7 @@ import {
     locations,
     chefLocationAccess,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
     generateChefLocationAccessApprovedEmail,
     generateManagerCredentialsEmail,
@@ -22,9 +22,9 @@ import { hashPassword, comparePasswords } from "../passwordUtils";
 
 const router = Router();
 
-// Helper function to get authenticated user (supports both session and Firebase auth)
+// Helper function to get authenticated user (Firebase auth only)
 async function getAuthenticatedUser(req: Request): Promise<{ id: number; username: string; role: string } | null> {
-    // Try Firebase auth first
+    // Check req.neonUser (populated by Firebase middleware)
     if (req.neonUser) {
         return {
             id: req.neonUser.id,
@@ -33,14 +33,6 @@ async function getAuthenticatedUser(req: Request): Promise<{ id: number; usernam
         };
     }
 
-    // Fall back to session auth
-    if (req.isAuthenticated && req.isAuthenticated() && req.user) {
-        return {
-            id: req.user.id,
-            username: req.user.username,
-            role: req.user.role,
-        };
-    }
     return null;
 }
 
@@ -56,34 +48,27 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
             return;
         }
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
         const { startDate, endDate } = req.query;
 
         // Get service fee rate (for reference, but we use direct subtraction now)
         const { getServiceFeeRate } = await import('../services/pricing-service');
-        const serviceFeeRate = await getServiceFeeRate(pool);
+        const serviceFeeRate = await getServiceFeeRate();
 
-        // Start from managers and LEFT JOIN to bookings to include all managers, even those without bookings
-        let bookingWhereClause = `AND kb.status != 'cancelled'`;
+        // Complex revenue query with dynamic filters - using Drizzle sql template
+        const bookingFilters: string[] = [`kb.status != 'cancelled'`];
         const params: any[] = [];
-        let paramIndex = 1;
 
         if (startDate) {
-            bookingWhereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
+            bookingFilters.push(`kb.booking_date >= $${params.length + 1}::date`);
             params.push(startDate);
-            paramIndex++;
         }
-
         if (endDate) {
-            bookingWhereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
+            bookingFilters.push(`kb.booking_date <= $${params.length + 1}::date`);
             params.push(endDate);
-            paramIndex++;
         }
+        params.push('manager');
 
-        const result = await pool.query(`
+        const result = await db.execute(sql.raw(`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -97,11 +82,11 @@ router.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, a
         FROM users u
         LEFT JOIN locations l ON l.manager_id = u.id
         LEFT JOIN kitchens k ON k.location_id = l.id
-        LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id ${bookingWhereClause}
-        WHERE u.role = $${paramIndex}
+        LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id AND ${bookingFilters.join(' AND ')}
+        WHERE u.role = $${params.length}
         GROUP BY u.id, u.username, l.id, l.name
         ORDER BY u.username ASC, total_revenue DESC
-      `, [...params, 'manager']);
+      `));
 
         // Group by manager (managers can have multiple locations)
         const managerMap = new Map<number, {
@@ -200,37 +185,29 @@ router.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdm
             return;
         }
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
         const { startDate, endDate } = req.query;
 
-        // Get total manager count (all managers, not just those with bookings)
-        const managerCountResult = await pool.query(
-            'SELECT COUNT(*)::int as total_managers FROM users WHERE role = $1',
-            ['manager']
-        );
-        const totalManagers = parseInt(managerCountResult.rows[0]?.total_managers || '0');
+        // Get total manager count using Drizzle
+        const managerCountResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(users)
+            .where(eq(users.role, 'manager'));
+        const totalManagers = managerCountResult[0]?.count || 0;
 
-        // Get booking statistics with date filters
-        let bookingWhereClause = `WHERE kb.status != 'cancelled'`;
-        const params: any[] = [];
-        let paramIndex = 1;
+        // Build booking filters for complex aggregation query
+        const bookingFilters: string[] = [`kb.status != 'cancelled'`];
+        const dateParams: any[] = [];
 
         if (startDate) {
-            bookingWhereClause += ` AND kb.booking_date >= $${paramIndex}::date`;
-            params.push(startDate);
-            paramIndex++;
+            bookingFilters.push(`kb.booking_date >= $${dateParams.length + 1}::date`);
+            dateParams.push(startDate);
         }
-
         if (endDate) {
-            bookingWhereClause += ` AND kb.booking_date <= $${paramIndex}::date`;
-            params.push(endDate);
-            paramIndex++;
+            bookingFilters.push(`kb.booking_date <= $${dateParams.length + 1}::date`);
+            dateParams.push(endDate);
         }
 
-        const result = await pool.query(`
+        const bookingResult = await db.execute(sql.raw(`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -240,10 +217,10 @@ router.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdm
         FROM kitchen_bookings kb
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
-        ${bookingWhereClause}
-      `, params);
+        WHERE ${bookingFilters.join(' AND ')}
+      `));
 
-        const row = result.rows[0];
+        const row = (bookingResult.rows as any[])[0] || {};
 
         res.json({
             totalPlatformRevenue: (parseInt(row.total_revenue) || 0) / 100,
@@ -276,35 +253,33 @@ router.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAd
             return res.status(400).json({ error: "Invalid manager ID" });
         }
 
-        if (!pool) {
-            return res.status(500).json({ error: "Database connection not available" });
-        }
-
         const { startDate, endDate } = req.query;
+        const { pool } = await import('../db');
         const { getCompleteRevenueMetrics, getRevenueByLocation } = await import('../services/revenue-service');
 
         const metrics = await getCompleteRevenueMetrics(
             managerId,
-            pool,
+            db,
             startDate ? new Date(startDate as string) : undefined,
             endDate ? new Date(endDate as string) : undefined
         );
 
         const revenueByLocation = await getRevenueByLocation(
             managerId,
-            pool,
+            db,
             startDate ? new Date(startDate as string) : undefined,
             endDate ? new Date(endDate as string) : undefined
         );
 
-        // Get manager info
-        const managerResult = await pool.query(
-            'SELECT id, username FROM users WHERE id = $1',
-            [managerId]
-        );
+        // Get manager info using Drizzle
+        const [managerRecord] = await db
+            .select({ id: users.id, username: users.username })
+            .from(users)
+            .where(eq(users.id, managerId))
+            .limit(1);
 
         res.json({
-            manager: managerResult.rows[0] || null,
+            manager: managerRecord || null,
             metrics: {
                 ...metrics,
                 totalRevenue: metrics.totalRevenue / 100,
@@ -558,7 +533,8 @@ router.post("/managers", async (req: Request, res: Response) => {
             isChef: false,
             isManager: true,
             isPortalUser: false,
-            has_seen_welcome: false  // Manager must change password on first login
+            has_seen_welcome: false,  // Manager must change password on first login
+            managerProfileData: {},
         });
 
         // Send welcome email to manager with credentials
@@ -607,133 +583,89 @@ router.get("/managers", async (req: Request, res: Response) => {
         }
 
         // Fetch all users with manager role and their managed locations with notification emails
-        const { pool, db } = await import('../db');
+        // Using Drizzle sql template for complex JSON aggregation
+        const result = await db.execute(sql.raw(`
+            SELECT 
+              u.id, 
+              u.username, 
+              u.role,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'locationId', l.id,
+                    'locationName', l.name,
+                    'notificationEmail', l.notification_email
+                  )
+                ) FILTER (WHERE l.id IS NOT NULL),
+                '[]'::json
+              ) as locations
+            FROM users u
+            LEFT JOIN locations l ON l.manager_id = u.id
+            WHERE u.role = 'manager'
+            GROUP BY u.id, u.username, u.role
+            ORDER BY u.username ASC
+        `));
 
-        // CRITICAL: Always use pool if available (faster SQL aggregation)
-        if (pool) {
-            // Get managers with their locations and notification emails
-            const result = await pool.query(
-                `SELECT 
-            u.id, 
-            u.username, 
-            u.role,
-            COALESCE(
-              json_agg(
-                json_build_object(
-                  'locationId', l.id,
-                  'locationName', l.name,
-                  'notificationEmail', l.notification_email
-                )
-              ) FILTER (WHERE l.id IS NOT NULL),
-              '[]'::json
-            ) as locations
-          FROM users u
-          LEFT JOIN locations l ON l.manager_id = u.id
-          WHERE u.role = $1
-          GROUP BY u.id, u.username, u.role
-          ORDER BY u.username ASC`,
-                ['manager']
-            );
+        const managersWithEmails = result.rows.map((row: any) => {
+            let locations = row.locations;
 
-            const managersWithEmails = result.rows.map((row: any) => {
-                let locations = row.locations;
-
-                // Handle different return types from PostgreSQL
-                if (locations === null || locations === undefined) {
-                    locations = [];
-                } else if (typeof locations === 'string') {
-                    try {
-                        const trimmed = locations.trim();
-                        if (trimmed === '[]' || trimmed === '' || trimmed === 'null') {
-                            locations = [];
-                        } else {
-                            locations = JSON.parse(locations);
-                        }
-                    } catch (e) {
+            // Handle different return types from PostgreSQL
+            if (locations === null || locations === undefined) {
+                locations = [];
+            } else if (typeof locations === 'string') {
+                try {
+                    const trimmed = locations.trim();
+                    if (trimmed === '[]' || trimmed === '' || trimmed === 'null') {
                         locations = [];
-                    }
-                }
-
-                // Ensure locations is an array
-                if (!Array.isArray(locations)) {
-                    if (locations && typeof locations === 'object' && '0' in locations) {
-                        locations = Object.values(locations);
                     } else {
-                        locations = [];
+                        locations = JSON.parse(locations);
                     }
+                } catch (e) {
+                    locations = [];
                 }
-
-                const managerData: any = {
-                    id: row.id,
-                    username: row.username,
-                    role: row.role,
-                };
-
-                managerData.locations = locations.map((loc: any) => ({
-                    locationId: loc.locationId || loc.location_id || loc.id,
-                    locationName: loc.locationName || loc.location_name || loc.name,
-                    notificationEmail: loc.notificationEmail || loc.notification_email || null
-                }));
-
-                return managerData;
-            });
-
-            // FINAL VERIFICATION: Ensure every manager has a locations array before sending
-            const verifiedManagers = managersWithEmails.map((manager: any) => {
-                if (!manager.hasOwnProperty('locations')) {
-                    manager.locations = [];
-                } else if (!Array.isArray(manager.locations)) {
-                    manager.locations = Array.isArray(manager.locations) ? manager.locations : [];
-                }
-
-                return {
-                    id: manager.id,
-                    username: manager.username,
-                    role: manager.role,
-                    locations: Array.isArray(manager.locations) ? manager.locations : []
-                };
-            });
-
-            return res.json(verifiedManagers);
-        } else {
-            // Fallback to Drizzle if pool is not available
-            try {
-                const { users, locations } = await import('@shared/schema');
-                const { eq } = await import('drizzle-orm');
-                const managerRows = await db
-                    .select({ id: users.id, username: users.username, role: users.role })
-                    .from(users)
-                    .where(eq(users.role as any, 'manager'));
-
-                const managersWithLocations = await Promise.all(
-                    managerRows.map(async (manager) => {
-                        const managerLocations = await db
-                            .select()
-                            .from(locations)
-                            .where(eq(locations.managerId, manager.id));
-
-                        const managerData: any = {
-                            id: manager.id,
-                            username: manager.username,
-                            role: manager.role,
-                        };
-
-                        managerData.locations = managerLocations.map(loc => ({
-                            locationId: loc.id,
-                            locationName: (loc as any).name,
-                            notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null
-                        }));
-
-                        return managerData;
-                    })
-                );
-
-                return res.json(managersWithLocations);
-            } catch (e) {
-                console.error('❌ Error fetching managers with Drizzle:', e);
-                return res.json([]);
             }
-        }
+
+            // Ensure locations is an array
+            if (!Array.isArray(locations)) {
+                if (locations && typeof locations === 'object' && '0' in locations) {
+                    locations = Object.values(locations);
+                } else {
+                    locations = [];
+                }
+            }
+
+            const managerData: any = {
+                id: row.id,
+                username: row.username,
+                role: row.role,
+            };
+
+            managerData.locations = locations.map((loc: any) => ({
+                locationId: loc.locationId || loc.location_id || loc.id,
+                locationName: loc.locationName || loc.location_name || loc.name,
+                notificationEmail: loc.notificationEmail || loc.notification_email || null
+            }));
+
+            return managerData;
+        });
+
+        // FINAL VERIFICATION: Ensure every manager has a locations array before sending
+        const verifiedManagers = managersWithEmails.map((manager: any) => {
+            if (!manager.hasOwnProperty('locations')) {
+                manager.locations = [];
+            } else if (!Array.isArray(manager.locations)) {
+                manager.locations = Array.isArray(manager.locations) ? manager.locations : [];
+            }
+
+            return {
+                id: manager.id,
+                username: manager.username,
+                role: manager.role,
+                locations: Array.isArray(manager.locations) ? manager.locations : []
+            };
+        });
+
+        return res.json(verifiedManagers);
     } catch (error: any) {
         console.error("Error fetching managers:", error);
         res.status(500).json({ error: error.message || "Failed to fetch managers" });
@@ -741,19 +673,9 @@ router.get("/managers", async (req: Request, res: Response) => {
 });
 
 // Get all locations (admin)
-router.get("/locations", async (req: Request, res: Response) => {
+router.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const isSessionAuth = req.isAuthenticated?.();
-        const isFirebaseAuth = req.neonUser;
-
-        if (!isSessionAuth && !isFirebaseAuth) {
-            return res.status(401).json({ error: "Not authenticated" });
-        }
-
-        const user = isFirebaseAuth ? req.neonUser! : req.user!;
-        if (user.role !== "admin") {
-            return res.status(403).json({ error: "Admin access required" });
-        }
+        const user = req.neonUser!;
 
         const locations = await firebaseStorage.getAllLocations();
 
@@ -776,19 +698,9 @@ router.get("/locations", async (req: Request, res: Response) => {
 });
 
 // Create location (admin)
-router.post("/locations", async (req: Request, res: Response) => {
+router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        const sessionUser = await getAuthenticatedUser(req);
-        const isFirebaseAuth = req.neonUser;
-
-        if (!sessionUser && !isFirebaseAuth) {
-            return res.status(401).json({ error: "Not authenticated" });
-        }
-
-        const user = isFirebaseAuth ? req.neonUser! : sessionUser!;
-        if (user.role !== "admin") {
-            return res.status(403).json({ error: "Admin access required" });
-        }
+        const user = req.neonUser!;
 
         const { name, address, managerId } = req.body;
 
@@ -1325,22 +1237,10 @@ router.delete("/managers/:id", async (req: Request, res: Response) => {
 });
 
 
-// Test endpoint for admin to test email sending
-router.post('/test-email', async (req: Request, res: Response) => {
+router.post('/test-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        console.log(`POST /api/admin/test-email - Session ID: ${req.sessionID}, User ID: ${req.user?.id}`);
-
-        // Check if user is authenticated
-        if (!req.isAuthenticated || !req.isAuthenticated() || !req.user) {
-            console.log('Test email request - User not authenticated');
-            return res.status(401).json({ error: 'Not authenticated' });
-        }
-
-        // Check if user is admin
-        if (req.user.role !== 'admin') {
-            console.log(`Test email request - User ${req.user.id} is not admin (role: ${req.user.role})`);
-            return res.status(403).json({ error: 'Admin access required' });
-        }
+        const user = req.neonUser!;
+        console.log(`POST /api/admin/test-email - User ID: ${user.id}`);
 
         const {
             email,
@@ -1488,21 +1388,10 @@ router.post('/test-email', async (req: Request, res: Response) => {
 
 
 // Admin endpoint to send promo emails
-router.post('/send-promo-email', async (req: Request, res: Response) => {
+router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
     try {
-        console.log(`POST /api/admin/send-promo-email - User ID: ${req.user?.id}`);
-        const isAuthenticated = req.isAuthenticated && req.isAuthenticated();
-
-        if (!isAuthenticated && !req.user) {
-            console.log("Promo email request - Not authenticated");
-            return res.status(401).json({ error: "Not authenticated" });
-        }
-
-        // Check if user is admin
-        if (req.user!.role !== 'admin') {
-            console.log(`Promo email request - User ${req.user!.id} is not admin (role: ${req.user!.role})`);
-            return res.status(403).json({ error: 'Admin access required' });
-        }
+        const user = req.neonUser!;
+        console.log(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
 
         const {
             email,

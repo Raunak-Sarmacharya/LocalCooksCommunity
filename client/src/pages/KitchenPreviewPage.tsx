@@ -710,10 +710,7 @@ export default function KitchenPreviewPage() {
     }
   }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
 
-  const { data: locationData, isLoading, error } = useQuery<{
-    location: PublicLocation;
-    kitchens: PublicKitchen[];
-  }>({
+  const { data: locationData, isLoading, error } = useQuery<PublicLocation & { kitchens: PublicKitchen[] }>({
     queryKey: [`/api/public/locations/${locationId}/details`],
     queryFn: async () => {
       const response = await fetch(`/api/public/locations/${locationId}/details`);
@@ -900,7 +897,7 @@ export default function KitchenPreviewPage() {
     );
   }
 
-  const { location, kitchens } = locationData;
+  const { kitchens, ...location } = locationData;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">

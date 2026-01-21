@@ -22,14 +22,14 @@ const hasApprovedApplication = async (userId: number) => {
 // Get user's microlearning access level and progress
 router.get("/progress/:userId", async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated()) {
+    if (!req.neonUser) {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
     const userId = parseInt(req.params.userId);
 
     // Verify user can access this data (either their own or admin)
-    if (req.user!.id !== userId && req.user!.role !== 'admin') {
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -38,7 +38,7 @@ router.get("/progress/:userId", async (req: Request, res: Response) => {
     const hasApproval = await hasApprovedApplication(userId);
 
     // Admins and completed users have unrestricted access regardless of application status
-    const isAdmin = req.user!.role === 'admin';
+    const isAdmin = req.neonUser.role === 'admin';
     const isCompleted = completionStatus?.confirmed || false;
     const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
 
@@ -60,14 +60,14 @@ router.get("/progress/:userId", async (req: Request, res: Response) => {
 // Update video progress
 router.post("/progress", async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated()) {
+    if (!req.neonUser) {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
     const { userId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
 
     // Verify user can update this data (either their own or admin)
-    if (req.user!.id !== userId && req.user!.role !== 'admin') {
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -76,7 +76,7 @@ router.post("/progress", async (req: Request, res: Response) => {
     const completionStatus = await storage.getMicrolearningCompletion(userId);
     const isCompleted = completionStatus?.confirmed || false;
     const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
-    const isAdmin = req.user!.role === 'admin';
+    const isAdmin = req.neonUser.role === 'admin';
 
     // Admins and completed users have unrestricted access to all videos
     if (!hasApproval && !isAdmin && !isCompleted && videoId !== firstVideoId) {
@@ -115,20 +115,20 @@ router.post("/progress", async (req: Request, res: Response) => {
 // Complete microlearning and integrate with Always Food Safe
 router.post("/complete", async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated()) {
+    if (!req.neonUser) {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
     const { userId, completionDate, videoProgress } = req.body;
 
     // Verify user can complete this (either their own or admin)
-    if (req.user!.id !== userId && req.user!.role !== 'admin') {
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
     // Check if user has approved application to complete full training
     const hasApproval = await hasApprovedApplication(userId);
-    const isAdmin = req.user!.role === 'admin';
+    const isAdmin = req.neonUser.role === 'admin';
 
     // Admins can complete certification without application approval
     // Regular users need approval unless they're completing as admin
@@ -212,14 +212,14 @@ router.post("/complete", async (req: Request, res: Response) => {
 // Get microlearning completion status
 router.get("/completion/:userId", async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated()) {
+    if (!req.neonUser) {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
     const userId = parseInt(req.params.userId);
 
     // Verify user can access this completion (either their own or admin)
-    if (req.user!.id !== userId && req.user!.role !== 'admin') {
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -239,14 +239,14 @@ router.get("/completion/:userId", async (req: Request, res: Response) => {
 // Generate and download certificate
 router.get("/certificate/:userId", async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated()) {
+    if (!req.neonUser) {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
     const userId = parseInt(req.params.userId);
 
     // Verify user can access this certificate (either their own or admin)
-    if (req.user!.id !== userId && req.user!.role !== 'admin') {
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
     }
 

@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import { verifyFirebaseToken } from './firebase-admin';
 import { firebaseStorage } from './storage-firebase';
+import { UserWithFlags } from "@shared/schema";
 
 // Extend Express Request to include Firebase user data
 declare global {
@@ -11,16 +12,7 @@ declare global {
         email?: string;
         email_verified?: boolean;
       };
-      neonUser?: {
-        id: number;
-        username: string;
-        role: "admin" | "chef" | "manager" | null;
-        firebaseUid?: string;
-        isChef?: boolean;
-        isManager?: boolean;
-        isVerified?: boolean;
-        has_seen_welcome?: boolean;
-      };
+      neonUser?: UserWithFlags;
     }
   }
 }
@@ -37,11 +29,11 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     }
 
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'No auth token provided' 
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'No auth token provided'
       });
     }
 
@@ -49,9 +41,9 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'Invalid auth token' 
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid auth token'
       });
     }
 
@@ -70,9 +62,9 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       return;
     }
     console.error('Firebase auth verification error:', error);
-    return res.status(401).json({ 
-      error: 'Unauthorized', 
-      message: 'Token verification failed' 
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Token verification failed'
     });
   }
 }
@@ -92,11 +84,11 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
 
     // First verify Firebase token directly (don't call as middleware to avoid double responses)
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'No auth token provided' 
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'No auth token provided'
       });
     }
 
@@ -104,9 +96,9 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     const decodedToken = await verifyFirebaseToken(token);
 
     if (!decodedToken) {
-      return res.status(401).json({ 
-        error: 'Unauthorized', 
-        message: 'Invalid auth token' 
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid auth token'
       });
     }
 
@@ -116,36 +108,29 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
       email: decodedToken.email,
       email_verified: decodedToken.email_verified,
     };
-    
+
     // Now translate Firebase UID to Neon user (NO SESSIONS)
     const neonUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
-    
+
     if (!neonUser) {
-      return res.status(404).json({ 
-        error: 'User not found', 
-        message: 'This account is not registered with Local Cooks. Please create an account first.' 
+      return res.status(404).json({
+        error: 'User not found',
+        message: 'This account is not registered with Local Cooks. Please create an account first.'
       });
     }
 
     // Set both Firebase and Neon user info on request
-      // Include all user properties including isChef, isManager
-      req.neonUser = {
-        id: neonUser.id,
-        username: neonUser.username,
-        role: neonUser.role,
-        firebaseUid: neonUser.firebaseUid || undefined,
-        // Include role flags - these are now properly mapped by Drizzle ORM
-        isChef: (neonUser as any).isChef || false,
-        isManager: (neonUser as any).isManager || false,
-        isVerified: (neonUser as any).isVerified || false,
-        has_seen_welcome: (neonUser as any).has_seen_welcome || false,
-      };
+    // Include all user properties including isChef, isManager
+    req.neonUser = {
+      ...neonUser,
+      uid: neonUser.firebaseUid || undefined, // Support legacy code that uses .uid
+    } as UserWithFlags;
 
-      console.log(`🔄 Auth translation: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`, {
-        role: neonUser.role,
-        isChef: (neonUser as any).isChef,
-        isManager: (neonUser as any).isManager
-      });
+    console.log(`🔄 Auth translation: Firebase UID ${req.firebaseUser.uid} → Neon User ID ${neonUser.id}`, {
+      role: neonUser.role,
+      isChef: (neonUser as any).isChef,
+      isManager: (neonUser as any).isManager
+    });
 
     next();
   } catch (error) {
@@ -155,9 +140,9 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
       return;
     }
     console.error('Firebase auth with user verification error:', error);
-    return res.status(500).json({ 
-      error: 'Internal server error', 
-      message: 'Authentication verification failed' 
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: 'Authentication verification failed'
     });
   }
 }
@@ -170,7 +155,7 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
 export async function optionalFirebaseAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       // No token provided, continue without user
       return next();
@@ -190,16 +175,9 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
       const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
       if (neonUser) {
         req.neonUser = {
-          id: neonUser.id,
-          username: neonUser.username,
-          role: neonUser.role,
-          firebaseUid: neonUser.firebaseUid || undefined,
-          // Include role flags - these are now properly mapped by Drizzle ORM
-          isChef: (neonUser as any).isChef || false,
-          isManager: (neonUser as any).isManager || false,
-          isVerified: (neonUser as any).isVerified || false,
-          has_seen_welcome: (neonUser as any).has_seen_welcome || false,
-        };
+          ...neonUser,
+          uid: neonUser.firebaseUid || undefined,
+        } as UserWithFlags;
       }
     }
 
@@ -223,16 +201,16 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
 
   if (!req.neonUser) {
-    return res.status(401).json({ 
-      error: 'Unauthorized', 
-      message: 'Authentication required' 
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Authentication required'
     });
   }
 
   if (req.neonUser.role !== 'admin') {
-    return res.status(403).json({ 
-      error: 'Forbidden', 
-      message: 'Admin access required' 
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Admin access required'
     });
   }
 
@@ -251,16 +229,16 @@ export function requireManager(req: Request, res: Response, next: NextFunction) 
   }
 
   if (!req.neonUser) {
-    return res.status(401).json({ 
-      error: 'Unauthorized', 
-      message: 'Authentication required' 
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Authentication required'
     });
   }
 
   if (req.neonUser.role !== 'manager') {
-    return res.status(403).json({ 
-      error: 'Forbidden', 
-      message: 'Manager access required' 
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Manager access required'
     });
   }
 

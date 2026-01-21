@@ -333,7 +333,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
     }
 
     try {
-      let finalData: Record<string, string> = {};
+      const finalData: Record<string, string> = {};
 
       if (data.file) {
         console.log(`Uploading file for ${documentType}:`, {

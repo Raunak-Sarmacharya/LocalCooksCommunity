@@ -49,39 +49,39 @@ function FormStep() {
           <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center px-2">Cook Application</h1>
 
-          {currentStep === 1 && (
-            <div className="fade-in">
-              <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Please provide your personal information</p>
-              <PersonalInfoForm />
-            </div>
-          )}
+            {currentStep === 1 && (
+              <div className="fade-in">
+                <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Please provide your personal information</p>
+                <PersonalInfoForm />
+              </div>
+            )}
 
-          {currentStep === 2 && (
-            <div className="fade-in">
-              <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Select your kitchen preference</p>
-              <KitchenPreferenceForm />
-            </div>
-          )}
+            {currentStep === 2 && (
+              <div className="fade-in">
+                <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Select your kitchen preference</p>
+                <KitchenPreferenceForm />
+              </div>
+            )}
 
-          {currentStep === 3 && (
-            <div className="fade-in">
-              <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Tell us about your food safety certifications</p>
-              <CertificationsForm />
-            </div>
-          )}
+            {currentStep === 3 && (
+              <div className="fade-in">
+                <p className="text-center text-sm sm:text-base mb-6 sm:mb-8 text-gray-600">Tell us about your food safety certifications</p>
+                <CertificationsForm />
+              </div>
+            )}
 
-          {currentStep === 1 && (
-            <div className="mt-6 text-center">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => navigate("/")}
-                className="text-gray-600 hover:text-primary transition-colors"
-              >
-                Back to Information
-              </Button>
-            </div>
-          )}
+            {currentStep === 1 && (
+              <div className="mt-6 text-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => navigate("/")}
+                  className="text-gray-600 hover:text-primary transition-colors"
+                >
+                  Back to Information
+                </Button>
+              </div>
+            )}
           </div>
         </FadeInSection>
       </div>
@@ -112,12 +112,16 @@ export default function ApplicationForm() {
   const { data: applications, isLoading: applicationsLoading } = useQuery<Application[]>({
     queryKey: ["/api/applications/my-applications"],
     queryFn: async ({ queryKey }) => {
-      if (!user?.uid) {
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
         throw new Error("User not authenticated");
       }
 
+      const token = await currentUser.getIdToken();
       const headers: Record<string, string> = {
-        'X-User-ID': user.uid.toString()
+        'Authorization': `Bearer ${token}`
       };
 
       const response = await fetch(queryKey[0] as string, {

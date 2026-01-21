@@ -11,6 +11,7 @@ import { firebaseStorage } from "../storage-firebase";
 import { comparePasswords, hashPassword } from "../passwordUtils";
 import { normalizePhoneForStorage } from "../phone-utils";
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
+import admin from "firebase-admin";
 
 const router = Router();
 
@@ -64,12 +65,16 @@ router.post("/portal-login", async (req: Request, res: Response) => {
             });
         }
 
-        // Log in the user
-        req.login(portalUser, (err: Error | null) => {
-            if (err) {
-                console.error('Login error:', err);
-                return res.status(500).json({ error: 'Login failed' });
-            }
+        // Generate a custom Firebase token for the portal user
+        // We use the database ID as the UID for consistency, or the firebaseUid if it exists
+        const uid = portalUser.firebaseUid || `portal:${portalUser.id}`;
+
+        try {
+            const customToken = await admin.auth().createCustomToken(uid, {
+                role: portalUser.role,
+                isPortalUser: true,
+                neonUserId: portalUser.id
+            });
 
             // Get user's assigned location
             const getPortalUserLocation = async () => {
@@ -88,16 +93,22 @@ router.post("/portal-login", async (req: Request, res: Response) => {
                 }
             };
 
-            getPortalUserLocation().then((locationId) => {
-                res.json({
+            const locationId = await getPortalUserLocation();
+
+            res.json({
+                token: customToken,
+                user: {
                     id: portalUser.id,
                     username: portalUser.username,
                     role: portalUser.role,
                     isPortalUser: true,
                     locationId: locationId,
-                });
+                }
             });
-        });
+        } catch (tokenError) {
+            console.error("Error creating custom token:", tokenError);
+            return res.status(500).json({ error: "Failed to create authentication token" });
+        }
     } catch (error: any) {
         console.error("Portal login error:", error);
         res.status(500).json({ error: error.message || "Portal login failed" });
@@ -135,6 +146,7 @@ router.post("/portal-register", async (req: Request, res: Response) => {
                 isChef: false,
                 isManager: false,
                 isPortalUser: true,
+                managerProfileData: {},
             });
             isNewUser = true;
         } else {
@@ -208,74 +220,80 @@ router.post("/portal-register", async (req: Request, res: Response) => {
             throw dbError;
         }
 
-        // Log the user in immediately after registration
-        return new Promise<void>((resolve, reject) => {
-            req.login(user, (err: Error | null) => {
-                if (err) {
-                    console.error("Login error after registration:", err);
-                    return res.status(500).json({ error: "Login failed after registration" });
-                }
+        // Generate custom token instead of login
+        try {
+            const uid = user.firebaseUid || `portal:${user.id}`;
+            const customToken = await admin.auth().createCustomToken(uid, {
+                role: user.role,
+                isPortalUser: true,
+                neonUserId: user.id
+            });
 
-                // Send notification to manager
-                (async () => {
-                    try {
-                        const { sendEmail } = await import('../email');
+            // Send notification to manager
+            (async () => {
+                try {
+                    const { sendEmail } = await import('../email');
 
-                        let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
+                    let managerEmail = (location as any).notificationEmail || (location as any).notification_email;
 
-                        if (!managerEmail) {
-                            const managerId = (location as any).managerId || (location as any).manager_id;
-                            if (managerId) {
-                                const manager = await firebaseStorage.getUser(managerId);
-                                if (manager && (manager as any).username) {
-                                    managerEmail = (manager as any).username;
-                                }
+                    if (!managerEmail) {
+                        const managerId = (location as any).managerId || (location as any).manager_id;
+                        if (managerId) {
+                            const manager = await firebaseStorage.getUser(managerId);
+                            if (manager && (manager as any).username) {
+                                managerEmail = (manager as any).username;
                             }
                         }
-
-                        if (managerEmail) {
-                            const emailContent = {
-                                to: managerEmail,
-                                subject: `New Portal User Application - ${(location as any).name}`,
-                                text: `A new portal user has applied for access to your location:\n\n` +
-                                    `Location: ${(location as any).name}\n` +
-                                    `Applicant Name: ${fullName}\n` +
-                                    `Email: ${email}\n` +
-                                    `Phone: ${phone}\n` +
-                                    `${company ? `Company: ${company}\n` : ''}` +
-                                    `\nPlease log in to your manager dashboard to review and approve this application.`,
-                                html: `<h2>New Portal User Application</h2>` +
-                                    `<p><strong>Location:</strong> ${(location as any).name}</p>` +
-                                    `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
-                                    `<p><strong>Email:</strong> ${email}</p>` +
-                                    `<p><strong>Phone:</strong> ${phone}</p>` +
-                                    `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
-                                    `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
-                            };
-                            await sendEmail(emailContent);
-                            console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
-                        } else {
-                            console.log("⚠️ No manager email found for location - skipping email notification");
-                        }
-                    } catch (emailError) {
-                        console.error("Error sending application notification email:", emailError);
                     }
 
-                    // Return success response
-                    res.status(201).json({
+                    if (managerEmail) {
+                        const emailContent = {
+                            to: managerEmail,
+                            subject: `New Portal User Application - ${(location as any).name}`,
+                            text: `A new portal user has applied for access to your location:\n\n` +
+                                `Location: ${(location as any).name}\n` +
+                                `Applicant Name: ${fullName}\n` +
+                                `Email: ${email}\n` +
+                                `Phone: ${phone}\n` +
+                                `${company ? `Company: ${company}\n` : ''}` +
+                                `\nPlease log in to your manager dashboard to review and approve this application.`,
+                            html: `<h2>New Portal User Application</h2>` +
+                                `<p><strong>Location:</strong> ${(location as any).name}</p>` +
+                                `<p><strong>Applicant Name:</strong> ${fullName}</p>` +
+                                `<p><strong>Email:</strong> ${email}</p>` +
+                                `<p><strong>Phone:</strong> ${phone}</p>` +
+                                `${company ? `<p><strong>Company:</strong> ${company}</p>` : ''}` +
+                                `<p>Please log in to your manager dashboard to review and approve this application.</p>`,
+                        };
+                        await sendEmail(emailContent);
+                        console.log(`✅ Portal user application notification sent to manager: ${managerEmail}`);
+                    } else {
+                        console.log("⚠️ No manager email found for location - skipping email notification");
+                    }
+                } catch (emailError) {
+                    console.error("Error sending application notification email:", emailError);
+                }
+
+                // Return success response with token
+                res.status(201).json({
+                    token: customToken,
+                    user: {
                         id: user.id,
                         username: user.username,
                         role: user.role,
-                        isPortalUser: true,
-                        application: {
-                            id: application[0].id,
-                            status: application[0].status,
-                            message: "Your application has been submitted. You are now logged in. The location manager will review it shortly."
-                        }
-                    });
-                })();
-            });
-        });
+                        isPortalUser: true
+                    },
+                    application: {
+                        id: application[0].id,
+                        status: application[0].status,
+                        message: "Your application has been submitted. You are now logged in. The location manager will review it shortly."
+                    }
+                });
+            })();
+        } catch (tokenError) {
+            console.error("Error creating token after registration:", tokenError);
+            return res.status(500).json({ error: "Registration successful but login failed. Please try logging in." });
+        }
 
     } catch (error: any) {
         console.error("Portal registration error:", error);

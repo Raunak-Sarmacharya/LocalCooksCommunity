@@ -42,7 +42,7 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
     return null;
   };
 
-  const uploadFile = async (file: File): Promise<UploadResponse | null> => {
+  const uploadFile = async (file: File, folder?: string): Promise<UploadResponse | null> => {
     setError(null);
     setIsUploading(true);
     setUploadProgress(0);
@@ -59,6 +59,9 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
       // Create form data
       const formData = new FormData();
       formData.append('file', file);
+      if (folder) {
+        formData.append('folder', folder);
+      }
 
       // Get Firebase token first
       const currentFirebaseUser = auth.currentUser;
@@ -73,7 +76,7 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
 
       // Upload with progress tracking using Firebase auth
       const xhr = new XMLHttpRequest();
-      
+
       return new Promise<UploadResponse | null>((resolve, reject) => {
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
@@ -122,7 +125,7 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
         xhr.open('POST', '/api/upload-file');
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.withCredentials = true; // Include cookies
-        
+
         console.log('Uploading file with Firebase authentication');
         xhr.send(formData);
       });
@@ -138,16 +141,16 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
     }
   };
 
-  const uploadMultipleFiles = async (files: File[]): Promise<UploadResponse[]> => {
+  const uploadMultipleFiles = async (files: File[], folder?: string): Promise<UploadResponse[]> => {
     const results: UploadResponse[] = [];
-    
+
     for (const file of files) {
-      const result = await uploadFile(file);
+      const result = await uploadFile(file, folder);
       if (result) {
         results.push(result);
       }
     }
-    
+
     return results;
   };
 

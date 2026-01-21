@@ -1,5 +1,18 @@
 import { Router, Request, Response } from "express";
-import { pool } from "../db";
+import { db, pool } from "../db";
+import {
+    kitchenBookings,
+    storageBookings as storageBookingsTable,
+    equipmentBookings as equipmentBookingsTable,
+    kitchens,
+    locations,
+    users,
+    storageListings,
+    equipmentListings
+} from "@shared/schema";
+import { eq, and, ne } from "drizzle-orm";
+import { logger } from "../logger";
+import { errorResponse } from "../api-response";
 import { firebaseStorage } from "../storage-firebase";
 import { requireChef } from "./middleware";
 import { createPaymentIntent } from "../services/stripe-service";
@@ -50,16 +63,15 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
         }
 
         // Verify booking exists
-        const bookingResult = await pool.query(
-            'SELECT id, kitchen_id FROM kitchen_bookings WHERE id = $1',
-            [bookingId]
-        );
+        const [booking] = await db
+            .select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId })
+            .from(kitchenBookings)
+            .where(eq(kitchenBookings.id, bookingId))
+            .limit(1);
 
-        if (bookingResult.rows.length === 0) {
+        if (!booking) {
             return res.status(404).json({ error: "Booking not found" });
         }
-
-        const booking = bookingResult.rows[0];
 
         // Calculate fees
         const { calculateCheckoutFees } = await import('../services/stripe-checkout-fee-service');
@@ -83,7 +95,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
             cancelUrl: `${baseUrl}/booking-cancel?booking_id=${bookingId}`,
             metadata: {
                 booking_id: bookingId.toString(),
-                kitchen_id: booking.kitchen_id.toString(),
+                kitchen_id: (booking.kitchenId || '').toString(),
             },
         });
 
@@ -101,12 +113,12 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
                 totalCustomerChargedCents: feeCalculation.totalChargeInCents,
                 managerReceivesCents: feeCalculation.bookingPriceInCents, // Manager receives the booking amount
                 metadata: {
-                    booking_id: bookingId,
-                    kitchen_id: booking.kitchen_id,
+                    booking_id: bookingId.toString(),
+                    kitchen_id: (booking.kitchenId || '').toString(),
                     manager_account_id: managerStripeAccountId,
                 },
             },
-            pool
+            db
         );
 
         // Return response
@@ -130,7 +142,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
 // Get chef's storage bookings
 router.get("/chef/storage-bookings", requireChef, async (req: Request, res: Response) => {
     try {
-        const storageBookings = await firebaseStorage.getStorageBookingsByChef(req.user!.id);
+        const storageBookings = await firebaseStorage.getStorageBookingsByChef(req.neonUser!.id);
         res.json(storageBookings);
     } catch (error) {
         console.error("Error fetching storage bookings:", error);
@@ -152,7 +164,7 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
         }
 
         // Verify the booking belongs to this chef
-        if (booking.chefId !== req.user!.id) {
+        if (booking.chefId !== req.neonUser!.id) {
             return res.status(403).json({ error: "You don't have permission to view this booking" });
         }
 
@@ -203,7 +215,7 @@ router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request
             return res.status(404).json({ error: "Storage booking not found" });
         }
 
-        if (booking.chefId !== req.user!.id) {
+        if (booking.chefId !== req.neonUser!.id) {
             return res.status(403).json({ error: "You don't have permission to extend this booking" });
         }
 
@@ -250,7 +262,7 @@ router.get("/chef/bookings/:id", requireChef, async (req: Request, res: Response
         }
 
         // Verify the booking belongs to this chef
-        if (booking.chefId !== req.user!.id) {
+        if (booking.chefId !== req.neonUser!.id) {
             return res.status(403).json({ error: "You don't have permission to view this booking" });
         }
 
@@ -287,7 +299,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
         }
 
         // Verify the booking belongs to this chef
-        if (booking.chefId !== req.user!.id) {
+        if (booking.chefId !== req.neonUser!.id) {
             return res.status(403).json({ error: "You don't have permission to view this invoice" });
         }
 
@@ -301,14 +313,13 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
         let location = null;
         if (kitchen && (kitchen as any).locationId) {
             const locationId = (kitchen as any).locationId || (kitchen as any).location_id;
-            if (pool) {
-                const locationResult = await pool.query(
-                    'SELECT id, name, address FROM locations WHERE id = $1',
-                    [locationId]
-                );
-                if (locationResult.rows.length > 0) {
-                    location = locationResult.rows[0];
-                }
+            const [locationData] = await db
+                .select({ id: locations.id, name: locations.name, address: locations.address })
+                .from(locations)
+                .where(eq(locations.id, locationId))
+                .limit(1);
+            if (locationData) {
+                location = locationData;
             }
         }
 
@@ -324,8 +335,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
             location,
             storageBookings,
             equipmentBookings,
-            paymentIntentId,
-            pool
+            paymentIntentId
         );
 
         // Set headers for PDF download
@@ -351,47 +361,58 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         }
 
         // Get booking details with location cancellation policy from database
-        const bookingResult = await pool.query(`
-      SELECT 
-        kb.*,
-        l.cancellation_policy_hours,
-        l.cancellation_policy_message
-      FROM kitchen_bookings kb
-      JOIN kitchens k ON kb.kitchen_id = k.id
-      JOIN locations l ON k.location_id = l.id
-      WHERE kb.id = $1 AND kb.chef_id = $2
-    `, [id, req.user!.id]);
+        const rows = await db
+            .select({
+                id: kitchenBookings.id,
+                bookingDate: kitchenBookings.bookingDate,
+                startTime: kitchenBookings.startTime,
+                endTime: kitchenBookings.endTime,
+                kitchenId: kitchenBookings.kitchenId,
+                chefId: kitchenBookings.chefId,
+                paymentIntentId: kitchenBookings.paymentIntentId,
+                paymentStatus: kitchenBookings.paymentStatus,
+                cancellationPolicyHours: locations.cancellationPolicyHours,
+                cancellationPolicyMessage: locations.cancellationPolicyMessage
+            })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(
+                and(
+                    eq(kitchenBookings.id, id),
+                    eq(kitchenBookings.chefId, req.neonUser!.id)
+                )
+            )
+            .limit(1);
 
-        if (bookingResult.rows.length === 0) {
+        if (rows.length === 0) {
             return res.status(404).json({ error: "Booking not found" });
         }
 
-        const booking = bookingResult.rows[0];
+        const booking = rows[0];
 
         // Check if booking is within cancellation period
-        const bookingDateTime = new Date(`${booking.booking_date.toISOString().split('T')[0]}T${booking.start_time}`);
+        const bookingDateTime = new Date(`${booking.bookingDate?.toISOString().split('T')[0]}T${booking.startTime}`);
         const now = new Date();
         const hoursUntilBooking = (bookingDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-        const cancellationHours = booking.cancellation_policy_hours || 24;
+        const cancellationHours = booking.cancellationPolicyHours || 24;
 
         // If cancelled within cancellation period and payment was already captured, create refund
-        if (booking.payment_intent_id && hoursUntilBooking >= cancellationHours && booking.payment_status === 'paid') {
+        if (booking.paymentIntentId && hoursUntilBooking >= cancellationHours && booking.paymentStatus === 'paid') {
             try {
                 const { createRefund, getPaymentIntent } = await import('../services/stripe-service');
 
                 // Check if payment intent was successfully captured
-                const paymentIntent = await getPaymentIntent(booking.payment_intent_id);
+                const paymentIntent = await getPaymentIntent(booking.paymentIntentId);
                 if (paymentIntent && (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing')) {
                     // Create refund for the captured payment
-                    const refund = await createRefund(booking.payment_intent_id, undefined, 'requested_by_customer');
-                    console.log(`[Cancel Booking] Created refund for booking ${id} (PaymentIntent: ${booking.payment_intent_id}, Refund: ${refund.id})`);
+                    const refund = await createRefund(booking.paymentIntentId as string, undefined, 'requested_by_customer');
+                    logger.info(`[Cancel Booking] Created refund for booking ${id} (PaymentIntent: ${booking.paymentIntentId}, Refund: ${refund.id})`);
 
                     // Update payment status to refunded
-                    await pool.query(`
-            UPDATE kitchen_bookings 
-            SET payment_status = 'refunded'
-            WHERE id = $1
-          `, [id]);
+                    await db.update(kitchenBookings)
+                        .set({ paymentStatus: 'refunded' })
+                        .where(eq(kitchenBookings.id, id));
                 }
             } catch (error) {
                 console.error(`[Cancel Booking] Error creating refund for booking ${id}:`, error);
@@ -400,7 +421,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         }
 
         // Cancel the booking
-        await firebaseStorage.cancelKitchenBooking(id, req.user!.id);
+        await firebaseStorage.cancelKitchenBooking(id, req.neonUser!.id);
 
         // Send email notifications to chef and manager
         try {
@@ -417,39 +438,36 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                     console.warn(`⚠️ Database pool not available for email notification`);
                 } else {
                     // DIRECT DATABASE QUERY - emails are stored in Neon database
-                    const locationData = await pool.query(`
-            SELECT l.id, l.name, l.manager_id, l.notification_email
-            FROM locations l
-            WHERE l.id = $1
-          `, [kitchenLocationId]);
+                    const [location] = await db
+                        .select({ id: locations.id, name: locations.name, managerId: locations.managerId, notificationEmail: locations.notificationEmail })
+                        .from(locations)
+                        .where(eq(locations.id, kitchenLocationId));
 
-                    if (locationData.rows.length === 0) {
-                        console.warn(`⚠️ Location ${kitchenLocationId} not found for email notification`);
+                    if (!location) {
+                        logger.warn(`⚠️ Location ${kitchenLocationId} not found for email notification`);
                     } else {
-                        const location = locationData.rows[0];
 
                         // Get chef details
-                        const chef = await storage.getUser(booking.chefId);
+                        const chef = await storage.getUser(booking.chefId as number);
                         if (!chef) {
                             console.warn(`⚠️ Chef ${booking.chefId} not found for email notification`);
                         } else {
                             // Get manager details if manager_id is set (DIRECT DATABASE QUERY)
-                            const managerId = location.manager_id;
+                            const managerId = location.managerId;
                             let manager = null;
                             if (managerId) {
-                                const managerData = await pool.query(`
-                  SELECT id, username
-                  FROM users
-                  WHERE id = $1
-                `, [managerId]);
+                                const [managerResult] = await db
+                                    .select({ id: users.id, username: users.username })
+                                    .from(users)
+                                    .where(eq(users.id, managerId));
 
-                                if (managerData.rows.length > 0) {
-                                    manager = managerData.rows[0];
+                                if (managerResult) {
+                                    manager = managerResult;
                                 }
                             }
 
                             // Get chef phone using utility function (from applications table)
-                            const chefPhone = await getChefPhone(booking.chefId, pool);
+                            const chefPhone = await getChefPhone(booking.chefId as number, pool);
 
                             // Import email functions
                             const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../email.js');
@@ -460,15 +478,15 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                                     chefEmail: chef.username || '',
                                     chefName: chef.username || 'Chef',
                                     kitchenName: kitchen.name || 'Kitchen',
-                                    bookingDate: booking.bookingDate,
+                                    bookingDate: booking.bookingDate?.toISOString() || '',
                                     startTime: booking.startTime,
                                     endTime: booking.endTime,
                                     cancellationReason: 'You cancelled this booking'
                                 });
                                 await sendEmail(chefEmail);
-                                console.log(`✅ Booking cancellation email sent to chef: ${chef.username}`);
+                                logger.info(`✅ Booking cancellation email sent to chef: ${chef.username}`);
                             } catch (emailError) {
-                                console.error("Error sending chef cancellation email:", emailError);
+                                logger.error("Error sending chef cancellation email:", emailError);
                             }
 
                             // Send SMS to chef
@@ -476,9 +494,9 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                                 try {
                                     const smsMessage = generateChefSelfCancellationSMS({
                                         kitchenName: kitchen.name || 'Kitchen',
-                                        bookingDate: booking.bookingDate,
+                                        bookingDate: booking.bookingDate?.toISOString() || '',
                                         startTime: booking.startTime,
-                                        endTime: booking.endTime
+                                        endTime: booking.endTime || ''
                                     });
                                     await sendSMS(chefPhone, smsMessage, { trackingId: `booking_${id}_chef_self_cancelled` });
                                     console.log(`✅ Booking cancellation SMS sent to chef: ${chefPhone}`);
@@ -487,8 +505,8 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                                 }
                             }
 
-                            // Send email to manager (use notification_email from direct database query)
-                            const notificationEmailAddress = location.notification_email || (manager ? manager.username : null);
+                            // Send email to manager (use notificationEmail from direct database query)
+                            const notificationEmailAddress = location.notificationEmail || (manager ? (manager.username || null) : null);
 
                             if (notificationEmailAddress) {
                                 try {
@@ -496,7 +514,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                                         managerEmail: notificationEmailAddress,
                                         chefName: chef.username || 'Chef',
                                         kitchenName: kitchen.name || 'Kitchen',
-                                        bookingDate: booking.bookingDate,
+                                        bookingDate: booking.bookingDate?.toISOString() || '',
                                         startTime: booking.startTime,
                                         endTime: booking.endTime,
                                         cancellationReason: 'Cancelled by chef'
@@ -514,13 +532,13 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                             // Send SMS to manager
                             try {
                                 // Get manager phone number using utility function (with fallback to applications table)
-                                const managerPhone = await getManagerPhone(location, managerId, pool);
+                                const managerPhone = await getManagerPhone(location as any, managerId as number, pool);
 
                                 if (managerPhone) {
                                     const smsMessage = generateManagerBookingCancellationSMS({
                                         chefName: chef.username || 'Chef',
                                         kitchenName: kitchen.name || 'Kitchen',
-                                        bookingDate: booking.bookingDate,
+                                        bookingDate: booking.bookingDate?.toISOString() || '',
                                         startTime: booking.startTime,
                                         endTime: booking.endTime
                                     });
@@ -552,30 +570,35 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
 router.post("/payments/create-intent", requireChef, async (req: Request, res: Response) => {
     try {
         const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
-        const chefId = req.user!.id;
+        const chefId = req.neonUser!.id;
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
             return res.status(400).json({ error: "Missing required booking fields" });
         }
 
         // Calculate kitchen booking price (pass pool for compatibility)
-        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime, pool);
+        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
         let totalPriceCents = kitchenPricing.totalPriceCents;
 
         // Calculate storage add-ons
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0 && pool) {
             for (const storage of selectedStorage) {
                 try {
-                    const storageResult = await pool.query(
-                        `SELECT id, pricing_model, base_price, minimum_booking_duration FROM storage_listings WHERE id = $1`,
-                        [storage.storageListingId]
-                    );
+                    const [storageListing] = await db
+                        .select({
+                            id: storageListings.id,
+                            pricingModel: storageListings.pricingModel,
+                            basePrice: storageListings.basePrice,
+                            minimumBookingDuration: storageListings.minimumBookingDuration
+                        })
+                        .from(storageListings)
+                        .where(eq(storageListings.id, storage.storageListingId))
+                        .limit(1);
 
-                    if (storageResult.rows.length > 0) {
-                        const storageListing = storageResult.rows[0];
-                        // Parse base_price as numeric (stored in cents in database)
-                        const basePriceCents = storageListing.base_price ? Math.round(parseFloat(String(storageListing.base_price))) : 0;
-                        const minDays = storageListing.minimum_booking_duration || 1;
+                    if (storageListing) {
+                        // Parse basePrice as numeric (stored in cents in database)
+                        const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
+                        const minDays = storageListing.minimumBookingDuration || 1;
 
                         const startDate = new Date(storage.startDate);
                         const endDate = new Date(storage.endDate);
@@ -583,10 +606,10 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
                         const effectiveDays = Math.max(days, minDays);
 
                         let storagePrice = basePriceCents * effectiveDays;
-                        if (storageListing.pricing_model === 'hourly') {
+                        if (storageListing.pricingModel === 'hourly') {
                             const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
                             storagePrice = basePriceCents * durationHours;
-                        } else if (storageListing.pricing_model === 'monthly-flat') {
+                        } else if (storageListing.pricingModel === 'monthly-flat') {
                             storagePrice = basePriceCents;
                         }
 
@@ -599,54 +622,62 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         }
 
         // Calculate equipment add-ons
-        if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0 && pool) {
+        if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
             for (const equipmentListingId of selectedEquipmentIds) {
                 try {
-                    const equipmentResult = await pool.query(
-                        `SELECT id, session_rate, damage_deposit FROM equipment_listings WHERE id = $1 AND availability_type != 'included'`,
-                        [equipmentListingId]
-                    );
+                    const [equipmentListing] = await db
+                        .select({
+                            id: equipmentListings.id,
+                            sessionRate: equipmentListings.sessionRate,
+                            damageDeposit: equipmentListings.damageDeposit,
+                            availabilityType: equipmentListings.availabilityType
+                        })
+                        .from(equipmentListings)
+                        .where(
+                            and(
+                                eq(equipmentListings.id, equipmentListingId),
+                                ne(equipmentListings.availabilityType, 'included')
+                            )
+                        )
+                        .limit(1);
 
-                    if (equipmentResult.rows.length > 0) {
-                        const equipmentListing = equipmentResult.rows[0];
-                        // Parse session_rate and damage_deposit as numeric (stored in cents in database)
-                        const sessionRateCents = equipmentListing.session_rate ? Math.round(parseFloat(String(equipmentListing.session_rate))) : 0;
-                        const damageDepositCents = equipmentListing.damage_deposit ? Math.round(parseFloat(String(equipmentListing.damage_deposit))) : 0;
+                    if (equipmentListing) {
+                        // Parse sessionRate and damageDeposit as numeric (stored in cents in database)
+                        const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
+                        const damageDepositCents = equipmentListing.damageDeposit ? Math.round(parseFloat(String(equipmentListing.damageDeposit))) : 0;
 
                         totalPriceCents += sessionRateCents + damageDepositCents;
                     }
                 } catch (error) {
-                    console.error('Error calculating equipment price:', error);
+                    logger.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
                 }
             }
         }
 
         // Calculate service fee dynamically from platform_settings + $0.30 flat fee
-        const serviceFeeCents = await calculatePlatformFeeDynamic(totalPriceCents, pool);
+        const serviceFeeCents = await calculatePlatformFeeDynamic(totalPriceCents);
         const stripeProcessingFeeCents = 30; // $0.30 per transaction
         const totalServiceFeeCents = serviceFeeCents + stripeProcessingFeeCents;
         const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, totalServiceFeeCents, 0);
 
         // Get manager's Stripe Connect account ID if available
         let managerConnectAccountId: string | undefined;
-        if (pool) {
-            try {
-                const managerResult = await pool.query(`
-            SELECT 
-              u.stripe_connect_account_id,
-              l.manager_id
-            FROM kitchens k
-            JOIN locations l ON k.location_id = l.id
-            JOIN users u ON l.manager_id = u.id
-            WHERE k.id = $1
-          `, [kitchenId]);
+        try {
+            const rows = await db
+                .select({
+                    stripeConnectAccountId: users.stripeConnectAccountId
+                })
+                .from(kitchens)
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .innerJoin(users, eq(locations.managerId, users.id))
+                .where(eq(kitchens.id, kitchenId))
+                .limit(1);
 
-                if (managerResult.rows.length > 0 && managerResult.rows[0].stripe_connect_account_id) {
-                    managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
-                }
-            } catch (error) {
-                console.error('Error fetching manager Stripe account:', error);
+            if (rows.length > 0 && rows[0].stripeConnectAccountId) {
+                managerConnectAccountId = rows[0].stripeConnectAccountId;
             }
+        } catch (error) {
+            logger.error(`Error fetching manager Stripe account for kitchen ${kitchenId}:`, error);
         }
 
         console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Fee=${totalServiceFeeCents}, Total=${totalWithFeesCents}, Expected=${expectedAmountCents}`);
@@ -703,7 +734,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
 router.post("/payments/confirm", requireChef, async (req: Request, res: Response) => {
     try {
         const { paymentIntentId, paymentMethodId } = req.body;
-        const chefId = req.user!.id;
+        const chefId = req.neonUser!.id;
 
         if (!paymentIntentId || !paymentMethodId) {
             return res.status(400).json({ error: "Missing paymentIntentId or paymentMethodId" });
@@ -737,7 +768,7 @@ router.post("/payments/confirm", requireChef, async (req: Request, res: Response
 router.get("/payments/intent/:id/status", requireChef, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const chefId = req.user!.id;
+        const chefId = req.neonUser!.id;
 
         const { getPaymentIntent } = await import('../services/stripe-service');
         const paymentIntent = await getPaymentIntent(id);
@@ -771,7 +802,7 @@ router.post("/payments/capture", requireChef, async (req: Request, res: Response
 router.post("/payments/cancel", requireChef, async (req: Request, res: Response) => {
     try {
         const { paymentIntentId } = req.body;
-        const chefId = req.user!.id;
+        const chefId = req.neonUser!.id;
 
         if (!paymentIntentId) {
             return res.status(400).json({ error: "Missing paymentIntentId" });
@@ -815,7 +846,7 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
 router.post("/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
         const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
-        const chefId = req.user!.id;
+        const chefId = req.neonUser!.id;
 
         // Get the location for this kitchen
         const kitchenLocationId1 = await firebaseStorage.getKitchenLocation(kitchenId);
@@ -945,7 +976,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
                     bookingDate: bookingDateObj,
                     startTime,
                     endTime,
-                    totalPrice: booking.totalPrice // In cents
+                    // totalPrice: booking.totalPrice // In cents (removed as not supported by email template)
                 });
                 await sendEmail(chefEmail);
 
@@ -979,7 +1010,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
 // Get chef's bookings
 router.get("/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
-        const chefId = req.user!.id;
+        const chefId = req.neonUser!.id;
         console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
 
         // Check if firebaseStorage.getBookingsByChef exists, if not use pool
@@ -988,15 +1019,25 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
             res.json(bookings);
         } else {
             // Fallback to direct DB query if method doesn't exist on firebaseStorage yet
-            const result = await pool.query(`
-        SELECT kb.*, k.name as kitchen_name, l.name as location_name
-        FROM kitchen_bookings kb
-        JOIN kitchens k ON kb.kitchen_id = k.id
-        JOIN locations l ON k.location_id = l.id
-        WHERE kb.chef_id = $1
-        ORDER BY kb.booking_date DESC
-      `, [chefId]);
-            res.json(result.rows);
+            const rows = await db
+                .select({
+                    id: kitchenBookings.id,
+                    chefId: kitchenBookings.chefId,
+                    kitchenId: kitchenBookings.kitchenId,
+                    bookingDate: kitchenBookings.bookingDate,
+                    startTime: kitchenBookings.startTime,
+                    endTime: kitchenBookings.endTime,
+                    status: kitchenBookings.status,
+                    totalPrice: kitchenBookings.totalPrice,
+                    kitchenName: kitchens.name,
+                    locationName: locations.name
+                })
+                .from(kitchenBookings)
+                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(kitchenBookings.chefId, chefId))
+                .orderBy(kitchenBookings.bookingDate);
+            res.json(rows);
         }
     } catch (error) {
         console.error("Error fetching bookings:", error);
