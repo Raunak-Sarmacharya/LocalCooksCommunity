@@ -4558,39 +4558,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Fetch booking details for display
           if (transactions.length > 0) {
             const bookingIds = transactions.map(t => t.id);
-            const bookingDetails = await pool.query(`
-              SELECT 
-                kb.id,
-                kb.booking_date,
-                kb.start_time,
-                kb.end_time,
-                kb.status,
-                k.name as kitchen_name,
-                l.id as location_id,
-                l.name as location_name,
-                u.username as chef_name,
-                u.username as chef_email
-              FROM kitchen_bookings kb
-              JOIN kitchens k ON kb.kitchen_id = k.id
+              const bookingDetails = await pool.query(`
+                SELECT 
+                  kb.id,
+                  kb.booking_date,
+                  kb.start_time,
+                  kb.end_time,
+                  kb.status,
+                  k.name as kitchen_name,
+                  k.tax_rate_percent::text as tax_rate_percent,
+                  l.id as location_id,
+                  l.name as location_name,
+                  u.username as chef_name,
+                  u.username as chef_email
+                FROM kitchen_bookings kb
+                JOIN kitchens k ON kb.kitchen_id = k.id
               JOIN locations l ON k.location_id = l.id
               LEFT JOIN users u ON kb.chef_id = u.id
               WHERE kb.id = ANY($1)
             `, [bookingIds]);
 
-            const detailsMap = new Map(bookingDetails.rows.map(b => [b.id, b]));
-            transactions = transactions.map(t => ({
-              ...t,
-              bookingDate: detailsMap.get(t.id)?.booking_date,
-              startTime: detailsMap.get(t.id)?.start_time,
-              endTime: detailsMap.get(t.id)?.end_time,
-              status: detailsMap.get(t.id)?.status,
-              kitchenName: detailsMap.get(t.id)?.kitchen_name,
-              locationId: detailsMap.get(t.id)?.location_id,
-              locationName: detailsMap.get(t.id)?.location_name,
-              chefName: detailsMap.get(t.id)?.chef_name || 'Guest',
-              chefEmail: detailsMap.get(t.id)?.chef_email,
-            }));
-          }
+              const detailsMap = new Map(bookingDetails.rows.map(b => [b.id, b]));
+              transactions = transactions.map(t => ({
+                ...t,
+                bookingDate: detailsMap.get(t.id)?.booking_date,
+                startTime: detailsMap.get(t.id)?.start_time,
+                endTime: detailsMap.get(t.id)?.end_time,
+                status: detailsMap.get(t.id)?.status,
+                kitchenName: detailsMap.get(t.id)?.kitchen_name,
+                locationId: detailsMap.get(t.id)?.location_id,
+                locationName: detailsMap.get(t.id)?.location_name,
+                chefName: detailsMap.get(t.id)?.chef_name || 'Guest',
+                chefEmail: detailsMap.get(t.id)?.chef_email,
+                taxRatePercent: (() => {
+                  const rawTaxRate = detailsMap.get(t.id)?.tax_rate_percent;
+                  if (rawTaxRate === null ) {
+                    return null;
+                  }
+                  const parsedTaxRate = Number(rawTaxRate);
+                  return Number.isNaN(parsedTaxRate) ? null : parsedTaxRate;
+                })(),
+              }));
+            }
 
           console.log(`[Revenue] Using payment_transactions for transaction history: ${transactions.length} transactions`);
         }

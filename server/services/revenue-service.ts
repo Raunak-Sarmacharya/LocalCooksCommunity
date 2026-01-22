@@ -705,15 +705,16 @@ export async function getTransactionHistory(
         )::bigint as total_price,
         COALESCE(kb.service_fee, 0)::bigint as service_fee,
         kb.payment_status,
-        kb.payment_intent_id,
-        kb.status,
-        kb.currency,
-        k.name as kitchen_name,
-        l.id as location_id,
-        l.name as location_name,
-        u.username as chef_name,
-        u.username as chef_email,
-        kb.created_at
+          kb.payment_intent_id,
+          kb.status,
+          kb.currency,
+          k.name as kitchen_name,
+          k.tax_rate_percent::text as tax_rate_percent,
+          l.id as location_id,
+          l.name as location_name,
+          u.username as chef_name,
+          u.username as chef_email,
+          kb.created_at
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
@@ -725,23 +726,26 @@ export async function getTransactionHistory(
 
     return result.rows.map((row: any) => {
       // Handle null/undefined total_price gracefully
-      const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
-      const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
-      // Manager revenue = total_price - service_fee (total_price already includes service_fee)
-      const managerRevenue = totalPriceCents - serviceFeeCents;
-      
-      return {
-        id: row.id,
-        bookingDate: row.booking_date,
-        startTime: row.start_time,
-        endTime: row.end_time,
-        totalPrice: totalPriceCents,
-        serviceFee: serviceFeeCents,
-        managerRevenue: managerRevenue || 0,
-        paymentStatus: row.payment_status,
-        paymentIntentId: row.payment_intent_id,
-        status: row.status,
-        currency: row.currency || 'CAD',
+        const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
+        const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
+        // Manager revenue = total_price - service_fee (total_price already includes service_fee)
+        const managerRevenue = totalPriceCents - serviceFeeCents;
+        const parsedTaxRate = row.tax_rate_percent ? parseFloat(String(row.tax_rate_percent)) : NaN;
+        const taxRatePercent = Number.isNaN(parsedTaxRate) ? null : parsedTaxRate;
+        
+        return {
+          id: row.id,
+          bookingDate: row.booking_date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          totalPrice: totalPriceCents,
+          serviceFee: serviceFeeCents,
+          managerRevenue: managerRevenue || 0,
+          taxRatePercent,
+          paymentStatus: row.payment_status,
+          paymentIntentId: row.payment_intent_id,
+          status: row.status,
+          currency: row.currency || 'CAD',
         kitchenName: row.kitchen_name,
         locationId: parseInt(row.location_id),
         locationName: row.location_name,

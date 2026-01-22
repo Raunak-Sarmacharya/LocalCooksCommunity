@@ -117,6 +117,41 @@ function formatChartDate(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function getTransactionTotalCents(transaction: any): number {
+  if (transaction?._raw?.totalPrice !== undefined && transaction?._raw?.totalPrice !== null) {
+    return Number(transaction._raw.totalPrice) || 0;
+  }
+  const totalDollars = Number(transaction?.totalPrice) || 0;
+  return Math.round(totalDollars * 100);
+}
+
+function getTransactionTaxCents(transaction: any): number {
+  const taxRatePercent = Number(transaction?.taxRatePercent);
+  if (!taxRatePercent || Number.isNaN(taxRatePercent) || taxRatePercent <= 0) {
+    return 0;
+  }
+  const rate = taxRatePercent / 100;
+  const totalCents = getTransactionTotalCents(transaction);
+  const estimatedSubtotalCents = totalCents / (1 + rate);
+  const taxCents = Math.round(totalCents - estimatedSubtotalCents);
+  return Math.max(0, taxCents);
+}
+
+function getStripeProcessingFeeCents(transaction: any): number {
+  const totalCents = getTransactionTotalCents(transaction);
+  if (totalCents <= 0) {
+    return 0;
+  }
+  return Math.max(0, Math.round(totalCents * 0.029 + 30));
+}
+
+function getTransactionEarningsCents(transaction: any): number {
+  const totalCents = getTransactionTotalCents(transaction);
+  const taxCents = getTransactionTaxCents(transaction);
+  const processingFeeCents = getStripeProcessingFeeCents(transaction);
+  return Math.max(0, totalCents - taxCents - processingFeeCents);
+}
+
 export default function ManagerRevenueDashboard({
   selectedLocation,
   locations,
@@ -360,17 +395,19 @@ export default function ManagerRevenueDashboard({
   // Calculate totals for transaction history table
   const transactionTotals = useMemo(() => {
     if (!filteredTransactions || filteredTransactions.length === 0) {
-      return { totalPrice: 0, managerRevenue: 0 };
+      return { totalPriceCents: 0, managerEarningsCents: 0 };
     }
     
     return filteredTransactions.reduce(
-      (acc: { totalPrice: number; managerRevenue: number }, t: any) => {
+      (acc: { totalPriceCents: number; managerEarningsCents: number }, t: any) => {
+        const totalCents = getTransactionTotalCents(t);
+        const earningsCents = getTransactionEarningsCents(t);
         return {
-          totalPrice: acc.totalPrice + (t.totalPrice || 0),
-          managerRevenue: acc.managerRevenue + (t.managerRevenue || 0),
+          totalPriceCents: acc.totalPriceCents + totalCents,
+          managerEarningsCents: acc.managerEarningsCents + earningsCents,
         };
       },
-      { totalPrice: 0, managerRevenue: 0 }
+      { totalPriceCents: 0, managerEarningsCents: 0 }
     );
   }, [filteredTransactions]);
 
@@ -1126,10 +1163,10 @@ export default function ManagerRevenueDashboard({
                         {transaction.locationName}
                       </td>
                       <td className="py-3 px-4 text-sm text-right font-medium text-gray-900">
-                        {formatCurrency(transaction.totalPrice)}
+                        {formatCurrency(getTransactionTotalCents(transaction) / 100)}
                       </td>
                       <td className="py-3 px-4 text-sm text-right font-semibold text-blue-600">
-                        {formatCurrency(transaction.managerRevenue)}
+                        {formatCurrency(getTransactionEarningsCents(transaction) / 100)}
                       </td>
                       <td className="py-3 px-4 text-center">
                         {getPaymentStatusBadge(transaction.paymentStatus)}
@@ -1153,10 +1190,10 @@ export default function ManagerRevenueDashboard({
                       Total ({filteredTransactions.length} {filteredTransactions.length === 1 ? 'transaction' : 'transactions'})
                     </td>
                     <td className="py-3 px-4 text-sm text-right font-semibold text-gray-900">
-                      {formatCurrency(transactionTotals.totalPrice)}
+                      {formatCurrency(transactionTotals.totalPriceCents / 100)}
                     </td>
                     <td className="py-3 px-4 text-sm text-right font-semibold text-blue-600">
-                      {formatCurrency(transactionTotals.managerRevenue)}
+                      {formatCurrency(transactionTotals.managerEarningsCents / 100)}
                     </td>
                     <td colSpan={2}></td>
                   </tr>
