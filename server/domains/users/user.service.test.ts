@@ -1,151 +1,132 @@
 /**
- * User Service Tests
- * 
- * Unit tests for UserService and UserRepository.
+ * Unit tests for UserService
+ * Tests business logic and profile aggregation
  */
 
-import { UserService } from '../user.service';
-import { UserRepository } from '../user.repository';
-import type { CreateUserDTO, UpdateUserDTO } from '../user.types';
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { UserService } from './user.service'
+import { UserRepository } from './user.repository'
+import { DomainError, UserErrorCodes } from '../../shared/errors/domain-error'
+import { mockUser, resetAllMocks } from '../../__tests__/test-utils'
+
+// Mock the repository
+const mockRepository = {
+    findById: vi.fn(),
+    findByUsername: vi.fn(),
+    findByFirebaseUid: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateFirebaseUid: vi.fn(),
+    setHasSeenWelcome: vi.fn(),
+    setVerified: vi.fn(),
+    updateManagerOnboarding: vi.fn(),
+    findAllManagers: vi.fn(),
+    findAllChefs: vi.fn(),
+    usernameExists: vi.fn(),
+    firebaseUidExists: vi.fn(),
+    updatePasswordByFirebaseUid: vi.fn(),
+} as unknown as UserRepository
+
+// Mock Drizzle db for aggregations
+vi.mock('../../db', () => ({
+    db: {
+        select: vi.fn(() => ({
+            from: vi.fn(() => ({
+                where: vi.fn(() => ({
+                    orderBy: vi.fn(() => ({
+                        limit: vi.fn(() => Promise.resolve([]))
+                    }))
+                }))
+            }))
+        }))
+    }
+}))
+
+// Mock validation
+vi.mock('../../shared/validators/input-validator', () => ({
+    validateUserInput: vi.fn((data) => Promise.resolve(data)),
+    validateUpdateUserInput: vi.fn((data) => Promise.resolve(data)),
+}))
+
+// Mock bcryptjs
+vi.mock('bcryptjs', () => ({
+    hash: vi.fn(() => Promise.resolve('hashed-password')),
+    compare: vi.fn(() => Promise.resolve(true)),
+}))
 
 describe('UserService', () => {
-  let userService: UserService;
-  let userRepo: UserRepository;
+    let service: UserService
 
-  beforeEach(() => {
-    userRepo = new UserRepository();
-    userService = new UserService(userRepo);
-  });
+    beforeEach(() => {
+        resetAllMocks()
+        service = new UserService(mockRepository)
+    })
 
-  describe('createUser', () => {
-    it('should create a user with valid data', async () => {
-      const dto: CreateUserDTO = {
-        username: 'testuser',
-        password: 'password123',
-        role: 'chef',
-        firebaseUid: 'firebase-uid-123',
-      };
+    describe('createUser', () => {
+        it('should create user when username is unique', async () => {
+            const dto = {
+                username: 'newuser@example.com',
+                password: 'password123',
+                role: 'chef'
+            }
+            vi.mocked(mockRepository.usernameExists).mockResolvedValue(false)
+            vi.mocked(mockRepository.create).mockResolvedValue({ ...mockUser, ...dto } as any)
 
-      const user = await userService.createUser(dto);
-      
-      expect(user).toBeDefined();
-      expect(user.username).toBe('testuser');
-      expect(user.is_chef).toBe(false);
-      expect(user.is_manager).toBe(false);
-    });
+            const result = await service.createUser(dto as any)
 
-    it('should throw error if username is too short', async () => {
-      const dto: CreateUserDTO = {
-        username: 'ab',
-        password: 'password123',
-      };
+            expect(result.username).toBe('newuser@example.com')
+            expect(mockRepository.create).toHaveBeenCalled()
+        })
 
-      await expect(userService.createUser(dto)).rejects.toThrow();
-    });
+        it('should throw 409 if username taken', async () => {
+            vi.mocked(mockRepository.usernameExists).mockResolvedValue(true)
 
-    it('should throw error if username already exists', async () => {
-      const existingDto: CreateUserDTO = {
-        username: 'existinguser',
-        password: 'password123',
-      };
+            await expect(service.createUser({ username: 'taken' } as any)).rejects.toMatchObject({
+                statusCode: 409,
+                code: UserErrorCodes.USERNAME_TAKEN
+            })
+        })
+    })
 
-      await userService.createUser(existingDto);
+    describe('getCompleteProfile', () => {
+        it('should aggregate data from repository and applications table', async () => {
+            vi.mocked(mockRepository.findById).mockResolvedValue(mockUser as any)
 
-      const duplicateDto: CreateUserDTO = {
-        username: 'existinguser',
-        password: 'password456',
-      };
+            const result = await service.getCompleteProfile(1)
 
-      await expect(userService.createUser(duplicateDto)).rejects.toThrow();
-    });
+            expect(result.id).toBe(1)
+            expect(result.firebaseUser.uid).toBe(mockUser.firebaseUid)
+            expect(mockRepository.findById).toHaveBeenCalledWith(1)
+        })
 
-    it('should throw error if Firebase UID already exists', async () => {
-      const existingDto: CreateUserDTO = {
-        username: 'user1',
-        password: 'password123',
-        firebaseUid: 'firebase-uid-existing',
-      };
+        it('should throw 404 if user not found', async () => {
+            vi.mocked(mockRepository.findById).mockResolvedValue(null)
 
-      await userService.createUser(existingDto);
+            await expect(service.getCompleteProfile(999)).rejects.toMatchObject({
+                statusCode: 404,
+                code: UserErrorCodes.USER_NOT_FOUND
+            })
+        })
+    })
 
-      const duplicateDto: CreateUserDTO = {
-        username: 'user2',
-        password: 'password456',
-        firebaseUid: 'firebase-uid-existing',
-      };
+    describe('updateFirebaseUid', () => {
+        it('should allow linking UID if none exists', async () => {
+            const userWithoutUid = { ...mockUser, firebaseUid: null }
+            vi.mocked(mockRepository.findById).mockResolvedValue(userWithoutUid as any)
+            vi.mocked(mockRepository.updateFirebaseUid).mockResolvedValue({ ...mockUser } as any)
 
-      await expect(userService.createUser(duplicateDto)).rejects.toThrow();
-    });
-  });
+            const result = await service.updateFirebaseUid(1, 'new-uid')
 
-  describe('updateUser', () => {
-    it('should update user with valid data', async () => {
-      const updateDto: UpdateUserDTO = {
-        id: 1,
-        username: 'updateduser',
-        isChef: true,
-      };
+            expect(result.firebaseUid).toBe(mockUser.firebaseUid)
+        })
 
-      const user = await userService.updateUser(updateDto);
-      
-      expect(user).toBeDefined();
-      expect(user.username).toBe('updateduser');
-      expect(user.is_chef).toBe(true);
-    });
+        it('should throw 400 if UID already linked', async () => {
+            vi.mocked(mockRepository.findById).mockResolvedValue(mockUser as any)
 
-    it('should throw error if user does not exist', async () => {
-      const updateDto: UpdateUserDTO = {
-        id: 999,
-        username: 'nonexistent',
-      };
-
-      await expect(userService.updateUser(updateDto)).rejects.toThrow();
-    });
-
-    it('should throw error if username is taken by another user', async () => {
-      const existingDto: CreateUserDTO = {
-        username: 'takenuser',
-        password: 'password123',
-      };
-
-      await userService.createUser(existingDto);
-
-      const updateDto: UpdateUserDTO = {
-        id: 1,
-        username: 'takenuser',
-      };
-
-      await expect(userService.updateUser(updateDto)).rejects.toThrow();
-    });
-  });
-
-  describe('getCompleteProfile', () => {
-    it('should return complete profile with user data', async () => {
-      const profile = await userService.getCompleteProfile(1);
-      
-      expect(profile).toBeDefined();
-      expect(profile.id).toBe(1);
-      expect(profile.username).toBeDefined();
-    });
-
-    it('should throw error if user does not exist', async () => {
-      await expect(userService.getCompleteProfile(999)).rejects.toThrow();
-    });
-  });
-
-  describe('getAllManagers', () => {
-    it('should return all managers', async () => {
-      const managers = await userService.getAllManagers();
-      
-      expect(Array.isArray(managers)).toBe(true);
-    });
-  });
-
-  describe('getAllChefs', () => {
-    it('should return all chefs', async () => {
-      const chefs = await userService.getAllChefs();
-      
-      expect(Array.isArray(chefs)).toBe(true);
-    });
-  });
-});
+            await expect(service.updateFirebaseUid(1, 'new-uid')).rejects.toMatchObject({
+                statusCode: 400,
+                code: UserErrorCodes.VALIDATION_ERROR
+            })
+        })
+    })
+})

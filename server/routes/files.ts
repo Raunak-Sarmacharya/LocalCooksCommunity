@@ -7,7 +7,7 @@ import { upload, uploadToBlob, getFileUrl } from "../fileUpload";
 import { optionalFirebaseAuth, requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { storage } from "../storage";
 import { firebaseStorage } from "../storage-firebase";
-import admin from "firebase-admin";
+import * as admin from "firebase-admin";
 import { getPresignedUrl as getPresignedUrlR2, isR2Configured } from "../r2-storage"; // Renamed to avoid collision with prev import if needed, or just use one.
 // Both imports are same function.
 
@@ -261,7 +261,7 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
         // Method 2: Try Firebase auth from query string token (for direct file access)
         else if (req.query.token && typeof req.query.token === 'string') {
             try {
-                const { verifyFirebaseToken } = await import('../firebase-admin');
+                const { verifyFirebaseToken } = await import('../firebase-setup');
                 const decodedToken = await verifyFirebaseToken(req.query.token);
                 if (decodedToken) {
                     const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);

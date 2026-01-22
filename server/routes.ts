@@ -63,15 +63,18 @@ import {
 import { getManagerPhone, getChefPhone, getPortalUserPhone, normalizePhoneForStorage } from "./phone-utils";
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
-import { storage } from "./storage";
+// import { storage } from "./storage";
 import { firebaseStorage } from "./storage-firebase";
-import { verifyFirebaseToken } from "./firebase-admin";
+import { verifyFirebaseToken } from "./firebase-setup";
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
 import { deleteConversation } from "./chat-service";
 import { pool, db } from "./db";
 import { getPresignedUrl } from "./r2-storage";
 import { requireChef } from "./routes/middleware";
 import { normalizeImageUrl } from "./routes/utils";
+
+import { UserRepository } from "./domains/users/user.repository";
+import { UserService } from "./domains/users/user.service";
 
 // Note: Express Request.user type is already defined by @types/passport
 // We use type assertions where needed for isChef properties
@@ -118,14 +121,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount Files Router
   app.use("/api/files", (await import("./routes/files")).default);
 
+  const userRepo = new UserRepository();
+  const userService = new UserService(userRepo);
+
   // Check if user exists by username (for Google+password flow)
   app.get("/api/user-exists", async (req, res) => {
     const username = req.query.username as string;
     if (!username) {
       return res.status(400).json({ error: "Username required" });
     }
-    const user = await storage.getUserByUsername(username);
-    res.json({ exists: !!user });
+    const exists = await userService.checkUsernameExists(username);
+    res.json({ exists });
   });
 
   // Unsubscribe endpoint - public endpoint for email unsubscribe requests

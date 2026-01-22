@@ -25,7 +25,7 @@ export class ApplicationRepository {
         .from(applications)
         .where(eq(applications.id, id))
         .limit(1);
-      
+
       return (application || null) as ApplicationDTO | null;
     } catch (error: any) {
       console.error(`[ApplicationRepository] Error finding application by ID ${id}:`, error);
@@ -48,7 +48,7 @@ export class ApplicationRepository {
         .where(eq(applications.userId, userId))
         .orderBy(desc(applications.createdAt))
         .limit(1);
-      
+
       return (application || null) as ApplicationDTO | null;
     } catch (error: any) {
       console.error(`[ApplicationRepository] Error finding application by user ID ${userId}:`, error);
@@ -70,7 +70,7 @@ export class ApplicationRepository {
         .from(applications)
         .where(eq(applications.status, status))
         .orderBy(desc(applications.createdAt));
-      
+
       return results as ApplicationDTO[];
     } catch (error: any) {
       console.error(`[ApplicationRepository] Error finding applications by status ${status}:`, error);
@@ -102,7 +102,7 @@ export class ApplicationRepository {
           feedback: dto.feedback || null,
         })
         .returning();
-      
+
       return application as ApplicationDTO;
     } catch (error: any) {
       console.error('[ApplicationRepository] Error creating application:', error);
@@ -132,7 +132,7 @@ export class ApplicationRepository {
         })
         .where(eq(applications.id, id))
         .returning();
-      
+
       return (application || null) as ApplicationDTO | null;
     } catch (error: any) {
       console.error(`[ApplicationRepository] Error updating application ${id}:`, error);
@@ -154,7 +154,7 @@ export class ApplicationRepository {
         .set({ status })
         .where(eq(applications.id, id))
         .returning();
-      
+
       return (application || null) as ApplicationDTO | null;
     } catch (error: any) {
       console.error(`[ApplicationRepository] Error updating status for application ${id}:`, error);
@@ -182,13 +182,34 @@ export class ApplicationRepository {
         })
         .where(eq(applications.id, dto.id))
         .returning();
-      
+
       return (application || null) as ApplicationDTO | null;
     } catch (error: any) {
       console.error(`[ApplicationRepository] Error verifying documents for application ${dto.id}:`, error);
       throw new DomainError(
         ApplicationErrorCodes.APPLICATION_NOT_FOUND,
         'Failed to verify documents',
+        500
+      );
+    }
+  }
+
+  /**
+   * Find all applications
+   */
+  async findAll(): Promise<ApplicationDTO[]> {
+    try {
+      const results = await db
+        .select()
+        .from(applications)
+        .orderBy(desc(applications.createdAt));
+
+      return results as ApplicationDTO[];
+    } catch (error: any) {
+      console.error('[ApplicationRepository] Error finding all applications:', error);
+      throw new DomainError(
+        ApplicationErrorCodes.VALIDATION_ERROR,
+        'Failed to find all applications',
         500
       );
     }
@@ -204,7 +225,7 @@ export class ApplicationRepository {
         .from(applications)
         .where(eq(applications.status, 'inReview'))
         .orderBy(desc(applications.createdAt));
-      
+
       return results as ApplicationDTO[];
     } catch (error: any) {
       console.error('[ApplicationRepository] Error finding all pending applications:', error);
@@ -226,7 +247,7 @@ export class ApplicationRepository {
         .from(applications)
         .where(eq(applications.status, 'approved'))
         .orderBy(desc(applications.createdAt));
-      
+
       return results as ApplicationDTO[];
     } catch (error: any) {
       console.error('[ApplicationRepository] Error finding all approved applications:', error);
@@ -253,7 +274,7 @@ export class ApplicationRepository {
           )
         )
         .limit(1);
-      
+
       return result.length > 0;
     } catch (error: any) {
       console.error(`[ApplicationRepository] Error checking pending application for user ${userId}:`, error);

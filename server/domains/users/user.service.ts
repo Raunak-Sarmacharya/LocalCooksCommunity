@@ -17,7 +17,7 @@ import { db } from '../../db';
  * Service for user business logic
  */
 export class UserService {
-  constructor(private userRepo: UserRepository) {}
+  constructor(private userRepo: UserRepository) { }
 
   /**
    * Get complete user profile (Firebase + Neon data combined)
@@ -25,7 +25,7 @@ export class UserService {
   async getCompleteProfile(userId: number): Promise<CompleteUserProfileDTO> {
     try {
       const user = await this.userRepo.findById(userId);
-      
+
       if (!user) {
         throw new DomainError(
           UserErrorCodes.USER_NOT_FOUND,
@@ -52,23 +52,26 @@ export class UserService {
         isChef: user.isChef,
         isManager: user.isManager,
         isPortalUser: user.isPortalUser,
-        
+
         firebaseUser: {
           uid: user.firebaseUid || '',
           email: user.username,
           emailVerified: user.isVerified,
         },
-        
+
         fullName,
         displayName: fullName,
         stripeConnectAccountId: user.stripeConnectAccountId,
         stripeConnectOnboardingStatus: user.stripeConnectOnboardingStatus,
-        
+
         managerOnboardingCompleted: user.managerOnboardingCompleted,
         managerOnboardingSkipped: user.managerOnboardingSkipped,
         managerOnboardingStepsCompleted: user.managerOnboardingStepsCompleted,
       };
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[UserService] Error getting complete profile:', error);
       throw new DomainError(
         UserErrorCodes.USER_NOT_FOUND,
@@ -111,7 +114,7 @@ export class UserService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[UserService] Error creating user:', error);
       throw new DomainError(
         UserErrorCodes.VALIDATION_ERROR,
@@ -127,7 +130,7 @@ export class UserService {
   async updateUser(dto: UpdateUserDTO): Promise<UserDTO> {
     try {
       const existingUser = await this.userRepo.findById(dto.id);
-      
+
       if (!existingUser) {
         throw new DomainError(
           UserErrorCodes.USER_NOT_FOUND,
@@ -148,7 +151,7 @@ export class UserService {
       }
 
       const updated = await this.userRepo.update(dto.id, dto);
-      
+
       if (!updated) {
         throw new DomainError(
           UserErrorCodes.USER_NOT_FOUND,
@@ -162,7 +165,7 @@ export class UserService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[UserService] Error updating user:', error);
       throw new DomainError(
         UserErrorCodes.VALIDATION_ERROR,
@@ -178,7 +181,7 @@ export class UserService {
   async updateFirebaseUid(userId: number, firebaseUid: string): Promise<UserDTO> {
     try {
       const existingUser = await this.userRepo.findById(userId);
-      
+
       if (!existingUser) {
         throw new DomainError(
           UserErrorCodes.USER_NOT_FOUND,
@@ -196,7 +199,7 @@ export class UserService {
       }
 
       const updated = await this.userRepo.updateFirebaseUid(userId, firebaseUid);
-      
+
       if (!updated) {
         throw new DomainError(
           UserErrorCodes.USER_NOT_FOUND,
@@ -204,9 +207,12 @@ export class UserService {
           500
         );
       }
-      
+
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[UserService] Error updating Firebase UID:', error);
       throw new DomainError(
         UserErrorCodes.VALIDATION_ERROR,
@@ -233,6 +239,22 @@ export class UserService {
   }
 
   /**
+   * Update user verification status
+   */
+  async verifyUser(userId: number, isVerified: boolean): Promise<void> {
+    try {
+      await this.userRepo.setVerified(userId, isVerified);
+    } catch (error: any) {
+      console.error('[UserService] Error updating user verification:', error);
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_ERROR,
+        'Failed to update user verification',
+        500
+      );
+    }
+  }
+
+  /**
    * Update manager onboarding status
    */
   async updateManagerOnboarding(
@@ -243,7 +265,7 @@ export class UserService {
   ): Promise<void> {
     try {
       const existingUser = await this.userRepo.findById(userId);
-      
+
       if (!existingUser) {
         throw new DomainError(
           UserErrorCodes.USER_NOT_FOUND,
@@ -254,6 +276,9 @@ export class UserService {
 
       await this.userRepo.updateManagerOnboarding(userId, completed, skipped, steps);
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[UserService] Error updating manager onboarding:', error);
       throw new DomainError(
         UserErrorCodes.VALIDATION_ERROR,
@@ -306,6 +331,49 @@ export class UserService {
       throw new DomainError(
         UserErrorCodes.USER_NOT_FOUND,
         'Failed to find user',
+        500
+      );
+    }
+  }
+
+  /**
+   * Reset password for user identified by Firebase UID
+   */
+  async resetPassword(firebaseUid: string, newPassword: string): Promise<void> {
+    try {
+      // Import bcrypt dynamically or assume it's available (better to dynamic import or require if not top-level)
+      // Since this is a service, standard import at top is better, but to avoid changing top of file I'll use require here matching previous style
+      // or better: refactor to proper import if I can.
+      // But I can't easily see top of file to add import without reading again.
+      // I'll use require for now to be safe with partial replacement.
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+      await this.userRepo.updatePasswordByFirebaseUid(firebaseUid, hashedPassword);
+    } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      console.error('[UserService] Error resetting password:', error);
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_ERROR,
+        'Failed to reset password',
+        500
+      );
+    }
+  }
+
+  /**
+   * Check if username exists
+   */
+  async checkUsernameExists(username: string): Promise<boolean> {
+    try {
+      return await this.userRepo.usernameExists(username);
+    } catch (error: any) {
+      console.error('[UserService] Error checking username existence:', error);
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_ERROR,
+        'Failed to check username',
         500
       );
     }

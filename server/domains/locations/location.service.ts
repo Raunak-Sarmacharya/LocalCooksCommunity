@@ -6,7 +6,7 @@
  */
 
 import { LocationRepository } from './location.repository';
-import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO } from './location.types';
+import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO, LocationRequirements, UpdateLocationRequirements } from './location.types';
 import { DomainError, LocationErrorCodes } from '../../shared/errors/domain-error';
 import { validateLocationInput } from '../../shared/validators/input-validator';
 
@@ -14,7 +14,7 @@ import { validateLocationInput } from '../../shared/validators/input-validator';
  * Service for location business logic
  */
 export class LocationService {
-  constructor(private locationRepo: LocationRepository) {}
+  constructor(private locationRepo: LocationRepository) { }
 
   /**
    * Create new location with validation
@@ -38,7 +38,7 @@ export class LocationService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[LocationService] Error creating location:', error);
       throw new DomainError(
         LocationErrorCodes.INVALID_ADDRESS,
@@ -54,7 +54,7 @@ export class LocationService {
   async updateLocation(dto: UpdateLocationDTO): Promise<LocationDTO> {
     try {
       const existingLocation = await this.locationRepo.findById(dto.id);
-      
+
       if (!existingLocation) {
         throw new DomainError(
           LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -72,7 +72,7 @@ export class LocationService {
       }
 
       const updated = await this.locationRepo.update(dto.id, dto);
-      
+
       if (!updated) {
         throw new DomainError(
           LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -86,7 +86,7 @@ export class LocationService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[LocationService] Error updating location:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -102,7 +102,7 @@ export class LocationService {
   async verifyKitchenLicense(dto: VerifyKitchenLicenseDTO): Promise<LocationDTO> {
     try {
       const existingLocation = await this.locationRepo.findById(dto.locationId);
-      
+
       if (!existingLocation) {
         throw new DomainError(
           LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -128,7 +128,7 @@ export class LocationService {
       }
 
       const updated = await this.locationRepo.verifyKitchenLicense(dto);
-      
+
       if (!updated) {
         throw new DomainError(
           LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -154,7 +154,7 @@ export class LocationService {
   async updateKitchenLicenseUrl(locationId: number, licenseUrl: string): Promise<LocationDTO> {
     try {
       const existingLocation = await this.locationRepo.findById(locationId);
-      
+
       if (!existingLocation) {
         throw new DomainError(
           LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -164,7 +164,7 @@ export class LocationService {
       }
 
       const updated = await this.locationRepo.updateKitchenLicenseUrl(locationId, licenseUrl);
-      
+
       if (!updated) {
         throw new DomainError(
           LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -190,7 +190,7 @@ export class LocationService {
   async getLocationById(id: number): Promise<LocationDTO> {
     try {
       const location = await this.locationRepo.findById(id);
-      
+
       if (!location) {
         throw new DomainError(
           LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -237,6 +237,95 @@ export class LocationService {
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
         'Failed to get locations',
+        500
+      );
+    }
+  }
+
+  /**
+   * Get location requirements with defaults if not configured
+   */
+  async getLocationRequirementsWithDefaults(locationId: number): Promise<LocationRequirements> {
+    try {
+      const requirements = await this.locationRepo.findRequirementsByLocationId(locationId);
+
+      if (requirements) {
+        // Ensure customFields and tier custom fields are always arrays
+        return {
+          ...requirements,
+          customFields: Array.isArray(requirements.customFields) ? requirements.customFields : [],
+          tier1_custom_fields: Array.isArray((requirements as any).tier1_custom_fields) ? (requirements as any).tier1_custom_fields : [],
+          tier2_custom_fields: Array.isArray((requirements as any).tier2_custom_fields) ? (requirements as any).tier2_custom_fields : [],
+        } as LocationRequirements;
+      }
+
+      // Return default requirements if none configured
+      return {
+        id: 0,
+        locationId,
+        requireFirstName: true,
+        requireLastName: true,
+        requireEmail: true,
+        requirePhone: true,
+        requireBusinessName: true,
+        requireBusinessType: true,
+        requireExperience: true,
+        requireBusinessDescription: false,
+        requireFoodHandlerCert: true,
+        requireFoodHandlerExpiry: true,
+        requireUsageFrequency: true,
+        requireSessionDuration: true,
+        requireTermsAgree: true,
+        requireAccuracyAgree: true,
+        customFields: [],
+        tier1_years_experience_required: false,
+        tier1_years_experience_minimum: 0,
+        tier1_custom_fields: [],
+        tier2_food_establishment_cert_required: false,
+        tier2_food_establishment_expiry_required: false,
+        tier2_insurance_document_required: false,
+        tier2_insurance_minimum_amount: 0,
+        tier2_kitchen_experience_required: false,
+        tier2_allergen_plan_required: false,
+        tier2_supplier_list_required: false,
+        tier2_quality_control_required: false,
+        tier2_traceability_system_required: false,
+        tier2_custom_fields: [],
+        floor_plans_url: '',
+        ventilation_specs: '',
+        ventilation_specs_url: '',
+        equipment_list: [],
+        materials_description: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as LocationRequirements;
+    } catch (error: any) {
+      console.error(`[LocationService] Error getting requirements for location ${locationId}:`, error);
+      throw new DomainError(
+        LocationErrorCodes.LOCATION_NOT_FOUND,
+        'Failed to get location requirements',
+        500
+      );
+    }
+  }
+
+  /**
+   * Upsert location requirements
+   */
+  async upsertLocationRequirements(locationId: number, dto: UpdateLocationRequirements): Promise<LocationRequirements> {
+    try {
+      // Validate location exists
+      await this.getLocationById(locationId);
+
+      const requirements = await this.locationRepo.upsertRequirements(locationId, dto);
+      return requirements;
+    } catch (error: any) {
+      if (error instanceof DomainError) throw error;
+
+      console.error(`[LocationService] Error upserting requirements for location ${locationId}:`, error);
+      throw new DomainError(
+        LocationErrorCodes.LOCATION_NOT_FOUND,
+        'Failed to update location requirements',
         500
       );
     }

@@ -4,11 +4,27 @@ import { requireFirebaseAuthWithUser, requireManager } from '../../firebase-auth
 import { db } from '../../db';
 import { chefLocationAccess, insertChefKitchenApplicationSchema, updateApplicationTierSchema } from '@shared/schema';
 import { fromZodError } from 'zod-validation-error';
-import { firebaseStorage } from '../../storage-firebase';
+// Import Domain Services
+import { chefApplicationService } from '../../domains/applications/chef-application.service';
+import { LocationRepository } from '../../domains/locations/location.repository';
+import { LocationService } from '../../domains/locations/location.service';
+import { KitchenRepository } from '../../domains/kitchens/kitchen.repository';
+import { KitchenService } from '../../domains/kitchens/kitchen.service';
+import { ApplicationRepository } from '../../domains/applications/application.repository';
+import { ApplicationService } from '../../domains/applications/application.service';
+
 import { sendSystemNotification, notifyTierTransition } from '../../chat-service';
 import { and, eq } from 'drizzle-orm';
 
 const router = Router();
+
+// Initialize Services
+const locationRepository = new LocationRepository();
+const locationService = new LocationService(locationRepository);
+const kitchenRepository = new KitchenRepository();
+const kitchenService = new KitchenService(kitchenRepository);
+const applicationRepository = new ApplicationRepository();
+const applicationService = new ApplicationService(applicationRepository);
 
 // =============================================================================
 // 🍳 CHEF KITCHEN APPLICATIONS - Direct Kitchen Application Flow
@@ -113,13 +129,13 @@ router.post('/firebase/chef/kitchen-applications',
 
             // Verify the location exists and get requirements
             const locationId = parseInt(req.body.locationId);
-            const location = await firebaseStorage.getLocationById(locationId);
+            const location = await locationService.getLocationById(locationId);
             if (!location) {
                 return res.status(404).json({ error: 'Kitchen location not found' });
             }
 
             // Get location requirements to validate fields properly
-            const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+            const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
 
             // Parse and validate form data
             // Handle phone: validate based on location requirements
@@ -454,7 +470,7 @@ router.post('/firebase/chef/kitchen-applications',
                 ...(tierData && { tier_data: tierData }),
                 ...(foodEstablishmentCertUrl && { foodEstablishmentCertUrl }),
             };
-            const application = await firebaseStorage.createChefKitchenApplication(applicationData as any);
+            const application = await chefApplicationService.createApplication(applicationData as any);
 
             console.log(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
 
@@ -481,29 +497,8 @@ router.post('/firebase/chef/kitchen-applications',
 router.get('/firebase/chef/kitchen-applications', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
         const chefId = req.neonUser!.id;
-        const firebaseUid = req.firebaseUser!.uid;
-
-        console.log(`[KITCHEN APPLICATIONS] Fetching kitchen applications for chef ID: ${chefId} (Firebase UID: ${firebaseUid})`);
-
-        const applications = await firebaseStorage.getChefKitchenApplicationsByChefId(chefId);
-
-        // Enrich with location details
-        const enrichedApplications = await Promise.all(
-            applications.map(async (app) => {
-                const location = await firebaseStorage.getLocationById(app.locationId);
-                return {
-                    ...app,
-                    location: location ? {
-                        id: (location as any).id,
-                        name: (location as any).name,
-                        address: (location as any).address,
-                        city: (location as any).city,
-                    } : null,
-                };
-            })
-        );
-
-        res.json(enrichedApplications);
+        const applications = await chefApplicationService.getChefApplications(chefId);
+        res.json(applications);
     } catch (error) {
         console.error('Error getting chef kitchen applications:', error);
         res.status(500).json({ error: 'Failed to get kitchen applications' });
@@ -522,10 +517,9 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
             return res.status(400).json({ error: 'Invalid location ID' });
         }
 
-        const application = await firebaseStorage.getChefKitchenApplication(req.neonUser!.id, locationId);
+        const application = await chefApplicationService.getChefApplication(req.neonUser!.id, locationId);
 
         if (!application) {
-            // Return 200 with hasApplication: false to avoid console errors
             return res.json({
                 hasApplication: false,
                 canBook: false,
@@ -534,13 +528,19 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
             });
         }
 
-        // Get location details
-        const location = await firebaseStorage.getLocationById(locationId);
+        // Get location details (simple fetch if needed, but existing logic fetched it)
+        // Optimization: Service doesn't return location details in getChefApplication, 
+        // unlike the previous implementation which seemingly did separate fetch.
+        // I will keep the separate fetch for now to maintain identical response structure.
+        const location = await locationService.getLocationById(locationId);
+
+        // Check tier status
+        const tier2Completed = !!application.tier2_completed_at;
 
         res.json({
             ...application,
             hasApplication: true,
-            canBook: application.status === 'approved' && !!application.tier2_completed_at, // Can book after completing Tier 2
+            canBook: application.status === 'approved' && tier2Completed,
             location: location ? {
                 id: (location as any).id,
                 name: (location as any).name,
@@ -565,7 +565,7 @@ router.get('/firebase/chef/kitchen-access-status/:locationId', requireFirebaseAu
             return res.status(400).json({ error: 'Invalid location ID' });
         }
 
-        const accessStatus = await firebaseStorage.getChefKitchenApplicationStatus(req.neonUser!.id, locationId);
+        const accessStatus = await chefApplicationService.getApplicationStatus(req.neonUser!.id, locationId);
         res.json(accessStatus);
     } catch (error) {
         console.error('Error getting kitchen access status:', error);
@@ -579,7 +579,7 @@ router.get('/firebase/chef/kitchen-access-status/:locationId', requireFirebaseAu
  */
 router.get('/firebase/chef/approved-kitchens', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
     try {
-        const approvedKitchens = await firebaseStorage.getChefApprovedKitchens(req.neonUser!.id);
+        const approvedKitchens = await chefApplicationService.getApprovedKitchens(req.neonUser!.id);
         res.json(approvedKitchens);
     } catch (error) {
         console.error('Error getting approved kitchens:', error);
@@ -599,7 +599,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/cancel', requireFirebaseAu
             return res.status(400).json({ error: 'Invalid application ID' });
         }
 
-        const cancelledApplication = await firebaseStorage.cancelChefKitchenApplication(applicationId, req.neonUser!.id);
+        const cancelledApplication = await chefApplicationService.cancelApplication(applicationId, req.neonUser!.id);
 
         res.json({
             success: true,
@@ -633,9 +633,14 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                 return res.status(400).json({ error: 'Invalid application ID' });
             }
 
-            // Verify the application belongs to this chef
-            const existing = await firebaseStorage.getChefKitchenApplicationById(applicationId);
-            if (!existing || existing.chefId !== req.neonUser!.id) {
+            const [existing] = await chefApplicationService.getChefApplications(req.neonUser!.id);
+            // Optimization: previous code used getChefKitchenApplicationById, 
+            // but we can filter from getChefApplications or add getById to service.
+            // For now, I'll use the service's getChefApplications and find the specific one.
+            const applications = await chefApplicationService.getChefApplications(req.neonUser!.id);
+            const application = applications.find(a => a.id === applicationId);
+
+            if (!application) {
                 return res.status(403).json({ error: 'Application not found or access denied' });
             }
 
@@ -661,7 +666,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
                 }
             }
 
-            const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
+            const updatedApplication = await chefApplicationService.updateApplicationDocuments(updateData);
 
             res.json({
                 success: true,
@@ -689,7 +694,7 @@ router.patch('/firebase/chef/kitchen-applications/:id/documents',
 router.get('/manager/kitchen-applications', requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const user = req.neonUser!;
-        const applications = await firebaseStorage.getChefKitchenApplicationsForManager(user.id);
+        const applications = await chefApplicationService.getApplicationsForManager(user.id);
         res.json(applications);
     } catch (error) {
         console.error('Error getting kitchen applications for manager:', error);
@@ -710,13 +715,12 @@ router.get('/manager/kitchen-applications/location/:locationId', requireFirebase
             return res.status(400).json({ error: 'Invalid location ID' });
         }
 
-        // Verify manager has access to this location
-        const location = await firebaseStorage.getLocationById(locationId);
-        if (!location || (location as any).managerId !== user.id) {
+        const location = await locationService.getLocationById(locationId);
+        if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this location' });
         }
 
-        const applications = await firebaseStorage.getChefKitchenApplicationsByLocationId(locationId);
+        const applications = await chefApplicationService.getApplicationsByLocation(locationId);
         res.json(applications);
     } catch (error) {
         console.error('Error getting kitchen applications for location:', error);
@@ -745,14 +749,16 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
         }
 
         // Get the application
-        const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+        const applications = await chefApplicationService.getApplicationsForManager(user.id);
+        const application = applications.find(a => a.id === applicationId);
+
         if (!application) {
-            return res.status(404).json({ error: 'Application not found' });
+            return res.status(404).json({ error: 'Application not found or access denied' });
         }
 
         // Verify manager has access to this location
-        const location = await firebaseStorage.getLocationById(application.locationId);
-        if (!location || (location as any).managerId !== user.id) {
+        const location = await locationService.getLocationById(application.locationId);
+        if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
         }
 
@@ -765,8 +771,10 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
             updateData.tier_data = req.body.tier_data;
         }
 
-        const updatedApplication = await firebaseStorage.updateChefKitchenApplicationStatus(
-            updateData,
+        const updatedApplication = await chefApplicationService.updateApplicationStatus(
+            applicationId,
+            status,
+            feedback,
             user.id
         );
 
@@ -850,14 +858,14 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         }
 
         // Get the application
-        const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+        const application = await chefApplicationService.getApplicationById(applicationId);
         if (!application) {
             return res.status(404).json({ error: 'Application not found' });
         }
 
         // Verify manager has access
-        const location = await firebaseStorage.getLocationById(application.locationId);
-        if (!location || (location as any).managerId !== user.id) {
+        const location = await locationService.getLocationById(application.locationId);
+        if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
         }
 
@@ -866,7 +874,7 @@ router.patch('/manager/kitchen-applications/:id/verify-documents', requireFireba
         if (foodSafetyLicenseStatus) updateData.foodSafetyLicenseStatus = foodSafetyLicenseStatus;
         if (foodEstablishmentCertStatus) updateData.foodEstablishmentCertStatus = foodEstablishmentCertStatus;
 
-        const updatedApplication = await firebaseStorage.updateChefKitchenApplicationDocuments(updateData);
+        const updatedApplication = await chefApplicationService.updateApplicationDocuments(updateData);
 
         // Send system message when documents are verified
         if (updatedApplication?.chat_conversation_id) {
@@ -925,19 +933,19 @@ router.patch('/manager/kitchen-applications/:id/tier', requireFirebaseAuthWithUs
         }
 
         // Get the application
-        const application = await firebaseStorage.getChefKitchenApplicationById(applicationId);
+        const application = await chefApplicationService.getApplicationById(applicationId);
         if (!application) {
             return res.status(404).json({ error: 'Application not found' });
         }
 
         // Verify manager has access
-        const location = await firebaseStorage.getLocationById(application.locationId);
-        if (!location || (location as any).managerId !== user.id) {
+        const location = await locationService.getLocationById(application.locationId);
+        if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: 'Access denied to this application' });
         }
 
         // Update tier
-        const updatedApplication = await firebaseStorage.updateApplicationTier(
+        const updatedApplication = await chefApplicationService.updateApplicationTier(
             applicationId,
             parsed.data.current_tier,
             parsed.data.tier_data

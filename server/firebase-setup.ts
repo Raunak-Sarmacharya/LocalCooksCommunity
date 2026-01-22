@@ -1,6 +1,7 @@
-import admin from 'firebase-admin';
+import { initializeApp, cert, type App } from 'firebase-admin/app';
+import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 
-let firebaseAdmin: admin.app.App | null = null;
+let firebaseAdmin: App | null = null;
 
 export function initializeFirebaseAdmin() {
   if (firebaseAdmin) {
@@ -11,10 +12,10 @@ export function initializeFirebaseAdmin() {
     // Check if Firebase Admin is configured using service account credentials (preferred for production)
     if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
       console.log('🔥 Initializing Firebase Admin with service account credentials...');
-      
+
       try {
-        firebaseAdmin = admin.initializeApp({
-          credential: admin.credential.cert({
+        firebaseAdmin = initializeApp({
+          credential: cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
             privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -37,7 +38,7 @@ export function initializeFirebaseAdmin() {
 
     // Initialize Firebase Admin using VITE variables (no service account available)
     try {
-      firebaseAdmin = admin.initializeApp({
+      firebaseAdmin = initializeApp({
         projectId: process.env.VITE_FIREBASE_PROJECT_ID,
       });
       console.log('🔥 Firebase Admin initialized with default credentials for project:', process.env.VITE_FIREBASE_PROJECT_ID);
@@ -53,7 +54,7 @@ export function initializeFirebaseAdmin() {
   }
 }
 
-export async function verifyFirebaseToken(token: string): Promise<admin.auth.DecodedIdToken | null> {
+export async function verifyFirebaseToken(token: string): Promise<DecodedIdToken | null> {
   try {
     const app = initializeFirebaseAdmin();
     if (!app) {
@@ -61,7 +62,7 @@ export async function verifyFirebaseToken(token: string): Promise<admin.auth.Dec
       return null;
     }
 
-    const decodedToken = await admin.auth().verifyIdToken(token);
+    const decodedToken = await getAuth(app).verifyIdToken(token);
     return decodedToken;
   } catch (error) {
     console.error('Error verifying Firebase token:', error);

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyFirebaseToken } from "../firebase-admin";
+import { verifyFirebaseToken } from "../firebase-setup";
 import { firebaseStorage } from "../storage-firebase";
 import { db } from "../db";
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";

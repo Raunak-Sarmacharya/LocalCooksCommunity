@@ -1,21 +1,23 @@
-import admin from 'firebase-admin';
-import { initializeFirebaseAdmin } from './firebase-admin';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { initializeFirebaseAdmin } from './firebase-setup';
 import { db } from './db';
 import { chefKitchenApplications, locations } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
-let adminDb: any = null;
+let adminDb: FirebaseFirestore.Firestore | null = null;
 
 /**
  * Initialize Firebase Admin for server-side chat operations
  */
 async function getAdminDb() {
   if (!adminDb) {
-    const admin = await initializeFirebaseAdmin();
-    if (!admin) {
+    const app = initializeFirebaseAdmin();
+    if (!app) {
       throw new Error('Failed to initialize Firebase Admin');
     }
-    adminDb = admin.firestore();
+    adminDb = getFirestore(app);
+    // Explicitly set settings to ignore undefined values globally for this instance
+    adminDb.settings({ ignoreUndefinedProperties: true });
   }
   return adminDb;
 }
@@ -68,8 +70,8 @@ export async function initializeConversation(applicationData: {
       chefId: applicationData.chefId,
       managerId: managerId,
       locationId: applicationData.locationId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      lastMessageAt: FieldValue.serverTimestamp(),
       unreadChefCount: 0,
       unreadManagerCount: 0,
     });
@@ -160,7 +162,7 @@ export async function sendSystemNotification(
         senderRole: 'system',
         content,
         type: 'system',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         readAt: null,
       });
 
@@ -169,7 +171,7 @@ export async function sendSystemNotification(
       .collection('conversations')
       .doc(conversationId)
       .update({
-        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageAt: FieldValue.serverTimestamp(),
       });
   } catch (error) {
     console.error('Error sending system notification:', error);

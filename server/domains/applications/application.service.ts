@@ -14,7 +14,7 @@ import { validateApplicationInput } from '../../shared/validators/input-validato
  * Service for application business logic
  */
 export class ApplicationService {
-  constructor(private appRepo: ApplicationRepository) {}
+  constructor(private appRepo: ApplicationRepository) { }
 
   /**
    * Submit new application with validation
@@ -38,7 +38,7 @@ export class ApplicationService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[ApplicationService] Error submitting application:', error);
       throw new DomainError(
         ApplicationErrorCodes.VALIDATION_ERROR,
@@ -54,7 +54,7 @@ export class ApplicationService {
   async updateApplication(dto: UpdateApplicationDTO): Promise<ApplicationDTO> {
     try {
       const existingApplication = await this.appRepo.findById(dto.id);
-      
+
       if (!existingApplication) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -72,7 +72,7 @@ export class ApplicationService {
       }
 
       const updated = await this.appRepo.update(dto.id, dto);
-      
+
       if (!updated) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -86,7 +86,7 @@ export class ApplicationService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[ApplicationService] Error updating application:', error);
       throw new DomainError(
         ApplicationErrorCodes.VALIDATION_ERROR,
@@ -102,7 +102,7 @@ export class ApplicationService {
   async approveApplication(id: number, reviewedBy: number): Promise<ApplicationDTO> {
     try {
       const existingApplication = await this.appRepo.findById(id);
-      
+
       if (!existingApplication) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -120,7 +120,7 @@ export class ApplicationService {
       }
 
       const updated = await this.appRepo.updateStatus(id, 'approved');
-      
+
       if (!updated) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -131,6 +131,9 @@ export class ApplicationService {
 
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[ApplicationService] Error approving application:', error);
       throw new DomainError(
         ApplicationErrorCodes.VALIDATION_ERROR,
@@ -146,7 +149,7 @@ export class ApplicationService {
   async rejectApplication(id: number, feedback?: string): Promise<ApplicationDTO> {
     try {
       const existingApplication = await this.appRepo.findById(id);
-      
+
       if (!existingApplication) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -164,7 +167,7 @@ export class ApplicationService {
       }
 
       const updated = await this.appRepo.update(id, { id, feedback: feedback || '' });
-      
+
       if (!updated) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -174,13 +177,56 @@ export class ApplicationService {
       }
 
       await this.appRepo.updateStatus(id, 'rejected');
-      
+
+
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[ApplicationService] Error rejecting application:', error);
       throw new DomainError(
         ApplicationErrorCodes.VALIDATION_ERROR,
         'Failed to reject application',
+        500
+      );
+    }
+  }
+
+  /**
+   * Update application status (Admin)
+   */
+  async updateStatus(id: number, status: 'inReview' | 'approved' | 'rejected' | 'cancelled'): Promise<ApplicationDTO> {
+    try {
+      const existingApplication = await this.appRepo.findById(id);
+
+      if (!existingApplication) {
+        throw new DomainError(
+          ApplicationErrorCodes.APPLICATION_NOT_FOUND,
+          'Application not found',
+          404
+        );
+      }
+
+      const updated = await this.appRepo.updateStatus(id, status);
+
+      if (!updated) {
+        throw new DomainError(
+          ApplicationErrorCodes.APPLICATION_NOT_FOUND,
+          'Failed to update application status',
+          404
+        );
+      }
+
+      return updated;
+    } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      console.error('[ApplicationService] Error updating application status:', error);
+      throw new DomainError(
+        ApplicationErrorCodes.VALIDATION_ERROR,
+        'Failed to update application status',
         500
       );
     }
@@ -192,7 +238,7 @@ export class ApplicationService {
   async verifyDocuments(dto: VerifyDocumentsDTO): Promise<ApplicationDTO> {
     try {
       const existingApplication = await this.appRepo.findById(dto.id);
-      
+
       if (!existingApplication) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -210,7 +256,7 @@ export class ApplicationService {
       }
 
       const updated = await this.appRepo.verifyDocuments(dto);
-      
+
       if (!updated) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -221,6 +267,9 @@ export class ApplicationService {
 
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[ApplicationService] Error verifying documents:', error);
       throw new DomainError(
         ApplicationErrorCodes.VALIDATION_ERROR,
@@ -236,7 +285,7 @@ export class ApplicationService {
   async getApplicationById(id: number): Promise<ApplicationDTO> {
     try {
       const application = await this.appRepo.findById(id);
-      
+
       if (!application) {
         throw new DomainError(
           ApplicationErrorCodes.APPLICATION_NOT_FOUND,
@@ -247,10 +296,74 @@ export class ApplicationService {
 
       return application;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[ApplicationService] Error getting application by ID:', error);
       throw new DomainError(
         ApplicationErrorCodes.APPLICATION_NOT_FOUND,
         'Failed to get application',
+        500
+      );
+    }
+  }
+
+  /**
+   * Get all applications (Admin)
+   */
+  async getAllApplications(): Promise<ApplicationDTO[]> {
+    try {
+      return await this.appRepo.findAll();
+    } catch (error: any) {
+      console.error('[ApplicationService] Error getting all applications:', error);
+      throw new DomainError(
+        ApplicationErrorCodes.VALIDATION_ERROR,
+        'Failed to get all applications',
+        500
+      );
+    }
+  }
+
+  /**
+   * Cancel application (User)
+   */
+  async cancelApplication(id: number, userId: number): Promise<ApplicationDTO> {
+    try {
+      const existingApplication = await this.appRepo.findById(id);
+
+      if (!existingApplication) {
+        throw new DomainError(
+          ApplicationErrorCodes.APPLICATION_NOT_FOUND,
+          'Application not found',
+          404
+        );
+      }
+
+      if (existingApplication.userId !== userId) {
+        throw new DomainError(
+          ApplicationErrorCodes.VALIDATION_ERROR,
+          'Access denied. You can only cancel your own applications.',
+          403
+        );
+      }
+
+      const updated = await this.appRepo.updateStatus(id, 'cancelled');
+
+      if (!updated) {
+        throw new DomainError(
+          ApplicationErrorCodes.APPLICATION_NOT_FOUND,
+          'Failed to cancel application',
+          404
+        );
+      }
+
+      return updated;
+    } catch (error: any) {
+      if (error instanceof DomainError) throw error;
+      console.error('[ApplicationService] Error cancelling application:', error);
+      throw new DomainError(
+        ApplicationErrorCodes.VALIDATION_ERROR,
+        'Failed to cancel application',
         500
       );
     }

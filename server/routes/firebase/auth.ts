@@ -1,14 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { verifyFirebaseAuth } from '../../firebase-auth-middleware';
-import { firebaseStorage } from '../../storage-firebase';
+// import { firebaseStorage } from '../../storage-firebase'; // Legacy storage removed
 import { syncFirebaseUserToNeon } from '../../firebase-user-sync';
-import { initializeFirebaseAdmin } from '../../firebase-admin';
-import { db } from '../../db';
-import { users } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { initializeFirebaseAdmin } from '../../firebase-setup';
+// import { db } from '../../db'; // Direct DB access removed
+// import { users } from '@shared/schema'; // Direct schema access removed
+// import { eq } from 'drizzle-orm';
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from '@shared/subdomain-utils';
+import { UserRepository } from '../../domains/users/user.repository';
+import { UserService } from '../../domains/users/user.service';
+import { DomainError } from '../../shared/errors/domain-error';
 
 const router = Router();
+
+// Initialize Services
+const userRepo = new UserRepository();
+const userService = new UserService(userRepo);
 
 // 🔥 Firebase User Registration Endpoint
 // This is called during registration to create new users
@@ -20,8 +27,8 @@ router.post('/firebase-register-user', verifyFirebaseAuth, async (req: Request, 
 
         const { displayName, role, emailVerified } = req.body;
 
-        // Check if user already exists
-        const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+        // Check if user already exists via Service
+        const existingUser = await userService.findByFirebaseUid(req.firebaseUser.uid);
         if (existingUser) {
             return res.status(409).json({
                 error: 'User already exists',
@@ -50,6 +57,7 @@ router.post('/firebase-register-user', verifyFirebaseAuth, async (req: Request, 
         }
 
         // Create new user during registration
+        // TODO: Refactor syncFirebaseUserToNeon to be part of UserService
         const user = await syncFirebaseUserToNeon({
             uid: req.firebaseUser.uid,
             email: req.firebaseUser.email || null,
@@ -108,7 +116,7 @@ router.post('/firebase/forgot-password', async (req: Request, res: Response) => 
             console.log(`✅ Firebase user found: ${userRecord.uid}`);
 
             // Check if this user exists in our Neon database and is email/password user
-            const neonUser = await firebaseStorage.getUserByFirebaseUid(userRecord.uid);
+            const neonUser = await userService.findByFirebaseUid(userRecord.uid);
 
             if (!neonUser) {
                 console.log(`❌ User not found in Neon DB for Firebase UID: ${userRecord.uid}`);
@@ -208,17 +216,12 @@ router.post('/firebase/reset-password', async (req: Request, res: Response) => {
 
             // Update the password hash in our Neon database for consistency
             const userRecord = await auth.getUserByEmail(email);
-            const neonUser = await firebaseStorage.getUserByFirebaseUid(userRecord.uid);
+            // Check existence via Service
+            const neonUser = await userService.findByFirebaseUid(userRecord.uid);
 
             if (neonUser) {
-                // Hash the new password and update in Neon DB
-                const bcrypt = require('bcryptjs');
-                const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-                await db.update(users)
-                    .set({ password: hashedPassword })
-                    .where(eq(users.firebaseUid, userRecord.uid));
-
+                // Update password via Service (handles hashing)
+                await userService.resetPassword(userRecord.uid, newPassword);
                 console.log(`✅ Password hash updated in Neon DB for user: ${neonUser.id}`);
             }
 
@@ -261,7 +264,7 @@ router.post('/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res:
         // If this is explicitly marked as registration, allow user creation
         if (isRegistration) {
             // Check if user already exists
-            const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+            const existingUser = await userService.findByFirebaseUid(req.firebaseUser.uid);
             if (existingUser) {
                 return res.json({
                     success: true,
@@ -296,7 +299,7 @@ router.post('/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res:
         }
 
         // For sign-in (not registration), only sync if user already exists
-        const existingUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+        const existingUser = await userService.findByFirebaseUid(req.firebaseUser.uid);
         if (!existingUser) {
             return res.status(404).json({
                 error: 'User not found',
@@ -306,12 +309,20 @@ router.post('/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res:
 
         // Validate subdomain-role matching for login
         const subdomain = getSubdomainFromHeaders(req.headers);
-        const isPortalUser = (existingUser as any).isPortalUser || (existingUser as any).is_portal_user || false;
-        const isChef = (existingUser as any).isChef || (existingUser as any).is_chef || false;
-        const isManager = (existingUser as any).isManager || (existingUser as any).is_manager || false;
-        if (!isRoleAllowedForSubdomain(existingUser.role, subdomain, isPortalUser, isChef, isManager)) {
+        const isPortalUser = existingUser.isPortalUser;
+        const isChef = existingUser.isChef;
+        const isManager = existingUser.isManager;
+
+        // Use type assertion for sub-methods if needed, but existingUser is UserDTO
+        // Wait, isRoleAllowedForSubdomain expects role string.
+        // UserDTO role is 'admin' | 'chef' | ...
+
+        // Fix: existingUser.role can be null in DTO, ensure it's handled
+        const roleStr = existingUser.role || '';
+
+        if (!isRoleAllowedForSubdomain(roleStr, subdomain, isPortalUser, isChef, isManager)) {
             // Determine effective role for error message
-            const effectiveRole = existingUser.role || (isManager ? 'manager' : isChef ? 'chef' : null);
+            const effectiveRole = roleStr || (isManager ? 'manager' : isChef ? 'chef' : null);
             const requiredSubdomain = effectiveRole === 'chef' ? 'chef' :
                 effectiveRole === 'manager' ? 'kitchen' :
                     effectiveRole === 'admin' ? 'admin' : null;

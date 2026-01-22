@@ -10,27 +10,49 @@ import { sendEmail, generateChefProfileRequestEmail } from "../email";
 
 const router = Router();
 
+// Import Kitchen Service
+import { KitchenRepository } from "../domains/kitchens/kitchen.repository";
+import { KitchenService } from "../domains/kitchens/kitchen.service";
+
+// Import Location Service
+import { LocationRepository } from "../domains/locations/location.repository";
+import { LocationService } from "../domains/locations/location.service";
+
+// Initialize Services
+const kitchenRepository = new KitchenRepository();
+const kitchenService = new KitchenService(kitchenRepository);
+
+const locationRepository = new LocationRepository();
+const locationService = new LocationService(locationRepository);
+
 // Get all kitchens with location and manager info
 router.get("/chef/kitchens", requireChef, async (req: Request, res: Response) => {
     try {
         // For marketing purposes, show ALL active kitchens at all locations
         // Chefs can see all available commercial kitchen locations
-        const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
 
-        // Filter only active kitchens
-        const activeKitchens = allKitchens.filter((kitchen: any) => {
-            const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
-            return isActive !== false && isActive !== null;
-        });
+        // Use the new KitchenService to fetch data
+        const allKitchens = await kitchenService.getAllKitchensWithLocation();
+
+        // Filter only active kitchens (though the service might already filter, double check usage or keep consistent)
+        // The service method 'findAllWithLocation' in repo doesn't strictly filter 'active' in the SQL yet (based on repo outline),
+        // so we keep the filter here or rely on 'getAllActiveKitchens' if it supported location inclusion.
+        // Looking at repo, findAllWithLocation returns all. We should filter for active.
+        const activeKitchens = allKitchens.filter((kitchen) => kitchen.isActive);
 
         // Normalize image URLs for all kitchens
         const normalizedKitchens = activeKitchens.map((kitchen: any) => {
-            const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || kitchen.image_url || null, req);
-            const normalizedGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) =>
+            const normalizedImageUrl = normalizeImageUrl(kitchen.imageUrl || null, req);
+            const normalizedGalleryImages = (kitchen.galleryImages || []).map((img: string) =>
                 normalizeImageUrl(img, req)
             ).filter((url: string | null): url is string => url !== null);
-            const normalizedLocationBrandImageUrl = normalizeImageUrl(kitchen.locationBrandImageUrl || kitchen.location_brand_image_url || null, req);
-            const normalizedLocationLogoUrl = normalizeImageUrl(kitchen.locationLogoUrl || kitchen.location_logo_url || null, req);
+
+            // Access location properties safely
+            const locationBrandImageUrl = kitchen.location?.brandImageUrl || null;
+            const locationLogoUrl = kitchen.location?.logoUrl || null;
+
+            const normalizedLocationBrandImageUrl = normalizeImageUrl(locationBrandImageUrl, req);
+            const normalizedLocationLogoUrl = normalizeImageUrl(locationLogoUrl, req);
 
             return {
                 ...kitchen,
@@ -62,14 +84,21 @@ router.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req: Request
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
 
-        const pricing = await firebaseStorage.getKitchenPricing(kitchenId);
-        if (!pricing) {
-            return res.status(404).json({ error: "Pricing not found" });
-        }
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
 
-        // getKitchenPricing already returns hourlyRate in dollars
+        // Map to pricing object expected by frontend
+        const pricing = {
+            hourlyRate: kitchen.hourlyRate,
+            currency: kitchen.currency,
+            pricingModel: kitchen.pricingModel,
+            minimumBookingHours: kitchen.minimumBookingHours
+        };
+
         res.json(pricing);
     } catch (error: any) {
+        if (error.statusCode === 404) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
         console.error("Error getting kitchen pricing:", error);
         res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
     }
@@ -84,30 +113,25 @@ router.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req: Request,
         }
 
         // Get kitchen to find its location
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
-        if (!kitchen) {
-            return res.status(404).json({ error: "Kitchen not found" });
-        }
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
 
         // Get location to access default_daily_booking_limit
-        const locationId = kitchen.locationId || kitchen.location_id;
+        const locationId = kitchen.locationId;
         if (!locationId) {
             return res.status(404).json({ error: "Location not found for this kitchen" });
         }
 
-        const location = await firebaseStorage.getLocationById(locationId);
-        if (!location) {
-            return res.status(404).json({ error: "Location not found" });
-        }
+        const location = await locationService.getLocationById(locationId);
 
         // Return maxSlotsPerChef from location's default_daily_booking_limit
         // Default to 2 if not set
-        const maxSlotsPerChef = location.default_daily_booking_limit ||
-            location.defaultDailyBookingLimit ||
-            2;
+        const maxSlotsPerChef = location.defaultDailyBookingLimit ?? 2;
 
         res.json({ maxSlotsPerChef });
     } catch (error: any) {
+        if (error.statusCode === 404) {
+            return res.status(404).json({ error: error.message });
+        }
         console.error("Error getting kitchen policy:", error);
         res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
     }

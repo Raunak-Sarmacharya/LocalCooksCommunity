@@ -11,7 +11,7 @@ import { firebaseStorage } from "../storage-firebase";
 import { comparePasswords, hashPassword } from "../passwordUtils";
 import { normalizePhoneForStorage } from "../phone-utils";
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
-import admin from "firebase-admin";
+import * as admin from "firebase-admin";
 
 const router = Router();
 

@@ -57,6 +57,28 @@ const router = Router();
 // MANAGER REVENUE ENDPOINTS
 // ===================================
 
+// Get revenue overview for manager
+router.get("/revenue/overview", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const { startDate, endDate, locationId } = req.query;
+
+        const { getCompleteRevenueMetrics } = await import('../services/revenue-service');
+
+        const metrics = await getCompleteRevenueMetrics(
+            managerId,
+            db,
+            startDate as string,
+            endDate as string,
+            locationId ? parseInt(locationId as string) : undefined
+        );
+
+        res.json(metrics);
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
 // Get booking invoices for manager
 router.get("/revenue/invoices", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
