@@ -1,5 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
-import { verifyFirebaseToken } from './firebase-admin';
+import { verifyFirebaseToken } from './firebase-setup';
 import { firebaseStorage } from './storage-firebase';
 import { UserWithFlags } from "@shared/schema";
 

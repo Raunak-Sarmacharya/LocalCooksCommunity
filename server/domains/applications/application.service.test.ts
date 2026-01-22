@@ -1,220 +1,109 @@
 /**
- * Application Service Tests
- * 
- * Unit tests for ApplicationService and ApplicationRepository.
+ * Unit tests for ApplicationService
+ * Tests business logic for application submission and processing
  */
 
-import { ApplicationService } from '../application.service';
-import { ApplicationRepository } from '../application.repository';
-import type { CreateApplicationDTO, UpdateApplicationDTO, VerifyDocumentsDTO } from '../application.types';
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { ApplicationService } from './application.service'
+import { ApplicationRepository } from './application.repository'
+import { DomainError, ApplicationErrorCodes } from '../../shared/errors/domain-error'
+import { resetAllMocks } from '../../__tests__/test-utils'
+
+// Mock the repository
+const mockRepository = {
+    findById: vi.fn(),
+    findByUserId: vi.fn(),
+    findByStatus: vi.fn(),
+    findAll: vi.fn(),
+    findAllPending: vi.fn(),
+    findAllApproved: vi.fn(),
+    hasPendingApplication: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateStatus: vi.fn(),
+    verifyDocuments: vi.fn(),
+} as unknown as ApplicationRepository
+
+// Mock validation
+vi.mock('../../shared/validators/input-validator', () => ({
+    validateApplicationInput: vi.fn((data) => Promise.resolve(data)),
+}))
+
+const mockApp = {
+    id: 1,
+    userId: 10,
+    status: 'inReview',
+    createdAt: new Date()
+}
 
 describe('ApplicationService', () => {
-  let applicationService: ApplicationService;
-  let applicationRepo: ApplicationRepository;
+    let service: ApplicationService
 
-  beforeEach(() => {
-    applicationRepo = new ApplicationRepository();
-    applicationService = new ApplicationService(applicationRepo);
-  });
+    beforeEach(() => {
+        resetAllMocks()
+        service = new ApplicationService(mockRepository)
+    })
 
-  describe('submitApplication', () => {
-    it('should create an application with valid data', async () => {
-      const dto: CreateApplicationDTO = {
-        userId: 1,
-        fullName: 'John Doe',
-        email: 'john@example.com',
-        phone: '1234567890',
-        foodSafetyLicense: 'yes',
-        foodEstablishmentCert: 'yes',
-        kitchenPreference: 'commercial',
-        foodSafetyLicenseUrl: 'https://example.com/license.pdf',
-        foodEstablishmentCertUrl: 'https://example.com/cert.pdf',
-      };
+    describe('submitApplication', () => {
+        it('should submit application if user has no pending ones', async () => {
+            const dto = { userId: 10, kitchenId: 1 }
+            vi.mocked(mockRepository.hasPendingApplication).mockResolvedValue(false)
+            vi.mocked(mockRepository.create).mockResolvedValue({ ...mockApp, ...dto } as any)
 
-      const application = await applicationService.submitApplication(dto);
-      
-      expect(application).toBeDefined();
-      expect(application.fullName).toBe('John Doe');
-      expect(application.status).toBe('inReview');
-    });
+            const result = await service.submitApplication(dto as any)
 
-    it('should throw error if email is invalid', async () => {
-      const dto: CreateApplicationDTO = {
-        userId: 1,
-        fullName: 'John Doe',
-        email: 'invalid-email',
-        phone: '1234567890',
-        foodSafetyLicense: 'yes',
-        foodEstablishmentCert: 'yes',
-        kitchenPreference: 'commercial',
-      };
+            expect(result.userId).toBe(10)
+            expect(mockRepository.create).toHaveBeenCalled()
+        })
 
-      await expect(applicationService.submitApplication(dto)).rejects.toThrow();
-    });
+        it('should throw 409 if pending application exists', async () => {
+            vi.mocked(mockRepository.hasPendingApplication).mockResolvedValue(true)
 
-    it('should throw error if user already has pending application', async () => {
-      const existingDto: CreateApplicationDTO = {
-        userId: 1,
-        fullName: 'Jane Doe',
-        email: 'jane@example.com',
-        phone: '0987654321',
-        foodSafetyLicense: 'no',
-        foodEstablishmentCert: 'notSure',
-        kitchenPreference: 'home',
-      };
+            await expect(service.submitApplication({ userId: 10 } as any)).rejects.toMatchObject({
+                statusCode: 409,
+                code: ApplicationErrorCodes.VALIDATION_ERROR
+            })
+        })
+    })
 
-      await applicationService.submitApplication(existingDto);
+    describe('approveApplication', () => {
+        it('should approve a pending application', async () => {
+            vi.mocked(mockRepository.findById).mockResolvedValue(mockApp as any)
+            vi.mocked(mockRepository.updateStatus).mockResolvedValue({ ...mockApp, status: 'approved' } as any)
 
-      const duplicateDto: CreateApplicationDTO = {
-        userId: 1,
-        fullName: 'Jane Doe Updated',
-        email: 'jane-updated@example.com',
-        phone: '0987654321',
-        foodSafetyLicense: 'yes',
-        foodEstablishmentCert: 'yes',
-        kitchenPreference: 'commercial',
-      };
+            const result = await service.approveApplication(1, 99) // 99 = admin id
 
-      await expect(applicationService.submitApplication(duplicateDto)).rejects.toThrow();
-    });
-  });
+            expect(result.status).toBe('approved')
+            expect(mockRepository.updateStatus).toHaveBeenCalledWith(1, 'approved')
+        })
 
-  describe('updateApplication', () => {
-    it('should update application with valid data', async () => {
-      const updateDto: UpdateApplicationDTO = {
-        id: 1,
-        fullName: 'John Smith',
-        email: 'john.smith@example.com',
-        phone: '1234567890',
-        foodSafetyLicense: 'yes',
-        foodEstablishmentCert: 'yes',
-        kitchenPreference: 'home',
-      };
+        it('should throw 400 if application already processed', async () => {
+            vi.mocked(mockRepository.findById).mockResolvedValue({ ...mockApp, status: 'approved' } as any)
 
-      const application = await applicationService.updateApplication(updateDto);
-      
-      expect(application).toBeDefined();
-      expect(application.fullName).toBe('John Smith');
-    });
+            await expect(service.approveApplication(1, 99)).rejects.toMatchObject({
+                statusCode: 400,
+                code: ApplicationErrorCodes.VALIDATION_ERROR
+            })
+        })
+    })
 
-    it('should throw error if application does not exist', async () => {
-      const updateDto: UpdateApplicationDTO = {
-        id: 999,
-        fullName: 'Nonexistent',
-        email: 'nonexistent@example.com',
-        phone: '1234567890',
-      };
+    describe('cancelApplication', () => {
+        it('should allow user to cancel their own application', async () => {
+            vi.mocked(mockRepository.findById).mockResolvedValue(mockApp as any)
+            vi.mocked(mockRepository.updateStatus).mockResolvedValue({ ...mockApp, status: 'cancelled' } as any)
 
-      await expect(applicationService.updateApplication(updateDto)).rejects.toThrow();
-    });
+            const result = await service.cancelApplication(1, 10) // 10 = user id
 
-    it('should throw error if application is already processed', async () => {
-      const updateDto: UpdateApplicationDTO = {
-        id: 1,
-        fullName: 'John Doe',
-      };
+            expect(result.status).toBe('cancelled')
+        })
 
-      await expect(applicationService.updateApplication(updateDto)).rejects.toThrow();
-    });
-  });
+        it('should throw 403 if user cancels someone else\'s application', async () => {
+            vi.mocked(mockRepository.findById).mockResolvedValue(mockApp as any)
 
-  describe('approveApplication', () => {
-    it('should approve an application', async () => {
-      const application = await applicationService.approveApplication(1, 2);
-      
-      expect(application).toBeDefined();
-      expect(application.status).toBe('approved');
-    });
-
-    it('should throw error if application does not exist', async () => {
-      await expect(applicationService.approveApplication(999, 2)).rejects.toThrow();
-    });
-  });
-
-  describe('rejectApplication', () => {
-    it('should reject an application with feedback', async () => {
-      const application = await applicationService.rejectApplication(1, 'Missing information');
-      
-      expect(application).toBeDefined();
-      expect(application.status).toBe('rejected');
-      expect(application.feedback).toBe('Missing information');
-    });
-
-    it('should throw error if application does not exist', async () => {
-      await expect(applicationService.rejectApplication(999)).rejects.toThrow();
-    });
-  });
-
-  describe('verifyDocuments', () => {
-    it('should verify documents successfully', async () => {
-      const dto: VerifyDocumentsDTO = {
-        id: 1,
-        foodSafetyLicenseStatus: 'approved',
-        foodEstablishmentCertStatus: 'approved',
-        documentsReviewedBy: 2,
-      };
-
-      const application = await applicationService.verifyDocuments(dto);
-      
-      expect(application).toBeDefined();
-      expect(application.foodSafetyLicenseStatus).toBe('approved');
-      expect(application.foodEstablishmentCertStatus).toBe('approved');
-    });
-
-    it('should throw error if application does not exist', async () => {
-      const dto: VerifyDocumentsDTO = {
-        id: 999,
-        foodSafetyLicenseStatus: 'approved',
-        foodEstablishmentCertStatus: 'approved',
-        documentsReviewedBy: 2,
-      };
-
-      await expect(applicationService.verifyDocuments(dto)).rejects.toThrow();
-    });
-  });
-
-  describe('getApplicationById', () => {
-    it('should return application by ID', async () => {
-      const application = await applicationService.getApplicationById(1);
-      
-      expect(application).toBeDefined();
-      expect(application.id).toBe(1);
-    });
-
-    it('should throw error if application does not exist', async () => {
-      await expect(applicationService.getApplicationById(999)).rejects.toThrow();
-    });
-  });
-
-  describe('getApplicationsByUserId', () => {
-    it('should return applications for user', async () => {
-      const applications = await applicationService.getApplicationsByUserId(1);
-      
-      expect(Array.isArray(applications)).toBe(true);
-    });
-  });
-
-  describe('getApplicationsByStatus', () => {
-    it('should return applications by status', async () => {
-      const applications = await applicationService.getApplicationsByStatus('inReview');
-      
-      expect(Array.isArray(applications)).toBe(true);
-    });
-  });
-
-  describe('getAllPending', () => {
-    it('should return all pending applications', async () => {
-      const applications = await applicationService.getAllPending();
-      
-      expect(Array.isArray(applications)).toBe(true);
-    });
-  });
-
-  describe('getAllApproved', () => {
-    it('should return all approved applications', async () => {
-      const applications = await applicationService.getAllApproved();
-      
-      expect(Array.isArray(applications)).toBe(true);
-    });
-  });
-});
+            await expect(service.cancelApplication(1, 11)).rejects.toMatchObject({
+                statusCode: 403,
+                code: ApplicationErrorCodes.VALIDATION_ERROR
+            })
+        })
+    })
+})

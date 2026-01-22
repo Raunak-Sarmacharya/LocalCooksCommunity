@@ -6,9 +6,9 @@
  */
 
 import { db } from '../../db';
-import { locations } from '@shared/schema';
+import { locations, locationRequirements } from '@shared/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
-import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO } from './location.types';
+import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO, LocationRequirements, UpdateLocationRequirements } from './location.types';
 import { LocationErrorCodes, DomainError } from '../../shared/errors/domain-error';
 
 /**
@@ -25,7 +25,7 @@ export class LocationRepository {
         .from(locations)
         .where(eq(locations.id, id))
         .limit(1);
-      
+
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
       console.error(`[LocationRepository] Error finding location by ID ${id}:`, error);
@@ -47,7 +47,7 @@ export class LocationRepository {
         .from(locations)
         .where(eq(locations.managerId, managerId))
         .orderBy(desc(locations.createdAt));
-      
+
       return results as LocationDTO[];
     } catch (error: any) {
       console.error(`[LocationRepository] Error finding locations by manager ${managerId}:`, error);
@@ -81,7 +81,7 @@ export class LocationRepository {
           timezone: dto.timezone || 'America/St_Johns',
         })
         .returning();
-      
+
       return location as LocationDTO;
     } catch (error: any) {
       console.error('[LocationRepository] Error creating location:', error);
@@ -116,7 +116,7 @@ export class LocationRepository {
         })
         .where(eq(locations.id, id))
         .returning();
-      
+
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
       console.error(`[LocationRepository] Error updating location ${id}:`, error);
@@ -144,7 +144,7 @@ export class LocationRepository {
         })
         .where(eq(locations.id, dto.locationId))
         .returning();
-      
+
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
       console.error(`[LocationRepository] Error verifying kitchen license for location ${dto.locationId}:`, error);
@@ -166,7 +166,7 @@ export class LocationRepository {
         .set({ kitchenLicenseUrl: licenseUrl })
         .where(eq(locations.id, locationId))
         .returning();
-      
+
       return (location || null) as LocationDTO | null;
     } catch (error: any) {
       console.error(`[LocationRepository] Error updating kitchen license URL for location ${locationId}:`, error);
@@ -187,7 +187,7 @@ export class LocationRepository {
         .select()
         .from(locations)
         .orderBy(desc(locations.createdAt));
-      
+
       return results as LocationDTO[];
     } catch (error: any) {
       console.error('[LocationRepository] Error finding all locations:', error);
@@ -207,12 +207,12 @@ export class LocationRepository {
       const result = await db
         .select({ id: locations.id })
         .from(locations)
-        .where(excludeId 
+        .where(excludeId
           ? and(eq(locations.name, name), eq(locations.id, excludeId))
           : eq(locations.name, name)
         )
         .limit(1);
-      
+
       return result.length > 0;
     } catch (error: any) {
       console.error(`[LocationRepository] Error checking name existence ${name}:`, error);
@@ -229,11 +229,69 @@ export class LocationRepository {
         .select({ id: locations.id })
         .from(locations)
         .where(eq(locations.managerId, managerId));
-      
+
       return results.length;
     } catch (error: any) {
       console.error(`[LocationRepository] Error counting locations by manager ${managerId}:`, error);
       return 0;
+    }
+  }
+
+  /**
+   * Find requirements by location ID
+   */
+  async findRequirementsByLocationId(locationId: number): Promise<LocationRequirements | null> {
+    try {
+      const [requirements] = await db
+        .select()
+        .from(locationRequirements)
+        .where(eq(locationRequirements.locationId, locationId));
+
+      return (requirements || null) as LocationRequirements | null;
+    } catch (error: any) {
+      console.error(`[LocationRepository] Error finding requirements for location ${locationId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Upsert location requirements
+   */
+  async upsertRequirements(locationId: number, dto: UpdateLocationRequirements): Promise<LocationRequirements> {
+    try {
+      const existing = await this.findRequirementsByLocationId(locationId);
+
+      if (existing) {
+        const [updated] = await db
+          .update(locationRequirements)
+          .set({
+            ...dto,
+            updatedAt: new Date(),
+          })
+          .where(eq(locationRequirements.locationId, locationId))
+          .returning();
+        return updated as LocationRequirements;
+      } else {
+        const [created] = await db
+          .insert(locationRequirements)
+          .values({
+            locationId,
+            ...dto,
+            // Ensure custom fields default to empty array if not provided
+            customFields: dto.customFields ?? [],
+            tier1_custom_fields: dto.tier1_custom_fields ?? [],
+            tier2_custom_fields: dto.tier2_custom_fields ?? []
+          })
+          .returning();
+        return created as LocationRequirements;
+      }
+    } catch (error: any) {
+      console.error(`[LocationRepository] Error upserting requirements for location ${locationId}:`, error);
+      throw new DomainError(
+        LocationErrorCodes.LOCATION_NOT_FOUND,
+        'Failed to update location requirements',
+        500
+      );
     }
   }
 }

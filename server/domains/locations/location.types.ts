@@ -1,8 +1,6 @@
-/**
- * Location Domain Types
- * 
- * Data Transfer Objects for clean separation between layers.
- */
+import type { LocationRequirements, UpdateLocationRequirements } from '@shared/schema';
+
+export type { LocationRequirements, UpdateLocationRequirements };
 
 /**
  * Location DTO for creating a new location

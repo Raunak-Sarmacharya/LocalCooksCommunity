@@ -1,27 +1,38 @@
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireManager } from '../../firebase-auth-middleware';
-import { firebaseStorage } from '../../storage-firebase';
 import { normalizeImageUrl } from '../utils';
 import { updateLocationRequirementsSchema } from '@shared/schema';
 import { fromZodError } from 'zod-validation-error';
 
+// Import Domain Services
+import { LocationRepository } from '../../domains/locations/location.repository';
+import { LocationService } from '../../domains/locations/location.service';
+import { KitchenRepository } from '../../domains/kitchens/kitchen.repository';
+import { KitchenService } from '../../domains/kitchens/kitchen.service';
+
 const router = Router();
+
+// Initialize Services
+const locationRepository = new LocationRepository();
+const locationService = new LocationService(locationRepository);
+const kitchenRepository = new KitchenRepository();
+const kitchenService = new KitchenService(kitchenRepository);
 
 // 🔥 Public Locations List
 router.get('/public/locations', async (req: Request, res: Response) => {
     try {
         // Fetch all locations
-        const allLocations = await firebaseStorage.getAllLocations();
+        const allLocations = await locationService.getAllLocations();
 
         // Filter and sanitize for public consumption
         const publicLocations = allLocations.map(location => {
             // Normalize images using the request object for host information
             const brandImageUrl = normalizeImageUrl(
-                location.brandImageUrl || location.brand_image_url || null,
+                location.brandImageUrl || null,
                 req
             );
             const logoUrl = normalizeImageUrl(
-                location.logoUrl || location.logo_url || null,
+                location.logoUrl || null,
                 req
             );
 
@@ -33,8 +44,6 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 brand_image_url: brandImageUrl, // compatibility
                 logoUrl,
                 logo_url: logoUrl, // compatibility
-                // Include descriptive fields that are safe
-                description: location.description || null,
             };
         });
 
@@ -53,42 +62,39 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             return res.status(400).json({ error: 'Invalid location ID' });
         }
 
-        const location = await firebaseStorage.getLocationById(locationId);
+        const location = await locationService.getLocationById(locationId);
         if (!location) {
             return res.status(404).json({ error: 'Location not found' });
         }
 
-        // Get kitchens for this location
-        const allKitchens = await firebaseStorage.getKitchensByLocation(locationId);
-
-        // Filter for active kitchens
-        const activeKitchens = allKitchens.filter((kitchen: any) => {
-            const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
-            return isActive !== false; // Default to true if undefined
-        });
+        // Get kitchens for this location (active only)
+        const activeKitchens = await kitchenService.getKitchensByLocationId(locationId, true);
 
         // Normalize location images
         const brandImageUrl = normalizeImageUrl(
-            location.brandImageUrl || location.brand_image_url || null,
+            location.brandImageUrl || null,
             req
         );
         const logoUrl = normalizeImageUrl(
-            location.logoUrl || location.logo_url || null,
+            location.logoUrl || null,
             req
         );
 
         // Sanitize and normalize kitchens
         const sanitizedKitchens = activeKitchens.map((kitchen: any) => {
             const kImageUrl = normalizeImageUrl(
-                kitchen.imageUrl || kitchen.image_url || null,
+                kitchen.imageUrl || null,
                 req
             );
-            const kGalleryImages = (kitchen.galleryImages || kitchen.gallery_images || []).map((img: string) =>
+            const kGalleryImages = (kitchen.galleryImages || []).map((img: string) =>
                 normalizeImageUrl(img, req)
             ).filter((url: string | null): url is string => url !== null);
 
-            // Handle hourly rate conversion (cents to dollars)
-            const hourlyRateCents = kitchen.hourlyRate || kitchen.hourly_rate;
+            // Handle hourly rate conversion (cents to dollars) - KitchenService might already handle this 
+            // but let's be safe or check KitchenService DTO.
+            // Based on kitchen-service code earlier, it usually returns cents if raw db, or dollars if converted.
+            // Let's assume cents to be safe or check KitchenDTO.
+            const hourlyRateCents = kitchen.hourlyRate;
             const hourlyRate = hourlyRateCents !== null && hourlyRateCents !== undefined
                 ? (typeof hourlyRateCents === 'string' ? parseFloat(hourlyRateCents) : hourlyRateCents) / 100
                 : null;
@@ -104,7 +110,7 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 amenities: kitchen.amenities || [],
                 hourlyRate,
                 hourly_rate: hourlyRate, // compatibility
-                pricingModel: kitchen.pricingModel || kitchen.pricing_model || 'hourly',
+                pricingModel: kitchen.pricingModel || 'hourly',
                 currency: kitchen.currency || 'CAD'
             };
         });
@@ -113,7 +119,6 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             id: location.id,
             name: location.name,
             address: location.address,
-            description: location.description || null,
             brandImageUrl,
             brand_image_url: brandImageUrl, // compatibility
             logoUrl,
@@ -136,7 +141,7 @@ router.get('/public/locations/:locationId/requirements', async (req: Request, re
             return res.status(400).json({ error: 'Invalid location ID' });
         }
 
-        const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+        const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
         res.json(requirements);
     } catch (error) {
         console.error('Error getting location requirements:', error);
@@ -162,12 +167,12 @@ router.get('/manager/locations/:locationId/requirements',
             }
 
             // Verify manager access
-            const location = await firebaseStorage.getLocationById(locationId);
-            if (!location || (location as any).managerId !== user.id) {
+            const location = await locationService.getLocationById(locationId);
+            if (!location || location.managerId !== user.id) {
                 return res.status(403).json({ error: 'Access denied' });
             }
 
-            const requirements = await firebaseStorage.getLocationRequirementsWithDefaults(locationId);
+            const requirements = await locationService.getLocationRequirementsWithDefaults(locationId);
             res.json(requirements);
         } catch (error) {
             console.error('Error getting location requirements:', error);
@@ -190,8 +195,8 @@ router.put('/manager/locations/:locationId/requirements',
             }
 
             // Verify manager access
-            const location = await firebaseStorage.getLocationById(locationId);
-            if (!location || (location as any).managerId !== user.id) {
+            const location = await locationService.getLocationById(locationId);
+            if (!location || location.managerId !== user.id) {
                 return res.status(403).json({ error: 'Access denied' });
             }
 
@@ -208,7 +213,7 @@ router.put('/manager/locations/:locationId/requirements',
             }
 
             const updates = parseResult.data;
-            const requirements = await firebaseStorage.upsertLocationRequirements(locationId, updates);
+            const requirements = await locationService.upsertLocationRequirements(locationId, updates);
 
             console.log(`✅ Location requirements updated for location ${locationId} by manager ${user.id}`);
             res.json({ success: true, requirements });

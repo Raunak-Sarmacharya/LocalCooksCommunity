@@ -346,3 +346,4 @@ api/*.backup.*
 scripts/.sync-cache/
 .agent/rules/frontend-architect-protocol.md
 .agent/rules/seniorfrontend.md
+.agent/rules/seniorfrontemd.md

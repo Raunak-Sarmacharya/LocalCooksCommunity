@@ -1,11 +1,16 @@
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, verifyFirebaseAuth } from '../../firebase-auth-middleware';
-import { firebaseStorage } from '../../storage-firebase';
-import { db } from '../../db';
-import { applications, users } from '@shared/schema';
-import { desc, eq } from 'drizzle-orm';
+// import { firebaseStorage } from '../../storage-firebase'; // Legacy storage removed
+// import { db } from '../../db'; // Direct DB access removed
+import { UserRepository } from '../../domains/users/user.repository';
+import { UserService } from '../../domains/users/user.service';
+import { DomainError } from '../../shared/errors/domain-error';
 
 const router = Router();
+
+// Initialize Services
+const userRepo = new UserRepository();
+const userService = new UserService(userRepo);
 
 // 🔥 Get Current User Profile (with Firebase Auth)
 router.get('/user/profile', requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
@@ -13,76 +18,58 @@ router.get('/user/profile', requireFirebaseAuthWithUser, async (req: Request, re
         // req.neonUser is now populated by middleware with Neon user data
         // req.firebaseUser contains Firebase auth data
 
-        // Fetch user's full name from applications
-        let userFullName = null;
-        let stripeConnectAccountId = null;
-        let stripeConnectOnboardingStatus = null;
+        // Use UserService to get complete profile (fetches fresh data + application name)
+        const completeProfile = await userService.getCompleteProfile(req.neonUser!.id);
 
-        try {
-            // Get full name from chef applications
-            const [chefApp] = await db
-                .select({ fullName: applications.fullName })
-                .from(applications)
-                .where(eq(applications.userId, req.neonUser!.id))
-                .orderBy(desc(applications.createdAt))
-                .limit(1);
-
-            if (chefApp?.fullName) {
-                userFullName = chefApp.fullName;
-            }
-
-            // Use Stripe info from req.neonUser which is already populated by middleware
-            stripeConnectAccountId = req.neonUser!.stripeConnectAccountId || null;
-            stripeConnectOnboardingStatus = req.neonUser!.stripeConnectOnboardingStatus || null;
-        } catch (dbError) {
-            console.error('Error fetching user data from Drizzle:', dbError);
-        }
+        // Map to expected response format (backward compatibility)
+        // The DTO structure is already very close to what frontend expects
 
         // Log user data for debugging
-        console.log(`[USER PROFILE] Returning profile for user ${req.neonUser!.id}:`, {
-            id: req.neonUser!.id,
-            username: req.neonUser!.username,
-            role: req.neonUser!.role,
-            isChef: req.neonUser!.isChef,
-            isManager: req.neonUser!.isManager,
-            rawNeonUser: req.neonUser
+        console.log(`[USER PROFILE] Returning profile for user ${req.neonUser!.id}`, {
+            id: completeProfile.id,
+            role: completeProfile.role,
+            isChef: completeProfile.isChef
         });
 
         // Return flat structure expected by frontend
         res.json({
-            id: req.neonUser!.id,
-            username: req.neonUser!.username,
-            role: req.neonUser!.role,
-            isVerified: req.neonUser!.isVerified !== undefined ? req.neonUser!.isVerified : req.firebaseUser!.email_verified,
-            is_verified: req.neonUser!.isVerified !== undefined ? req.neonUser!.isVerified : req.firebaseUser!.email_verified,
-            hasSeenWelcome: req.neonUser!.has_seen_welcome || false,
-            has_seen_welcome: req.neonUser!.has_seen_welcome || false,
-            isChef: req.neonUser!.isChef || false,
-            isManager: req.neonUser!.isManager || false,
-            isPortalUser: (req.neonUser! as any).isPortalUser || false,
-            displayName: userFullName || null, // User's full name from application
-            fullName: userFullName || null, // Alias for compatibility
-            stripeConnectAccountId: stripeConnectAccountId, // Stripe Connect account ID
-            stripe_connect_account_id: stripeConnectAccountId, // Alias for compatibility
-            stripeConnectOnboardingStatus: stripeConnectOnboardingStatus, // Stripe Connect onboarding status
-            stripe_connect_onboarding_status: stripeConnectOnboardingStatus, // Alias for compatibility
-            // Also include original structure for compatibility
+            id: completeProfile.id,
+            username: completeProfile.username,
+            role: completeProfile.role,
+            isVerified: completeProfile.isVerified,
+            is_verified: completeProfile.isVerified, // Alias
+            hasSeenWelcome: completeProfile.has_seen_welcome,
+            has_seen_welcome: completeProfile.has_seen_welcome, // Alias
+            isChef: completeProfile.isChef,
+            isManager: completeProfile.isManager,
+            isPortalUser: completeProfile.isPortalUser,
+            displayName: completeProfile.displayName,
+            fullName: completeProfile.fullName,
+            stripeConnectAccountId: completeProfile.stripeConnectAccountId,
+            stripe_connect_account_id: completeProfile.stripeConnectAccountId, // Alias
+            stripeConnectOnboardingStatus: completeProfile.stripeConnectOnboardingStatus,
+            stripe_connect_onboarding_status: completeProfile.stripeConnectOnboardingStatus, // Alias
+
+            // Legacy nested structures
             neonUser: {
-                id: req.neonUser!.id,
-                username: req.neonUser!.username,
-                role: req.neonUser!.role,
-                isChef: req.neonUser!.isChef,
-                isManager: req.neonUser!.isManager,
-                isVerified: req.neonUser!.isVerified,
+                id: completeProfile.id,
+                username: completeProfile.username,
+                role: completeProfile.role,
+                isChef: completeProfile.isChef,
+                isManager: completeProfile.isManager,
+                isVerified: completeProfile.isVerified,
             },
             firebaseUser: {
-                uid: req.firebaseUser!.uid,
-                email: req.firebaseUser!.email,
-                emailVerified: req.firebaseUser!.email_verified,
+                uid: completeProfile.firebaseUser.uid,
+                email: completeProfile.firebaseUser.email,
+                emailVerified: completeProfile.firebaseUser.emailVerified,
             }
         });
     } catch (error) {
         console.error('Error getting user profile:', error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Failed to get user profile' });
     }
 });
@@ -95,8 +82,8 @@ router.get('/user', verifyFirebaseAuth, async (req: Request, res: Response) => {
             return res.status(401).json({ error: 'Not authenticated' });
         }
 
-        // Get user from database by Firebase UID
-        const user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+        // Get user from service by Firebase UID
+        const user = await userService.findByFirebaseUid(req.firebaseUser.uid);
 
         if (!user) {
             // Do NOT auto-create for sign-in - return 404 to indicate user needs to register
@@ -110,12 +97,15 @@ router.get('/user', verifyFirebaseAuth, async (req: Request, res: Response) => {
             id: user.id,
             username: user.username,
             role: user.role,
-            is_verified: (user as any).isVerified,
-            has_seen_welcome: (user as any).has_seen_welcome,
-            firebaseUid: (user as any).firebaseUid
+            is_verified: user.isVerified, // DTO uses isVerified
+            has_seen_welcome: user.has_seen_welcome,
+            firebaseUid: user.firebaseUid
         });
     } catch (error) {
         console.error('Error getting user:', error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Failed to get user data' });
     }
 });
@@ -134,9 +124,8 @@ router.post('/sync-verification-status', requireFirebaseAuthWithUser, async (req
         console.log(`🔄 SYNC VERIFICATION: User ${neonUserId} (Firebase verified: ${firebaseVerified}, DB verified: ${currentDbVerified})`);
 
         if (firebaseVerified && !currentDbVerified) {
-            await db.update(users)
-                .set({ isVerified: true })
-                .where(eq(users.id, neonUserId));
+            // Use Service to update verification
+            await userService.verifyUser(neonUserId, true);
             console.log(`✅ SYNC SUCCESS: User ${neonUserId} marked as verified in database`);
         }
 
@@ -148,6 +137,9 @@ router.post('/sync-verification-status', requireFirebaseAuthWithUser, async (req
         });
     } catch (error) {
         console.error('❌ Error syncing verification status:', error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Failed to sync verification status' });
     }
 });
@@ -159,17 +151,20 @@ router.post('/user/seen-welcome', verifyFirebaseAuth, async (req: Request, res: 
             return res.status(401).json({ error: 'Not authenticated' });
         }
 
-        // Get user from database by Firebase UID
-        const user = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+        // Get user from service to find ID (since we only have firebase uid here)
+        const user = await userService.findByFirebaseUid(req.firebaseUser.uid);
 
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        await firebaseStorage.setUserHasSeenWelcome(user.id);
+        await userService.markWelcomeSeen(user.id);
         res.json({ success: true });
     } catch (error) {
         console.error('Error setting has_seen_welcome:', error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Failed to update welcome status' });
     }
 });
@@ -203,7 +198,11 @@ router.post('/firebase/user/update-roles', requireFirebaseAuthWithUser, async (r
 
         console.log(`🎯 Updating user roles: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id} → Chef: ${isChef}`);
 
-        await firebaseStorage.updateUserRoles(req.neonUser!.id, { isChef });
+        // Use Service for update
+        await userService.updateUser({
+            id: req.neonUser!.id,
+            isChef: isChef
+        });
 
         res.json({
             success: true,
@@ -211,6 +210,9 @@ router.post('/firebase/user/update-roles', requireFirebaseAuthWithUser, async (r
         });
     } catch (error) {
         console.error('Error updating user roles:', error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ error: error.message, message: error.message });
+        }
         res.status(500).json({
             error: 'Failed to update user roles',
             message: error instanceof Error ? error.message : 'Unknown error'

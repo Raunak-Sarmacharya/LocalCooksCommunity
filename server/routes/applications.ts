@@ -12,7 +12,7 @@ import {
     uploadToBlob,
     getFileUrl
 } from "../fileUpload";
-import { storage } from "../storage";
+// import { storage } from "../storage"; // Legacy storage removed
 import {
     sendEmail,
     generateStatusChangeEmail,
@@ -21,7 +21,21 @@ import {
 } from "../email";
 import { normalizePhoneForStorage } from "../phone-utils";
 
+// Service Imports
+import { ApplicationRepository } from "../domains/applications/application.repository";
+import { ApplicationService } from "../domains/applications/application.service";
+import { UserRepository } from "../domains/users/user.repository";
+import { UserService } from "../domains/users/user.service";
+import { CreateApplicationDTO } from "../domains/applications/application.types";
+import { DomainError } from "../shared/errors/domain-error";
+
 const router = Router();
+
+// Initialize Services
+const appRepo = new ApplicationRepository();
+const appService = new ApplicationService(appRepo);
+const userRepo = new UserRepository();
+const userService = new UserService(userRepo);
 
 // Application submission endpoint (supports both JSON and multipart form data)
 router.post("/",
@@ -73,33 +87,23 @@ router.post("/",
             // Ensure the application is associated with the current user
             // Override any userId in the request to prevent spoofing
             // Normalize phone number before storing (schema already does this via transform, but ensure it's done)
-            const applicationData = {
-                ...parsedData.data,
+            const applicationData: CreateApplicationDTO = {
+                // Map fields from parsedData to CreateApplicationDTO
                 userId: req.neonUser!.id,
-                phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone, // Ensure normalization
+                fullName: parsedData.data.fullName,
+                email: parsedData.data.email,
+                phone: normalizePhoneForStorage(parsedData.data.phone) || parsedData.data.phone,
+                foodSafetyLicense: parsedData.data.foodSafetyLicense,
+                foodEstablishmentCert: parsedData.data.foodEstablishmentCert,
+                kitchenPreference: parsedData.data.kitchenPreference,
+                feedback: parsedData.data.feedback,
+                // Files handled below
+                foodSafetyLicenseUrl: undefined,
+                foodEstablishmentCertUrl: undefined
             };
 
             console.log('=== APPLICATION SUBMISSION WITH DOCUMENTS ===');
-            console.log('Request details:', {
-                method: req.method,
-                contentType: req.headers['content-type'],
-                hasFiles: !!req.files,
-                fileKeys: req.files ? Object.keys(req.files) : [],
-                bodyKeys: Object.keys(req.body || {}),
-                bodyData: {
-                    foodSafetyLicense: req.body.foodSafetyLicense,
-                    foodEstablishmentCert: req.body.foodEstablishmentCert,
-                    foodSafetyLicenseUrl: req.body.foodSafetyLicenseUrl,
-                    foodEstablishmentCertUrl: req.body.foodEstablishmentCertUrl,
-                    userId: req.body.userId
-                }
-            });
-            console.log('Form data:', {
-                foodSafetyLicense: applicationData.foodSafetyLicense,
-                foodEstablishmentCert: applicationData.foodEstablishmentCert,
-                hasFiles: !!req.files,
-                fileKeys: req.files ? Object.keys(req.files) : []
-            });
+            // ... (keep logs if needed, but reducing verbosity for brevity in refactor)
 
             // Handle uploaded files and URL inputs
             const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -115,7 +119,6 @@ router.post("/",
                     } else {
                         applicationData.foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
                     }
-                    console.log('✅ Food safety license uploaded:', applicationData.foodSafetyLicenseUrl);
                 }
 
                 if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
@@ -125,82 +128,57 @@ router.post("/",
                     } else {
                         applicationData.foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
                     }
-                    console.log('✅ Food establishment cert uploaded:', applicationData.foodEstablishmentCertUrl);
                 }
             }
 
             // Handle URL inputs from form (fallback if no files uploaded)
             if (req.body.foodSafetyLicenseUrl && !applicationData.foodSafetyLicenseUrl) {
                 applicationData.foodSafetyLicenseUrl = req.body.foodSafetyLicenseUrl;
-                console.log('📄 Using provided food safety license URL:', applicationData.foodSafetyLicenseUrl);
             }
 
             if (req.body.foodEstablishmentCertUrl && !applicationData.foodEstablishmentCertUrl) {
                 applicationData.foodEstablishmentCertUrl = req.body.foodEstablishmentCertUrl;
-                console.log('📄 Using provided food establishment cert URL:', applicationData.foodEstablishmentCertUrl);
             }
 
-            // Set initial document status based on what was provided and user responses
-            if (applicationData.foodSafetyLicenseUrl) {
-                applicationData.foodSafetyLicenseStatus = "pending";
-                console.log('✅ Food safety license document provided, status set to pending');
-            }
+            // Create the application via Service
+            const application = await appService.submitApplication(applicationData);
 
-            if (applicationData.foodEstablishmentCertUrl) {
-                applicationData.foodEstablishmentCertStatus = "pending";
-                console.log('✅ Food establishment cert document provided, status set to pending');
-            }
-
-            console.log('Final application data:', {
-                userId: applicationData.userId,
-                hasDocuments: !!(applicationData.foodSafetyLicenseUrl || applicationData.foodEstablishmentCertUrl),
-                documentUrls: {
-                    foodSafetyLicense: applicationData.foodSafetyLicenseUrl || null,
-                    foodEstablishmentCert: applicationData.foodEstablishmentCertUrl || null
-                }
-            });
-
-            // Create the application in storage
-            const application = await storage.createApplication(applicationData);
-
-            // Fetch the full application record to ensure all fields are present
-            const fullApplication = await storage.getApplicationById(application.id);
+            // Fetch the full application record to ensure all fields are present (Service returns DTO, but for emails we might want full object if DTO is partial? No, DTO is full)
+            // appService.submitApplication returns the created application.
+            // But strict typing suggests we might want to reload it or just use it.
+            // The service returns `ApplicationDTO`.
 
             console.log('✅ Application created successfully:', {
-                id: fullApplication?.id,
-                hasDocuments: !!(fullApplication?.foodSafetyLicenseUrl || fullApplication?.foodEstablishmentCertUrl)
+                id: application.id,
+                hasDocuments: !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl)
             });
 
             // Send appropriate email notification for new application
             try {
-                if (fullApplication && fullApplication.email) {
-                    const hasDocuments = !!(fullApplication.foodSafetyLicenseUrl || fullApplication.foodEstablishmentCertUrl);
+                if (application.email) {
+                    const hasDocuments = !!(application.foodSafetyLicenseUrl || application.foodEstablishmentCertUrl);
 
                     if (hasDocuments) {
                         // Application submitted WITH documents - send combined email
                         const emailContent = generateApplicationWithDocumentsEmail({
-                            fullName: fullApplication.fullName || "Applicant",
-                            email: fullApplication.email
+                            fullName: application.fullName || "Applicant",
+                            email: application.email
                         });
 
                         await sendEmail(emailContent, {
-                            trackingId: `app_with_docs_${fullApplication.id}_${Date.now()} `
+                            trackingId: `app_with_docs_${application.id}_${Date.now()} `
                         });
-                        console.log(`Application with documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
                     } else {
                         // Application submitted WITHOUT documents - prompt to upload
                         const emailContent = generateApplicationWithoutDocumentsEmail({
-                            fullName: fullApplication.fullName || "Applicant",
-                            email: fullApplication.email
+                            fullName: application.fullName || "Applicant",
+                            email: application.email
                         });
 
                         await sendEmail(emailContent, {
-                            trackingId: `app_no_docs_${fullApplication.id}_${Date.now()} `
+                            trackingId: `app_no_docs_${application.id}_${Date.now()} `
                         });
-                        console.log(`Application without documents email sent to ${fullApplication.email} for application ${fullApplication.id}`);
                     }
-                } else {
-                    console.warn(`Cannot send new application email: Application record not found or missing email.`);
                 }
             } catch (emailError) {
                 // Log the error but don't fail the request
@@ -209,6 +187,7 @@ router.post("/",
 
             console.log('=== APPLICATION SUBMISSION COMPLETE ===');
             return res.status(201).json(application);
+
         } catch (error) {
             console.error("Error creating application:", error);
 
@@ -217,7 +196,6 @@ router.post("/",
                 const files = req.files as { [fieldname: string]: Express.Multer.File[] };
                 Object.values(files).flat().forEach(file => {
                     try {
-                        // Only clean up files if they have a path (development mode)
                         if (file.path) {
                             fs.unlinkSync(file.path);
                         }
@@ -227,6 +205,9 @@ router.post("/",
                 });
             }
 
+            if (error instanceof DomainError) {
+                return res.status(error.statusCode).json({ message: error.message });
+            }
             return res.status(500).json({ message: "Internal server error" });
         }
     }
@@ -244,10 +225,13 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     try {
-        const applications = await storage.getAllApplications();
+        const applications = await appService.getAllApplications();
         return res.status(200).json(applications);
     } catch (error) {
         console.error("Error fetching applications:", error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         return res.status(500).json({ message: "Internal server error" });
     }
 });
@@ -261,10 +245,13 @@ router.get("/my-applications", async (req: Request, res: Response) => {
 
     try {
         const userId = req.neonUser.id;
-        const applications = await storage.getApplicationsByUserId(userId);
+        const applications = await appService.getApplicationsByUserId(userId);
         return res.status(200).json(applications);
     } catch (error) {
         console.error("Error fetching user applications:", error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         return res.status(500).json({ message: "Internal server error" });
     }
 });
@@ -278,15 +265,14 @@ router.get("/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ message: "Invalid application ID" });
         }
 
-        const application = await storage.getApplicationById(id);
-
-        if (!application) {
-            return res.status(404).json({ message: "Application not found" });
-        }
+        const application = await appService.getApplicationById(id);
 
         return res.status(200).json(application);
     } catch (error) {
         console.error("Error fetching application:", error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         return res.status(500).json({ message: "Internal server error" });
     }
 });
@@ -294,13 +280,6 @@ router.get("/:id", async (req: Request, res: Response) => {
 // Update application status endpoint (admin only)
 router.patch("/:id/status", async (req: Request, res: Response) => {
     try {
-        // Check if user is authenticated and is an admin
-        console.log('Status update request - Auth info:', {
-            isAuthenticated: !!req.neonUser,
-            userRole: req.user?.role,
-            userId: req.user?.id
-        });
-
         if (!req.neonUser) {
             return res.status(401).json({ message: "Not authenticated" });
         }
@@ -312,12 +291,6 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
             return res.status(400).json({ message: "Invalid application ID" });
-        }
-
-        // Check if the application exists
-        const application = await storage.getApplicationById(id);
-        if (!application) {
-            return res.status(404).json({ message: "Application not found" });
         }
 
         // Validate the request body using Zod schema
@@ -334,11 +307,8 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
             });
         }
 
-        // Update the application in storage
-        const updatedApplication = await storage.updateApplicationStatus(parsedData.data);
-        if (!updatedApplication) {
-            return res.status(404).json({ message: "Application not found or could not be updated" });
-        }
+        // Update the application status via Service
+        const updatedApplication = await appService.updateStatus(id, parsedData.data.status);
 
         // Send email notification about status change
         try {
@@ -352,10 +322,6 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
                 await sendEmail(emailContent, {
                     trackingId: `status_${updatedApplication.id}_${updatedApplication.status}_${Date.now()} `
                 });
-
-                console.log(`Status change email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-            } else {
-                console.warn(`Cannot send status change email for application ${updatedApplication.id}: No email address found`);
             }
         } catch (emailError) {
             // Log the error but don't fail the request
@@ -365,6 +331,9 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
         return res.status(200).json(updatedApplication);
     } catch (error) {
         console.error("Error updating application status:", error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         return res.status(500).json({ message: "Internal server error" });
     }
 });
@@ -373,11 +342,6 @@ router.patch("/:id/status", async (req: Request, res: Response) => {
 router.patch("/:id/cancel", async (req: Request, res: Response) => {
     // Check if user is authenticated
     const userId = req.neonUser?.id;
-
-    console.log('Cancel application request - Auth info:', {
-        isAuthenticated: !!req.neonUser,
-        sessionUserId: req.neonUser ? req.neonUser.id : null,
-    });
 
     if (!userId) {
         return res.status(401).json({ message: "Not authenticated" });
@@ -390,28 +354,8 @@ router.patch("/:id/cancel", async (req: Request, res: Response) => {
             return res.status(400).json({ message: "Invalid application ID" });
         }
 
-        // First get the application to verify ownership
-        const application = await storage.getApplicationById(id);
-
-        if (!application) {
-            return res.status(404).json({ message: "Application not found" });
-        }
-
-        // Check if the application belongs to the authenticated user
-        if (application.userId !== userId) {
-            return res.status(403).json({ message: "Access denied. You can only cancel your own applications." });
-        }
-
-        const updateData = {
-            id,
-            status: "cancelled" as const
-        };
-
-        const updatedApplication = await storage.updateApplicationStatus(updateData);
-
-        if (!updatedApplication) {
-            return res.status(404).json({ message: "Application not found" });
-        }
+        // Use ApplicationService to cancel (it handles ownership check)
+        const updatedApplication = await appService.cancelApplication(id, userId);
 
         // Send email notification about application cancellation
         try {
@@ -425,19 +369,17 @@ router.patch("/:id/cancel", async (req: Request, res: Response) => {
                 await sendEmail(emailContent, {
                     trackingId: `cancel_${updatedApplication.id}_${Date.now()} `
                 });
-
-                console.log(`Cancellation email sent to ${updatedApplication.email} for application ${updatedApplication.id}`);
-            } else {
-                console.warn(`Cannot send cancellation email for application ${updatedApplication.id}: No email address found`);
             }
         } catch (emailError) {
-            // Log the error but don't fail the request
             console.error("Error sending cancellation email:", emailError);
         }
 
         return res.status(200).json(updatedApplication);
     } catch (error) {
         console.error("Error cancelling application:", error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         return res.status(500).json({ message: "Internal server error" });
     }
 });
@@ -475,34 +417,40 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             });
         }
 
-        // Update the application document verification
-        const updatedApplication = await storage.updateApplicationDocumentVerification(parsedData.data);
+        // Fetch existing application to merge current values for partial updates
+        const existingApplication = await appService.getApplicationById(applicationId);
 
-        if (!updatedApplication) {
-            return res.status(404).json({ message: "Application not found" });
-        }
+        // Prepare DTO with fallback to existing values
+        // We cast to any for the enums because Zod might return optional strings that need to be asserted as the enum type
+        // The service validation/types will catch if it's invalid at runtime, but here we trust the Zod + DB data.
+        const verifyDto: any = {
+            id: applicationId,
+            foodSafetyLicenseStatus: parsedData.data.foodSafetyLicenseStatus || existingApplication.foodSafetyLicenseStatus,
+            foodEstablishmentCertStatus: parsedData.data.foodEstablishmentCertStatus || existingApplication.foodEstablishmentCertStatus,
+            documentsAdminFeedback: parsedData.data.documentsAdminFeedback,
+            documentsReviewedBy: req.neonUser.id
+        };
 
-        console.log(`Document verification updated for application ${applicationId}: `, {
-            foodSafetyLicenseStatus: updatedApplication.foodSafetyLicenseStatus,
-            foodEstablishmentCertStatus: updatedApplication.foodEstablishmentCertStatus,
-            // @ts-ignore
-            reviewedBy: parsedData.data.documentsReviewedBy,
-            timestamp: new Date().toISOString()
-        });
+        // Update the application document verification via Service
+        const updatedApplication = await appService.verifyDocuments(verifyDto);
 
         // Check if both documents are approved, then update user verification status
         if (updatedApplication.foodSafetyLicenseStatus === "approved" &&
             (!updatedApplication.foodEstablishmentCertUrl || updatedApplication.foodEstablishmentCertStatus === "approved")) {
-            await storage.updateUserVerificationStatus(updatedApplication.userId!, true);
-            console.log(`User ${updatedApplication.userId} has been fully verified`);
 
-            // NOTE: Full verification email is handled by api/index.js in production
-            // Removed duplicate email logic to prevent double emails
+            // Use UserService to verify user
+            if (updatedApplication.userId) {
+                await userService.verifyUser(updatedApplication.userId, true);
+                console.log(`User ${updatedApplication.userId} has been fully verified`);
+            }
         }
 
         return res.status(200).json(updatedApplication);
     } catch (error) {
         console.error("Error updating application document verification:", error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         return res.status(500).json({ message: "Internal server error" });
     }
 });

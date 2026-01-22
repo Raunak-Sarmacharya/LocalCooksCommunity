@@ -25,7 +25,7 @@ export class UserRepository {
         .from(users)
         .where(eq(users.id, id))
         .limit(1);
-      
+
       return (user || null) as UserDTO | null;
     } catch (error: any) {
       console.error(`[UserRepository] Error finding user by ID ${id}:`, error);
@@ -47,7 +47,7 @@ export class UserRepository {
         .from(users)
         .where(eq(users.username, username))
         .limit(1);
-      
+
       return (user || null) as UserDTO | null;
     } catch (error: any) {
       console.error(`[UserRepository] Error finding user by username ${username}:`, error);
@@ -69,7 +69,7 @@ export class UserRepository {
         .from(users)
         .where(eq(users.firebaseUid, firebaseUid))
         .limit(1);
-      
+
       return (user || null) as UserDTO | null;
     } catch (error: any) {
       console.error(`[UserRepository] Error finding user by Firebase UID ${firebaseUid}:`, error);
@@ -91,7 +91,7 @@ export class UserRepository {
         .from(users)
         .where(eq(users.username, email))
         .limit(1);
-      
+
       return (user || null) as UserDTO | null;
     } catch (error: any) {
       console.error(`[UserRepository] Error finding user by email ${email}:`, error);
@@ -122,7 +122,7 @@ export class UserRepository {
           isPortalUser: false,
         })
         .returning();
-      
+
       return user as UserDTO;
     } catch (error: any) {
       console.error('[UserRepository] Error creating user:', error);
@@ -156,7 +156,7 @@ export class UserRepository {
         })
         .where(eq(users.id, id))
         .returning();
-      
+
       return (user || null) as UserDTO | null;
     } catch (error: any) {
       console.error(`[UserRepository] Error updating user ${id}:`, error);
@@ -178,7 +178,7 @@ export class UserRepository {
         .set({ firebaseUid })
         .where(eq(users.id, id))
         .returning();
-      
+
       return (user || null) as UserDTO | null;
     } catch (error: any) {
       console.error(`[UserRepository] Error updating Firebase UID for user ${id}:`, error);
@@ -204,6 +204,25 @@ export class UserRepository {
       throw new DomainError(
         UserErrorCodes.VALIDATION_ERROR,
         'Failed to update user',
+        500
+      );
+    }
+  }
+
+  /**
+   * Update user verification status
+   */
+  async setVerified(userId: number, isVerified: boolean): Promise<void> {
+    try {
+      await db
+        .update(users)
+        .set({ isVerified })
+        .where(eq(users.id, userId));
+    } catch (error: any) {
+      console.error(`[UserRepository] Error setting isVerified for user ${userId}:`, error);
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_ERROR,
+        'Failed to update user verification',
         500
       );
     }
@@ -251,7 +270,7 @@ export class UserRepository {
         .select()
         .from(users)
         .where(eq(users.role, 'manager'));
-      
+
       return managers as UserDTO[];
     } catch (error: any) {
       console.error('[UserRepository] Error finding all managers:', error);
@@ -272,7 +291,7 @@ export class UserRepository {
         .select()
         .from(users)
         .where(eq(users.isChef, true));
-      
+
       return chefs as UserDTO[];
     } catch (error: any) {
       console.error('[UserRepository] Error finding all chefs:', error);
@@ -292,12 +311,12 @@ export class UserRepository {
       const result = await db
         .select({ id: users.id })
         .from(users)
-        .where(excludeId 
+        .where(excludeId
           ? and(eq(users.username, username), sql`${users.id} != ${excludeId}`)
           : eq(users.username, username)
         )
         .limit(1);
-      
+
       return result.length > 0;
     } catch (error: any) {
       console.error(`[UserRepository] Error checking username existence ${username}:`, error);
@@ -313,16 +332,35 @@ export class UserRepository {
       const result = await db
         .select({ id: users.id })
         .from(users)
-        .where(excludeId 
+        .where(excludeId
           ? and(eq(users.firebaseUid, firebaseUid), sql`${users.id} != ${excludeId}`)
           : eq(users.firebaseUid, firebaseUid)
         )
         .limit(1);
-      
+
       return result.length > 0;
     } catch (error: any) {
       console.error(`[UserRepository] Error checking Firebase UID existence ${firebaseUid}:`, error);
       return false;
+    }
+  }
+
+  /**
+   * Update password by Firebase UID (for password reset)
+   */
+  async updatePasswordByFirebaseUid(firebaseUid: string, hashedPassword: string): Promise<void> {
+    try {
+      await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.firebaseUid, firebaseUid));
+    } catch (error: any) {
+      console.error(`[UserRepository] Error updating password for Firebase UID ${firebaseUid}:`, error);
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_ERROR,
+        'Failed to update password',
+        500
+      );
     }
   }
 }

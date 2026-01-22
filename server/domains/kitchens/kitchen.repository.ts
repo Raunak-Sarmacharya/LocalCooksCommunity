@@ -8,13 +8,28 @@
 import { db } from '../../db';
 import { kitchens, locations } from '@shared/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO } from './kitchen.types';
+import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
 
 /**
  * Repository for kitchen data access
  */
 export class KitchenRepository {
+  /**
+   * Helper to map DB result to DTO
+   */
+  private mapToDTO(row: typeof kitchens.$inferSelect): KitchenDTO {
+    return {
+      ...row,
+      description: row.description || undefined,
+      hourlyRate: row.hourlyRate ? parseFloat(row.hourlyRate) : null,
+      galleryImages: (row.galleryImages as string[]) || [], // Ensure type safety for JSONB
+      amenities: (row.amenities as string[]) || [],         // Ensure type safety for JSONB
+      // Cast enum to specific string union type if needed, or trust strict match
+      pricingModel: row.pricingModel as any
+    };
+  }
+
   /**
    * Find kitchen by ID
    */
@@ -25,8 +40,8 @@ export class KitchenRepository {
         .from(kitchens)
         .where(eq(kitchens.id, id))
         .limit(1);
-      
-      return (kitchen || null) as KitchenDTO | null;
+
+      return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error finding kitchen by ID ${id}:`, error);
       throw new DomainError(
@@ -47,8 +62,8 @@ export class KitchenRepository {
         .from(kitchens)
         .where(eq(kitchens.locationId, locationId))
         .orderBy(desc(kitchens.createdAt));
-      
-      return results as KitchenDTO[];
+
+      return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
       console.error(`[KitchenRepository] Error finding kitchens by location ${locationId}:`, error);
       throw new DomainError(
@@ -74,8 +89,8 @@ export class KitchenRepository {
           )
         )
         .orderBy(desc(kitchens.createdAt));
-      
-      return results as KitchenDTO[];
+
+      return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
       console.error(`[KitchenRepository] Error finding active kitchens by location ${locationId}:`, error);
       throw new DomainError(
@@ -96,8 +111,8 @@ export class KitchenRepository {
         .from(kitchens)
         .where(eq(kitchens.isActive, true))
         .orderBy(desc(kitchens.createdAt));
-      
-      return results as KitchenDTO[];
+
+      return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
       console.error('[KitchenRepository] Error finding all active kitchens:', error);
       throw new DomainError(
@@ -123,14 +138,14 @@ export class KitchenRepository {
           galleryImages: dto.galleryImages || [],
           amenities: dto.amenities || [],
           isActive: dto.isActive !== undefined ? dto.isActive : true,
-          hourlyRate: dto.hourlyRate || null,
+          hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : null, // Convert number to string for numeric column
           currency: dto.currency || 'CAD',
           minimumBookingHours: dto.minimumBookingHours || 1,
           pricingModel: dto.pricingModel || 'hourly',
         })
         .returning();
-      
-      return kitchen as KitchenDTO;
+
+      return this.mapToDTO(kitchen);
     } catch (error: any) {
       console.error('[KitchenRepository] Error creating kitchen:', error);
       throw new DomainError(
@@ -156,15 +171,15 @@ export class KitchenRepository {
           galleryImages: dto.galleryImages,
           amenities: dto.amenities,
           isActive: dto.isActive,
-          hourlyRate: dto.hourlyRate,
+          hourlyRate: dto.hourlyRate ? dto.hourlyRate.toString() : undefined, // Convert number to string
           currency: dto.currency,
           minimumBookingHours: dto.minimumBookingHours,
           pricingModel: dto.pricingModel,
         })
         .where(eq(kitchens.id, id))
         .returning();
-      
-      return (kitchen || null) as KitchenDTO | null;
+
+      return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error updating kitchen ${id}:`, error);
       throw new DomainError(
@@ -185,8 +200,8 @@ export class KitchenRepository {
         .set({ isActive: true })
         .where(eq(kitchens.id, id))
         .returning();
-      
-      return (kitchen || null) as KitchenDTO | null;
+
+      return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error activating kitchen ${id}:`, error);
       throw new DomainError(
@@ -207,8 +222,8 @@ export class KitchenRepository {
         .set({ isActive: false })
         .where(eq(kitchens.id, id))
         .returning();
-      
-      return (kitchen || null) as KitchenDTO | null;
+
+      return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error deactivating kitchen ${id}:`, error);
       throw new DomainError(
@@ -235,7 +250,7 @@ export class KitchenRepository {
           )
         )
         .limit(1);
-      
+
       return result.length > 0;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error checking name existence for location ${locationId}:`, error);
@@ -253,8 +268,8 @@ export class KitchenRepository {
         .set({ imageUrl })
         .where(eq(kitchens.id, id))
         .returning();
-      
-      return (kitchen || null) as KitchenDTO | null;
+
+      return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error updating image for kitchen ${id}:`, error);
       throw new DomainError(
@@ -275,8 +290,8 @@ export class KitchenRepository {
         .set({ galleryImages })
         .where(eq(kitchens.id, id))
         .returning();
-      
-      return (kitchen || null) as KitchenDTO | null;
+
+      return kitchen ? this.mapToDTO(kitchen) : null;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error updating gallery for kitchen ${id}:`, error);
       throw new DomainError(
@@ -296,13 +311,51 @@ export class KitchenRepository {
         .select()
         .from(kitchens)
         .orderBy(desc(kitchens.createdAt));
-      
-      return results as KitchenDTO[];
+
+      return results.map(k => this.mapToDTO(k));
     } catch (error: any) {
       console.error('[KitchenRepository] Error finding all kitchens:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to find kitchens',
+        500
+      );
+    }
+  }
+
+  /**
+   * Find all kitchens with location details
+   */
+  async findAllWithLocation(): Promise<KitchenWithLocationDTO[]> {
+    try {
+      const results = await db
+        .select({
+          kitchen: kitchens,
+          location: locations,
+        })
+        .from(kitchens)
+        .leftJoin(locations, eq(kitchens.locationId, locations.id))
+        .orderBy(desc(kitchens.createdAt));
+
+      return results.map(({ kitchen, location }) => ({
+        ...this.mapToDTO(kitchen),
+        location: location ? {
+          ...location,
+          logoUrl: location.logoUrl || null,
+          brandImageUrl: location.brandImageUrl || null,
+          kitchenLicenseUrl: location.kitchenLicenseUrl || null,
+          kitchenLicenseFeedback: location.kitchenLicenseFeedback || null,
+          kitchenLicenseExpiry: location.kitchenLicenseExpiry || null,
+          notificationEmail: location.notificationEmail || null,
+          notificationPhone: location.notificationPhone || null,
+          kitchenLicenseApprovedBy: location.kitchenLicenseApprovedBy || null,
+        } : undefined
+      } as KitchenWithLocationDTO));
+    } catch (error: any) {
+      console.error('[KitchenRepository] Error finding kitchens with location:', error);
+      throw new DomainError(
+        KitchenErrorCodes.KITCHEN_NOT_FOUND,
+        'Failed to find kitchens with location',
         500
       );
     }

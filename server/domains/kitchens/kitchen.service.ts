@@ -6,7 +6,7 @@
  */
 
 import { KitchenRepository } from './kitchen.repository';
-import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO } from './kitchen.types';
+import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO } from './kitchen.types';
 import { DomainError, KitchenErrorCodes } from '../../shared/errors/domain-error';
 import { validateKitchenInput } from '../../shared/validators/input-validator';
 
@@ -14,7 +14,7 @@ import { validateKitchenInput } from '../../shared/validators/input-validator';
  * Service for kitchen business logic
  */
 export class KitchenService {
-  constructor(private kitchenRepo: KitchenRepository) {}
+  constructor(private kitchenRepo: KitchenRepository) { }
 
   /**
    * Create new kitchen with validation
@@ -38,7 +38,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[KitchenService] Error creating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
@@ -54,7 +54,7 @@ export class KitchenService {
   async updateKitchen(dto: UpdateKitchenDTO): Promise<KitchenDTO> {
     try {
       const existingKitchen = await this.kitchenRepo.findById(dto.id);
-      
+
       if (!existingKitchen) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -83,7 +83,7 @@ export class KitchenService {
       }
 
       const updated = await this.kitchenRepo.update(dto.id, dto);
-      
+
       if (!updated) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -97,7 +97,7 @@ export class KitchenService {
       if (error instanceof DomainError) {
         throw error;
       }
-      
+
       console.error('[KitchenService] Error updating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
@@ -113,7 +113,7 @@ export class KitchenService {
   async activateKitchen(id: number): Promise<KitchenDTO> {
     try {
       const existingKitchen = await this.kitchenRepo.findById(id);
-      
+
       if (!existingKitchen) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -131,7 +131,7 @@ export class KitchenService {
       }
 
       const updated = await this.kitchenRepo.activate(id);
-      
+
       if (!updated) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -142,6 +142,9 @@ export class KitchenService {
 
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[KitchenService] Error activating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
@@ -157,7 +160,7 @@ export class KitchenService {
   async deactivateKitchen(id: number): Promise<KitchenDTO> {
     try {
       const existingKitchen = await this.kitchenRepo.findById(id);
-      
+
       if (!existingKitchen) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -175,7 +178,7 @@ export class KitchenService {
       }
 
       const updated = await this.kitchenRepo.deactivate(id);
-      
+
       if (!updated) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -186,6 +189,9 @@ export class KitchenService {
 
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[KitchenService] Error deactivating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
@@ -201,7 +207,7 @@ export class KitchenService {
   async updateKitchenImage(id: number, imageUrl: string): Promise<KitchenDTO> {
     try {
       const existingKitchen = await this.kitchenRepo.findById(id);
-      
+
       if (!existingKitchen) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -211,7 +217,7 @@ export class KitchenService {
       }
 
       const updated = await this.kitchenRepo.updateImage(id, imageUrl);
-      
+
       if (!updated) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -222,6 +228,9 @@ export class KitchenService {
 
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[KitchenService] Error updating kitchen image:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
@@ -237,7 +246,7 @@ export class KitchenService {
   async updateKitchenGallery(id: number, galleryImages: string[]): Promise<KitchenDTO> {
     try {
       const existingKitchen = await this.kitchenRepo.findById(id);
-      
+
       if (!existingKitchen) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -247,7 +256,7 @@ export class KitchenService {
       }
 
       const updated = await this.kitchenRepo.updateGallery(id, galleryImages);
-      
+
       if (!updated) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -258,6 +267,9 @@ export class KitchenService {
 
       return updated;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[KitchenService] Error updating kitchen gallery:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
@@ -273,7 +285,7 @@ export class KitchenService {
   async getKitchenById(id: number): Promise<KitchenDTO> {
     try {
       const kitchen = await this.kitchenRepo.findById(id);
-      
+
       if (!kitchen) {
         throw new DomainError(
           KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -284,6 +296,9 @@ export class KitchenService {
 
       return kitchen;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[KitchenService] Error getting kitchen by ID:', error);
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
@@ -340,6 +355,22 @@ export class KitchenService {
       throw new DomainError(
         KitchenErrorCodes.KITCHEN_NOT_FOUND,
         'Failed to get kitchens',
+        500
+      );
+    }
+  }
+
+  /**
+   * Get all kitchens with location details
+   */
+  async getAllKitchensWithLocation(): Promise<KitchenWithLocationDTO[]> {
+    try {
+      return await this.kitchenRepo.findAllWithLocation();
+    } catch (error: any) {
+      console.error('[KitchenService] Error getting all kitchens with location:', error);
+      throw new DomainError(
+        KitchenErrorCodes.KITCHEN_NOT_FOUND,
+        'Failed to get kitchens with location',
         500
       );
     }
