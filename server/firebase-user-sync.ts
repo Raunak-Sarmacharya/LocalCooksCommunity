@@ -1,5 +1,5 @@
 import { User } from '@shared/schema';
-import { firebaseStorage } from './storage-firebase';
+import { userService } from './domains/users/user.service';
 
 export interface FirebaseUserData {
   uid: string;
@@ -54,7 +54,7 @@ export async function syncFirebaseUserToNeon(params: {
 
   try {
     // Check if user already exists by Firebase UID
-    const existingUser = await firebaseStorage.getUserByFirebaseUid(uid);
+    const existingUser = await userService.getUserByFirebaseUid(uid);
     if (existingUser) {
       console.log(`✅ EXISTING USER FOUND: ${existingUser.id} (${existingUser.username})`);
       return existingUser;
@@ -111,7 +111,7 @@ export async function syncFirebaseUserToNeon(params: {
     };
 
     console.log(`➕ CREATING NEW USER with data:`, userData);
-    const newUser = await firebaseStorage.createUser({
+    const newUser = await userService.createUser({
       ...userData,
       has_seen_welcome: hasSeenWelcome
     });
@@ -163,7 +163,7 @@ export async function syncFirebaseUserToNeon(params: {
  */
 export async function getNeonUserIdFromFirebaseUid(firebaseUid: string): Promise<number | null> {
   try {
-    const user = await firebaseStorage.getUserByFirebaseUid(firebaseUid);
+    const user = await userService.getUserByFirebaseUid(firebaseUid);
     return user ? user.id : null;
   } catch (error) {
     console.error('❌ Error getting Neon user ID from Firebase UID:', error);

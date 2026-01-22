@@ -1,8 +1,6 @@
 import { Router, Request, Response } from "express";
 import { eq, inArray, desc, and } from "drizzle-orm";
 import { db } from "../db";
-import { firebaseStorage } from "../storage-firebase";
-import { storage } from "../storage";
 import { requireChef } from "./middleware";
 import { normalizeImageUrl } from "./utils";
 import { applications, chefLocationAccess, locations } from "@shared/schema";
@@ -10,20 +8,12 @@ import { sendEmail, generateChefProfileRequestEmail } from "../email";
 
 const router = Router();
 
-// Import Kitchen Service
-import { KitchenRepository } from "../domains/kitchens/kitchen.repository";
-import { KitchenService } from "../domains/kitchens/kitchen.service";
-
-// Import Location Service
-import { LocationRepository } from "../domains/locations/location.repository";
-import { LocationService } from "../domains/locations/location.service";
-
-// Initialize Services
-const kitchenRepository = new KitchenRepository();
-const kitchenService = new KitchenService(kitchenRepository);
-
-const locationRepository = new LocationRepository();
-const locationService = new LocationService(locationRepository);
+// Import Services
+import { kitchenService } from "../domains/kitchens/kitchen.service";
+import { locationService } from "../domains/locations/location.service";
+import { chefService } from "../domains/users/chef.service";
+import { bookingService } from "../domains/bookings/booking.service";
+import { userService } from "../domains/users/user.service";
 
 // Get all kitchens with location and manager info
 router.get("/chef/kitchens", requireChef, async (req: Request, res: Response) => {
@@ -150,20 +140,21 @@ router.post("/chef/share-profile", requireChef, async (req: Request, res: Respon
         }
 
         // Check if chef has admin-granted access to this location
-        const hasLocationAccess = await firebaseStorage.chefHasLocationAccess(chefId, locationId);
+        const hasLocationAccess = await chefService.hasLocationAccess(chefId, locationId);
 
         if (!hasLocationAccess) {
             return res.status(403).json({ error: "You don't have access to this location. Please contact an administrator." });
         }
 
         // Get chef details before sharing profile
-        const chef = await storage.getUser(chefId);
+        const chef = await userService.getUser(chefId);
         if (!chef) {
             return res.status(404).json({ error: "Chef not found" });
         }
 
         // Get location details
-        const location = await firebaseStorage.getLocationById(locationId);
+        // Get location details
+        const location = await locationService.getLocationById(locationId);
         if (!location) {
             return res.status(404).json({ error: "Location not found" });
         }
@@ -179,7 +170,7 @@ router.post("/chef/share-profile", requireChef, async (req: Request, res: Respon
             .orderBy(desc(applications.createdAt))
             .limit(1);
 
-        const profile = await firebaseStorage.shareChefProfileWithLocation(chefId, locationId);
+        const profile = await chefService.shareProfileWithLocation(chefId, locationId);
 
         // Send email to manager if this is a new profile share (status is pending)
         if (profile && profile.status === 'pending') {
@@ -242,7 +233,7 @@ router.get("/chef/profiles", requireChef, async (req: Request, res: Response) =>
         // Get profiles for all accessible locations
         const profiles = await Promise.all(
             locationIds.map(async (locationId) => {
-                const profile = await firebaseStorage.getChefLocationProfile(chefId, locationId);
+                const profile = await chefService.getProfile(chefId, locationId);
                 const location = allLocations.find(l => l.id === locationId);
                 return { locationId, location, profile };
             })
@@ -272,7 +263,7 @@ router.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, 
             return res.status(400).json({ error: "Invalid date format" });
         }
 
-        const slotsInfo = await firebaseStorage.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
+        const slotsInfo = await bookingService.getAllTimeSlotsWithBookingInfo(kitchenId, bookingDate);
 
         res.json(slotsInfo);
     } catch (error: any) {
@@ -303,7 +294,7 @@ router.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req: Re
 
         console.log(`🔍 Fetching available slots for kitchen ${kitchenId} on ${date}`);
 
-        const slots = await firebaseStorage.getAvailableTimeSlots(kitchenId, bookingDate);
+        const slots = await bookingService.getAvailableTimeSlots(kitchenId, bookingDate);
 
         console.log(`✅ Returning ${slots.length} available slots`);
 

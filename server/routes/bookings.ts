@@ -6,21 +6,23 @@ import {
     equipmentBookings as equipmentBookingsTable,
     kitchens,
     locations,
-    users,
-    storageListings,
-    equipmentListings
+    users
 } from "@shared/schema";
 import { eq, and, ne } from "drizzle-orm";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
-import { firebaseStorage } from "../storage-firebase";
 import { requireChef } from "./middleware";
 import { createPaymentIntent } from "../services/stripe-service";
 import { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } from "../services/pricing-service";
 import { calculateCheckoutFees } from "../services/stripe-checkout-fee-service";
 import { createCheckoutSession } from "../services/stripe-checkout-service";
 import { createTransaction } from "../services/stripe-checkout-transactions-service";
-import { storage } from "../storage";
+import { userService } from "../domains/users/user.service";
+import { bookingService } from "../domains/bookings/booking.service";
+import { inventoryService } from "../domains/inventory/inventory.service";
+import { kitchenService } from "../domains/kitchens/kitchen.service";
+import { locationService } from "../domains/locations/location.service";
+import { chefService } from "../domains/users/chef.service";
 import { getChefPhone, getManagerPhone } from "../phone-utils";
 import {
     sendSMS,
@@ -142,7 +144,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
 // Get chef's storage bookings
 router.get("/chef/storage-bookings", requireChef, async (req: Request, res: Response) => {
     try {
-        const storageBookings = await firebaseStorage.getStorageBookingsByChef(req.neonUser!.id);
+        const storageBookings = await bookingService.getStorageBookingsByChef(req.neonUser!.id);
         res.json(storageBookings);
     } catch (error) {
         console.error("Error fetching storage bookings:", error);
@@ -158,7 +160,7 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
             return res.status(400).json({ error: "Invalid storage booking ID" });
         }
 
-        const booking = await firebaseStorage.getStorageBookingById(id);
+        const booking = await bookingService.getStorageBookingById(id);
         if (!booking) {
             return res.status(404).json({ error: "Storage booking not found" });
         }
@@ -182,7 +184,7 @@ router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: 
         // For now, this endpoint is open - secure it in production!
 
         const { maxDaysToCharge } = req.body;
-        const processed = await firebaseStorage.processOverstayerPenalties(maxDaysToCharge || 7);
+        const processed = await bookingService.processOverstayerPenalties(maxDaysToCharge || 7);
 
         res.json({
             success: true,
@@ -210,7 +212,7 @@ router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request
         }
 
         // Verify the booking belongs to this chef
-        const booking = await firebaseStorage.getStorageBookingById(id);
+        const booking = await bookingService.getStorageBookingById(id);
         if (!booking) {
             return res.status(404).json({ error: "Storage booking not found" });
         }
@@ -231,7 +233,7 @@ router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request
         }
 
         // Extend the booking
-        const extendedBooking = await firebaseStorage.extendStorageBooking(id, newEndDateObj);
+        const extendedBooking = await bookingService.extendStorageBooking(id, newEndDateObj);
 
         // TODO: Process payment for the extension
         // For now, we'll just update the booking and return it
@@ -256,7 +258,7 @@ router.get("/chef/bookings/:id", requireChef, async (req: Request, res: Response
             return res.status(400).json({ error: "Invalid booking ID" });
         }
 
-        const booking = await firebaseStorage.getBookingById(id);
+        const booking = await bookingService.getBookingById(id);
         if (!booking) {
             return res.status(404).json({ error: "Booking not found" });
         }
@@ -267,11 +269,11 @@ router.get("/chef/bookings/:id", requireChef, async (req: Request, res: Response
         }
 
         // Get storage and equipment bookings for this kitchen booking
-        const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
-        const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+        const storageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
+        const equipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
 
         // Get kitchen details
-        const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
 
         res.json({
             ...booking,
@@ -293,7 +295,7 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
             return res.status(400).json({ error: "Invalid booking ID" });
         }
 
-        const booking = await firebaseStorage.getBookingById(id);
+        const booking = await bookingService.getBookingById(id);
         if (!booking) {
             return res.status(404).json({ error: "Booking not found" });
         }
@@ -304,10 +306,10 @@ router.get("/bookings/:id/invoice", requireChef, async (req: Request, res: Respo
         }
 
         // Get related data
-        const chef = await storage.getUser(booking.chefId);
-        const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
-        const storageBookings = await firebaseStorage.getStorageBookingsByKitchenBooking(id);
-        const equipmentBookings = await firebaseStorage.getEquipmentBookingsByKitchenBooking(id);
+        const chef = await userService.getUser(booking.chefId);
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        const storageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
+        const equipmentBookings = await bookingService.getEquipmentBookingsByKitchenBooking(id);
 
         // Get location details
         let location = null;
@@ -421,12 +423,13 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
         }
 
         // Cancel the booking
-        await firebaseStorage.cancelKitchenBooking(id, req.neonUser!.id);
+        // Using cancelBooking from BookingService which handles logic
+        await bookingService.cancelBooking(id, req.neonUser!.id, true);
 
         // Send email notifications to chef and manager
         try {
             // Get kitchen details
-            const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+            const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
             if (!kitchen) {
                 console.warn(`⚠️ Kitchen ${booking.kitchenId} not found for email notification`);
             } else {
@@ -448,7 +451,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                     } else {
 
                         // Get chef details
-                        const chef = await storage.getUser(booking.chefId as number);
+                        const chef = await userService.getUser(booking.chefId as number);
                         if (!chef) {
                             console.warn(`⚠️ Chef ${booking.chefId} not found for email notification`);
                         } else {
@@ -584,16 +587,7 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0 && pool) {
             for (const storage of selectedStorage) {
                 try {
-                    const [storageListing] = await db
-                        .select({
-                            id: storageListings.id,
-                            pricingModel: storageListings.pricingModel,
-                            basePrice: storageListings.basePrice,
-                            minimumBookingDuration: storageListings.minimumBookingDuration
-                        })
-                        .from(storageListings)
-                        .where(eq(storageListings.id, storage.storageListingId))
-                        .limit(1);
+                    const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
 
                     if (storageListing) {
                         // Parse basePrice as numeric (stored in cents in database)
@@ -625,21 +619,13 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
             for (const equipmentListingId of selectedEquipmentIds) {
                 try {
-                    const [equipmentListing] = await db
-                        .select({
-                            id: equipmentListings.id,
-                            sessionRate: equipmentListings.sessionRate,
-                            damageDeposit: equipmentListings.damageDeposit,
-                            availabilityType: equipmentListings.availabilityType
-                        })
-                        .from(equipmentListings)
-                        .where(
-                            and(
-                                eq(equipmentListings.id, equipmentListingId),
-                                ne(equipmentListings.availabilityType, 'included')
-                            )
-                        )
-                        .limit(1);
+                    const equipmentListing = await inventoryService.getEquipmentListingById(equipmentListingId);
+
+                    // Filter in memory for compatibility with previous query
+                    if (equipmentListing && equipmentListing.availabilityType === 'included') {
+                        // Skip included items for pricing calculation
+                        continue;
+                    }
 
                     if (equipmentListing) {
                         // Parse sessionRate and damageDeposit as numeric (stored in cents in database)
@@ -849,13 +835,15 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
         const chefId = req.neonUser!.id;
 
         // Get the location for this kitchen
-        const kitchenLocationId1 = await firebaseStorage.getKitchenLocation(kitchenId);
+        // Get the location for this kitchen
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        const kitchenLocationId1 = kitchen.locationId;
         if (!kitchenLocationId1) {
             return res.status(400).json({ error: "Kitchen location not found" });
         }
 
         // Check if chef has an approved kitchen application for this location
-        const applicationStatus = await firebaseStorage.getChefKitchenApplicationStatus(chefId, kitchenLocationId1);
+        const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId1);
 
         if (!applicationStatus.canBook) {
             return res.status(403).json({
@@ -867,7 +855,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
 
         // First validate that the booking is within manager-set availability
         const bookingDateObj = new Date(bookingDate);
-        const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        const availabilityCheck = await bookingService.validateBookingAvailability(
             kitchenId,
             bookingDateObj,
             startTime,
@@ -879,13 +867,13 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
         }
 
         // Get location to get timezone and minimum booking window
-        const kitchenLocationId2 = await firebaseStorage.getKitchenLocation(kitchenId);
+        const kitchenLocationId2 = kitchen.locationId;
         let location = null;
         let timezone = "America/Edmonton"; // Default fallback
         let minimumBookingWindowHours = 1; // Default fallback
 
         if (kitchenLocationId2) {
-            location = await firebaseStorage.getLocationById(kitchenLocationId2);
+            location = await locationService.getLocationById(kitchenLocationId2);
             if (location) {
                 timezone = (location as any).timezone || "America/Edmonton";
                 // Use manager's setting - allow 0 for same-day bookings
@@ -940,7 +928,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             // Note: We should ideally recalculate price here to verify, but for now trusting the intent amount
         }
 
-        const booking = await firebaseStorage.createKitchenBooking({
+        const booking = await bookingService.createKitchenBooking({
             kitchenId,
             chefId,
             bookingDate: bookingDateObj,
@@ -951,7 +939,6 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             paymentIntentId,
             specialNotes,
             selectedStorageIds: selectedStorageIds || [], // Handle legacy IDs
-            selectedStorage: selectedStorage || [],      // Handle new detailed objects
             selectedEquipmentIds: selectedEquipmentIds || []
         });
 
@@ -960,10 +947,10 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             if (!pool) throw new Error("Database pool not available");
 
             // Get kitchen details
-            const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+            const kitchen = await kitchenService.getKitchenById(kitchenId);
 
             // Get chef details
-            const chef = await storage.getUser(chefId);
+            const chef = await userService.getUser(chefId);
 
             if (chef && kitchen) {
                 // Send email to chef
@@ -1014,31 +1001,8 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
         console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
 
         // Check if firebaseStorage.getBookingsByChef exists, if not use pool
-        if (firebaseStorage.getBookingsByChef) {
-            const bookings = await firebaseStorage.getBookingsByChef(chefId);
-            res.json(bookings);
-        } else {
-            // Fallback to direct DB query if method doesn't exist on firebaseStorage yet
-            const rows = await db
-                .select({
-                    id: kitchenBookings.id,
-                    chefId: kitchenBookings.chefId,
-                    kitchenId: kitchenBookings.kitchenId,
-                    bookingDate: kitchenBookings.bookingDate,
-                    startTime: kitchenBookings.startTime,
-                    endTime: kitchenBookings.endTime,
-                    status: kitchenBookings.status,
-                    totalPrice: kitchenBookings.totalPrice,
-                    kitchenName: kitchens.name,
-                    locationName: locations.name
-                })
-                .from(kitchenBookings)
-                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
-                .innerJoin(locations, eq(kitchens.locationId, locations.id))
-                .where(eq(kitchenBookings.chefId, chefId))
-                .orderBy(kitchenBookings.bookingDate);
-            res.json(rows);
-        }
+        const bookings = await bookingService.getKitchenBookingsByChef(chefId);
+        res.json(bookings);
     } catch (error) {
         console.error("Error fetching bookings:", error);
         res.status(500).json({ error: "Failed to fetch bookings" });

@@ -28,7 +28,7 @@ router.post('/firebase-register-user', verifyFirebaseAuth, async (req: Request, 
         const { displayName, role, emailVerified } = req.body;
 
         // Check if user already exists via Service
-        const existingUser = await userService.findByFirebaseUid(req.firebaseUser.uid);
+        const existingUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
         if (existingUser) {
             return res.status(409).json({
                 error: 'User already exists',
@@ -116,7 +116,7 @@ router.post('/firebase/forgot-password', async (req: Request, res: Response) => 
             console.log(`✅ Firebase user found: ${userRecord.uid}`);
 
             // Check if this user exists in our Neon database and is email/password user
-            const neonUser = await userService.findByFirebaseUid(userRecord.uid);
+            const neonUser = await userService.getUserByFirebaseUid(userRecord.uid);
 
             if (!neonUser) {
                 console.log(`❌ User not found in Neon DB for Firebase UID: ${userRecord.uid}`);
@@ -217,7 +217,7 @@ router.post('/firebase/reset-password', async (req: Request, res: Response) => {
             // Update the password hash in our Neon database for consistency
             const userRecord = await auth.getUserByEmail(email);
             // Check existence via Service
-            const neonUser = await userService.findByFirebaseUid(userRecord.uid);
+            const neonUser = await userService.getUserByFirebaseUid(userRecord.uid);
 
             if (neonUser) {
                 // Update password via Service (handles hashing)
@@ -264,7 +264,7 @@ router.post('/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res:
         // If this is explicitly marked as registration, allow user creation
         if (isRegistration) {
             // Check if user already exists
-            const existingUser = await userService.findByFirebaseUid(req.firebaseUser.uid);
+            const existingUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
             if (existingUser) {
                 return res.json({
                     success: true,
@@ -299,7 +299,7 @@ router.post('/firebase-sync-user', verifyFirebaseAuth, async (req: Request, res:
         }
 
         // For sign-in (not registration), only sync if user already exists
-        const existingUser = await userService.findByFirebaseUid(req.firebaseUser.uid);
+        const existingUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
         if (!existingUser) {
             return res.status(404).json({
                 error: 'User not found',

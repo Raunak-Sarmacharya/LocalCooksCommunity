@@ -6,7 +6,7 @@
  */
 
 import { KitchenRepository } from './kitchen.repository';
-import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO } from './kitchen.types';
+import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { DomainError, KitchenErrorCodes } from '../../shared/errors/domain-error';
 import { validateKitchenInput } from '../../shared/validators/input-validator';
 
@@ -375,4 +375,102 @@ export class KitchenService {
       );
     }
   }
+
+  /**
+   * Delete kitchen
+   */
+  async deleteKitchen(id: number): Promise<void> {
+    try {
+      // Check if kitchen exists
+      await this.getKitchenById(id);
+
+      await this.kitchenRepo.delete(id);
+    } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
+      console.error('[KitchenService] Error deleting kitchen:', error);
+      throw new DomainError(
+        KitchenErrorCodes.KITCHEN_NOT_FOUND,
+        'Failed to delete kitchen',
+        500
+      );
+    }
+  }
+
+
+  // ==========================================
+  // Date Overrides
+  // ==========================================
+
+  async getKitchenDateOverrides(kitchenId: number, start: Date, end: Date): Promise<KitchenOverrideDTO[]> {
+    try {
+      await this.getKitchenById(kitchenId); // Ensure kitchen exists
+      return await this.kitchenRepo.findOverrides(kitchenId, start, end);
+    } catch (error: any) {
+      if (error instanceof DomainError) throw error;
+      console.error('[KitchenService] Error getting overrides:', error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get overrides', 500);
+    }
+  }
+
+  async createKitchenDateOverride(dto: CreateKitchenOverrideDTO): Promise<KitchenOverrideDTO> {
+    try {
+      await this.getKitchenById(dto.kitchenId);
+      return await this.kitchenRepo.createOverride(dto);
+    } catch (error: any) {
+      if (error instanceof DomainError) throw error;
+      console.error('[KitchenService] Error creating override:', error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to create override', 500);
+    }
+  }
+
+  async updateKitchenDateOverride(id: number, dto: UpdateKitchenOverrideDTO): Promise<KitchenOverrideDTO> {
+    try {
+      const existing = await this.kitchenRepo.findOverrideById(id);
+      if (!existing) {
+        throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Override not found', 404);
+      }
+      const updated = await this.kitchenRepo.updateOverride(id, dto);
+      if (!updated) throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to update override', 500);
+      return updated;
+    } catch (error: any) {
+      if (error instanceof DomainError) throw error;
+      console.error('[KitchenService] Error updating override:', error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to update override', 500);
+    }
+  }
+
+  async deleteKitchenDateOverride(id: number): Promise<void> {
+    try {
+      await this.kitchenRepo.deleteOverride(id);
+    } catch (error: any) {
+      console.error('[KitchenService] Error deleting override:', error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to delete override', 500);
+    }
+  }
+
+  // ==========================================
+  // Availability Helpers
+  // ==========================================
+
+  async getKitchenAvailability(kitchenId: number) {
+    try {
+      return this.kitchenRepo.findAvailability(kitchenId);
+    } catch (error: any) {
+      console.error('[KitchenService] Error getting availability:', error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get availability', 500);
+    }
+  }
+
+  async getKitchenDateOverrideForDate(kitchenId: number, date: Date): Promise<KitchenOverrideDTO | null> {
+    try {
+      return this.kitchenRepo.findOverrideForDate(kitchenId, date);
+    } catch (error: any) {
+      console.error('[KitchenService] Error getting override for date:', error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to get override', 500);
+    }
+  }
 }
+
+export const kitchenService = new KitchenService(new KitchenRepository());

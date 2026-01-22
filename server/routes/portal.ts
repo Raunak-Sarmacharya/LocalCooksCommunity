@@ -9,6 +9,9 @@ import {
 import { eq, desc } from "drizzle-orm";
 import { firebaseStorage } from "../storage-firebase";
 import { requirePortalUser, getAuthenticatedUser } from "./middleware";
+import { bookingService } from "../domains/bookings/booking.service";
+import { kitchenService } from "../domains/kitchens/kitchen.service";
+import { locationService } from "../domains/locations/location.service";
 const router = Router();
 
 // ===============================
@@ -263,7 +266,7 @@ router.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req: R
             return res.status(403).json({ error: "Access denied. You can only access kitchens at your assigned location." });
         }
 
-        const kitchensList = await firebaseStorage.getKitchensByLocation(userLocationId);
+        const kitchensList = await kitchenService.getKitchensByLocationId(userLocationId, true);
 
         // Filter only active kitchens and return info
         const publicKitchens = kitchensList
@@ -327,7 +330,7 @@ router.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req: R
         }
 
         // Get available slots using the same logic as chef bookings
-        const slots = await firebaseStorage.getAvailableSlots(kitchenId, date);
+        const slots = await bookingService.getAvailableSlots(kitchenId, date);
 
         res.json({ slots });
     } catch (error: any) {
@@ -400,7 +403,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
         }
 
         // Check availability
-        const availabilityCheck = await firebaseStorage.validateBookingAvailability(
+        const availabilityCheck = await bookingService.validateBookingAvailability(
             parseInt(kitchenId),
             bookingDateObj,
             startTime,
@@ -412,7 +415,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
         }
 
         // Get location to check minimum booking window
-        const location = await firebaseStorage.getLocationById(userLocationId);
+        const location = await locationService.getLocationById(userLocationId);
         const minimumBookingWindowHours = (location as any)?.minimumBookingWindowHours ?? 1;
 
         // Check minimum booking window if booking is today
@@ -431,7 +434,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
         }
 
         // Create booking as portal booking
-        const booking = await firebaseStorage.createBooking({
+        const booking = await bookingService.createPortalBooking({
             kitchenId: parseInt(kitchenId),
             bookingDate: bookingDateObj,
             startTime,
@@ -453,7 +456,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
             const { sendSMS, generatePortalUserBookingConfirmationSMS, generateManagerPortalBookingSMS } = await import('../sms');
 
             // Get location notification email
-            const locationData = await firebaseStorage.getLocationById(userLocationId);
+            const locationData = await locationService.getLocationById(userLocationId);
             const notificationEmail = (locationData as any)?.notificationEmail;
 
             // Send to manager

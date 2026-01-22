@@ -24,10 +24,7 @@ export class FirebaseStorage {
 
   // ===== USER MANAGEMENT =====
 
-  async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
-  }
+
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
@@ -2736,18 +2733,7 @@ export class FirebaseStorage {
     }
   }
 
-  async getBookingsByKitchen(kitchenId: number): Promise<any[]> {
-    try {
-      return await db
-        .select()
-        .from(kitchenBookings)
-        .where(eq(kitchenBookings.kitchenId, kitchenId))
-        .orderBy(asc(kitchenBookings.bookingDate));
-    } catch (error) {
-      console.error('Error getting bookings by kitchen:', error);
-      throw error;
-    }
-  }
+
 
   async getBookingsByManager(managerId: number): Promise<any[]> {
     try {
@@ -2875,337 +2861,7 @@ export class FirebaseStorage {
     }
   }
 
-  // New method: Get ALL time slots with booking info (for chef view)
-  async getAllTimeSlotsWithBookingInfo(kitchenId: number, date: Date): Promise<Array<{
-    time: string;
-    available: number;
-    capacity: number;
-    isFullyBooked: boolean;
-  }>> {
-    try {
-      console.log(`🕐 Getting all slots with booking info for kitchen ${kitchenId}, date: ${date.toISOString()}`);
 
-      // First check if there's a date-specific override
-      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date);
-
-      let startHour: number;
-      let endHour: number;
-      let capacity: number;
-
-      if (dateOverride) {
-        // If there's an override and it's closed, return empty array
-        if (!dateOverride.isAvailable) {
-          console.log(`❌ Kitchen closed on this date (override)`);
-          return [];
-        }
-        // If override is available with custom hours, use those
-        if (dateOverride.startTime && dateOverride.endTime) {
-          startHour = parseInt(dateOverride.startTime.split(':')[0]);
-          endHour = parseInt(dateOverride.endTime.split(':')[0]);
-          capacity = (dateOverride as any).maxConcurrentBookings ?? (dateOverride as any).max_concurrent_bookings ?? 1;
-          console.log(`✅ Using override hours: ${startHour}:00 - ${endHour}:00, capacity: ${capacity}`);
-        } else {
-          console.log(`⚠️ Override says available but no times specified`);
-          return [];
-        }
-      } else {
-        // No override, use regular weekly schedule
-        const dayOfWeek = date.getDay();
-        const availability = await this.getKitchenAvailability(kitchenId);
-
-        const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-
-        if (!dayAvailability || !dayAvailability.isAvailable) {
-          console.log(`❌ Kitchen not available on day ${dayOfWeek} (weekly schedule)`);
-          return [];
-        }
-
-        startHour = parseInt(dayAvailability.startTime.split(':')[0]);
-        endHour = parseInt(dayAvailability.endTime.split(':')[0]);
-        capacity = (dayAvailability as any).maxConcurrentBookings ?? (dayAvailability as any).max_concurrent_bookings ?? 1;
-        console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00, capacity: ${capacity}`);
-      }
-
-      // Generate 1-hour slots (consistent with api/index.js for Vercel deployment)
-      // Each slot represents a 1-hour booking block
-      const allSlots: string[] = [];
-      for (let hour = startHour; hour < endHour; hour++) {
-        allSlots.push(`${hour.toString().padStart(2, '0')}:00`);
-      }
-
-      // Count bookings per slot
-      const bookings = await this.getBookingsByKitchen(kitchenId);
-      const dateStr = date.toISOString().split('T')[0];
-
-      const dayBookings = bookings.filter(b => {
-        const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
-        return bookingDateStr === dateStr && b.status !== 'cancelled';
-      });
-
-      // Count how many bookings overlap each slot
-      const slotBookingCounts = new Map<string, number>();
-      allSlots.forEach(slot => slotBookingCounts.set(slot, 0));
-
-      dayBookings.forEach(booking => {
-        const [startHours, startMins] = booking.startTime.split(':').map(Number);
-        const [endHours, endMins] = booking.endTime.split(':').map(Number);
-        const startTotalMins = startHours * 60 + startMins;
-        const endTotalMins = endHours * 60 + endMins;
-
-        allSlots.forEach(slot => {
-          const [slotHours, slotMins] = slot.split(':').map(Number);
-          const slotTotalMins = slotHours * 60 + slotMins;
-
-          if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
-            slotBookingCounts.set(slot, (slotBookingCounts.get(slot) || 0) + 1);
-          }
-        });
-      });
-
-      // Build result with availability info
-      const result = allSlots.map(slot => {
-        const bookedCount = slotBookingCounts.get(slot) || 0;
-        return {
-          time: slot,
-          available: Math.max(0, capacity - bookedCount),
-          capacity,
-          isFullyBooked: bookedCount >= capacity
-        };
-      });
-
-      console.log(`📅 Generated ${result.length} total slots`);
-      return result;
-    } catch (error) {
-      console.error('Error getting all time slots with booking info:', error);
-      throw error;
-    }
-  }
-
-  async getAvailableTimeSlots(kitchenId: number, date: Date): Promise<string[]> {
-    try {
-      console.log(`🕐 Getting slots for kitchen ${kitchenId}, date: ${date.toISOString()}`);
-
-      // First check if there's a date-specific override
-      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, date);
-
-      console.log(`📅 Date override found:`, dateOverride ? 'YES' : 'NO');
-      if (dateOverride) {
-        console.log(`   Override details:`, {
-          isAvailable: dateOverride.isAvailable,
-          startTime: dateOverride.startTime,
-          endTime: dateOverride.endTime,
-          reason: dateOverride.reason
-        });
-      }
-
-      let startHour: number;
-      let endHour: number;
-
-      if (dateOverride) {
-        // If there's an override and it's closed, return empty slots
-        if (!dateOverride.isAvailable) {
-          console.log(`❌ Kitchen closed on this date (override)`);
-          return [];
-        }
-        // If override is available with custom hours, use those
-        if (dateOverride.startTime && dateOverride.endTime) {
-          startHour = parseInt(dateOverride.startTime.split(':')[0]);
-          endHour = parseInt(dateOverride.endTime.split(':')[0]);
-          console.log(`✅ Using override hours: ${startHour}:00 - ${endHour}:00`);
-        } else {
-          // Override says available but no times specified - shouldn't happen, return empty
-          console.log(`⚠️ Override says available but no times specified`);
-          return [];
-        }
-      } else {
-        // No override, use regular weekly schedule
-        const dayOfWeek = date.getDay();
-        const availability = await this.getKitchenAvailability(kitchenId);
-
-        console.log(`📆 No override, checking weekly schedule for day ${dayOfWeek}`);
-
-        const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-
-        if (!dayAvailability || !dayAvailability.isAvailable) {
-          console.log(`❌ Kitchen not available on day ${dayOfWeek} (weekly schedule)`);
-          return [];
-        }
-
-        startHour = parseInt(dayAvailability.startTime.split(':')[0]);
-        endHour = parseInt(dayAvailability.endTime.split(':')[0]);
-        console.log(`✅ Using weekly schedule hours: ${startHour}:00 - ${endHour}:00`);
-      }
-
-      // Generate 1-hour slots (consistent with api/index.js for Vercel deployment)
-      // Each slot represents a 1-hour booking block
-      const slots: string[] = [];
-      for (let hour = startHour; hour < endHour; hour++) {
-        slots.push(`${hour.toString().padStart(2, '0')}:00`);
-      }
-
-      // Filter out already booked slots
-      const bookings = await this.getBookingsByKitchen(kitchenId);
-      const dateStr = date.toISOString().split('T')[0];
-
-      const dayBookings = bookings.filter(b => {
-        const bookingDateStr = new Date(b.bookingDate).toISOString().split('T')[0];
-        return bookingDateStr === dateStr && b.status !== 'cancelled';
-      });
-
-      // More granular time conflict checking
-      const bookedSlots = new Set<string>();
-      dayBookings.forEach(booking => {
-        // Convert start and end times to minutes for accurate comparison
-        const [startHours, startMins] = booking.startTime.split(':').map(Number);
-        const [endHours, endMins] = booking.endTime.split(':').map(Number);
-        const startTotalMins = startHours * 60 + startMins;
-        const endTotalMins = endHours * 60 + endMins;
-
-        // Mark all 30-min slots that conflict with this booking
-        for (const slot of slots) {
-          const [slotHours, slotMins] = slot.split(':').map(Number);
-          const slotTotalMins = slotHours * 60 + slotMins;
-
-          // A slot is unavailable if it starts before the booking ends and the next 30min would overlap
-          if (slotTotalMins >= startTotalMins && slotTotalMins < endTotalMins) {
-            bookedSlots.add(slot);
-          }
-        }
-      });
-
-      console.log(`📅 Generated ${slots.length} total slots, ${bookedSlots.size} booked, returning ${slots.length - bookedSlots.size} available`);
-
-      return slots.filter(slot => !bookedSlots.has(slot));
-    } catch (error) {
-      console.error('Error getting available time slots:', error);
-      throw error;
-    }
-  }
-
-  // Get available slots in format expected by public API
-  async getAvailableSlots(kitchenId: number, dateStr: string): Promise<{ time: string; available: boolean }[]> {
-    try {
-      const date = new Date(dateStr);
-      const slots = await this.getAvailableTimeSlots(kitchenId, date);
-      return slots.map(time => ({ time, available: true }));
-    } catch (error) {
-      console.error('Error getting available slots:', error);
-      return [];
-    }
-  }
-
-  // Get location manager
-  async getLocationManager(locationId: number): Promise<any | undefined> {
-    try {
-      const location = await this.getLocationById(locationId);
-      if (!location || !location.managerId) return undefined;
-      return await this.getUser(location.managerId);
-    } catch (error) {
-      console.error('Error getting location manager:', error);
-      return undefined;
-    }
-  }
-
-  // Validate that booking time is within manager-set availability
-  async validateBookingAvailability(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<{ valid: boolean; error?: string }> {
-    try {
-      // Check if start time is before end time
-      if (startTime >= endTime) {
-        return { valid: false, error: "End time must be after start time" };
-      }
-
-      // First check if there's a date-specific override
-      const dateOverride = await this.getKitchenDateOverrideForDate(kitchenId, bookingDate);
-
-      let availabilityStartTime: string;
-      let availabilityEndTime: string;
-
-      if (dateOverride) {
-        // If there's an override and it's closed, can't book
-        if (!dateOverride.isAvailable) {
-          return { valid: false, error: "Kitchen is closed on this date" };
-        }
-        // If override has custom hours, use those
-        if (dateOverride.startTime && dateOverride.endTime) {
-          availabilityStartTime = dateOverride.startTime;
-          availabilityEndTime = dateOverride.endTime;
-        } else {
-          return { valid: false, error: "Kitchen availability not properly configured for this date" };
-        }
-      } else {
-        // No override, use regular weekly schedule
-        const dayOfWeek = bookingDate.getDay();
-        const availability = await this.getKitchenAvailability(kitchenId);
-
-        const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
-
-        // Check if day is available
-        if (!dayAvailability || !dayAvailability.isAvailable) {
-          return { valid: false, error: "Kitchen is not available on this day" };
-        }
-
-        availabilityStartTime = dayAvailability.startTime;
-        availabilityEndTime = dayAvailability.endTime;
-      }
-
-      // Check if booking times are within availability window
-      if (startTime < availabilityStartTime || endTime > availabilityEndTime) {
-        return { valid: false, error: "Booking time must be within manager-set available hours" };
-      }
-
-      // Check that start time aligns with available slots (hourly slots)
-      const startHour = parseInt(startTime.split(':')[0]);
-      const availabilityStartHour = parseInt(availabilityStartTime.split(':')[0]);
-      const availabilityEndHour = parseInt(availabilityEndTime.split(':')[0]);
-
-      if (startHour < availabilityStartHour || startHour >= availabilityEndHour) {
-        return { valid: false, error: "Start time must be within manager-set available slot times" };
-      }
-
-      return { valid: true };
-    } catch (error) {
-      console.error('Error validating booking availability:', error);
-      return { valid: false, error: "Error validating booking availability" };
-    }
-  }
-
-  async checkBookingConflict(kitchenId: number, bookingDate: Date, startTime: string, endTime: string): Promise<boolean> {
-    try {
-      // Check for any overlapping bookings (both pending and confirmed, but not cancelled)
-      const bookings = await db
-        .select()
-        .from(kitchenBookings)
-        .where(and(
-          eq(kitchenBookings.kitchenId, kitchenId),
-          or(
-            eq(kitchenBookings.status, 'confirmed'),
-            eq(kitchenBookings.status, 'pending')
-          )
-        ));
-
-      // Extract date string for comparison (YYYY-MM-DD format)
-      const targetDateStr = bookingDate.toISOString().split('T')[0];
-
-      for (const booking of bookings) {
-        const bookingDateTime = new Date(booking.bookingDate);
-        const bookingDateStr = bookingDateTime.toISOString().split('T')[0];
-
-        // Check if same date
-        if (bookingDateStr === targetDateStr) {
-          // Check for time overlap: two time ranges overlap if:
-          // startTime < booking.endTime AND endTime > booking.startTime
-          if (startTime < booking.endTime && endTime > booking.startTime) {
-            return true; // Conflict found
-          }
-        }
-      }
-
-      return false; // No conflict
-    } catch (error) {
-      console.error('Error checking booking conflict:', error);
-      return true; // Return true on error to prevent double booking
-    }
-  }
 
   // ===== CHEF KITCHEN ACCESS MANAGEMENT (Admin grants access) =====
 
@@ -3462,7 +3118,7 @@ export class FirebaseStorage {
       // Enrich with chef, location, and application details
       const enrichedProfiles = await Promise.all(
         profiles.map(async (profile) => {
-          const chef = await this.getUser(profile.chefId);
+          const [chef] = await db.select().from(users).where(eq(users.id, profile.chefId));
           const location = await db
             .select()
             .from(locations)
@@ -3858,7 +3514,7 @@ export class FirebaseStorage {
       // Enrich with chef details
       const enrichedApplications = await Promise.all(
         apps.map(async (app) => {
-          const chef = await this.getUser(app.chefId);
+          const [chef] = await db.select().from(users).where(eq(users.id, app.chefId));
           const location = await this.getLocationById(app.locationId);
 
           return {
@@ -3912,7 +3568,7 @@ export class FirebaseStorage {
       // Enrich with chef and location details
       const enrichedApplications = await Promise.all(
         apps.map(async (app) => {
-          const chef = await this.getUser(app.chefId);
+          const [chef] = await db.select().from(users).where(eq(users.id, app.chefId));
           const location = managedLocations.find(l => (l as any).id === app.locationId);
 
           return {

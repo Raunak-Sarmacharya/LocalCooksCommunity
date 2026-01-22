@@ -83,7 +83,7 @@ router.get('/user', verifyFirebaseAuth, async (req: Request, res: Response) => {
         }
 
         // Get user from service by Firebase UID
-        const user = await userService.findByFirebaseUid(req.firebaseUser.uid);
+        const user = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
 
         if (!user) {
             // Do NOT auto-create for sign-in - return 404 to indicate user needs to register
@@ -152,7 +152,7 @@ router.post('/user/seen-welcome', verifyFirebaseAuth, async (req: Request, res: 
         }
 
         // Get user from service to find ID (since we only have firebase uid here)
-        const user = await userService.findByFirebaseUid(req.firebaseUser.uid);
+        const user = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
 
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
@@ -199,8 +199,7 @@ router.post('/firebase/user/update-roles', requireFirebaseAuthWithUser, async (r
         console.log(`🎯 Updating user roles: Firebase UID ${req.firebaseUser!.uid} → Neon User ID ${req.neonUser!.id} → Chef: ${isChef}`);
 
         // Use Service for update
-        await userService.updateUser({
-            id: req.neonUser!.id,
+        await userService.updateUser(req.neonUser!.id, {
             isChef: isChef
         });
 
