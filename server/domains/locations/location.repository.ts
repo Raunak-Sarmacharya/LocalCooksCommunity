@@ -294,4 +294,20 @@ export class LocationRepository {
       );
     }
   }
+
+  /**
+   * Delete location
+   */
+  async delete(id: number): Promise<void> {
+    try {
+      await db.delete(locations).where(eq(locations.id, id));
+    } catch (error: any) {
+      console.error(`[LocationRepository] Error deleting location ${id}:`, error);
+      throw new DomainError(
+        LocationErrorCodes.LOCATION_NOT_FOUND,
+        'Failed to delete location',
+        500
+      );
+    }
+  }
 }

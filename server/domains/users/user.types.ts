@@ -74,23 +74,23 @@ export interface CompleteUserProfileDTO {
   isChef: boolean;
   isManager: boolean;
   isPortalUser: boolean;
-  
+
   // Firebase user data
   firebaseUser: {
     uid: string;
     email?: string;
     emailVerified?: boolean;
   };
-  
+
   // Stripe Connect data
   stripeConnectAccountId?: string;
   stripeConnectOnboardingStatus?: string;
-  
+
   // Manager onboarding data
   managerOnboardingCompleted?: boolean;
   managerOnboardingSkipped?: boolean;
   managerOnboardingStepsCompleted?: Record<string, boolean>;
-  
+
   // Display name from applications
   fullName?: string;
   displayName?: string;

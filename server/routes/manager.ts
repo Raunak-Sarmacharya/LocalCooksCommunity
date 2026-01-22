@@ -1,8 +1,7 @@
 import { Router, Request, Response } from "express";
 import { eq, inArray, and, desc, count, ne, sql } from "drizzle-orm";
 import { db } from "../db";
-import { storage } from "../storage";
-import { firebaseStorage } from "../storage-firebase";
+
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
 import {
     users,
@@ -13,6 +12,9 @@ import {
     chefLocationProfiles,
     kitchens
 } from "@shared/schema";
+
+// Import Domain Services
+import { userService } from "../domains/users/user.service";
 import {
     sendEmail,
     generateBookingConfirmationEmail,
@@ -52,6 +54,13 @@ import {
 } from "@shared/schema";
 
 const router = Router();
+
+// Initialize Services
+import { bookingService } from "../domains/bookings/booking.service";
+import { kitchenService } from "../domains/kitchens/kitchen.service";
+import { inventoryService } from "../domains/inventory/inventory.service";
+import { locationService } from "../domains/locations/location.service";
+import { chefService } from "../domains/users/chef.service";
 
 // ===================================
 // MANAGER REVENUE ENDPOINTS
@@ -546,7 +555,7 @@ router.get("/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager,
         const locationId = parseInt(req.params.locationId);
 
         // Verify manager owns this location
-        const location = await firebaseStorage.getLocationById(locationId);
+        const location = await locationService.getLocationById(locationId);
         if (!location) {
             return res.status(404).json({ error: "Location not found" });
         }
@@ -555,7 +564,7 @@ router.get("/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager,
             return res.status(403).json({ error: "Access denied to this location" });
         }
 
-        const kitchens = await firebaseStorage.getKitchensByLocation(locationId);
+        const kitchens = await kitchenService.getKitchensByLocationId(locationId);
         res.json(kitchens);
     } catch (error: any) {
         console.error("Error fetching kitchen settings:", error);
@@ -570,7 +579,7 @@ router.post("/kitchens", requireFirebaseAuthWithUser, requireManager, async (req
         const { locationId, name, description, features } = req.body;
 
         // Verify manager owns this location
-        const location = await firebaseStorage.getLocationById(locationId);
+        const location = await locationService.getLocationById(locationId);
         if (!location) {
             return res.status(404).json({ error: "Location not found" });
         }
@@ -579,12 +588,15 @@ router.post("/kitchens", requireFirebaseAuthWithUser, requireManager, async (req
             return res.status(403).json({ error: "Access denied to this location" });
         }
 
-        const created = await firebaseStorage.createKitchen({
+        const created = await kitchenService.createKitchen({
             locationId,
             name,
             description,
             amenities: features || [],
             isActive: true, // Auto-activate
+            hourlyRate: undefined, // Manager sets pricing later
+            minimumBookingHours: 1,
+            pricingModel: 'hourly'
         });
 
         res.status(201).json(created);
@@ -601,35 +613,35 @@ router.put("/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, requireMan
         const kitchenId = parseInt(req.params.kitchenId);
         const { imageUrl } = req.body;
 
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
         // Verify access via location
-        const location = await firebaseStorage.getLocationById(kitchen.locationId);
+        const location = await locationService.getLocationById(kitchen.locationId);
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: "Access denied" });
         }
 
         // If there's an existing image and it's an R2 URL, delete it
         // But only if we are replacing it
-        if (imageUrl && kitchen.images && kitchen.images.length > 0) {
+        if (imageUrl && kitchen.galleryImages && kitchen.galleryImages.length > 0) {
             const { deleteFromR2 } = await import('../r2-storage');
             // Only delete if it looks like an R2 URL (usually contains r2.dev or custom domain)
             // This is a basic check; real deletion logic handles errors gracefully
             try {
                 // Assuming first image is primary
                 // But logic at 4208 in routes.ts was specific: await deleteFromR2(kitchen.images[0]);
-                if (kitchen.images[0]) {
-                    await deleteFromR2(kitchen.images[0]);
+                if (kitchen.galleryImages[0]) {
+                    await deleteFromR2(kitchen.galleryImages[0]);
                 }
             } catch (e) {
                 console.error("Failed to delete old image:", e);
             }
         }
 
-        const updated = await firebaseStorage.updateKitchen(kitchenId, { imageUrl });
+        const updated = await kitchenService.updateKitchenImage(kitchenId, imageUrl);
         res.json(updated);
     } catch (error: any) {
         console.error("Error updating kitchen image:", error);
@@ -644,17 +656,17 @@ router.put("/kitchens/:kitchenId/gallery", requireFirebaseAuthWithUser, requireM
         const kitchenId = parseInt(req.params.kitchenId);
         const { method, imageUrl, index } = req.body;
 
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const location = await firebaseStorage.getLocationById(kitchen.locationId);
+        const location = await locationService.getLocationById(kitchen.locationId);
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: "Access denied" });
         }
 
-        let updatedImages = [...(kitchen.images || [])];
+        let updatedImages = [...(kitchen.galleryImages || [])];
 
         const { deleteFromR2 } = await import('../r2-storage');
 
@@ -678,10 +690,15 @@ router.put("/kitchens/:kitchenId/gallery", requireFirebaseAuthWithUser, requireM
         }
 
         // Update explicitly using updateKitchen
-        await firebaseStorage.updateKitchen(kitchenId, { galleryImages: updatedImages });
+        // Update explicitly using updateKitchen
+        // REMOVED legacy updateKitchen call here, replaced by service call above 
+        // Logic adjusted to match flow
+
+        // Update explicitly using updateKitchen
+        await kitchenService.updateKitchenGallery(kitchenId, updatedImages);
 
         // Fetch updated
-        const updated = await firebaseStorage.getKitchenById(kitchenId);
+        const updated = await kitchenService.getKitchenById(kitchenId);
         res.json(updated);
     } catch (error: any) {
         console.error("Error updating gallery:", error);
@@ -696,17 +713,18 @@ router.put("/kitchens/:kitchenId/details", requireFirebaseAuthWithUser, requireM
         const kitchenId = parseInt(req.params.kitchenId);
         const { name, description, features } = req.body;
 
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const location = await firebaseStorage.getLocationById(kitchen.locationId);
+        const location = await locationService.getLocationById(kitchen.locationId);
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: "Access denied" });
         }
 
-        const updated = await firebaseStorage.updateKitchen(kitchenId, {
+        const updated = await kitchenService.updateKitchen({
+            id: kitchenId,
             name,
             description,
             amenities: features
@@ -725,12 +743,12 @@ router.get("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
         const user = req.neonUser!;
         const kitchenId = parseInt(req.params.kitchenId);
 
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const location = await firebaseStorage.getLocationById(kitchen.locationId);
+        const location = await locationService.getLocationById(kitchen.locationId);
         if (!location || location.managerId !== user.id) {
             return res.status(403).json({ error: "Access denied" });
         }
@@ -765,13 +783,13 @@ router.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
         }
 
         // Get the kitchen to verify manager has access to its location
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
         // Verify the manager has access to this kitchen's location
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied to this kitchen" });
@@ -797,8 +815,7 @@ router.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
         }
 
         // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method)
-        const pricing: { hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string } = {};
-
+        const pricing: any = {};
         if (hourlyRate !== undefined) {
             pricing.hourlyRate = hourlyRate === null ? null : hourlyRate; // Will be converted to cents in storage method
         }
@@ -806,7 +823,10 @@ router.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
         if (minimumBookingHours !== undefined) pricing.minimumBookingHours = minimumBookingHours;
         if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
 
-        const updated = await firebaseStorage.updateKitchenPricing(kitchenId, pricing);
+        const updated = await kitchenService.updateKitchen({
+            id: kitchenId,
+            ...pricing
+        });
 
         console.log(`✅ Kitchen ${kitchenId} pricing updated by manager ${user.id}`);
 
@@ -838,12 +858,12 @@ router.put("/kitchens/:kitchenId/availability", requireFirebaseAuthWithUser, req
         const kitchenId = parseInt(req.params.kitchenId);
         const { isAvailable, reason } = req.body;
 
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied" });
@@ -857,7 +877,7 @@ router.put("/kitchens/:kitchenId/availability", requireFirebaseAuthWithUser, req
             // Actually I should implement it fully if I want same behavior
         }
 
-        const updated = await firebaseStorage.setKitchenAvailability(kitchenId, isAvailable);
+        const updated = await kitchenService.updateKitchen({ id: kitchenId, isActive: isAvailable });
 
         // Send emails
         // Implementation ...
@@ -873,7 +893,7 @@ router.put("/kitchens/:kitchenId/availability", requireFirebaseAuthWithUser, req
 router.get("/bookings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const user = req.neonUser!;
-        const bookings = await firebaseStorage.getBookingsByManager(user.id);
+        const bookings = await bookingService.getBookingsByManager(user.id);
         res.json(bookings);
     } catch (error: any) {
         console.error("Error fetching bookings:", error);
@@ -929,11 +949,11 @@ router.put("/profile", requireFirebaseAuthWithUser, requireManager, async (req: 
         if (profileImageUrl !== undefined) profileUpdates.profileImageUrl = profileImageUrl;
 
         if (username !== undefined && username !== user.username) {
-            const existingUser = await firebaseStorage.getUserByUsername(username);
+            const existingUser = await userService.getUserByUsername(username);
             if (existingUser && existingUser.id !== user.id) {
                 return res.status(400).json({ error: "Username already exists" });
             }
-            await firebaseStorage.updateUser(user.id, { username });
+            await userService.updateUser(user.id, { username });
         }
 
         if (Object.keys(profileUpdates).length > 0) {
@@ -976,7 +996,7 @@ router.put("/profile", requireFirebaseAuthWithUser, requireManager, async (req: 
 router.get("/chef-profiles", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const user = req.neonUser!;
-        const profiles = await firebaseStorage.getChefProfilesForManager(user.id);
+        const profiles = await chefService.getChefProfilesForManager(user.id);
         res.json(profiles);
     } catch (error: any) {
         res.status(500).json({ error: error.message || "Failed to get profiles" });
@@ -1055,7 +1075,7 @@ router.put("/chef-profiles/:id/status", requireFirebaseAuthWithUser, requireMana
 
         if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ error: "Invalid status" });
 
-        const updated = await firebaseStorage.updateChefLocationProfileStatus(
+        const updated = await chefService.updateProfileStatus(
             profileId, status, user.id, reviewFeedback
         );
 
@@ -1077,7 +1097,7 @@ router.delete("/chef-location-access", requireFirebaseAuthWithUser, requireManag
         const { chefId, locationId } = req.body;
         // ... verify ...
         // ... revoke ...
-        await firebaseStorage.revokeChefLocationAccess(chefId, locationId);
+        await chefService.revokeLocationAccess(chefId, locationId);
         // ... delete chat ...
         // ... update profile status ...
         res.json({ success: true });
@@ -1090,7 +1110,7 @@ router.delete("/chef-location-access", requireFirebaseAuthWithUser, requireManag
 router.get("/kitchens/:kitchenId/bookings", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const kitchenId = parseInt(req.params.kitchenId);
-        const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
+        const bookings = await bookingService.getBookingsByKitchen(kitchenId);
         res.json(bookings);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -1102,13 +1122,13 @@ router.get("/bookings/:id", requireFirebaseAuthWithUser, requireManager, async (
     try {
         const user = req.neonUser!;
         const id = parseInt(req.params.id);
-        const booking = await firebaseStorage.getBookingById(id);
+        const booking = await bookingService.getBookingById(id);
         if (!booking) return res.status(404).json({ error: "Booking not found" });
 
-        const kitchen = await firebaseStorage.getKitchenById(booking.kitchenId);
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
         if (!kitchen) return res.status(404).json({ error: "Kitchen not found" });
 
-        const location = await firebaseStorage.getLocationById(kitchen.locationId);
+        const location = await locationService.getLocationById(kitchen.locationId);
         if (!location || location.managerId !== user.id) return res.status(403).json({ error: "Access denied" });
 
         // ... get add-ons ...
@@ -1125,7 +1145,9 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
     try {
         const id = parseInt(req.params.id);
         const { status } = req.body;
-        await firebaseStorage.updateKitchenBookingStatus(id, status);
+        // Note: The method updateKitchenBookingStatus is not yet exposed nicely in BookingService for direct simple usage
+        // but we created updateBookingStatus.
+        await bookingService.updateBookingStatus(id, status);
         // ... send emails ...
         res.json({ success: true });
     } catch (e: any) {
@@ -1138,9 +1160,9 @@ router.get("/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, r
     try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { startDate, endDate } = req.query;
-        const start = startDate ? new Date(startDate as string) : undefined;
-        const end = endDate ? new Date(endDate as string) : undefined;
-        const overrides = await firebaseStorage.getKitchenDateOverrides(kitchenId, start, end);
+        const start = startDate ? new Date(startDate as string) : new Date();
+        const end = endDate ? new Date(endDate as string) : new Date(new Date().setFullYear(new Date().getFullYear() + 1));
+        const overrides = await kitchenService.getKitchenDateOverrides(kitchenId, start, end);
         res.json(overrides);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -1159,12 +1181,12 @@ router.post("/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, 
         };
         const parsedDate = parseDateString(specificDate);
 
-        const override = await firebaseStorage.createKitchenDateOverride({
+        const override = await kitchenService.createKitchenDateOverride({
             kitchenId,
             specificDate: parsedDate,
             startTime,
             endTime,
-            isAvailable,
+            isAvailable: isAvailable !== undefined ? isAvailable : false,
             reason
         });
         // ... send emails ...
@@ -1179,8 +1201,12 @@ router.put("/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, a
         const id = parseInt(req.params.id);
         const { startTime, endTime, isAvailable, reason } = req.body;
 
-        await firebaseStorage.updateKitchenDateOverride(id, {
-            startTime, endTime, isAvailable, reason
+        await kitchenService.updateKitchenDateOverride(id, {
+            id,
+            startTime,
+            endTime,
+            isAvailable,
+            reason
         });
         // ... send emails ...
         res.json({ success: true }); // or return updated
@@ -1192,7 +1218,7 @@ router.put("/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, a
 router.delete("/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id);
-        await firebaseStorage.deleteKitchenDateOverride(id);
+        await kitchenService.deleteKitchenDateOverride(id);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -1454,7 +1480,7 @@ router.get("/locations", requireFirebaseAuthWithUser, requireManager, async (req
         // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
         const user = req.neonUser!;
 
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
 
         console.log('[GET] /api/manager/locations - Raw locations from DB:', locations.map(loc => ({
             id: loc.id,
@@ -1529,7 +1555,7 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
 
         console.log('Creating location for manager:', { managerId: user.id, name, address, notificationPhone: normalizedNotificationPhone });
 
-        const location = await firebaseStorage.createLocation({
+        const location = await locationService.createLocation({
             name,
             address,
             managerId: user.id,
@@ -1570,7 +1596,7 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
         }
 
         // Verify the manager has access to this location
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied to this location" });
@@ -1634,7 +1660,7 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
 
         console.log(`💾 Updating location ${locationId} with:`, updates);
 
-        const updated = await firebaseStorage.updateLocation(locationId, updates);
+        const updated = await locationService.updateLocation({ id: locationId, ...updates });
         if (!updated) {
             console.error(`❌ Location ${locationId} not found in database`);
             return res.status(404).json({ error: "Location not found" });
@@ -1671,7 +1697,7 @@ router.post("/complete-onboarding", requireFirebaseAuthWithUser, requireManager,
 
         console.log(`[POST] /api/manager/complete-onboarding - User: ${user.id}, skipped: ${skipped}`);
 
-        const updatedUser = await firebaseStorage.updateManagerOnboarding(user.id, {
+        const updatedUser = await userService.updateManagerOnboarding(user.id, {
             completed: true,
             skipped: !!skipped
         });
@@ -1709,7 +1735,7 @@ router.post("/onboarding/step", requireFirebaseAuthWithUser, requireManager, asy
             [stepKey]: true
         };
 
-        const updatedUser = await firebaseStorage.updateManagerOnboarding(user.id, {
+        const updatedUser = await userService.updateManagerOnboarding(user.id, {
             steps: newSteps
         });
 

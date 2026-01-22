@@ -1,5 +1,8 @@
 import { Router, Request, Response } from "express";
-import { firebaseStorage } from "../storage-firebase";
+import { inventoryService } from "../domains/inventory/inventory.service";
+import { locationService } from "../domains/locations/location.service";
+import { kitchenService } from "../domains/kitchens/kitchen.service";
+import { chefService } from "../domains/users/chef.service";
 import { requireChef } from "./middleware";
 import { storage } from "../storage";
 import { pool } from "../db";
@@ -19,7 +22,7 @@ router.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req: R
         }
 
         // Get all equipment listings for this kitchen
-        const allListings = await firebaseStorage.getEquipmentListingsByKitchen(kitchenId);
+        const allListings = await inventoryService.getEquipmentListingsByKitchen(kitchenId);
 
         // Filter to only show approved/active listings to chefs
         // Listings with status 'approved' or 'active' AND isActive=true are visible
@@ -50,14 +53,9 @@ router.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req: R
 router.get("/locations", requireChef, async (req: Request, res: Response) => {
     try {
         // Get all locations with active kitchens for marketing purposes
-        const allLocations = await firebaseStorage.getAllLocations();
-        const allKitchens = await firebaseStorage.getAllKitchensWithLocationAndManager();
-
-        // Filter to only locations that have at least one active kitchen
-        const activeKitchens = allKitchens.filter((kitchen: any) => {
-            const isActive = kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active;
-            return isActive !== false && isActive !== null;
-        });
+        const allLocations = await locationService.getAllLocations();
+        // Use kitchenService to get all active kitchens directly
+        const activeKitchens = await kitchenService.getAllActiveKitchens();
 
         const locationIdsWithKitchens = new Set(
             activeKitchens.map((kitchen: any) => kitchen.locationId || kitchen.location_id).filter(Boolean)

@@ -47,7 +47,7 @@ export interface UpdateKitchenDTO {
   galleryImages?: string[];
   amenities?: string[];
   isActive?: boolean;
-  hourlyRate?: number;
+  hourlyRate?: number | null;
   currency?: string;
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
@@ -100,4 +100,34 @@ export interface KitchenWithLocationDTO extends KitchenDTO {
     createdAt: Date;
     updatedAt: Date;
   };
+}
+
+/**
+ * Kitchen Date Override DTOs
+ */
+export interface CreateKitchenOverrideDTO {
+  kitchenId: number;
+  specificDate: string | Date;
+  startTime?: string | null;
+  endTime?: string | null;
+  isAvailable?: boolean;
+  reason?: string | null;
+}
+
+export interface UpdateKitchenOverrideDTO {
+  id: number;
+  startTime?: string | null;
+  endTime?: string | null;
+  isAvailable?: boolean;
+  reason?: string | null;
+}
+
+export interface KitchenOverrideDTO {
+  id: number;
+  kitchenId: number;
+  specificDate: Date;
+  startTime: string | null;
+  endTime: string | null;
+  isAvailable: boolean;
+  reason: string | null;
 }

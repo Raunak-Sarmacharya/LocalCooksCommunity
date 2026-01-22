@@ -1,7 +1,10 @@
 import { Router, Request, Response } from "express";
-import { firebaseStorage } from "../storage-firebase";
+
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
 import { requireChef } from "./middleware";
+import { inventoryService } from "../domains/inventory/inventory.service";
+import { kitchenService } from "../domains/kitchens/kitchen.service";
+import { locationService } from "../domains/locations/location.service";
 
 const router = Router();
 
@@ -18,18 +21,18 @@ router.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthW
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
 
-        const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied to this kitchen" });
         }
 
-        const listings = await firebaseStorage.getStorageListingsByKitchen(kitchenId);
+        const listings = await inventoryService.getStorageListingsByKitchen(kitchenId);
         res.json(listings);
     } catch (error: any) {
         console.error("Error getting storage listings:", error);
@@ -46,17 +49,17 @@ router.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
             return res.status(400).json({ error: "Invalid listing ID" });
         }
 
-        const listing = await firebaseStorage.getStorageListingById(listingId);
+        const listing = await inventoryService.getStorageListingById(listingId);
         if (!listing) {
             return res.status(404).json({ error: "Storage listing not found" });
         }
 
-        const kitchen = await firebaseStorage.getKitchenById(listing.kitchenId);
+        const kitchen = await kitchenService.getKitchenById(listing.kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied to this listing" });
@@ -79,12 +82,12 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
             return res.status(400).json({ error: "Valid kitchen ID is required" });
         }
 
-        const kitchen = await firebaseStorage.getKitchenById(parseInt(kitchenId));
+        const kitchen = await kitchenService.getKitchenById(parseInt(kitchenId));
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied to this kitchen" });
@@ -94,7 +97,7 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
             return res.status(400).json({ error: "Name, storage type, pricing model, and base price are required" });
         }
 
-        const created = await firebaseStorage.createStorageListing({
+        const created = await inventoryService.createStorageListing({
             kitchenId: parseInt(kitchenId),
             ...listingData,
         });
@@ -116,23 +119,23 @@ router.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, 
             return res.status(400).json({ error: "Invalid listing ID" });
         }
 
-        const existingListing = await firebaseStorage.getStorageListingById(listingId);
+        const existingListing = await inventoryService.getStorageListingById(listingId);
         if (!existingListing) {
             return res.status(404).json({ error: "Storage listing not found" });
         }
 
-        const kitchen = await firebaseStorage.getKitchenById(existingListing.kitchenId);
+        const kitchen = await kitchenService.getKitchenById(existingListing.kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied to this listing" });
         }
 
-        const updated = await firebaseStorage.updateStorageListing(listingId, req.body);
+        const updated = await inventoryService.updateStorageListing(listingId, req.body);
 
         console.log(`✅ Storage listing ${listingId} updated by manager ${user.id}`);
         res.json(updated);
@@ -151,23 +154,23 @@ router.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUse
             return res.status(400).json({ error: "Invalid listing ID" });
         }
 
-        const existingListing = await firebaseStorage.getStorageListingById(listingId);
+        const existingListing = await inventoryService.getStorageListingById(listingId);
         if (!existingListing) {
             return res.status(404).json({ error: "Storage listing not found" });
         }
 
-        const kitchen = await firebaseStorage.getKitchenById(existingListing.kitchenId);
+        const kitchen = await kitchenService.getKitchenById(existingListing.kitchenId);
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
 
-        const locations = await firebaseStorage.getLocationsByManager(user.id);
+        const locations = await locationService.getLocationsByManagerId(user.id);
         const hasAccess = locations.some(loc => loc.id === kitchen.locationId);
         if (!hasAccess) {
             return res.status(403).json({ error: "Access denied to this listing" });
         }
 
-        await firebaseStorage.deleteStorageListing(listingId);
+        await inventoryService.deleteStorageListing(listingId);
 
         console.log(`✅ Storage listing ${listingId} deleted by manager ${user.id}`);
         res.json({ success: true });
@@ -190,7 +193,7 @@ router.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req
         }
 
         // Get all storage listings for this kitchen
-        const allListings = await firebaseStorage.getStorageListingsByKitchen(kitchenId);
+        const allListings = await inventoryService.getStorageListingsByKitchen(kitchenId);
 
         // Filter to only show approved/active listings to chefs
         // Listings with status 'approved' or 'active' AND isActive=true are visible

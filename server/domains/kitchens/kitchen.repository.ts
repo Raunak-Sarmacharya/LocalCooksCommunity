@@ -6,9 +6,9 @@
  */
 
 import { db } from '../../db';
-import { kitchens, locations } from '@shared/schema';
-import { eq, and, desc } from 'drizzle-orm';
-import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO } from './kitchen.types';
+import { kitchens, locations, kitchenDateOverrides, kitchenAvailability } from '@shared/schema';
+import { eq, and, desc, gte, lte } from 'drizzle-orm';
+import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
 
 /**
@@ -358,6 +358,166 @@ export class KitchenRepository {
         'Failed to find kitchens with location',
         500
       );
+    }
+  }
+
+  /**
+   * Delete kitchen
+   */
+  async delete(id: number): Promise<void> {
+    try {
+      await db.delete(kitchens).where(eq(kitchens.id, id));
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error deleting kitchen ${id}:`, error);
+      throw new DomainError(
+        KitchenErrorCodes.KITCHEN_NOT_FOUND,
+        'Failed to delete kitchen',
+        500
+      );
+    }
+  }
+
+  // ==========================================
+  // Date Overrides
+  // ==========================================
+
+  private mapOverrideToDTO(row: typeof kitchenDateOverrides.$inferSelect): KitchenOverrideDTO {
+    return {
+      ...row,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      reason: row.reason || null
+    };
+  }
+
+  async findOverrides(kitchenId: number, startDate: Date, endDate: Date): Promise<KitchenOverrideDTO[]> {
+    try {
+      const results = await db
+        .select()
+        .from(kitchenDateOverrides)
+        .where(
+          and(
+            eq(kitchenDateOverrides.kitchenId, kitchenId),
+            gte(kitchenDateOverrides.specificDate, startDate),
+            lte(kitchenDateOverrides.specificDate, endDate)
+          )
+        )
+        .orderBy(kitchenDateOverrides.specificDate);
+
+      return results.map(o => this.mapOverrideToDTO(o));
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error finding overrides for kitchen ${kitchenId}:`, error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find overrides', 500);
+    }
+  }
+
+  async findOverrideById(id: number): Promise<KitchenOverrideDTO | null> {
+    try {
+      const [override] = await db
+        .select()
+        .from(kitchenDateOverrides)
+        .where(eq(kitchenDateOverrides.id, id))
+        .limit(1);
+
+      return override ? this.mapOverrideToDTO(override) : null;
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error finding override ${id}:`, error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find override', 500);
+    }
+  }
+
+  async createOverride(dto: CreateKitchenOverrideDTO): Promise<KitchenOverrideDTO> {
+    try {
+      const [override] = await db
+        .insert(kitchenDateOverrides)
+        .values({
+          kitchenId: dto.kitchenId,
+          specificDate: new Date(dto.specificDate),
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          isAvailable: dto.isAvailable !== undefined ? dto.isAvailable : false,
+          reason: dto.reason
+        })
+        .returning();
+
+      return this.mapOverrideToDTO(override);
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error creating override:`, error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to create override', 500);
+    }
+  }
+
+  async updateOverride(id: number, dto: UpdateKitchenOverrideDTO): Promise<KitchenOverrideDTO | null> {
+    try {
+      const [override] = await db
+        .update(kitchenDateOverrides)
+        .set({
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          isAvailable: dto.isAvailable,
+          reason: dto.reason,
+          updatedAt: new Date()
+        })
+        .where(eq(kitchenDateOverrides.id, id))
+        .returning();
+
+      return override ? this.mapOverrideToDTO(override) : null;
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error updating override ${id}:`, error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to update override', 500);
+    }
+  }
+
+  async deleteOverride(id: number): Promise<void> {
+    try {
+      await db.delete(kitchenDateOverrides).where(eq(kitchenDateOverrides.id, id));
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error deleting override ${id}:`, error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to delete override', 500);
+    }
+  }
+
+  // ==========================================
+  // Availability
+  // ==========================================
+
+  async findAvailability(kitchenId: number) {
+    try {
+      return await db
+        .select()
+        .from(kitchenAvailability)
+        .where(eq(kitchenAvailability.kitchenId, kitchenId));
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error finding availability for kitchen ${kitchenId}:`, error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find availability', 500);
+    }
+  }
+
+  async findOverrideForDate(kitchenId: number, date: Date) {
+    try {
+      // Convert date to string YYYY-MM-DD for comparison if needed, or use date object if driver supports it.
+      // Postgres DATE type usually compares well with JS Date (at 00:00).
+      // Or use sql to compare date part.
+      // storage-firebase used precise comparison?
+      // "sql`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`"
+
+      const dateStr = date.toISOString().split('T')[0];
+
+      const [override] = await db
+        .select()
+        .from(kitchenDateOverrides)
+        .where(
+          and(
+            eq(kitchenDateOverrides.kitchenId, kitchenId),
+            eq(kitchenDateOverrides.specificDate, dateStr as any) // Casting as any depending on driver, or just date
+          )
+        )
+        .limit(1);
+
+      return override ? this.mapOverrideToDTO(override) : null;
+    } catch (error: any) {
+      console.error(`[KitchenRepository] Error finding override for date:`, error);
+      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find override', 500);
     }
   }
 }

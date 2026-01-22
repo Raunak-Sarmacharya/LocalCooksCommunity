@@ -1,5 +1,7 @@
 import { Request, Response, Router } from "express";
-import { storage } from "../storage";
+import { userService } from "../domains/users/user.service";
+import { microlearningService } from "../domains/microlearning/microlearning.service";
+import { applicationService } from "../domains/applications/application.service";
 import { generateCertificatePDF } from "../certificate-utils";
 import { upload } from "../fileUpload";
 import { pool } from "../db";
@@ -11,7 +13,7 @@ const router = Router();
 // Helper
 const hasApprovedApplication = async (userId: number) => {
   try {
-    const applications = await storage.getApplicationsByUserId(userId);
+    const applications = await applicationService.getApplicationsByUserId(userId);
     return applications.some(app => app.status === 'approved');
   } catch (error) {
     console.error('Error checking application status:', error);
@@ -33,8 +35,8 @@ router.get("/progress/:userId", async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const progress = await storage.getMicrolearningProgress(userId);
-    const completionStatus = await storage.getMicrolearningCompletion(userId);
+    const progress = await microlearningService.getUserProgress(userId);
+    const completionStatus = await microlearningService.getUserCompletion(userId);
     const hasApproval = await hasApprovedApplication(userId);
 
     // Admins and completed users have unrestricted access regardless of application status
@@ -73,7 +75,7 @@ router.post("/progress", async (req: Request, res: Response) => {
 
     // Check if user has approved application for videos beyond the first one
     const hasApproval = await hasApprovedApplication(userId);
-    const completionStatus = await storage.getMicrolearningCompletion(userId);
+    const completionStatus = await microlearningService.getUserCompletion(userId);
     const isCompleted = completionStatus?.confirmed || false;
     const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
     const isAdmin = req.neonUser.role === 'admin';
@@ -100,7 +102,7 @@ router.post("/progress", async (req: Request, res: Response) => {
       updatedAt: new Date()
     };
 
-    await storage.updateVideoProgress(progressData);
+    await microlearningService.updateVideoProgress(progressData);
 
     res.json({
       success: true,
@@ -162,7 +164,7 @@ router.post("/complete", async (req: Request, res: Response) => {
     }
 
     // Get user details for certificate generation
-    const user = await storage.getUser(userId);
+    const user = await userService.getUser(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -176,7 +178,7 @@ router.post("/complete", async (req: Request, res: Response) => {
       certificateGenerated: false
     };
 
-    await storage.createMicrolearningCompletion(completionData);
+    await microlearningService.completeMicrolearning(completionData);
 
     // Integration with Always Food Safe API (if configured)
     let alwaysFoodSafeResult = null;
@@ -223,7 +225,7 @@ router.get("/completion/:userId", async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const completion = await storage.getMicrolearningCompletion(userId);
+    const completion = await microlearningService.getUserCompletion(userId);
 
     if (!completion) {
       return res.status(404).json({ message: 'No completion found' });
@@ -250,12 +252,12 @@ router.get("/certificate/:userId", async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const completion = await storage.getMicrolearningCompletion(userId);
+    const completion = await microlearningService.getUserCompletion(userId);
     if (!completion || !completion.confirmed) {
       return res.status(404).json({ message: 'No confirmed completion found' });
     }
 
-    const user = await storage.getUser(userId);
+    const user = await userService.getUser(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }

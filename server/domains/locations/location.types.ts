@@ -8,7 +8,7 @@ export type { LocationRequirements, UpdateLocationRequirements };
 export interface CreateLocationDTO {
   name: string;
   address: string;
-  managerId: number;
+  managerId?: number;
   notificationEmail?: string;
   notificationPhone?: string;
   cancellationPolicyHours?: number;

@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { verifyFirebaseToken } from './firebase-setup';
-import { firebaseStorage } from './storage-firebase';
+import { userService } from './domains/users/user.service';
 import { UserWithFlags } from "@shared/schema";
 
 // Extend Express Request to include Firebase user data
@@ -110,7 +110,7 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
     };
 
     // Now translate Firebase UID to Neon user (NO SESSIONS)
-    const neonUser = await firebaseStorage.getUserByFirebaseUid(req.firebaseUser.uid);
+    const neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
 
     if (!neonUser) {
       return res.status(404).json({
@@ -172,7 +172,7 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
       };
 
       // Try to load Neon user (NO SESSIONS)
-      const neonUser = await firebaseStorage.getUserByFirebaseUid(decodedToken.uid);
+      const neonUser = await userService.getUserByFirebaseUid(decodedToken.uid);
       if (neonUser) {
         req.neonUser = {
           ...neonUser,

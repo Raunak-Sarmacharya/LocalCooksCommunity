@@ -1,8 +1,8 @@
 
 import { Router, Request, Response } from "express";
 import { db } from "../db";
-import { firebaseStorage } from "../storage-firebase";
-import { storage } from "../storage";
+import { userService } from "../domains/users/user.service";
+// Imports updated to remove legacy storage
 import { requireFirebaseAuthWithUser, requireAdmin, requireManager } from "../firebase-auth-middleware";
 import {
     users,
@@ -10,6 +10,9 @@ import {
     chefLocationAccess,
 } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
+
+// Import Domain Services
+
 import {
     generateChefLocationAccessApprovedEmail,
     generateManagerCredentialsEmail,
@@ -21,6 +24,13 @@ import { normalizePhoneForStorage } from "../phone-utils";
 import { hashPassword, comparePasswords } from "../passwordUtils";
 
 const router = Router();
+
+// Initialize Services
+// Initialize Services (using singletons)
+import { locationService } from "../domains/locations/location.service";
+import { kitchenService } from "../domains/kitchens/kitchen.service";
+import { chefService } from "../domains/users/chef.service";
+import { bookingService } from "../domains/bookings/booking.service";
 
 // Helper function to get authenticated user (Firebase auth only)
 async function getAuthenticatedUser(req: Request): Promise<{ id: number; username: string; role: string } | null> {
@@ -328,17 +338,17 @@ router.post("/chef-location-access", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "chefId and locationId are required" });
         }
 
-        const access = await firebaseStorage.grantChefLocationAccess(chefId, locationId, user.id);
+        const access = await chefService.grantLocationAccess(chefId, locationId, user.id);
 
         // Send email notification to chef when access is granted
         try {
             // Get location details
-            const location = await firebaseStorage.getLocationById(locationId);
+            const location = await locationService.getLocationById(locationId);
             if (!location) {
                 console.warn(`⚠️ Location ${locationId} not found for email notification`);
             } else {
                 // Get chef details
-                const chef = await storage.getUser(chefId);
+                const chef = await userService.getUser(chefId);
                 if (!chef) {
                     console.warn(`⚠️ Chef ${chefId} not found for email notification`);
                 } else {
@@ -390,7 +400,7 @@ router.delete("/chef-location-access", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "chefId and locationId are required" });
         }
 
-        await firebaseStorage.revokeChefLocationAccess(chefId, locationId);
+        await chefService.revokeLocationAccess(chefId, locationId);
         res.json({ success: true });
     } catch (error: any) {
         console.error("Error revoking chef location access:", error);
@@ -518,7 +528,7 @@ router.post("/managers", async (req: Request, res: Response) => {
         }
 
         // Check if user already exists
-        const existingUser = await firebaseStorage.getUserByUsername(username);
+        const existingUser = await userService.getUserByUsername(username);
         if (existingUser) {
             return res.status(400).json({ error: "Username already exists" });
         }
@@ -526,7 +536,7 @@ router.post("/managers", async (req: Request, res: Response) => {
         // Create manager user with hashed password
         // Set has_seen_welcome to false to force password change on first login
         const hashedPassword = await hashPassword(password);
-        const manager = await firebaseStorage.createUser({
+        const manager = await userService.createUser({
             username,
             password: hashedPassword,
             role: "manager",
@@ -677,7 +687,7 @@ router.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req: 
     try {
         const user = req.neonUser!;
 
-        const locations = await firebaseStorage.getAllLocations();
+        const locations = await locationService.getAllLocations();
 
         const mappedLocations = locations.map((loc: any) => ({
             ...loc,
@@ -711,7 +721,7 @@ router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req:
                 return res.status(400).json({ error: "Invalid manager ID format" });
             }
 
-            const manager = await firebaseStorage.getUser(managerIdNum);
+            const manager = await userService.getUser(managerIdNum);
             if (!manager) {
                 return res.status(400).json({ error: `Manager with ID ${managerIdNum} does not exist` });
             }
@@ -731,7 +741,7 @@ router.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req:
             normalizedNotificationPhone = normalized;
         }
 
-        const location = await firebaseStorage.createLocation({
+        const location = await locationService.createLocation({
             name,
             address,
             managerId: managerIdNum,
@@ -778,7 +788,7 @@ router.get("/kitchens/:locationId", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Invalid location ID" });
         }
 
-        const kitchens = await firebaseStorage.getKitchensByLocation(locationId);
+        const kitchens = await kitchenService.getKitchensByLocationId(locationId);
         res.json(kitchens);
     } catch (error: any) {
         console.error("Error fetching kitchens:", error);
@@ -812,12 +822,20 @@ router.post("/kitchens", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Invalid location ID format" });
         }
 
-        const location = await firebaseStorage.getLocationById(locationIdNum);
+        const location = await locationService.getLocationById(locationIdNum);
         if (!location) {
             return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
         }
 
-        const kitchen = await firebaseStorage.createKitchen({ locationId: locationIdNum, name, description, isActive: true });
+        const kitchen = await kitchenService.createKitchen({
+            locationId: locationIdNum,
+            name,
+            description,
+            isActive: true,
+            hourlyRate: undefined,
+            minimumBookingHours: 1,
+            pricingModel: 'hourly'
+        });
         res.status(201).json(kitchen);
     } catch (error: any) {
         console.error("Error creating kitchen:", error);
@@ -857,7 +875,7 @@ router.put("/locations/:id", async (req: Request, res: Response) => {
                 return res.status(400).json({ error: "Invalid manager ID format" });
             }
 
-            const manager = await firebaseStorage.getUser(managerIdNum);
+            const manager = await userService.getUser(managerIdNum);
             if (!manager) {
                 return res.status(400).json({ error: `Manager with ID ${managerIdNum} does not exist` });
             }
@@ -888,7 +906,7 @@ router.put("/locations/:id", async (req: Request, res: Response) => {
             }
         }
 
-        const updated = await firebaseStorage.updateLocation(locationId, updates);
+        const updated = await locationService.updateLocation({ id: locationId, ...updates });
         if (!updated) {
             return res.status(404).json({ error: "Location not found" });
         }
@@ -931,7 +949,7 @@ router.delete("/locations/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Invalid location ID" });
         }
 
-        await firebaseStorage.deleteLocation(locationId);
+        await locationService.deleteLocation(locationId);
         res.json({ success: true, message: "Location deleted successfully" });
     } catch (error: any) {
         console.error("Error deleting location:", error);
@@ -959,7 +977,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
 
-        const currentKitchen = await firebaseStorage.getKitchenById(kitchenId);
+        const currentKitchen = await kitchenService.getKitchenById(kitchenId);
         if (!currentKitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
@@ -987,7 +1005,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
                 return res.status(400).json({ error: "Invalid location ID format" });
             }
 
-            const location = await firebaseStorage.getLocationById(locationIdNum);
+            const location = await locationService.getLocationById(locationIdNum);
             if (!location) {
                 return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
             }
@@ -1001,7 +1019,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
             return res.json(currentKitchen);
         }
 
-        const updated = await firebaseStorage.updateKitchen(kitchenId, updates);
+        const updated = await kitchenService.updateKitchen({ id: kitchenId, ...updates });
         if (!updated) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
@@ -1009,18 +1027,19 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
         // Send email notifications to chefs and managers
         if (changesList.length > 0) {
             try {
-                const kitchen = await firebaseStorage.getKitchenById(kitchenId);
+                const kitchen = await kitchenService.getKitchenById(kitchenId);
                 if (kitchen) {
-                    const location = await firebaseStorage.getLocationById(kitchen.locationId);
+                    const location = await locationService.getLocationById(kitchen.locationId);
 
-                    const bookings = await firebaseStorage.getBookingsByKitchen(kitchenId);
-                    const uniqueChefIds = Array.from(new Set(bookings.map(b => b.chefId)));
+                    const bookings = await bookingService.getBookingsByKitchenId(kitchenId);
+                    const customChefIds = bookings.map(b => b.chefId).filter((id): id is number => id !== null);
+                    const uniqueChefIds = Array.from(new Set(customChefIds));
 
                     const changes = changesList.join(', ');
 
                     for (const chefId of uniqueChefIds) {
                         try {
-                            const chef = await storage.getUser(chefId);
+                            const chef = await userService.getUser(chefId);
                             if (chef) {
                                 const email = generateKitchenSettingsChangeEmail({
                                     email: chef.username,
@@ -1038,7 +1057,7 @@ router.put("/kitchens/:id", async (req: Request, res: Response) => {
 
                     if (location?.managerId) {
                         try {
-                            const manager = await storage.getUser(location.managerId);
+                            const manager = await userService.getUser(location.managerId!);
                             if (manager) {
                                 const notificationEmail = (location as any).notificationEmail || (location as any).notification_email || manager.username;
                                 const email = generateKitchenSettingsChangeEmail({
@@ -1087,7 +1106,7 @@ router.delete("/kitchens/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Invalid kitchen ID" });
         }
 
-        await firebaseStorage.deleteKitchen(kitchenId);
+        await kitchenService.deleteKitchen(kitchenId);
         res.json({ success: true, message: "Kitchen deleted successfully" });
     } catch (error: any) {
         console.error("Error deleting kitchen:", error);
@@ -1117,7 +1136,7 @@ router.put("/managers/:id", async (req: Request, res: Response) => {
 
         const { username, role, isManager, locationNotificationEmails } = req.body;
 
-        const manager = await firebaseStorage.getUser(managerId);
+        const manager = await userService.getUser(managerId);
         if (!manager) {
             return res.status(404).json({ error: "Manager not found" });
         }
@@ -1127,7 +1146,7 @@ router.put("/managers/:id", async (req: Request, res: Response) => {
 
         const updates: any = {};
         if (username !== undefined) {
-            const existingUser = await firebaseStorage.getUserByUsername(username);
+            const existingUser = await userService.getUserByUsername(username);
             if (existingUser && existingUser.id !== managerId) {
                 return res.status(400).json({ error: "Username already exists" });
             }
@@ -1136,7 +1155,7 @@ router.put("/managers/:id", async (req: Request, res: Response) => {
         if (role !== undefined) updates.role = role;
         if (isManager !== undefined) updates.isManager = isManager;
 
-        const updated = await firebaseStorage.updateUser(managerId, updates);
+        const updated = await userService.updateUser(managerId, updates);
         if (!updated) {
             return res.status(404).json({ error: "Failed to update manager" });
         }
@@ -1220,7 +1239,7 @@ router.delete("/managers/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "You cannot delete your own account" });
         }
 
-        const manager = await firebaseStorage.getUser(managerId);
+        const manager = await userService.getUser(managerId);
         if (!manager) {
             return res.status(404).json({ error: "Manager not found" });
         }
@@ -1228,7 +1247,7 @@ router.delete("/managers/:id", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "User is not a manager" });
         }
 
-        await firebaseStorage.deleteUser(managerId);
+        await userService.deleteUser(managerId);
         res.json({ success: true, message: "Manager deleted successfully" });
     } catch (error: any) {
         console.error("Error deleting manager:", error);
