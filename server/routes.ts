@@ -64,7 +64,7 @@ import { getManagerPhone, getChefPhone, getPortalUserPhone, normalizePhoneForSto
 import { deleteFile, getFileUrl, upload, uploadToBlob } from "./fileUpload";
 import { comparePasswords, hashPassword } from "./passwordUtils";
 // import { storage } from "./storage";
-import { firebaseStorage } from "./storage-firebase";
+
 import { verifyFirebaseToken } from "./firebase-setup";
 import { requireFirebaseAuthWithUser, requireManager, requireAdmin, optionalFirebaseAuth } from "./firebase-auth-middleware";
 import { deleteConversation } from "./chat-service";
@@ -115,8 +115,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount Applications Router
   app.use("/api/applications", (await import("./routes/applications")).default);
 
+  // Mount Locations Router
+  app.use("/api", (await import("./routes/locations")).default);
+
   // Mount Microlearning Router
   app.use("/api/microlearning", (await import("./routes/microlearning")).default);
+  // Also mount at /api/firebase/microlearning for chef frontend compatibility
+  app.use("/api/firebase/microlearning", (await import("./routes/microlearning")).default);
+
 
   // Mount Files Router
   app.use("/api/files", (await import("./routes/files")).default);
@@ -132,6 +138,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const exists = await userService.checkUsernameExists(username);
     res.json({ exists });
+  });
+
+  // Get current user from Firebase auth (used by manager applications page)
+  app.get("/api/firebase/user/me", requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+      const user = req.neonUser!;
+      res.json({
+        ...user,
+        is_verified: user.isVerified,
+        has_seen_welcome: user.has_seen_welcome
+      });
+    } catch (error) {
+      console.error("[API] Error getting user:", error);
+      res.status(500).json({ error: "Failed to get user info" });
+    }
+  });
+
+  // Get User Profile (Restored)
+  app.get("/api/user/profile", requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+      const user = req.neonUser!;
+      // Drizzle maps is_verified -> isVerified, but legacy frontend code expects is_verified
+      const responseUser = {
+        ...user,
+        is_verified: user.isVerified
+      };
+      res.json(responseUser);
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      res.status(500).json({ error: "Failed to fetch user profile" });
+    }
+  });
+
+  // Sync User (Firebase -> Neon)
+  // Called after Firebase login to ensure user exists in Neon and update metadata
+  app.post("/api/firebase-sync-user", requireFirebaseAuthWithUser, async (req, res) => {
+    try {
+      const user = req.neonUser!;
+      // Update last login or other metadata if needed
+      // For now just return the user to confirm sync
+      res.json(user);
+    } catch (error) {
+      console.error("Error syncing user:", error);
+      res.status(500).json({ error: "Failed to sync user" });
+    }
+  });
+
+  // Register User (Firebase -> Neon)
+  // Called when a new Firebase user signs up
+  app.post("/api/firebase-register-user", async (req, res) => {
+    try {
+      // Manually verify token since we don't have a user in DB yet
+      const authHeader = req.headers.authorization;
+      if (!authHeader?.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "No token provided" });
+      }
+
+      const token = authHeader.split("Bearer ")[1];
+      const decodedToken = await verifyFirebaseToken(token);
+
+      if (!decodedToken) {
+        return res.status(401).json({ error: "Invalid token" });
+      }
+
+      const { email, uid, role, ...otherData } = req.body;
+
+      if (decodedToken.uid !== uid) {
+        return res.status(403).json({ error: "Token mismatch" });
+      }
+
+      // Check if user already exists
+      const existing = await userService.getUserByFirebaseUid(uid);
+      if (existing) {
+        return res.json(existing);
+      }
+
+      // Create new user
+      const newUser = await userService.createUser({
+        username: email,
+        email: email,
+        firebaseUid: uid,
+        role: role || "user",
+        isVerified: decodedToken.email_verified || false,
+        ...otherData
+      });
+
+      res.status(201).json(newUser);
+    } catch (error) {
+      console.error("Error registering user:", error);
+      res.status(500).json({ error: "Failed to register user" });
+    }
   });
 
   // Unsubscribe endpoint - public endpoint for email unsubscribe requests

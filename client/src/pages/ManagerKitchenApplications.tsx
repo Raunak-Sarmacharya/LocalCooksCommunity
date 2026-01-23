@@ -1168,19 +1168,31 @@ function ApplicationCard({
           </Badge>
         );
       case 'approved':
-        // Check if Tier 2 is awaiting review (chef submitted but current_tier still 2)
+        // Case 1: Tier 2 Pending Review (Chef submitted docs)
         if (application.current_tier === 2 && application.tier2_completed_at) {
           return (
             <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
               <Clock className="h-3 w-3 mr-1" />
-              Step 2 Pending
+              Step 2 Review
             </Badge>
           );
         }
+
+        // Case 2: Tier 1 Approved (Waiting for Chef to submit Tier 2)
+        if (application.current_tier === 2 && !application.tier2_completed_at) {
+          return (
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+              <Clock className="h-3 w-3 mr-1" />
+              Tier 1 Approved
+            </Badge>
+          );
+        }
+
+        // Case 3: Fully Approved (Tier 3+)
         return (
           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
             <CheckCircle className="h-3 w-3 mr-1" />
-            Approved
+            Fully Approved
           </Badge>
         );
       case 'rejected':

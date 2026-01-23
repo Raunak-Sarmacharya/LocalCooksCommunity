@@ -210,7 +210,7 @@ router.post("/chef/share-profile", requireChef, async (req: Request, res: Respon
 // Chef: Get profile status for locations (using location-based access)
 router.get("/chef/profiles", requireChef, async (req: Request, res: Response) => {
     try {
-        const chefId = req.user!.id;
+        const chefId = req.neonUser!.id;
 
         // Get all locations chef has access to via admin-granted access
         const locationAccessRecords = await db

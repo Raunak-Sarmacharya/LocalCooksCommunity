@@ -7,7 +7,8 @@ import {
     users
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { firebaseStorage } from "../storage-firebase";
+import { userService } from "../domains/users/user.service";
+import { locationService } from "../domains/locations/location.service";
 import { comparePasswords, hashPassword } from "../passwordUtils";
 import { normalizePhoneForStorage } from "../phone-utils";
 import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
@@ -31,7 +32,7 @@ router.post("/portal-login", async (req: Request, res: Response) => {
         console.log('Portal user login attempt for:', username);
 
         // Get portal user
-        const portalUser = await firebaseStorage.getUserByUsername(username);
+        const portalUser = await userService.getUserByUsername(username);
 
         if (!portalUser) {
             console.log('Portal user not found:', username);
@@ -126,20 +127,20 @@ router.post("/portal-register", async (req: Request, res: Response) => {
         }
 
         // Validate location exists
-        const location = await firebaseStorage.getLocationById(parseInt(locationId));
+        const location = await locationService.getLocationById(parseInt(locationId));
         if (!location) {
             return res.status(400).json({ error: "Location not found" });
         }
 
         // Check if user already exists
-        let user = await firebaseStorage.getUserByUsername(username);
+        let user = await userService.getUserByUsername(username);
         let isNewUser = false;
 
         if (!user) {
             // Hash password and create user
             const hashedPassword = await hashPassword(password);
 
-            user = await firebaseStorage.createUser({
+            user = await userService.createUser({
                 username: username,
                 password: hashedPassword,
                 role: "chef", // Default role, but portal user flag takes precedence
@@ -239,7 +240,7 @@ router.post("/portal-register", async (req: Request, res: Response) => {
                     if (!managerEmail) {
                         const managerId = (location as any).managerId || (location as any).manager_id;
                         if (managerId) {
-                            const manager = await firebaseStorage.getUser(managerId);
+                            const manager = await userService.getUser(managerId);
                             if (manager && (manager as any).username) {
                                 managerEmail = (manager as any).username;
                             }

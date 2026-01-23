@@ -12,7 +12,7 @@ import {
     calculatePlatformFeeDynamic,
     calculateTotalWithFees
 } from "../../services/pricing-service";
-import { bookingStatusEnum, kitchenBookings, kitchens, users, locations, equipmentListings, storageListings } from "@shared/schema";
+import { bookingStatusEnum, kitchenBookings, kitchens, users, locations, equipmentListings, storageListings, chefLocationAccess } from "@shared/schema";
 import { logger } from "../../logger";
 import { db } from "../../db";
 import { eq, and, ne } from "drizzle-orm";
@@ -38,6 +38,25 @@ export class BookingService {
             data.startTime,
             data.endTime
         );
+
+        // 1.1 Validate Chef Access (Tier 2 Requirement)
+        const kitchen = await kitchenService.getKitchenById(data.kitchenId);
+        if (!kitchen) throw new Error("Kitchen not found");
+
+        if (!data.chefId) {
+            throw new Error("Chef ID is required for booking");
+        }
+
+        const hasAccess = await db.query.chefLocationAccess.findFirst({
+            where: and(
+                eq(chefLocationAccess.chefId, data.chefId),
+                eq(chefLocationAccess.locationId, kitchen.locationId)
+            )
+        });
+
+        if (!hasAccess) {
+            throw new Error("You do not have approved access to this kitchen location. Please complete all required application steps (Tier 2) to book.");
+        }
 
         // 2. Calculate service fee
         const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents);

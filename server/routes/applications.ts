@@ -20,6 +20,7 @@ import {
     generateApplicationWithoutDocumentsEmail,
 } from "../email";
 import { normalizePhoneForStorage } from "../phone-utils";
+import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 
 // Service Imports
 import { ApplicationRepository } from "../domains/applications/application.repository";
@@ -212,6 +213,92 @@ router.post("/",
         }
     }
 );
+
+// 🔥 Update Application Documents (with Firebase Auth)
+router.patch('/:id/documents',
+    requireFirebaseAuthWithUser,
+    upload.fields([
+        { name: 'foodSafetyLicense', maxCount: 1 },
+        { name: 'foodEstablishmentCert', maxCount: 1 }
+    ]),
+    async (req: Request, res: Response) => {
+        try {
+            const id = parseInt(req.params.id);
+            if (isNaN(id)) {
+                return res.status(400).json({ message: "Invalid application ID" });
+            }
+
+            console.log(`📝 PATCH /api/applications/${id}/documents - User ${req.neonUser!.id} updating documents`);
+
+            // Check if application exists and belongs to user
+            const application = await appService.getApplicationById(id);
+            if (!application) {
+                return res.status(404).json({ message: "Application not found" });
+            }
+
+            // Allow only owner to update
+            if (application.userId !== req.neonUser!.id) {
+                return res.status(403).json({ message: "Access denied" });
+            }
+
+            // Handle file uploads if present
+            const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+            let foodSafetyLicenseUrl: string | undefined;
+            let foodEstablishmentCertUrl: string | undefined;
+
+            const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+            if (files) {
+                // Upload food safety license if provided
+                if (files.foodSafetyLicense && files.foodSafetyLicense[0]) {
+                    console.log('📄 Uploading food safety license file...');
+                    if (isProduction) {
+                        foodSafetyLicenseUrl = await uploadToBlob(files.foodSafetyLicense[0], req.neonUser!.id, 'documents');
+                    } else {
+                        foodSafetyLicenseUrl = getFileUrl(files.foodSafetyLicense[0].filename);
+                    }
+                }
+
+                // Upload food establishment cert if provided
+                if (files.foodEstablishmentCert && files.foodEstablishmentCert[0]) {
+                    console.log('📄 Uploading food establishment cert file...');
+                    if (isProduction) {
+                        foodEstablishmentCertUrl = await uploadToBlob(files.foodEstablishmentCert[0], req.neonUser!.id, 'documents');
+                    } else {
+                        foodEstablishmentCertUrl = getFileUrl(files.foodEstablishmentCert[0].filename);
+                    }
+                }
+            }
+
+            // Prepare update data
+            const updates: any = {};
+            if (foodSafetyLicenseUrl) {
+                updates.foodSafetyLicenseUrl = foodSafetyLicenseUrl;
+            }
+            if (foodEstablishmentCertUrl) {
+                updates.foodEstablishmentCertUrl = foodEstablishmentCertUrl;
+            }
+
+            if (Object.keys(updates).length === 0) {
+                return res.status(400).json({ message: "No documents provided for update" });
+            }
+
+            // Update docs (service resets status to pending automatically)
+            const updatedApplication = await appService.updateDocuments(id, updates);
+
+            if (!updatedApplication) {
+                return res.status(500).json({ message: "Failed to update application documents" });
+            }
+
+            res.json(updatedApplication);
+        } catch (error) {
+            console.error('Error updating application documents:', error);
+            res.status(500).json({
+                error: 'Failed to update application documents',
+                message: error instanceof Error ? error.message : 'Unknown error'
+            });
+        }
+    });
 
 // Get all applications endpoint (for admin view)
 router.get("/", async (req: Request, res: Response) => {

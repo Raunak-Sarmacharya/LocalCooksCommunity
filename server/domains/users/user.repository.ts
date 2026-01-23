@@ -19,9 +19,7 @@ export class UserRepository {
     return user || null;
   }
 
-  async getAllManagers(): Promise<User[]> {
-    return await db.select().from(users).where(eq(users.role, 'manager'));
-  }
+
 
   async create(data: CreateUserDTO): Promise<User> {
     const [user] = await db.insert(users).values(data).returning();

@@ -1,14 +1,14 @@
 import { Router, Request, Response } from 'express';
-import { requireFirebaseAuthWithUser, requireManager } from '../../firebase-auth-middleware';
-import { normalizeImageUrl } from '../utils';
+import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
+import { normalizeImageUrl } from './utils';
 import { updateLocationRequirementsSchema } from '@shared/schema';
 import { fromZodError } from 'zod-validation-error';
 
 // Import Domain Services
-import { LocationRepository } from '../../domains/locations/location.repository';
-import { LocationService } from '../../domains/locations/location.service';
-import { KitchenRepository } from '../../domains/kitchens/kitchen.repository';
-import { KitchenService } from '../../domains/kitchens/kitchen.service';
+import { LocationRepository } from '../domains/locations/location.repository';
+import { LocationService } from '../domains/locations/location.service';
+import { KitchenRepository } from '../domains/kitchens/kitchen.repository';
+import { KitchenService } from '../domains/kitchens/kitchen.service';
 
 const router = Router();
 
@@ -228,4 +228,4 @@ router.put('/manager/locations/:locationId/requirements',
     }
 );
 
-export const locationsRouter = router;
+export default router;

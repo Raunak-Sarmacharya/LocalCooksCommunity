@@ -7,7 +7,7 @@ import {
     kitchens
 } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
-import { firebaseStorage } from "../storage-firebase";
+
 import { requirePortalUser, getAuthenticatedUser } from "./middleware";
 import { bookingService } from "../domains/bookings/booking.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";

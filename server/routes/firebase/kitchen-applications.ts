@@ -790,32 +790,37 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                 await notifyTierTransition(applicationId, previousTier, currentTier);
             }
 
-            // Grant the chef access to this location
-            try {
-                // Check if chef already has access
-                const existingAccess = await db
-                    .select()
-                    .from(chefLocationAccess)
-                    .where(
-                        and(
-                            eq(chefLocationAccess.chefId, application.chefId),
-                            eq(chefLocationAccess.locationId, application.locationId)
-                        )
-                    );
+            // Grant the chef access to this location ONLY if they have reached Tier 2 or higher
+            if (currentTier >= 2) {
+                try {
 
-                if (existingAccess.length === 0) {
-                    // Grant access
-                    await db.insert(chefLocationAccess).values({
-                        chefId: application.chefId,
-                        locationId: application.locationId,
-                        grantedBy: req.neonUser!.id,
-                        grantedAt: new Date(),
-                    });
-                    console.log(`✅ Granted chef ${application.chefId} access to location ${application.locationId}`);
+                    // Check if chef already has access
+                    const existingAccess = await db
+                        .select()
+                        .from(chefLocationAccess)
+                        .where(
+                            and(
+                                eq(chefLocationAccess.chefId, application.chefId),
+                                eq(chefLocationAccess.locationId, application.locationId)
+                            )
+                        );
+
+                    if (existingAccess.length === 0) {
+                        // Grant access
+                        await db.insert(chefLocationAccess).values({
+                            chefId: application.chefId,
+                            locationId: application.locationId,
+                            grantedBy: req.neonUser!.id,
+                            grantedAt: new Date(),
+                        });
+                        console.log(`✅ Granted chef ${application.chefId} access to location ${application.locationId}`);
+                    }
+                } catch (accessError) {
+                    console.error('Error granting chef access:', accessError);
+                    // Don't fail the request, just log the error
                 }
-            } catch (accessError) {
-                console.error('Error granting chef access:', accessError);
-                // Don't fail the request, just log the error
+            } else {
+                console.log(`ℹ️ Chef ${application.chefId} approved for Tier 1 but waiting for Tier 2 for full access`);
             }
         }
 

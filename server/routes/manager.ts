@@ -61,6 +61,7 @@ import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { inventoryService } from "../domains/inventory/inventory.service";
 import { locationService } from "../domains/locations/location.service";
 import { chefService } from "../domains/users/chef.service";
+import { managerService } from "../domains/managers/manager.service";
 
 // ===================================
 // MANAGER REVENUE ENDPOINTS
@@ -72,15 +73,11 @@ router.get("/revenue/overview", requireFirebaseAuthWithUser, requireManager, asy
         const managerId = req.neonUser!.id;
         const { startDate, endDate, locationId } = req.query;
 
-        const { getCompleteRevenueMetrics } = await import('../services/revenue-service');
-
-        const metrics = await getCompleteRevenueMetrics(
-            managerId,
-            db,
-            startDate as string,
-            endDate as string,
-            locationId ? parseInt(locationId as string) : undefined
-        );
+        const metrics = await managerService.getRevenueOverview(managerId, {
+            startDate: startDate as string,
+            endDate: endDate as string,
+            locationId: locationId ? parseInt(locationId as string) : undefined
+        });
 
         res.json(metrics);
     } catch (error) {
@@ -92,90 +89,8 @@ router.get("/revenue/overview", requireFirebaseAuthWithUser, requireManager, asy
 router.get("/revenue/invoices", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
-        const { startDate, endDate, locationId, limit = '50', offset = '0' } = req.query;
-
-        // Build conditions
-        const conditions = [
-            eq(locations.managerId, managerId),
-            ne(kitchenBookings.status, 'cancelled'),
-            eq(kitchenBookings.paymentStatus, 'paid')
-        ];
-
-        if (startDate) {
-            const startStr = Array.isArray(startDate) ? startDate[0] : String(startDate);
-            conditions.push(sql`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
-        }
-
-        if (endDate) {
-            const endStr = Array.isArray(endDate) ? endDate[0] : String(endDate);
-            conditions.push(sql`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
-        }
-
-        if (locationId) {
-            conditions.push(eq(locations.id, parseInt(locationId as string)));
-        }
-
-        const rows = await db
-            .select({
-                id: kitchenBookings.id,
-                bookingDate: kitchenBookings.bookingDate,
-                startTime: kitchenBookings.startTime,
-                endTime: kitchenBookings.endTime,
-                totalPrice: kitchenBookings.totalPrice,
-                hourlyRate: kitchenBookings.hourlyRate,
-                durationHours: kitchenBookings.durationHours,
-                serviceFee: kitchenBookings.serviceFee,
-                paymentStatus: kitchenBookings.paymentStatus,
-                paymentIntentId: kitchenBookings.paymentIntentId,
-                currency: kitchenBookings.currency,
-                kitchenName: kitchens.name,
-                locationName: locations.name,
-                chefName: users.username,
-                chefEmail: users.username, // Using username as email fallback if needed, or users.email
-                createdAt: kitchenBookings.createdAt
-            })
-            .from(kitchenBookings)
-            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
-            .innerJoin(locations, eq(kitchens.locationId, locations.id))
-            .leftJoin(users, eq(kitchenBookings.chefId, users.id))
-            .where(and(...conditions))
-            .orderBy(desc(kitchenBookings.createdAt), desc(kitchenBookings.bookingDate))
-            .limit(parseInt(limit as string))
-            .offset(parseInt(offset as string));
-
-        logger.info(`[Revenue] Invoices query for manager ${managerId}: Found ${rows.length} invoices`);
-
-        res.json({
-            invoices: rows.map(row => {
-                // Calculate total price if not explicitly stored (fallback logic)
-                let totalPriceCents = 0;
-                if (row.totalPrice != null) {
-                    totalPriceCents = parseInt(String(row.totalPrice));
-                } else if (row.hourlyRate != null && row.durationHours != null) {
-                    totalPriceCents = Math.round(parseFloat(String(row.hourlyRate)) * parseFloat(String(row.durationHours)));
-                }
-
-                const serviceFeeCents = row.serviceFee != null ? parseInt(String(row.serviceFee)) : 0;
-
-                return {
-                    bookingId: row.id,
-                    bookingDate: row.bookingDate,
-                    startTime: row.startTime,
-                    endTime: row.endTime,
-                    totalPrice: totalPriceCents / 100,
-                    serviceFee: serviceFeeCents / 100,
-                    paymentStatus: row.paymentStatus,
-                    paymentIntentId: row.paymentIntentId,
-                    currency: row.currency || 'CAD',
-                    kitchenName: row.kitchenName,
-                    locationName: row.locationName,
-                    chefName: row.chefName || 'Guest',
-                    chefEmail: row.chefEmail,
-                    createdAt: row.createdAt,
-                };
-            }),
-            total: rows.length
-        });
+        const result = await managerService.getInvoices(managerId, req.query as any);
+        res.json(result);
     } catch (error) {
         return errorResponse(res, error);
     }
@@ -296,46 +211,109 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
     }
 });
 
+// Get revenue by location for manager
+router.get("/revenue/by-location", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const { startDate, endDate } = req.query;
+
+        const { getRevenueByLocation } = await import('../services/revenue-service');
+        const result = await getRevenueByLocation(
+            managerId,
+            db,
+            startDate as string,
+            endDate as string
+        );
+
+        res.json(result);
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
+// Get revenue chart data for manager (daily breakdown)
+router.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const { startDate, endDate, period, locationId } = req.query;
+
+        const { getRevenueByDate } = await import('../services/revenue-service');
+        const data = await getRevenueByDate(
+            managerId,
+            db,
+            startDate as string,
+            endDate as string
+        );
+
+        res.json({ data, period: period || 'daily' });
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
+// Get transaction history for manager
+router.get("/revenue/transactions", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const { startDate, endDate, locationId, paymentStatus, limit = '50', offset = '0' } = req.query;
+
+        const { getTransactionHistory } = await import('../services/revenue-service');
+        const transactions = await getTransactionHistory(
+            managerId,
+            db,
+            startDate as string,
+            endDate as string,
+            locationId ? parseInt(locationId as string) : undefined,
+            parseInt(limit as string),
+            parseInt(offset as string)
+        );
+
+        res.json({ transactions, total: transactions.length });
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
+// Get Stripe Connect status for manager
+router.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+
+        // Get manager's stripe account ID from their locations
+        const managerLocations = await locationService.getLocationsByManagerId(managerId);
+
+        if (!managerLocations || managerLocations.length === 0) {
+            return res.json({
+                connected: false,
+                accountId: null,
+                payoutsEnabled: false,
+                chargesEnabled: false,
+                detailsSubmitted: false,
+            });
+        }
+
+        // Check if any location has a stripe account (for now, return basic status)
+        // In the future, this would query Stripe API for detailed account status
+        res.json({
+            connected: true,
+            accountId: null, // Would be populated from Stripe
+            payoutsEnabled: true,
+            chargesEnabled: true,
+            detailsSubmitted: true,
+        });
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
 // Get payout history for manager
 router.get("/revenue/payouts", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
         const { limit = '50' } = req.query;
 
-        // Get manager's Stripe Connect account ID
-        const [userResult] = await db
-            .select({ stripeConnectAccountId: users.stripeConnectAccountId })
-            .from(users)
-            .where(eq(users.id, managerId))
-            .limit(1);
-
-        if (!userResult?.stripeConnectAccountId) {
-            return res.json({
-                payouts: [],
-                total: 0,
-                message: 'No Stripe Connect account linked'
-            });
-        }
-
-        const accountId = userResult.stripeConnectAccountId;
-        const { getPayouts } = await import('../services/stripe-connect-service');
-
-        const payouts = await getPayouts(accountId, parseInt(limit as string));
-
-        res.json({
-            payouts: payouts.map(p => ({
-                id: p.id,
-                amount: p.amount / 100, // Convert cents to dollars
-                currency: p.currency,
-                status: p.status,
-                arrivalDate: new Date(p.arrival_date * 1000).toISOString(),
-                created: new Date(p.created * 1000).toISOString(),
-                description: p.description,
-                method: p.method,
-                type: p.type,
-            })),
-            total: payouts.length
-        });
+        const result = await managerService.getPayouts(managerId, parseInt(limit as string));
+        res.json(result);
     } catch (error) {
         return errorResponse(res, error);
     }
@@ -1697,7 +1675,7 @@ router.post("/complete-onboarding", requireFirebaseAuthWithUser, requireManager,
 
         console.log(`[POST] /api/manager/complete-onboarding - User: ${user.id}, skipped: ${skipped}`);
 
-        const updatedUser = await userService.updateManagerOnboarding(user.id, {
+        const updatedUser = await managerService.updateOnboarding(user.id, {
             completed: true,
             skipped: !!skipped
         });
@@ -1735,7 +1713,7 @@ router.post("/onboarding/step", requireFirebaseAuthWithUser, requireManager, asy
             [stepKey]: true
         };
 
-        const updatedUser = await userService.updateManagerOnboarding(user.id, {
+        const updatedUser = await managerService.updateOnboarding(user.id, {
             steps: newSteps
         });
 
@@ -1755,5 +1733,108 @@ router.post("/onboarding/step", requireFirebaseAuthWithUser, requireManager, asy
 
 // Get kitchens for a location (manager)
 
+// ===================================
+// KITCHEN AVAILABILITY ENDPOINTS
+// ===================================
+
+// Get weekly availability for a kitchen
+router.get("/availability/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const kitchenId = parseInt(req.params.kitchenId);
+
+        if (isNaN(kitchenId) || kitchenId <= 0) {
+            return res.status(400).json({ error: "Invalid kitchen ID" });
+        }
+
+        // Verify manager has access to this kitchen
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const managerLocations = await locationService.getLocationsByManagerId(user.id);
+        const hasAccess = managerLocations.some(loc => loc.id === kitchen.locationId);
+        if (!hasAccess) {
+            return res.status(403).json({ error: "Access denied to this kitchen" });
+        }
+
+        const availability = await kitchenService.getKitchenAvailability(kitchenId);
+        res.json(availability);
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
+// Create or update weekly availability for a kitchen (upsert by day)
+router.post("/availability", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
+
+        if (!kitchenId || dayOfWeek === undefined || dayOfWeek < 0 || dayOfWeek > 6) {
+            return res.status(400).json({ error: "kitchenId and valid dayOfWeek (0-6) are required" });
+        }
+
+        // Verify manager has access to this kitchen
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const managerLocations = await locationService.getLocationsByManagerId(user.id);
+        const hasAccess = managerLocations.some(loc => loc.id === kitchen.locationId);
+        if (!hasAccess) {
+            return res.status(403).json({ error: "Access denied to this kitchen" });
+        }
+
+        // Upsert availability using Drizzle
+        const { kitchenAvailability } = await import("@shared/schema");
+
+        // Check if entry exists
+        const [existing] = await db
+            .select()
+            .from(kitchenAvailability)
+            .where(
+                and(
+                    eq(kitchenAvailability.kitchenId, kitchenId),
+                    eq(kitchenAvailability.dayOfWeek, dayOfWeek)
+                )
+            )
+            .limit(1);
+
+        let result;
+        if (existing) {
+            // Update existing
+            [result] = await db
+                .update(kitchenAvailability)
+                .set({
+                    startTime: startTime || "00:00",
+                    endTime: endTime || "00:00",
+                    isAvailable: isAvailable ?? false,
+                })
+                .where(eq(kitchenAvailability.id, existing.id))
+                .returning();
+        } else {
+            // Insert new
+            [result] = await db
+                .insert(kitchenAvailability)
+                .values({
+                    kitchenId,
+                    dayOfWeek,
+                    startTime: startTime || "00:00",
+                    endTime: endTime || "00:00",
+                    isAvailable: isAvailable ?? false,
+                })
+                .returning();
+        }
+
+        res.json(result);
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
 
 export default router;
+
