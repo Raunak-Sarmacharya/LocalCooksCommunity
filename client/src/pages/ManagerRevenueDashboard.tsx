@@ -93,19 +93,20 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 // Format currency helper
 function formatCurrency(amount: number): string {
+  // Amount is in cents, convert to dollars for display
   return new Intl.NumberFormat('en-CA', {
     style: 'currency',
     currency: 'CAD',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(amount / 100);
 }
 
 // Format date helper
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
     day: 'numeric',
     year: 'numeric'
   });
@@ -134,7 +135,7 @@ export default function ManagerRevenueDashboard({
   const dateRangeParams = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     let startDate: Date;
     let endDate: Date = new Date();
     endDate.setHours(23, 59, 59, 999);
@@ -184,12 +185,12 @@ export default function ManagerRevenueDashboard({
       if (selectedLocationFilter !== 'all') {
         params.append('locationId', selectedLocationFilter.toString());
       }
-      
+
       const response = await fetch(`/api/manager/revenue/overview?${params}`, {
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch revenue metrics');
       }
@@ -207,12 +208,12 @@ export default function ManagerRevenueDashboard({
         startDate: dateRangeParams.startDate,
         endDate: dateRangeParams.endDate,
       });
-      
+
       const response = await fetch(`/api/manager/revenue/by-location?${params}`, {
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch revenue by location');
       }
@@ -234,12 +235,12 @@ export default function ManagerRevenueDashboard({
       if (selectedLocationFilter !== 'all') {
         params.append('locationId', selectedLocationFilter.toString());
       }
-      
+
       const response = await fetch(`/api/manager/revenue/charts?${params}`, {
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch chart data');
       }
@@ -265,12 +266,12 @@ export default function ManagerRevenueDashboard({
       if (paymentStatusFilter !== 'all') {
         params.append('paymentStatus', paymentStatusFilter);
       }
-      
+
       const response = await fetch(`/api/manager/revenue/transactions?${params}`, {
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch transactions');
       }
@@ -293,12 +294,12 @@ export default function ManagerRevenueDashboard({
       if (selectedLocationFilter !== 'all') {
         params.append('locationId', selectedLocationFilter.toString());
       }
-      
+
       const response = await fetch(`/api/manager/revenue/invoices?${params}`, {
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch invoices');
       }
@@ -316,7 +317,7 @@ export default function ManagerRevenueDashboard({
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch Stripe Connect status');
       }
@@ -334,7 +335,7 @@ export default function ManagerRevenueDashboard({
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch payouts');
       }
@@ -347,7 +348,7 @@ export default function ManagerRevenueDashboard({
   const filteredTransactions = useMemo(() => {
     if (!transactionsData?.transactions) return [];
     if (!searchQuery.trim()) return transactionsData.transactions;
-    
+
     const query = searchQuery.toLowerCase();
     return transactionsData.transactions.filter((t: any) =>
       t.chefName?.toLowerCase().includes(query) ||
@@ -362,7 +363,7 @@ export default function ManagerRevenueDashboard({
     if (!filteredTransactions || filteredTransactions.length === 0) {
       return { totalPrice: 0, managerRevenue: 0 };
     }
-    
+
     return filteredTransactions.reduce(
       (acc: { totalPrice: number; managerRevenue: number }, t: any) => {
         return {
@@ -402,20 +403,20 @@ export default function ManagerRevenueDashboard({
     if (!transactionsData?.transactions) return [];
     const statusAmounts: Record<string, number> = {};
     const statusCounts: Record<string, number> = {};
-    
+
     transactionsData.transactions.forEach((t: any) => {
       // Use paymentStatus from transaction, default to 'pending' if not set
       const status = t.paymentStatus || 'pending';
       // For paid/processing transactions, show managerRevenue (what manager actually receives)
       // For other statuses, show totalPrice (what was charged)
-      const amount = (status === 'paid' || status === 'processing') 
+      const amount = (status === 'paid' || status === 'processing')
         ? (t.managerRevenue || 0) // Manager's actual earnings after fees
         : (t.totalPrice || 0); // Total amount charged
-      
+
       statusAmounts[status] = (statusAmounts[status] || 0) + amount;
       statusCounts[status] = (statusCounts[status] || 0) + 1;
     });
-    
+
     const statusLabels: Record<string, string> = {
       paid: 'Paid (In Your Account)',
       processing: 'Processing',
@@ -424,7 +425,7 @@ export default function ManagerRevenueDashboard({
       partially_refunded: 'Partially Refunded',
       canceled: 'Canceled',
     };
-    
+
     // Return data with amounts, filtering out zero amounts
     return Object.entries(statusAmounts)
       .filter(([_, amount]) => amount > 0)
@@ -482,7 +483,7 @@ export default function ManagerRevenueDashboard({
         {color.label}
       </Badge>
     );
-    
+
     if (color.tooltip) {
       return (
         <div className="group relative inline-block">
@@ -493,7 +494,7 @@ export default function ManagerRevenueDashboard({
         </div>
       );
     }
-    
+
     return badge;
   };
 
@@ -505,11 +506,11 @@ export default function ManagerRevenueDashboard({
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to download invoice');
       }
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -532,11 +533,11 @@ export default function ManagerRevenueDashboard({
         headers,
         credentials: 'include',
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to download payout statement');
       }
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -581,7 +582,7 @@ export default function ManagerRevenueDashboard({
             Track your earnings, payments, and financial performance
           </p>
         </div>
-        
+
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
           {/* Date Range Filter */}
@@ -618,8 +619,8 @@ export default function ManagerRevenueDashboard({
 
           {/* Location Filter */}
           {locations.length > 1 && (
-            <Select 
-              value={selectedLocationFilter === 'all' ? 'all' : selectedLocationFilter.toString()} 
+            <Select
+              value={selectedLocationFilter === 'all' ? 'all' : selectedLocationFilter.toString()}
               onValueChange={(value) => setSelectedLocationFilter(value === 'all' ? 'all' : parseInt(value))}
             >
               <SelectTrigger className="w-[160px]">
@@ -746,7 +747,7 @@ export default function ManagerRevenueDashboard({
                         const totalRevenue = revenueMetrics.totalRevenue || 0;
                         const platformFee = revenueMetrics.platformFee || 0;
                         // Calculate platform fee portion from completed payments proportionally
-                        const completedPlatformFee = totalRevenue > 0 
+                        const completedPlatformFee = totalRevenue > 0
                           ? (platformFee * (completedTotal / totalRevenue))
                           : 0;
                         const managerRevenueFromCompleted = completedTotal - completedPlatformFee;
@@ -818,32 +819,32 @@ export default function ManagerRevenueDashboard({
                   <AreaChart data={revenueTrendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorManagerRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorTotalRevenue" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                    <XAxis 
-                      dataKey="date" 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <XAxis
+                      dataKey="date"
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fill: '#9ca3af', fontSize: 10 }}
                     />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fill: '#9ca3af', fontSize: 10 }}
                       width={50}
                       tickFormatter={(value) => `$${value.toFixed(0)}`}
                     />
-                    <Tooltip 
-                      contentStyle={{ 
-                        borderRadius: '8px', 
-                        border: 'none', 
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: '8px',
+                        border: 'none',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                         padding: '8px 12px',
                         fontSize: '12px',
@@ -851,7 +852,7 @@ export default function ManagerRevenueDashboard({
                       }}
                       formatter={(value: any) => formatCurrency(value)}
                     />
-                    <Legend 
+                    <Legend
                       wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
                       iconType="circle"
                     />
@@ -903,26 +904,26 @@ export default function ManagerRevenueDashboard({
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={locationChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <XAxis
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fill: '#9ca3af', fontSize: 10 }}
                       angle={-45}
                       textAnchor="end"
                       height={60}
                     />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
                       tick={{ fill: '#9ca3af', fontSize: 10 }}
                       width={50}
                       tickFormatter={(value) => `$${value.toFixed(0)}`}
                     />
-                    <Tooltip 
-                      contentStyle={{ 
-                        borderRadius: '8px', 
-                        border: 'none', 
+                    <Tooltip
+                      contentStyle={{
+                        borderRadius: '8px',
+                        border: 'none',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                         padding: '8px 12px',
                         fontSize: '12px',
@@ -957,10 +958,10 @@ export default function ManagerRevenueDashboard({
                               <Cell key={`cell-${index}`} fill={getPaymentStatusColor(entry.status)} />
                             ))}
                           </Pie>
-                          <Tooltip 
-                            contentStyle={{ 
-                              borderRadius: '8px', 
-                              border: 'none', 
+                          <Tooltip
+                            contentStyle={{
+                              borderRadius: '8px',
+                              border: 'none',
                               boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                               padding: '8px 12px',
                               fontSize: '12px',
@@ -1001,10 +1002,10 @@ export default function ManagerRevenueDashboard({
                             <Cell key={`cell-${index}`} fill={getPaymentStatusColor(entry.status)} />
                           ))}
                         </Pie>
-                        <Tooltip 
-                          contentStyle={{ 
-                            borderRadius: '8px', 
-                            border: 'none', 
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: '8px',
+                            border: 'none',
                             boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                             padding: '8px 12px',
                             fontSize: '12px',
@@ -1020,7 +1021,7 @@ export default function ManagerRevenueDashboard({
                             ];
                           }}
                         />
-                        <Legend 
+                        <Legend
                           wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
                           iconType="circle"
                           formatter={(value, entry: any) => {
@@ -1073,7 +1074,7 @@ export default function ManagerRevenueDashboard({
                   <SelectItem value="refunded">Refunded</SelectItem>
                 </SelectContent>
               </Select>
-              
+
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1251,13 +1252,13 @@ export default function ManagerRevenueDashboard({
             <Alert className="mb-4 border-amber-200 bg-amber-50">
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-900 font-semibold">
-                {!stripeConnectStatus.hasAccount 
-                  ? 'Connect Your Stripe Account' 
+                {!stripeConnectStatus.hasAccount
+                  ? 'Connect Your Stripe Account'
                   : 'Complete Your Stripe Connect Setup'}
               </AlertTitle>
               <AlertDescription className="text-amber-800 mt-2">
                 <p className="mb-3">
-                  {!stripeConnectStatus.hasAccount 
+                  {!stripeConnectStatus.hasAccount
                     ? "Connect your Stripe Connect account to receive automatic payouts directly to your bank account. Without it, you'll need to wait for manual payouts."
                     : "Complete your Stripe Connect onboarding to start receiving automatic payouts. Finish the setup to avoid waiting for manual payouts."}
                 </p>
@@ -1283,7 +1284,7 @@ export default function ManagerRevenueDashboard({
               </AlertDescription>
             </Alert>
           )}
-          
+
           {isLoadingPayouts ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
@@ -1293,7 +1294,7 @@ export default function ManagerRevenueDashboard({
               <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">No payouts yet</p>
               <p className="text-sm text-gray-400 mt-1">
-                {stripeConnectStatus && !stripeConnectStatus.hasAccount 
+                {stripeConnectStatus && !stripeConnectStatus.hasAccount
                   ? "Connect Stripe Connect to start receiving automatic payouts"
                   : "Payouts will appear here once processed"}
               </p>
