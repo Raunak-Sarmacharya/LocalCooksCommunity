@@ -623,7 +623,7 @@ export default function ManagerOnboardingWizard() {
             },
             credentials: "include",
             body: JSON.stringify({
-              hourlyRate: hourlyRateNum,
+              hourlyRate: Math.round(hourlyRateNum * 100), // Convert dollars to cents
               currency: data.currency || 'CAD',
               minimumBookingHours: parseInt(data.minimumBookingHours || '1') || 1,
             }),

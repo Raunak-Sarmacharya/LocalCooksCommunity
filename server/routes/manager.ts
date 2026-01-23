@@ -792,10 +792,13 @@ router.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
             return res.status(400).json({ error: "Pricing model must be 'hourly', 'daily', or 'weekly'" });
         }
 
-        // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method)
+        // Update pricing (hourlyRate is expected in dollars, will be converted to cents in storage method) 
+        // NOTE: Actually, older clients might send dollars or cents. 
+        // But KitchenPricingManagement sends CENTS. ManagerOnboardingWizard sends DOLLARS (will fix).
+        // Let's expect CENTS here to be consistent with KitchenPricingManagement.
         const pricing: any = {};
         if (hourlyRate !== undefined) {
-            pricing.hourlyRate = hourlyRate === null ? null : hourlyRate; // Will be converted to cents in storage method
+            pricing.hourlyRate = hourlyRate === null ? null : hourlyRate;
         }
         if (currency !== undefined) pricing.currency = currency;
         if (minimumBookingHours !== undefined) pricing.minimumBookingHours = minimumBookingHours;
