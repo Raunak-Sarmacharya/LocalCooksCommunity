@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import {
   Dialog,
   DialogContent,
@@ -10,21 +13,51 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormDescription,
+} from "@/components/ui/form";
+import {
   Building2, MapPin, Mail, Phone, Clock, Calendar,
-  Globe, Image as ImageIcon, Save, Loader2, CheckCircle,
-  XCircle, AlertCircle, Upload, FileText
+  Globe, Save, Loader2, CheckCircle,
+  XCircle, AlertCircle, FileText
 } from "lucide-react";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
-import type { LocationData } from "./LocationCard";
 import { cn } from "@/lib/utils";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
+import { LocationData } from "./types"; // Use shared types
+
+// Zod schemas for validation
+const basicInfoSchema = z.object({
+  name: z.string().min(2, "Location name must be at least 2 characters"),
+  address: z.string().min(5, "Address must be at least 5 characters"),
+  notificationEmail: z.string().email("Please enter a valid email address").optional().or(z.literal("")),
+  notificationPhone: z.string().optional(),
+});
+
+const settingsSchema = z.object({
+  timezone: z.string(),
+  cancellationPolicyHours: z.coerce.number().min(0, "Hours cannot be negative"),
+  defaultDailyBookingLimit: z.coerce.number().min(1, "Must be at least 1 hour").max(24, "Cannot exceed 24 hours"),
+  minimumBookingWindowHours: z.coerce.number().min(0, "Hours cannot be negative").max(168, "Cannot exceed 1 week (168 hours)"),
+  cancellationPolicyMessage: z.string().optional(),
+  logoUrl: z.string().optional(),
+});
+
+// Combined schema for form handling
+const locationFormSchema = basicInfoSchema.merge(settingsSchema);
+
+type LocationFormValues = z.infer<typeof locationFormSchema>;
 
 interface LocationEditModalProps {
   location: LocationData;
@@ -99,42 +132,40 @@ export default function LocationEditModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Form state
-  const [name, setName] = useState(location.name);
-  const [address, setAddress] = useState(location.address);
-  const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || "");
-  const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || "");
-  // Timezone is locked to Newfoundland - always use DEFAULT_TIMEZONE
-  const timezone = DEFAULT_TIMEZONE;
-  const [cancellationPolicyHours, setCancellationPolicyHours] = useState(
-    location.cancellationPolicyHours?.toString() || "24"
-  );
-  const [cancellationPolicyMessage, setCancellationPolicyMessage] = useState(
-    location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
-  );
-  const [defaultDailyBookingLimit, setDefaultDailyBookingLimit] = useState(
-    location.defaultDailyBookingLimit?.toString() || "2"
-  );
-  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(
-    location.minimumBookingWindowHours?.toString() || "1"
-  );
-  const [logoUrl, setLogoUrl] = useState(location.logoUrl || "");
+  const form = useForm<LocationFormValues>({
+    resolver: zodResolver(locationFormSchema),
+    defaultValues: {
+      name: location.name,
+      address: location.address,
+      notificationEmail: location.notificationEmail || "",
+      notificationPhone: location.notificationPhone || "",
+      timezone: DEFAULT_TIMEZONE, // Locked to default
+      cancellationPolicyHours: location.cancellationPolicyHours || 24,
+      cancellationPolicyMessage: location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+      defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
+      minimumBookingWindowHours: location.minimumBookingWindowHours || 1,
+      logoUrl: location.logoUrl || "",
+    },
+  });
 
-  // Reset form when location changes
+  // Reset form when location changes or modal opens
   useEffect(() => {
-    setName(location.name);
-    setAddress(location.address);
-    setNotificationEmail(location.notificationEmail || "");
-    setNotificationPhone(location.notificationPhone || "");
-    // Timezone is locked to DEFAULT_TIMEZONE - no need to update state
-    setCancellationPolicyHours(location.cancellationPolicyHours?.toString() || "24");
-    setCancellationPolicyMessage(
-      location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
-    );
-    setDefaultDailyBookingLimit(location.defaultDailyBookingLimit?.toString() || "2");
-    setMinimumBookingWindowHours(location.minimumBookingWindowHours?.toString() || "1");
-    setLogoUrl(location.logoUrl || "");
-  }, [location]);
+    if (isOpen) {
+      form.reset({
+        name: location.name,
+        address: location.address,
+        notificationEmail: location.notificationEmail || "",
+        notificationPhone: location.notificationPhone || "",
+        timezone: DEFAULT_TIMEZONE,
+        cancellationPolicyHours: location.cancellationPolicyHours || 24,
+        cancellationPolicyMessage: location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
+        defaultDailyBookingLimit: location.defaultDailyBookingLimit || 2,
+        minimumBookingWindowHours: location.minimumBookingWindowHours || 1,
+        logoUrl: location.logoUrl || "",
+      });
+    }
+  }, [location, isOpen, form]);
+
 
   // Update basic info mutation
   const updateBasicInfo = useMutation({
@@ -183,25 +214,25 @@ export default function LocationEditModal({
     },
   });
 
-  const handleSave = async () => {
+  const onSubmit = async (values: LocationFormValues) => {
     try {
-      // Update basic info
-      await updateBasicInfo.mutateAsync({
-        name,
-        address,
-        notificationEmail,
-        notificationPhone,
-      });
-
-      // Update settings
-      await updateSettings.mutateAsync({
-        cancellationPolicyHours: parseInt(cancellationPolicyHours) || 24,
-        cancellationPolicyMessage,
-        defaultDailyBookingLimit: parseInt(defaultDailyBookingLimit) || 2,
-        minimumBookingWindowHours: parseInt(minimumBookingWindowHours) || 1,
-        logoUrl: logoUrl || undefined,
-        timezone,
-      });
+      // Execute both mutations concurrently
+      await Promise.all([
+        updateBasicInfo.mutateAsync({
+          name: values.name,
+          address: values.address,
+          notificationEmail: values.notificationEmail || "",
+          notificationPhone: values.notificationPhone || "",
+        }),
+        updateSettings.mutateAsync({
+          cancellationPolicyHours: values.cancellationPolicyHours,
+          cancellationPolicyMessage: values.cancellationPolicyMessage,
+          defaultDailyBookingLimit: values.defaultDailyBookingLimit,
+          minimumBookingWindowHours: values.minimumBookingWindowHours,
+          logoUrl: values.logoUrl || undefined,
+          timezone: values.timezone,
+        })
+      ]);
 
       // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
@@ -268,279 +299,303 @@ export default function LocationEditModal({
           </div>
         </DialogHeader>
 
-        <Tabs defaultValue="basic" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="basic">Basic Info</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="license">License</TabsTrigger>
-          </TabsList>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Tabs defaultValue="basic" className="mt-4">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                <TabsTrigger value="settings">Settings</TabsTrigger>
+                <TabsTrigger value="license">License</TabsTrigger>
+              </TabsList>
 
-          {/* Basic Info Tab */}
-          <TabsContent value="basic" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Location Name</Label>
-              <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter location name"
-                  className="pl-10"
-                  disabled={viewOnly}
+              {/* Basic Info Tab */}
+              <TabsContent value="basic" className="space-y-4 mt-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location Name</FormLabel>
+                      <div className="relative">
+                        <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <FormControl>
+                          <Input className="pl-10" placeholder="Enter location name" {...field} disabled={viewOnly} />
+                        </FormControl>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="address">Address</Label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                <Textarea
-                  id="address"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Enter full address"
-                  className="pl-10 min-h-[80px]"
-                  disabled={viewOnly}
+                <FormField
+                  control={form.control}
+                  name="address"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address</FormLabel>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                        <FormControl>
+                          <Textarea className="pl-10 min-h-[80px]" placeholder="Enter full address" {...field} disabled={viewOnly} />
+                        </FormControl>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Notification Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    value={notificationEmail}
-                    onChange={(e) => setNotificationEmail(e.target.value)}
-                    placeholder="email@example.com"
-                    className="pl-10"
-                    disabled={viewOnly}
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="notificationEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notification Email</FormLabel>
+                        <div className="relative">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <FormControl>
+                            <Input className="pl-10" type="email" placeholder="email@example.com" {...field} disabled={viewOnly} />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="notificationPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notification Phone</FormLabel>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <FormControl>
+                            <Input className="pl-10" type="tel" placeholder="(416) 123-4567" {...field} disabled={viewOnly} />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="phone">Notification Phone</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={notificationPhone}
-                    onChange={(e) => setNotificationPhone(e.target.value)}
-                    placeholder="(416) 123-4567"
-                    className="pl-10"
-                    disabled={viewOnly}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Location Logo</Label>
-              <ImageWithReplace
-                imageUrl={logoUrl || undefined}
-                onImageChange={(newUrl) => setLogoUrl(newUrl || "")}
-                alt="Location logo"
-                className="w-full max-w-xs"
-                containerClassName="w-full max-w-xs"
-                aspectRatio="1/1"
-                showReplaceButton={!viewOnly}
-                showRemoveButton={!viewOnly}
-                fieldName="logo"
-              />
-              {viewOnly && !logoUrl && (
-                <p className="text-sm text-gray-500">No logo uploaded</p>
-              )}
-            </div>
-          </TabsContent>
-
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="timezone">Timezone</Label>
-              <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-700">
-                <Globe className="w-4 h-4 text-gray-400" />
-                <span className="flex-1">Newfoundland Time (GMT-3:30)</span>
-                <Badge variant="secondary" className="text-xs">Locked</Badge>
-              </div>
-              <p className="text-xs text-gray-500">
-                The timezone is locked to Newfoundland Time for all locations.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="cancellationHours">Cancellation Policy (hours)</Label>
-                <div className="relative">
-                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    id="cancellationHours"
-                    type="number"
-                    min="0"
-                    value={cancellationPolicyHours}
-                    onChange={(e) => setCancellationPolicyHours(e.target.value)}
-                    className="pl-10"
-                    disabled={viewOnly}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="bookingLimit">Daily Booking Limit (hours)</Label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    id="bookingLimit"
-                    type="number"
-                    min="1"
-                    max="24"
-                    value={defaultDailyBookingLimit}
-                    onChange={(e) => setDefaultDailyBookingLimit(e.target.value)}
-                    className="pl-10"
-                    disabled={viewOnly}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="minBookingWindow">Minimum Booking Window (hours)</Label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  id="minBookingWindow"
-                  type="number"
-                  min="0"
-                  max="168"
-                  value={minimumBookingWindowHours}
-                  onChange={(e) => setMinimumBookingWindowHours(e.target.value)}
-                  className="pl-10"
-                  disabled={viewOnly}
-                />
-              </div>
-              <p className="text-xs text-gray-500">
-                How many hours in advance bookings must be made (0-168 hours)
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="cancellationMessage">Cancellation Policy Message</Label>
-              <Textarea
-                id="cancellationMessage"
-                value={cancellationPolicyMessage}
-                onChange={(e) => setCancellationPolicyMessage(e.target.value)}
-                placeholder="Enter cancellation policy message"
-                className="min-h-[80px]"
-                disabled={viewOnly}
-              />
-              <p className="text-xs text-gray-500">
-                Use {"{hours}"} to insert the cancellation hours value
-              </p>
-            </div>
-          </TabsContent>
-
-          {/* License Tab */}
-          <TabsContent value="license" className="space-y-4 mt-4">
-            <div className="rounded-lg border p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-gray-600" />
-                  <span className="font-medium">Kitchen License</span>
-                </div>
-                <div className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
-                  statusConfig.bgColor,
-                  statusConfig.textColor
-                )}>
-                  <StatusIcon className="w-3.5 h-3.5" />
-                  {statusConfig.label}
-                </div>
-              </div>
-
-              {location.kitchenLicenseUrl ? (
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-600">
-                    Your kitchen license has been uploaded and is{" "}
-                    {location.kitchenLicenseStatus === 'approved'
-                      ? 'approved'
-                      : location.kitchenLicenseStatus === 'rejected'
-                        ? 'rejected'
-                        : 'under review'}.
-                  </p>
-                  <a
-                    href={
-                      location.kitchenLicenseUrl?.includes('.r2.dev/')
-                        ? location.kitchenLicenseUrl // Public R2 URLs work directly
-                        : (location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') || location.kitchenLicenseUrl?.includes('files.localcooks.ca'))
-                          ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
-                          : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
-                  >
-                    <FileText className="w-4 h-4" />
-                    View uploaded license
-                  </a>
+                  <FormLabel>Location Logo</FormLabel>
+                  <FormField
+                    control={form.control}
+                    name="logoUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <ImageWithReplace
+                            imageUrl={field.value || undefined}
+                            onImageChange={(newUrl) => field.onChange(newUrl || "")}
+                            alt="Location logo"
+                            className="w-full max-w-xs"
+                            containerClassName="w-full max-w-xs"
+                            aspectRatio="1/1"
+                            showReplaceButton={!viewOnly}
+                            showRemoveButton={!viewOnly}
+                            fieldName="logo"
+                          />
+                        </FormControl>
+                        {viewOnly && !field.value && (
+                          <p className="text-sm text-gray-500">No logo uploaded</p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
-              ) : (
-                <p className="text-sm text-gray-600">
-                  No kitchen license has been uploaded yet. Please upload your license during the location creation process.
-                </p>
-              )}
+              </TabsContent>
 
-              {location.kitchenLicenseStatus === 'rejected' && location.kitchenLicenseFeedback && (
-                <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-100">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-red-800">Admin Feedback</p>
-                      <p className="text-sm text-red-600 mt-1">{location.kitchenLicenseFeedback}</p>
+              {/* Settings Tab */}
+              <TabsContent value="settings" className="space-y-4 mt-4">
+                <FormField
+                  control={form.control}
+                  name="timezone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Timezone</FormLabel>
+                      <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-700">
+                        <Globe className="w-4 h-4 text-gray-400" />
+                        <span className="flex-1">Newfoundland Time (GMT-3:30)</span>
+                        <Badge variant="secondary" className="text-xs">Locked</Badge>
+                      </div>
+                      <FormDescription>The timezone is locked to Newfoundland Time for all locations.</FormDescription>
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="cancellationPolicyHours"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cancellation Policy (hours)</FormLabel>
+                        <div className="relative">
+                          <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <FormControl>
+                            <Input className="pl-10" type="number" min="0" {...field} disabled={viewOnly} />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="defaultDailyBookingLimit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Daily Booking Limit (hours)</FormLabel>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <FormControl>
+                            <Input className="pl-10" type="number" min="1" max="24" {...field} disabled={viewOnly} />
+                          </FormControl>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="minimumBookingWindowHours"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Minimum Booking Window (hours)</FormLabel>
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <FormControl>
+                          <Input className="pl-10" type="number" min="0" max="168" {...field} disabled={viewOnly} />
+                        </FormControl>
+                      </div>
+                      <FormDescription>How many hours in advance bookings must be made (0-168 hours)</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="cancellationPolicyMessage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cancellation Policy Message</FormLabel>
+                      <FormControl>
+                        <Textarea className="min-h-[80px]" placeholder="Enter cancellation policy message" {...field} disabled={viewOnly} />
+                      </FormControl>
+                      <FormDescription>Use {"{hours}"} to insert the cancellation hours value</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </TabsContent>
+
+              {/* License Tab */}
+              <TabsContent value="license" className="space-y-4 mt-4">
+                <div className="rounded-lg border p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-gray-600" />
+                      <span className="font-medium">Kitchen License</span>
+                    </div>
+                    <div className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
+                      statusConfig.bgColor,
+                      statusConfig.textColor
+                    )}>
+                      <StatusIcon className="w-3.5 h-3.5" />
+                      {statusConfig.label}
                     </div>
                   </div>
+
+                  {location.kitchenLicenseUrl ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-600">
+                        Your kitchen license has been uploaded and is{" "}
+                        {location.kitchenLicenseStatus === 'approved'
+                          ? 'approved'
+                          : location.kitchenLicenseStatus === 'rejected'
+                            ? 'rejected'
+                            : 'under review'}.
+                      </p>
+                      <a
+                        href={
+                          location.kitchenLicenseUrl?.includes('.r2.dev/')
+                            ? location.kitchenLicenseUrl // Public R2 URLs work directly
+                            : (location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') || location.kitchenLicenseUrl?.includes('files.localcooks.ca'))
+                              ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
+                              : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
+                      >
+                        <FileText className="w-4 h-4" />
+                        View uploaded license
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-600">
+                      No kitchen license has been uploaded yet. Please upload your license during the location creation process.
+                    </p>
+                  )}
+
+                  {location.kitchenLicenseStatus === 'rejected' && location.kitchenLicenseFeedback && (
+                    <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-100">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-red-800">Admin Feedback</p>
+                          <p className="text-sm text-red-600 mt-1">{location.kitchenLicenseFeedback}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {location.kitchenLicenseApprovedAt && (
+                    <p className="text-xs text-gray-500">
+                      {location.kitchenLicenseStatus === 'approved' ? 'Approved' : 'Reviewed'} on:{" "}
+                      {new Date(location.kitchenLicenseApprovedAt).toLocaleDateString()}
+                    </p>
+                  )}
                 </div>
-              )}
+              </TabsContent>
+            </Tabs>
 
-              {location.kitchenLicenseApprovedAt && (
-                <p className="text-xs text-gray-500">
-                  {location.kitchenLicenseStatus === 'approved' ? 'Approved' : 'Reviewed'} on:{" "}
-                  {new Date(location.kitchenLicenseApprovedAt).toLocaleDateString()}
-                </p>
+            <DialogFooter className="mt-6">
+              <Button variant="outline" type="button" onClick={onClose}>
+                {viewOnly ? "Close" : "Cancel"}
+              </Button>
+              {!viewOnly && (
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
               )}
-            </div>
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter className="mt-6">
-          <Button variant="outline" onClick={onClose}>
-            {viewOnly ? "Close" : "Cancel"}
-          </Button>
-          {!viewOnly && (
-            <Button
-              onClick={handleSave}
-              disabled={isLoading}
-              className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  Save Changes
-                </>
-              )}
-            </Button>
-          )}
-        </DialogFooter>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
