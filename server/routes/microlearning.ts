@@ -28,7 +28,17 @@ router.get("/progress/:userId", async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const userId = parseInt(req.params.userId);
+    // Support both numeric Neon ID and Firebase UID (use authenticated user for Firebase UID)
+    const paramUserId = req.params.userId;
+    let userId: number;
+
+    // If param is a Firebase UID (not a number), use the authenticated user's Neon ID
+    if (isNaN(parseInt(paramUserId))) {
+      // Firebase UID passed - use authenticated user's Neon ID
+      userId = req.neonUser.id;
+    } else {
+      userId = parseInt(paramUserId);
+    }
 
     // Verify user can access this data (either their own or admin)
     if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
@@ -218,7 +228,15 @@ router.get("/completion/:userId", async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const userId = parseInt(req.params.userId);
+    // Support both numeric Neon ID and Firebase UID
+    const paramUserId = req.params.userId;
+    let userId: number;
+
+    if (isNaN(parseInt(paramUserId))) {
+      userId = req.neonUser.id;
+    } else {
+      userId = parseInt(paramUserId);
+    }
 
     // Verify user can access this completion (either their own or admin)
     if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
@@ -227,8 +245,9 @@ router.get("/completion/:userId", async (req: Request, res: Response) => {
 
     const completion = await microlearningService.getUserCompletion(userId);
 
+    // Return 200 with null/empty completion - frontend expects this instead of 404
     if (!completion) {
-      return res.status(404).json({ message: 'No completion found' });
+      return res.json({ confirmed: false, completedAt: null });
     }
 
     res.json(completion);

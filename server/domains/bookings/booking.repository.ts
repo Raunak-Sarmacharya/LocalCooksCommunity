@@ -15,6 +15,42 @@ import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking 
 
 export class BookingRepository {
 
+    // ===== DTO MAPPING HELPERS =====
+    // Postgres numeric columns are returned as strings by node-postgres.
+    // These helpers cast them to JavaScript numbers for frontend compatibility.
+
+    private mapKitchenBookingToDTO(row: any) {
+        if (!row) return null;
+        return {
+            ...row,
+            totalPrice: row.totalPrice ? parseFloat(row.totalPrice) : null,
+            hourlyRate: row.hourlyRate ? parseFloat(row.hourlyRate) : null,
+            durationHours: row.durationHours ? parseFloat(row.durationHours) : null,
+            serviceFee: row.serviceFee ? parseFloat(row.serviceFee) : null,
+            damageDeposit: row.damageDeposit ? parseFloat(row.damageDeposit) : null,
+        };
+    }
+
+    private mapStorageBookingToDTO(row: any) {
+        if (!row) return null;
+        return {
+            ...row,
+            totalPrice: row.totalPrice ? parseFloat(row.totalPrice) : null,
+            serviceFee: row.serviceFee ? parseFloat(row.serviceFee) : null,
+            basePrice: row.basePrice ? parseFloat(row.basePrice) : null,
+        };
+    }
+
+    private mapEquipmentBookingToDTO(row: any) {
+        if (!row) return null;
+        return {
+            ...row,
+            totalPrice: row.totalPrice ? parseFloat(row.totalPrice) : null,
+            damageDeposit: row.damageDeposit ? parseFloat(row.damageDeposit) : null,
+            serviceFee: row.serviceFee ? parseFloat(row.serviceFee) : null,
+        };
+    }
+
     // ===== KITCHEN BOOKINGS =====
 
     async createKitchenBooking(data: InsertKitchenBooking) {
@@ -22,7 +58,7 @@ export class BookingRepository {
             .insert(kitchenBookings)
             .values(data)
             .returning();
-        return booking;
+        return this.mapKitchenBookingToDTO(booking);
     }
 
     async getKitchenBookingById(id: number) {
@@ -30,7 +66,7 @@ export class BookingRepository {
             .select()
             .from(kitchenBookings)
             .where(eq(kitchenBookings.id, id));
-        return booking || null;
+        return this.mapKitchenBookingToDTO(booking);
     }
 
     async updateKitchenBooking(id: number, updates: Partial<KitchenBooking>) {
@@ -39,15 +75,17 @@ export class BookingRepository {
             .set({ ...updates, updatedAt: new Date() })
             .where(eq(kitchenBookings.id, id))
             .returning();
-        return updated || null;
+        return this.mapKitchenBookingToDTO(updated);
     }
 
     async getKitchenBookingsByKitchenId(kitchenId: number) {
-        return db
+        const rows = await db
             .select()
             .from(kitchenBookings)
             .where(eq(kitchenBookings.kitchenId, kitchenId));
+        return rows.map(row => this.mapKitchenBookingToDTO(row));
     }
+
 
     async getKitchenBookingsByChefId(chefId: number) {
         const results = await db
@@ -63,7 +101,7 @@ export class BookingRepository {
             .orderBy(desc(kitchenBookings.bookingDate));
 
         return results.map(row => ({
-            ...row.booking,
+            ...this.mapKitchenBookingToDTO(row.booking),
             kitchen: row.kitchen,
             location: row.location,
             kitchenName: row.kitchen.name,
@@ -86,17 +124,11 @@ export class BookingRepository {
             .where(eq(locations.managerId, managerId))
             .orderBy(desc(kitchenBookings.bookingDate));
 
-        // Use Promise.all to fetch chef application info if needed (as per storage-firebase logic)
-        // But for repo layer, we might want to keep it simple.
-        // storage-firebase enriched with application fullName.
-
-        // Ideally we move enrichment to Service. 
-        // For now, let's return the structured data.
         return results.map(row => ({
-            ...row.booking,
+            ...this.mapKitchenBookingToDTO(row.booking),
             kitchen: row.kitchen,
             location: row.location,
-            chef: row.chef, // basic user info
+            chef: row.chef,
             chefName: row.chef?.username,
             kitchenName: row.kitchen.name,
             locationName: row.location.name,
@@ -149,7 +181,7 @@ export class BookingRepository {
 
     async createStorageBooking(data: any) {
         const [booking] = await db.insert(storageBookings).values(data).returning();
-        return booking;
+        return this.mapStorageBookingToDTO(booking);
     }
 
     async getStorageBookingsByChefId(chefId: number) {
@@ -175,7 +207,6 @@ export class BookingRepository {
     }
 
     async getStorageBookingById(id: number) {
-        // Logic copied from storage-firebase.ts with joins
         const [booking] = await db
             .select({
                 ...getStorageBookingSelection(),
@@ -190,7 +221,7 @@ export class BookingRepository {
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
             .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .where(eq(storageBookings.id, id));
-        return booking || null;
+        return this.mapStorageBookingToDTO(booking);
     }
 
     async updateStorageBooking(id: number, updates: Partial<StorageBooking>) {
@@ -199,7 +230,7 @@ export class BookingRepository {
             .set({ ...updates, updatedAt: new Date() })
             .where(eq(storageBookings.id, id))
             .returning();
-        return updated || null;
+        return this.mapStorageBookingToDTO(updated);
     }
 
     async deleteStorageBooking(id: number) {
@@ -207,10 +238,11 @@ export class BookingRepository {
     }
 
     async getStorageBookingsByKitchenBookingId(kitchenBookingId: number) {
-        return db
+        const rows = await db
             .select()
             .from(storageBookings)
             .where(eq(storageBookings.kitchenBookingId, kitchenBookingId));
+        return rows.map(row => this.mapStorageBookingToDTO(row));
     }
 
     async getExpiredStorageBookings(today: Date) {
@@ -281,7 +313,7 @@ export class BookingRepository {
 
     async createEquipmentBooking(data: any) {
         const [booking] = await db.insert(equipmentBookings).values(data).returning();
-        return booking;
+        return this.mapEquipmentBookingToDTO(booking);
     }
 
     async updateEquipmentBooking(id: number, updates: Partial<EquipmentBooking>) {
@@ -290,14 +322,15 @@ export class BookingRepository {
             .set({ ...updates, updatedAt: new Date() })
             .where(eq(equipmentBookings.id, id))
             .returning();
-        return updated || null;
+        return this.mapEquipmentBookingToDTO(updated);
     }
 
     async getEquipmentBookingsByKitchenBookingId(kitchenBookingId: number) {
-        return db
+        const rows = await db
             .select()
             .from(equipmentBookings)
             .where(eq(equipmentBookings.kitchenBookingId, kitchenBookingId));
+        return rows.map(row => this.mapEquipmentBookingToDTO(row));
     }
 
     async deleteEquipmentBooking(id: number) {

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyFirebaseToken } from "../firebase-setup";
-import { firebaseStorage } from "../storage-firebase";
+
 import { db } from "../db";
 import { portalUserApplications, portalUserLocationAccess } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";

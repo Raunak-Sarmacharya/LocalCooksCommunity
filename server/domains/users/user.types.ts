@@ -5,6 +5,9 @@
  * These are the data structures that cross service boundaries.
  */
 
+import { User } from "@shared/schema";
+export { User };
+
 /**
  * User DTO for creating a new user
  */
@@ -16,14 +19,19 @@ export interface CreateUserDTO {
   email?: string;
   isVerified?: boolean;
   has_seen_welcome?: boolean;
+  isChef?: boolean;
+  isManager?: boolean;
+  isPortalUser?: boolean;
+  managerProfileData?: Record<string, any>;
 }
 
 /**
  * User DTO for updating an existing user
  */
 export interface UpdateUserDTO {
-  id: number;
+  id?: number;
   username?: string;
+  firebaseUid?: string;
   password?: string;
   role?: 'admin' | 'chef' | 'manager';
   isChef?: boolean;

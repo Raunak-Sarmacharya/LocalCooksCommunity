@@ -193,7 +193,7 @@ export default function KitchenAvailabilityManagement({ embedded = false }: Kitc
   }, [selectedLocationId, urlKitchenId, selectedKitchenId]);
 
   // Fetch weekly availability schedule for selected kitchen
-  const { data: weeklyAvailability = [] } = useQuery({
+  const { data: weeklyAvailability } = useQuery({
     queryKey: ['weeklyAvailability', selectedKitchenId],
     queryFn: async () => {
       if (!selectedKitchenId) return [];

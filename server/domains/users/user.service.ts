@@ -29,9 +29,7 @@ export class UserService {
     return this.repo.findByFirebaseUid(uid);
   }
 
-  async getAllManagers(): Promise<User[]> {
-    return this.repo.getAllManagers();
-  }
+
 
   async createUser(data: CreateUserDTO): Promise<User> {
     if (!data.username) {
@@ -64,13 +62,7 @@ export class UserService {
     await this.repo.update(id, { has_seen_welcome: true });
   }
 
-  async updateManagerOnboarding(id: number, updates: { completed?: boolean; skipped?: boolean; steps?: any }): Promise<User | null> {
-    const updateData: UpdateUserDTO = {};
-    if (updates.completed !== undefined) updateData.managerOnboardingCompleted = updates.completed;
-    if (updates.skipped !== undefined) updateData.managerOnboardingSkipped = updates.skipped;
-    if (updates.steps !== undefined) updateData.managerOnboardingStepsCompleted = updates.steps;
-    return this.repo.update(id, updateData);
-  }
+
 
   async updateUserRoles(id: number, roles: { isChef: boolean }): Promise<void> {
     const mainRole = roles.isChef ? 'chef' : undefined;
