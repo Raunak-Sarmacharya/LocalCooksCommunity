@@ -1,0 +1,144 @@
+/**
+ * Revenue Dashboard Types
+ * 
+ * Shared type definitions for the revenue dashboard components.
+ * Follows enterprise patterns with strict typing.
+ */
+
+// Date range type for filters
+export type DateRangePreset = 'today' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
+
+export interface DateRange {
+    from: Date | undefined;
+    to: Date | undefined;
+}
+
+// Payment status types (matches database enum)
+export type PaymentStatus =
+    | 'pending'
+    | 'paid'
+    | 'processing'
+    | 'failed'
+    | 'refunded'
+    | 'partially_refunded'
+    | 'canceled';
+
+// Transaction type for transaction history
+export interface Transaction {
+    id: number;
+    bookingId: number;
+    bookingDate: string;
+    chefId: number | null;
+    chefName: string | null;
+    kitchenId: number;
+    kitchenName: string;
+    locationId: number;
+    locationName: string;
+    totalPrice: number;        // Amount in cents
+    managerRevenue: number;    // Amount in cents after platform fee
+    platformFee: number;       // Platform fee in cents
+    paymentStatus: PaymentStatus;
+    paymentIntentId: string | null;
+    createdAt: string;
+    paidAt: string | null;
+}
+
+// Invoice type for invoice list
+export interface Invoice {
+    bookingId: number;
+    invoiceNumber: string;     // Format: INV-YYYY-XXXXXX
+    bookingDate: string;
+    chefName: string | null;
+    kitchenName: string;
+    locationName: string;
+    totalPrice: number;        // Amount in cents
+    paymentStatus: PaymentStatus;
+    createdAt: string;
+}
+
+// Payout type for payout history
+export interface Payout {
+    id: string;
+    amount: number;            // Amount in cents
+    currency: string;
+    status: 'paid' | 'pending' | 'in_transit' | 'canceled' | 'failed';
+    arrivalDate: string;
+    method: string | null;
+    description: string | null;
+    createdAt: string;
+}
+
+// Revenue metrics from API
+export interface RevenueMetrics {
+    totalRevenue: number;          // In cents
+    managerRevenue: number;        // In cents
+    platformFee: number;           // In cents
+    bookingCount: number;
+    paidBookingCount: number;
+    averageBookingValue: number;   // In cents
+    completedPayments: number;     // In cents
+    pendingPayments: number;       // In cents
+    refundedAmount: number;        // In cents
+    // Comparison with previous period
+    previousPeriodRevenue?: number;
+    revenueChangePercent?: number;
+}
+
+// Revenue by location for charts
+export interface RevenueByLocation {
+    locationId: number;
+    locationName: string;
+    totalRevenue: number;          // In cents
+    managerRevenue: number;        // In cents
+    platformFee: number;           // In cents
+    bookingCount: number;
+}
+
+// Revenue by date for trend charts
+export interface RevenueByDate {
+    date: string;
+    totalRevenue: number;          // In cents
+    managerRevenue: number;        // In cents
+    platformFee: number;           // In cents
+    bookingCount: number;
+}
+
+// Chart data point (formatted for Recharts)
+export interface ChartDataPoint {
+    date: string;                  // Formatted date string
+    totalRevenue: number;          // In dollars (for display)
+    managerRevenue: number;        // In dollars (for display)
+    platformFee: number;           // In dollars (for display)
+}
+
+// Location filter option
+export interface LocationOption {
+    id: number;
+    name: string;
+}
+
+// Stripe Connect status
+export interface StripeConnectStatus {
+    connected: boolean;
+    hasAccount: boolean;
+    accountId: string | null;
+    payoutsEnabled: boolean;
+    chargesEnabled: boolean;
+    detailsSubmitted: boolean;
+    status: 'complete' | 'incomplete' | 'pending' | 'not_started';
+}
+
+// Filter state for transactions
+export interface TransactionFilters {
+    dateRange: DateRange;
+    locationId: number | 'all';
+    paymentStatus: PaymentStatus | 'all';
+    searchQuery: string;
+}
+
+// Export options
+export interface ExportOptions {
+    format: 'csv' | 'pdf';
+    scope: 'filtered' | 'all';
+    dateRange: DateRange;
+}

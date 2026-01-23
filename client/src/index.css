@@ -48,7 +48,16 @@
   /* Brand colors migrated to tailwind.config.ts */
   /* --color-cream: #FFE8DD; */
   /* --color-cream-dark: #FFD4C4; */
-  /* ... */
+
+  /* Sidebar Variables */
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 240 5.3% 26.1%;
+  --sidebar-primary: 347 91% 51%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 347 91% 96%;
+  --sidebar-accent-foreground: 347 91% 51%;
+  --sidebar-border: 220 13% 91%;
+  --sidebar-ring: 347 91% 51%;
 }
 
 .dark {

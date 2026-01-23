@@ -30,13 +30,17 @@ import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOve
 import BookingKPIStats from "@/components/manager/dashboard/BookingKPIStats";
 import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizard";
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
-import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar";
+// import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar"; // Deprecated
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import ManagerChatView from "@/components/chat/ManagerChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import DashboardLayout from "@/layouts/DashboardLayout";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import ManagerProfileSettings from "@/components/manager/ManagerProfileSettings";
 
 interface Location {
   id: number;
@@ -123,7 +127,9 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages';
+
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile';
+
 
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
@@ -131,16 +137,8 @@ export default function ManagerBookingDashboard() {
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('overview');
+  // State for Create Location Sheet
   const [showCreateLocation, setShowCreateLocation] = useState(false);
-  const [newLocationName, setNewLocationName] = useState('');
-  const [newLocationAddress, setNewLocationAddress] = useState('');
-  const [newLocationNotificationEmail, setNewLocationNotificationEmail] = useState('');
-  const [newLocationNotificationPhone, setNewLocationNotificationPhone] = useState('');
-  const [newLocationLicenseFile, setNewLocationLicenseFile] = useState<File | null>(null);
-  const [isUploadingLicense, setIsUploadingLicense] = useState(false);
-  const [isCreatingLocation, setIsCreatingLocation] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
 
   // Helper function to extract filename from URL
@@ -462,689 +460,360 @@ export default function ManagerBookingDashboard() {
     },
   });
 
-  const navItems = [
-    { id: 'overview' as ViewType, label: 'Overview', icon: Calendar },
-    { id: 'my-locations' as ViewType, label: 'My Locations', icon: Building2 },
-    { id: 'bookings' as ViewType, label: 'Bookings', icon: BookOpen },
-    { id: 'availability' as ViewType, label: 'Availability', icon: Clock },
-    { id: 'pricing' as ViewType, label: 'Pricing', icon: DollarSign },
-    { id: 'storage-listings' as ViewType, label: 'Storage Listings', icon: Package },
-    { id: 'equipment-listings' as ViewType, label: 'Equipment Listings', icon: Wrench },
-    { id: 'applications' as ViewType, label: 'Applications', icon: Users },
-    { id: 'messages' as ViewType, label: 'Messages', icon: MessageCircle },
-    { id: 'revenue' as ViewType, label: 'Revenue', icon: TrendingUp },
-    { id: 'payments' as ViewType, label: 'Payments', icon: CreditCard },
-    { id: 'settings' as ViewType, label: 'Settings', icon: Settings },
-  ];
+
+
+  const showCreateLocationHandler = () => setShowCreateLocation(true);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 relative">
-      <AnimatedBackgroundOrbs variant="both" intensity="subtle" />
-      <div>
-        <ManagerHeader sidebarWidth={isSidebarCollapsed ? 64 : 256} />
-      </div>
+    <DashboardLayout
+      activeView={activeView}
+      onViewChange={(view) => setActiveView(view as ViewType)}
+      locations={locations}
+      selectedLocation={selectedLocation}
+      onLocationChange={(loc) => setSelectedLocation(loc as Location)}
+      onCreateLocation={showCreateLocationHandler}
+    >
       <ManagerOnboardingWizard />
 
-      {/* Content area - no marginTop, sidebar will handle positioning */}
-      <main
-        className="flex-1 pb-8 relative z-10 flex min-h-0 overflow-visible"
-      >
-        {/* Animated Sidebar - positioned below navbar, starts from top of visible area */}
-        <div
-          className="hidden lg:block z-20 flex-shrink-0 fixed left-0 top-[var(--header-height)] transition-[width] duration-300 ease-out h-[calc(100vh-var(--header-height))] max-h-[calc(100vh-var(--header-height))] overflow-visible"
-          style={{
-            width: isSidebarCollapsed ? '64px' : '256px',
-            clipPath: 'none', // Ensure no clipping
-          }}
-        >
-          <AnimatedManagerSidebar
-            navItems={navItems}
-            activeView={activeView}
-            onViewChange={(view) => setActiveView(view as ViewType)}
-            selectedLocation={selectedLocation ? {
-              id: selectedLocation.id,
-              name: selectedLocation.name,
-              address: selectedLocation.address,
-              logoUrl: selectedLocation.logoUrl,
-            } : null}
-            locations={locations.map((loc: any) => ({ id: loc.id, name: loc.name }))}
-            onLocationChange={(loc) => {
-              if (loc) {
-                const fullLocation = locations.find((l: any) => l.id === loc.id);
-                setSelectedLocation(fullLocation || null);
-              } else {
-                setSelectedLocation(null);
-              }
-            }}
-            onCreateLocation={() => setShowCreateLocation(true)}
-            isLoadingLocations={isLoadingLocations}
-            onCollapseChange={setIsSidebarCollapsed}
+      {activeView === 'profile' && (
+        <ManagerProfileSettings />
+      )}
+
+      {activeView === 'overview' && (
+        <div className="space-y-6 animate-fade-in">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Welcome back, {userData?.first_name || 'Manager'}</h1>
+            <p className="text-muted-foreground">Here's what's happening at your kitchens today.</p>
+          </div>
+
+          <KitchenDashboardOverview
+            selectedLocation={selectedLocation}
+            locations={locations}
+            onNavigate={(view: ViewType) => setActiveView(view)}
+            onSelectLocation={(location) => setSelectedLocation(location)}
           />
         </div>
+      )}
 
-        {/* Mobile Sidebar - Sheet/Drawer */}
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetContent side="left" className="w-[256px] p-0">
-            <AnimatedManagerSidebar
-              navItems={navItems}
-              activeView={activeView}
-              onViewChange={(view) => {
-                setActiveView(view as ViewType);
-                setMobileMenuOpen(false);
-              }}
-              selectedLocation={selectedLocation ? {
-                id: selectedLocation.id,
-                name: selectedLocation.name,
-                address: selectedLocation.address,
-              } : null}
-              locations={locations.map((loc: any) => ({ id: loc.id, name: loc.name }))}
-              onLocationChange={(loc) => {
-                if (loc) {
-                  const fullLocation = locations.find((l: any) => l.id === loc.id);
-                  setSelectedLocation(fullLocation || null);
-                } else {
-                  setSelectedLocation(null);
-                }
-              }}
-              onCreateLocation={() => {
-                setShowCreateLocation(true);
-                setMobileMenuOpen(false);
-              }}
-              isLoadingLocations={isLoadingLocations}
-              isMobile={true}
-            />
-          </SheetContent>
-        </Sheet>
+      {activeView === 'bookings' && (
+        <ManagerBookingsPanel embedded={true} />
+      )}
 
-        {/* Mobile Menu Button */}
-        <div
-          className="lg:hidden fixed left-3 sm:left-4 z-30 top-[calc(var(--header-height)+8px)]"
-        >
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setMobileMenuOpen(true)}
-            className="bg-white shadow-lg mobile-touch-target mobile-no-tap-highlight"
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
+      {activeView === 'availability' && selectedLocation && (
+        <KitchenAvailabilityManagement embedded={true} />
+      )}
+
+      {activeView === 'availability' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage availability</p>
         </div>
+      )}
 
-        <div
-          className={cn(
-            "flex-1 transition-all duration-300 min-w-0 bg-gray-100",
-            isSidebarCollapsed ? "lg:ml-[64px]" : "lg:ml-[256px]"
-          )}
-          style={{
-            paddingTop: '80px',
+      {activeView === 'applications' && (
+        <ManagerKitchenApplications embedded={true} />
+      )}
+
+      {activeView === 'settings' && selectedLocation && (
+        <SettingsView
+          location={(locationDetails || selectedLocation) as Location}
+          onUpdateSettings={updateLocationSettings}
+          isUpdating={updateLocationSettings.isPending}
+        />
+      )}
+
+      {activeView === 'settings' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage settings</p>
+        </div>
+      )}
+
+      {activeView === 'pricing' && (
+        <KitchenPricingManagement embedded={true} />
+      )}
+
+      {activeView === 'storage-listings' && (
+        <StorageListingManagement embedded={true} />
+      )}
+
+      {activeView === 'equipment-listings' && (
+        <EquipmentListingManagement embedded={true} />
+      )}
+
+      {activeView === 'revenue' && (
+        <ManagerRevenueDashboard
+          selectedLocation={selectedLocation}
+          locations={locations}
+          onNavigate={(view) => setActiveView(view as ViewType)}
+        />
+      )}
+
+      {activeView === 'messages' && (
+        managerId ? (
+          <ManagerChatView managerId={managerId} embedded={true} />
+        ) : (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-[#208D80] mx-auto mb-4" />
+              <p className="text-gray-600">Loading your profile...</p>
+            </CardContent>
+          </Card>
+        )
+      )}
+
+      {activeView === 'payments' && (
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold tracking-tight">Payments & Payouts</h2>
+          <StripeConnectSetup />
+        </div>
+      )}
+
+      {activeView === 'my-locations' && (
+        <ManagerLocationsPage
+          locations={locations}
+          isLoading={isLoadingLocations}
+          onCreateLocation={() => setShowCreateLocation(true)}
+          onSelectLocation={(loc) => {
+            setSelectedLocation(loc as Location);
+            setActiveView('overview');
           }}
-        >
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-7xl">
-            {/* Onboarding Reminder Banner */}
-            {needsOnboarding && (
-              <div className="mb-4 sm:mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 sm:p-4 shadow-sm">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-2 sm:gap-3">
-                    <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-xs sm:text-sm font-semibold text-blue-900 mb-1">
-                        Complete Your Setup to Activate Bookings
-                      </h3>
-                      <p className="text-xs sm:text-sm text-blue-700 mb-2 sm:mb-3">
-                        {!hasApprovedLicense && !isStripeOnboardingComplete && !hasKitchens
-                          ? "Finish your onboarding to start accepting bookings. Upload your kitchen license, connect Stripe for payments, and create at least one kitchen."
-                          : !hasApprovedLicense
-                            ? "Upload your kitchen license and get it approved by an admin to activate bookings."
-                            : !isStripeOnboardingComplete
-                              ? "Connect your Stripe account to receive payments for bookings."
-                              : !hasKitchens
-                                ? "Create at least one kitchen to start accepting bookings."
-                                : "Complete your setup to activate bookings."}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+        />
+      )}
 
-            {/* License Expiry Warning - Show for approved licenses approaching expiry */}
-            {!needsOnboarding &&
-              selectedLocation &&
-              selectedLocation.kitchenLicenseStatus === "approved" &&
-              !isLicenseExpired &&
-              isExpiryApproaching(selectedLocation.kitchenLicenseExpiry) && (
-                <div className="mb-4 sm:mb-6 bg-orange-50 border border-orange-200 rounded-lg p-3 sm:p-4 shadow-sm">
-                  <div className="flex items-start gap-2 sm:gap-3">
-                    <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-xs sm:text-sm font-semibold text-orange-900 mb-1">
-                        License Expiring Soon
-                      </h3>
-                      {selectedLocation.kitchenLicenseExpiry && (
-                        <p className="text-xs sm:text-sm text-orange-700 mb-2">
-                          Your kitchen license expires on {new Date(selectedLocation.kitchenLicenseExpiry).toLocaleDateString()}
-                          ({getDaysUntilExpiry(selectedLocation.kitchenLicenseExpiry)} days remaining).
-                          Please upload a new license before the expiration date to avoid service interruption.
-                        </p>
-                      )}
-                      <Button
-                        onClick={() => setActiveView("settings")}
-                        size="sm"
-                        variant="outline"
-                        className="border-orange-300 text-orange-700 hover:bg-orange-100 min-h-[36px] sm:min-h-[40px] text-xs sm:text-sm"
-                      >
-                        Upload New License
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
+      {/* Create Location Dialog handled via state in parent, but componentized */}
+      <CreateLocationSheet
+        open={showCreateLocation}
+        onOpenChange={setShowCreateLocation}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+        }}
+      />
 
-            {/* License Approval Reminder */}
-            {!needsOnboarding &&
-              selectedLocation &&
-              selectedLocation.kitchenLicenseStatus !== "approved" && (
-                <div className="mb-4 sm:mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4 shadow-sm">
-                  <div className="flex items-start gap-2 sm:gap-3">
-                    <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <h3 className="text-xs sm:text-sm font-semibold text-yellow-900">
-                          {selectedLocation.kitchenLicenseStatus === "pending"
-                            ? "License Pending Approval"
-                            : selectedLocation.kitchenLicenseStatus === "rejected"
-                              ? "License Rejected"
-                              : "License Not Uploaded"}
-                        </h3>
-                        {selectedLocation.kitchenLicenseStatus && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${selectedLocation.kitchenLicenseStatus === "pending"
-                            ? "bg-yellow-200 text-yellow-800"
-                            : selectedLocation.kitchenLicenseStatus === "rejected"
-                              ? "bg-red-200 text-red-800"
-                              : "bg-gray-200 text-gray-800"
-                            }`}>
-                            {selectedLocation.kitchenLicenseStatus.toUpperCase()}
-                          </span>
-                        )}
-                      </div>
-                      {selectedLocation.kitchenLicenseUrl && (
-                        <div className="text-xs text-yellow-700 mb-1">
-                          <FileText className="h-3 w-3 inline mr-1" />
-                          Document: {getDocumentFilename(selectedLocation.kitchenLicenseUrl)}
-                        </div>
-                      )}
-                      {selectedLocation.kitchenLicenseUploadedAt && (
-                        <div className="text-xs text-yellow-700 mb-1">
-                          <Clock className="h-3 w-3 inline mr-1" />
-                          Uploaded: {new Date(selectedLocation.kitchenLicenseUploadedAt).toLocaleDateString()}
-                        </div>
-                      )}
-                      {selectedLocation.kitchenLicenseExpiry && (
-                        <div className="text-xs text-yellow-700 mb-2">
-                          <Calendar className="h-3 w-3 inline mr-1" />
-                          Expires: {new Date(selectedLocation.kitchenLicenseExpiry).toLocaleDateString()}
-                          {(() => {
-                            const daysUntil = getDaysUntilExpiry(selectedLocation.kitchenLicenseExpiry);
-                            if (daysUntil !== null && daysUntil > 0) {
-                              return <span className="ml-1">({daysUntil} days remaining)</span>;
-                            }
-                            return null;
-                          })()}
-                        </div>
-                      )}
-                      <p className="text-xs sm:text-sm text-yellow-700 mb-2">
-                        {selectedLocation.kitchenLicenseStatus === "pending"
-                          ? "Your kitchen license is pending admin approval. Bookings will be activated once approved."
-                          : selectedLocation.kitchenLicenseStatus === "rejected"
-                            ? selectedLocation.kitchenLicenseFeedback ||
-                            "Your license was rejected. Please upload a new one."
-                            : "Upload your kitchen license to activate bookings."}
-                      </p>
-                      {selectedLocation.kitchenLicenseStatus !== "pending" && (
-                        <Button
-                          onClick={() => setActiveView("settings")}
-                          size="sm"
-                          variant="outline"
-                          className="border-yellow-300 text-yellow-700 hover:bg-yellow-100 min-h-[36px] sm:min-h-[40px] text-xs sm:text-sm"
-                        >
-                          Upload License
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-            {/* Header - Only show on non-overview pages */}
-            {activeView !== 'overview' && (
-              <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Booking Management</h1>
-                  <p className="text-sm sm:text-base text-gray-600 mt-1">Manage locations, bookings, and availability settings</p>
-                </div>
-              </div>
-            )}
-
-            {/* Create Location Dialog */}
-            {showCreateLocation && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:p-6">
-                <div className="bg-white rounded-lg sm:rounded-xl shadow-xl max-w-lg w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto mobile-momentum-scroll">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {locations.length === 0 ? 'Create Your First Location' : 'Add New Location'}
-                    </h3>
-                    <button
-                      onClick={() => {
-                        setShowCreateLocation(false);
-                        setNewLocationName('');
-                        setNewLocationAddress('');
-                        setNewLocationNotificationEmail('');
-                        setNewLocationNotificationPhone('');
-                        setNewLocationLicenseFile(null);
-                      }}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  {/* Info banner for additional locations */}
-                  {locations.length > 0 && (
-                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm text-amber-800">
-                          <p className="font-medium mb-1">License Required for Each Location</p>
-                          <p className="text-xs">Each location requires its own kitchen license approval before bookings can be accepted. You can upload the license now or later from the settings.</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Location Name *
-                      </label>
-                      <input
-                        type="text"
-                        value={newLocationName}
-                        onChange={(e) => setNewLocationName(e.target.value)}
-                        placeholder="e.g., Downtown Kitchen"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Address *
-                      </label>
-                      <input
-                        type="text"
-                        value={newLocationAddress}
-                        onChange={(e) => setNewLocationAddress(e.target.value)}
-                        placeholder="e.g., 123 Main St, St. John's, NL"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Notification Email
-                        </label>
-                        <input
-                          type="email"
-                          value={newLocationNotificationEmail}
-                          onChange={(e) => setNewLocationNotificationEmail(e.target.value)}
-                          placeholder="email@example.com"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Notification Phone
-                        </label>
-                        <input
-                          type="tel"
-                          value={newLocationNotificationPhone}
-                          onChange={(e) => setNewLocationNotificationPhone(e.target.value)}
-                          placeholder="(709) 555-1234"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F51042] focus:border-[#F51042]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Kitchen License Upload */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Kitchen License {locations.length > 0 ? '*' : '(Optional - can add later)'}
-                      </label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-[#F51042] transition-colors">
-                        {newLocationLicenseFile ? (
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <FileText className="h-5 w-5 text-[#F51042]" />
-                              <span className="text-sm text-gray-700">{newLocationLicenseFile.name}</span>
-                            </div>
-                            <button
-                              onClick={() => setNewLocationLicenseFile(null)}
-                              className="text-gray-400 hover:text-gray-600"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="cursor-pointer flex flex-col items-center gap-3">
-                            <input
-                              type="file"
-                              accept=".pdf,.jpg,.jpeg,.png"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  if (file.size > 10 * 1024 * 1024) {
-                                    toast({
-                                      title: "File Too Large",
-                                      description: "Please upload a file smaller than 10MB",
-                                      variant: "destructive",
-                                    });
-                                    return;
-                                  }
-                                  setNewLocationLicenseFile(file);
-                                }
-                              }}
-                              className="hidden"
-                            />
-                            <Upload className="h-8 w-8 text-gray-400" />
-                            <span className="text-sm font-medium text-[#F51042] mb-1">Click to upload license</span>
-                            <span className="text-xs text-gray-500">PDF, JPG, or PNG (max 10MB)</span>
-                          </label>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Required for booking activation. Will be reviewed by admin.
-                      </p>
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <Button
-                        onClick={async () => {
-                          if (!newLocationName.trim() || !newLocationAddress.trim()) {
-                            toast({
-                              title: "Missing Information",
-                              description: "Please fill in location name and address",
-                              variant: "destructive",
-                            });
-                            return;
-                          }
-
-                          setIsCreatingLocation(true);
-                          try {
-                            const currentFirebaseUser = auth.currentUser;
-                            if (!currentFirebaseUser) {
-                              throw new Error("Firebase user not available");
-                            }
-
-                            const token = await currentFirebaseUser.getIdToken();
-
-                            // Upload license file if provided
-                            let licenseUrl: string | undefined;
-                            if (newLocationLicenseFile) {
-                              setIsUploadingLicense(true);
-                              const formData = new FormData();
-                              formData.append("file", newLocationLicenseFile);
-
-                              const uploadResponse = await fetch("/api/upload-file", {
-                                method: "POST",
-                                headers: {
-                                  'Authorization': `Bearer ${token}`,
-                                },
-                                credentials: "include",
-                                body: formData,
-                              });
-
-                              if (!uploadResponse.ok) {
-                                throw new Error("Failed to upload license file");
-                              }
-
-                              const uploadResult = await uploadResponse.json();
-                              licenseUrl = uploadResult.url;
-                              setIsUploadingLicense(false);
-                            }
-
-                            // Create the location
-                            const response = await fetch(`/api/manager/locations`, {
-                              method: "POST",
-                              headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json',
-                              },
-                              credentials: "include",
-                              body: JSON.stringify({
-                                name: newLocationName.trim(),
-                                address: newLocationAddress.trim(),
-                                notificationEmail: newLocationNotificationEmail.trim() || undefined,
-                                notificationPhone: newLocationNotificationPhone.trim() || undefined,
-                              }),
-                            });
-
-                            if (!response.ok) {
-                              const error = await response.json();
-                              throw new Error(error.error || "Failed to create location");
-                            }
-
-                            const newLocation = await response.json();
-
-                            // Update location with license if uploaded
-                            if (licenseUrl) {
-                              const updateResponse = await fetch(`/api/manager/locations/${newLocation.id}`, {
-                                method: "PUT",
-                                headers: {
-                                  'Authorization': `Bearer ${token}`,
-                                  'Content-Type': 'application/json',
-                                },
-                                credentials: "include",
-                                body: JSON.stringify({
-                                  kitchenLicenseUrl: licenseUrl,
-                                  kitchenLicenseStatus: 'pending',
-                                }),
-                              });
-
-                              if (!updateResponse.ok) {
-                                console.error("Failed to update license, but location was created");
-                              }
-                            }
-
-                            queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
-                            toast({
-                              title: "Location Created",
-                              description: licenseUrl
-                                ? `${newLocation.name} has been created. License submitted for approval.`
-                                : `${newLocation.name} has been created. Upload a license to activate bookings.`,
-                            });
-
-                            setNewLocationName('');
-                            setNewLocationAddress('');
-                            setNewLocationNotificationEmail('');
-                            setNewLocationNotificationPhone('');
-                            setNewLocationLicenseFile(null);
-                            setShowCreateLocation(false);
-                            setSelectedLocation(newLocation);
-                          } catch (error: any) {
-                            toast({
-                              title: "Error",
-                              description: error.message || "Failed to create location",
-                              variant: "destructive",
-                            });
-                          } finally {
-                            setIsCreatingLocation(false);
-                            setIsUploadingLicense(false);
-                          }
-                        }}
-                        disabled={isCreatingLocation || isUploadingLicense}
-                        className="flex-1 bg-[#F51042] hover:bg-rose-600 text-white"
-                      >
-                        {isUploadingLicense ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                            Uploading License...
-                          </>
-                        ) : isCreatingLocation ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          <>
-                            <Plus className="h-4 w-4 mr-1" />
-                            Create Location
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setShowCreateLocation(false);
-                          setNewLocationName('');
-                          setNewLocationAddress('');
-                          setNewLocationNotificationEmail('');
-                          setNewLocationNotificationPhone('');
-                          setNewLocationLicenseFile(null);
-                        }}
-                        disabled={isCreatingLocation || isUploadingLicense}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Main Content Area */}
-            <div className="w-full">
-              {/* Show onboarding prompt if manager has no locations */}
-              {locations.length === 0 && !isLoadingLocations ? (
-                <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8 md:p-12 text-center">
-                  <Building2 className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
-                  <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">No Locations Yet</h3>
-                  <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 max-w-md mx-auto px-4">
-                    You need to complete the setup wizard to create your first location and start accepting bookings.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {activeView === 'my-locations' && (
-                    <ManagerLocationsPage
-                      locations={locations}
-                      isLoading={isLoadingLocations}
-                      onCreateLocation={() => setShowCreateLocation(true)}
-                      onSelectLocation={(loc) => {
-                        setSelectedLocation(loc as Location);
-                        setActiveView('overview');
-                      }}
-                    />
-                  )}
-
-                  {activeView === 'overview' && (
-                    <KitchenDashboardOverview
-                      selectedLocation={selectedLocation}
-                      locations={locations}
-                      onNavigate={(view: ViewType) => setActiveView(view)}
-                      onSelectLocation={(location) => setSelectedLocation(location)}
-                    />
-                  )}
-
-                  {activeView === 'bookings' && (
-                    <ManagerBookingsPanel embedded={true} />
-                  )}
-
-                  {activeView === 'availability' && selectedLocation && (
-                    <KitchenAvailabilityManagement embedded={true} />
-                  )}
-
-                  {activeView === 'pricing' && (
-                    <KitchenPricingManagement embedded={true} />
-                  )}
-
-                  {activeView === 'storage-listings' && (
-                    <StorageListingManagement embedded={true} />
-                  )}
-
-                  {activeView === 'equipment-listings' && (
-                    <EquipmentListingManagement embedded={true} />
-                  )}
-
-                  {activeView === 'applications' && (
-                    <ManagerKitchenApplications embedded={true} />
-                  )}
-
-                  {activeView === 'messages' && (
-                    managerId ? (
-                      <ManagerChatView managerId={managerId} embedded={true} />
-                    ) : (
-                      <Card>
-                        <CardContent className="p-12 text-center">
-                          <Loader2 className="h-8 w-8 animate-spin text-[#208D80] mx-auto mb-4" />
-                          <p className="text-gray-600">Loading your profile...</p>
-                        </CardContent>
-                      </Card>
-                    )
-                  )}
-
-                  {activeView === 'revenue' && (
-                    <ManagerRevenueDashboard
-                      selectedLocation={selectedLocation}
-                      locations={locations}
-                      onNavigate={(view) => setActiveView(view as ViewType)}
-                    />
-                  )}
-
-                  {activeView === 'payments' && (
-                    <div className="space-y-6">
-                      <div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Payment Setup</h2>
-                        <p className="text-sm sm:text-base text-gray-600">
-                          Connect your Stripe account to receive payments directly for kitchen bookings.
-                        </p>
-                      </div>
-                      <StripeConnectSetup />
-                    </div>
-                  )}
-
-                  {activeView === 'settings' && selectedLocation && (
-                    <SettingsView
-                      location={(locationDetails || selectedLocation) as Location}
-                      onUpdateSettings={updateLocationSettings}
-                      isUpdating={updateLocationSettings.isPending}
-                    />
-                  )}
-
-                  {activeView === 'availability' && !selectedLocation && (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 md:p-12 text-center">
-                      <Calendar className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
-                      <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-                      <p className="text-sm sm:text-base text-gray-500">Choose a location to manage availability</p>
-                    </div>
-                  )}
-
-                  {activeView === 'settings' && !selectedLocation && (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8 md:p-12 text-center">
-                      <Settings className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-3 sm:mb-4" />
-                      <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-                      <p className="text-sm sm:text-base text-gray-500">Choose a location to manage settings</p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
+    </DashboardLayout>
   );
 }
+
+// Sub-component for the Create Location Sheet
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createLocationSchema, type CreateLocationFormValues } from "@/schemas/locationSchema";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormDescription
+} from "@/components/ui/form";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const [licenseFile, setLicenseFile] = useState<File | null>(null);
+
+  const form = useForm<CreateLocationFormValues>({
+    resolver: zodResolver(createLocationSchema),
+    defaultValues: {
+      name: "",
+      address: "",
+      notificationEmail: "",
+      notificationPhone: "",
+    },
+  });
+
+  const onSubmit = async (data: CreateLocationFormValues) => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/manager/locations', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          name: data.name,
+          address: data.address,
+          notification_email: data.notificationEmail,
+          notification_phone: data.notificationPhone
+        })
+      });
+
+      if (res.ok) {
+        const newLoc = await res.json();
+
+        // Handle license upload if exists
+        if (licenseFile && newLoc.id) {
+          const currentFirebaseUser = auth.currentUser;
+          if (currentFirebaseUser) {
+            const token = await currentFirebaseUser.getIdToken();
+            const formData = new FormData();
+            formData.append('file', licenseFile);
+
+            const uploadRes = await fetch('/api/upload-file', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+              body: formData
+            });
+
+            if (uploadRes.ok) {
+              const { url } = await uploadRes.json();
+              await fetch(`/api/manager/locations/${newLoc.id}`, {
+                method: 'PUT',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kitchenLicenseUrl: url, kitchenLicenseStatus: 'pending' })
+              });
+            }
+          }
+        }
+
+        toast({ title: "Location created successfully" });
+        onSuccess();
+        onOpenChange(false);
+        form.reset();
+        setLicenseFile(null);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to create location");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error creating location",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="sm:max-w-xl w-full p-0">
+        <ScrollArea className="h-full">
+          <div className="p-6">
+            <h2 className="text-lg font-semibold mb-1">Add New Location</h2>
+            <p className="text-sm text-muted-foreground mb-6">Enter the details for your new kitchen location.</p>
+
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g. Downtown Kitchen" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="address"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Full address" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="notificationEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notification Email</FormLabel>
+                        <FormControl>
+                          <Input placeholder="bookings@example.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="notificationPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notification Phone</FormLabel>
+                        <FormControl>
+                          <Input placeholder="+1 (555) 000-0000" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="pt-4 border-t">
+                  <FormLabel className="mb-2 block">Kitchen License</FormLabel>
+                  <div className="border-2 border-dashed border-border rounded-lg p-6 bg-muted/30 hover:bg-muted/50 transition-colors text-center cursor-pointer relative group">
+                    <input
+                      type="file"
+                      id="license-upload-sheet-form"
+                      className="hidden"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setLicenseFile(file);
+                          toast({
+                            title: "File attached",
+                            description: file.name
+                          });
+                        }
+                      }}
+                    />
+                    <label htmlFor="license-upload-sheet-form" className="cursor-pointer block w-full h-full">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="p-3 bg-background rounded-full shadow-sm group-hover:scale-110 transition-transform">
+                          <Upload className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <div className="text-sm">
+                          <span className="font-semibold text-primary">Click to upload</span>
+                          <span className="text-muted-foreground"> or drag and drop</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">PDF, JPG or PNG (max. 5MB)</p>
+                        {licenseFile && (
+                          <div className="mt-2 flex items-center gap-2 text-sm text-green-600 font-medium bg-green-50 px-3 py-1.5 rounded-full mx-auto w-fit">
+                            <Check className="h-4 w-4" />
+                            {licenseFile.name}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                  <FormDescription className="mt-2">
+                    Upload your business license or food safety certificate.
+                  </FormDescription>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full mt-6"
+                  disabled={form.formState.isSubmitting}
+                >
+                  {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Create Location
+                </Button>
+              </form>
+            </Form>
+          </div>
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// Original settings view remains below...
+
 
 
 
