@@ -21,11 +21,19 @@ export async function getRevenueMetricsFromTransactions(
 ): Promise<RevenueMetrics> {
   try {
     // Build WHERE clause
+    // Ensure managerId is valid
+    if (managerId === undefined || managerId === null || isNaN(managerId)) {
+        console.error('[Revenue Service V2] Invalid managerId:', managerId);
+        throw new Error('Invalid manager ID');
+    }
+
     const params: any[] = [managerId];
 
     if (locationId) {
       params.push(locationId);
     }
+
+    console.log('[Revenue Service V2] getRevenueMetricsFromTransactions params:', { managerId, locationId, startDate, endDate });
 
     // First, check if payment_transactions table exists and has data for this manager
     const tableCheck = await db.execute(sql`
@@ -44,6 +52,9 @@ export async function getRevenueMetricsFromTransactions(
     }
 
     // Check if there are any transactions for this manager (including NULL manager_id resolved through locations)
+    // Explicitly creating SQL chunks for managerId to ensure it's bound correctly
+    const managerIdParam = sql`${managerId}`;
+    
     const countCheck = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
@@ -51,8 +62,8 @@ export async function getRevenueMetricsFromTransactions(
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       LEFT JOIN locations l ON k.location_id = l.id
       WHERE (
-        pt.manager_id = ${managerId} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerId})
+        pt.manager_id = ${managerIdParam} 
+        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
       )
         AND pt.booking_type IN ('kitchen', 'bundle')
     `);
@@ -73,11 +84,11 @@ export async function getRevenueMetricsFromTransactions(
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN payment_transactions pt_kitchen ON pt_kitchen.booking_id = kb.id 
         AND pt_kitchen.booking_type = 'kitchen'
-        AND (pt_kitchen.manager_id = ${managerId} OR (pt_kitchen.manager_id IS NULL AND l.manager_id = ${managerId}))
+        AND (pt_kitchen.manager_id = ${managerIdParam} OR (pt_kitchen.manager_id IS NULL AND l.manager_id = ${managerIdParam}))
       LEFT JOIN payment_transactions pt_bundle ON pt_bundle.booking_id = kb.id 
         AND pt_bundle.booking_type = 'bundle'
-        AND (pt_bundle.manager_id = ${managerId} OR (pt_bundle.manager_id IS NULL AND l.manager_id = ${managerId}))
-      WHERE l.manager_id = ${managerId}
+        AND (pt_bundle.manager_id = ${managerIdParam} OR (pt_bundle.manager_id IS NULL AND l.manager_id = ${managerIdParam}))
+      WHERE l.manager_id = ${managerIdParam}
         AND kb.status != 'cancelled'
         AND (kb.payment_intent_id IS NOT NULL OR kb.total_price IS NOT NULL)
     `);
@@ -103,8 +114,8 @@ export async function getRevenueMetricsFromTransactions(
     // Prepare filter conditions
     const whereConditions = [sql`
       (
-        pt.manager_id = ${managerId} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerId})
+        pt.manager_id = ${managerIdParam} 
+        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
       )
     `];
     whereConditions.push(sql`(pt.status = 'succeeded' OR pt.status = 'processing')`);

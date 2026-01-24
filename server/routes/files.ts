@@ -20,8 +20,8 @@ const router = Router();
 // Generic file upload endpoint (for use with new upload components)
 // Uses Firebase Auth - supports both session and Firebase authentication
 router.post("/upload-file",
-    upload.single('file'),
-    optionalFirebaseAuth, // Try Firebase auth, but don't require it (supports legacy session auth too)
+    optionalFirebaseAuth, // Auth first so req.neonUser is set for multer filename generation
+    upload.single('file'), // Then process file
     async (req: Request, res: Response) => {
         try {
             // Check if user is authenticated (Firebase or session)

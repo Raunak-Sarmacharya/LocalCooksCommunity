@@ -4892,7 +4892,7 @@ var init_fileUpload = __esm({
         cb(null, uploadsDir);
       },
       filename: (req, file, cb) => {
-        const userId = req.user?.id || "unknown";
+        const userId = req.neonUser?.id || req.user?.id || "unknown";
         const timestamp2 = Date.now();
         const documentType = file.fieldname;
         const ext = path.extname(file.originalname);
@@ -4926,7 +4926,7 @@ var init_fileUpload = __esm({
     });
     uploadToBlob = async (file, userId, folder = "documents") => {
       try {
-        if (isProduction && isR2Configured()) {
+        if (isR2Configured()) {
           return await uploadToR2(file, userId, folder);
         } else {
           const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
@@ -5002,7 +5002,10 @@ var init_location_repository = __esm({
             minimumBookingWindowHours: dto.minimumBookingWindowHours || 1,
             logoUrl: dto.logoUrl || null,
             brandImageUrl: dto.brandImageUrl || null,
-            timezone: dto.timezone || "America/St_Johns"
+            timezone: dto.timezone || "America/St_Johns",
+            kitchenLicenseUrl: dto.kitchenLicenseUrl || null,
+            kitchenLicenseStatus: dto.kitchenLicenseStatus || "pending",
+            kitchenLicenseExpiry: dto.kitchenLicenseExpiry || null
           }).returning();
           return location;
         } catch (error) {
@@ -5031,7 +5034,10 @@ var init_location_repository = __esm({
             minimumBookingWindowHours: dto.minimumBookingWindowHours,
             logoUrl: dto.logoUrl,
             brandImageUrl: dto.brandImageUrl,
-            timezone: dto.timezone
+            timezone: dto.timezone,
+            kitchenLicenseUrl: dto.kitchenLicenseUrl,
+            kitchenLicenseStatus: dto.kitchenLicenseStatus,
+            kitchenLicenseExpiry: dto.kitchenLicenseExpiry
           }).where(eq7(locations.id, id)).returning();
           return location || null;
         } catch (error) {
@@ -5199,9 +5205,12 @@ async function validateLocationInput(data) {
     cancellationPolicyMessage: z3.string().optional(),
     defaultDailyBookingLimit: z3.number().positive("Daily booking limit must be positive").optional(),
     minimumBookingWindowHours: z3.number().positive("Minimum booking window must be positive").optional(),
-    logoUrl: z3.string().url("Invalid URL format").optional(),
-    brandImageUrl: z3.string().url("Invalid URL format").optional(),
-    timezone: z3.string().optional()
+    logoUrl: z3.string().optional(),
+    brandImageUrl: z3.string().optional(),
+    timezone: z3.string().optional(),
+    kitchenLicenseUrl: z3.string().optional(),
+    kitchenLicenseStatus: z3.enum(["pending", "approved", "rejected"]).optional(),
+    kitchenLicenseExpiry: z3.string().optional()
   });
   try {
     return locationSchema.parse(data);
@@ -5216,9 +5225,10 @@ async function validateKitchenInput(data) {
   const kitchenSchema = z3.object({
     locationId: z3.number().positive("Location ID must be positive"),
     name: z3.string().min(1, "Kitchen name is required"),
-    description: z3.string().min(5, "Description must be at least 5 characters").optional(),
-    imageUrl: z3.string().url("Invalid URL format").optional(),
-    galleryImages: z3.array(z3.string().url("Invalid URL format")).optional(),
+    description: z3.string().optional(),
+    imageUrl: z3.string().optional(),
+    // Allow relative paths for local dev (starts with /)
+    galleryImages: z3.array(z3.string()).optional(),
     amenities: z3.array(z3.string()).optional(),
     isActive: z3.boolean().optional(),
     hourlyRate: z3.number().positive("Hourly rate must be positive").optional(),
@@ -5468,7 +5478,7 @@ var init_location_service = __esm({
             };
           }
           return {
-            id: 0,
+            id: -1,
             locationId,
             requireFirstName: true,
             requireLastName: true,
@@ -5569,7 +5579,8 @@ var init_kitchen_repository = __esm({
           amenities: row.amenities || [],
           // Ensure type safety for JSONB
           // Cast enum to specific string union type if needed, or trust strict match
-          pricingModel: row.pricingModel
+          pricingModel: row.pricingModel,
+          taxRatePercent: row.taxRatePercent ? parseFloat(row.taxRatePercent) : null
         };
       }
       /**
@@ -5658,7 +5669,8 @@ var init_kitchen_repository = __esm({
             // Convert number to string for numeric column
             currency: dto.currency || "CAD",
             minimumBookingHours: dto.minimumBookingHours || 1,
-            pricingModel: dto.pricingModel || "hourly"
+            pricingModel: dto.pricingModel || "hourly",
+            taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : null
           }).returning();
           return this.mapToDTO(kitchen);
         } catch (error) {
@@ -5687,7 +5699,8 @@ var init_kitchen_repository = __esm({
             // Convert number to string
             currency: dto.currency,
             minimumBookingHours: dto.minimumBookingHours,
-            pricingModel: dto.pricingModel
+            pricingModel: dto.pricingModel,
+            taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : dto.taxRatePercent === null ? null : void 0
           }).where(eq8(kitchens.id, id)).returning();
           return kitchen ? this.mapToDTO(kitchen) : null;
         } catch (error) {
@@ -5984,8 +5997,9 @@ var init_kitchen_service = __esm({
           console.error("[KitchenService] Error creating kitchen:", error);
           throw new DomainError(
             KitchenErrorCodes.INVALID_PRICING,
-            "Failed to create kitchen",
-            500
+            `Failed to create kitchen: ${error.message || "Unknown error"}`,
+            500,
+            { originalError: error }
           );
         }
       }
@@ -7408,9 +7422,10 @@ var init_files = __esm({
     router10 = Router10();
     router10.post(
       "/upload-file",
-      upload.single("file"),
       optionalFirebaseAuth,
-      // Try Firebase auth, but don't require it (supports legacy session auth too)
+      // Auth first so req.neonUser is set for multer filename generation
+      upload.single("file"),
+      // Then process file
       async (req, res) => {
         try {
           const userId = req.neonUser?.id || req.user?.id;
@@ -7937,6 +7952,7 @@ __export(pricing_service_exports, {
   calculateKitchenBookingPrice: () => calculateKitchenBookingPrice,
   calculatePlatformFee: () => calculatePlatformFee,
   calculatePlatformFeeDynamic: () => calculatePlatformFeeDynamic,
+  calculateTax: () => calculateTax,
   calculateTotalWithFees: () => calculateTotalWithFees,
   getKitchenPricing: () => getKitchenPricing,
   getServiceFeeRate: () => getServiceFeeRate
@@ -7956,7 +7972,8 @@ async function getKitchenPricing(kitchenId) {
     const [kitchen] = await db.select({
       hourlyRate: kitchens.hourlyRate,
       currency: kitchens.currency,
-      minimumBookingHours: kitchens.minimumBookingHours
+      minimumBookingHours: kitchens.minimumBookingHours,
+      taxRatePercent: kitchens.taxRatePercent
     }).from(kitchens).where(eq13(kitchens.id, kitchenId));
     if (!kitchen) {
       return null;
@@ -7965,7 +7982,8 @@ async function getKitchenPricing(kitchenId) {
     return {
       hourlyRate: hourlyRateCents,
       currency: kitchen.currency || "CAD",
-      minimumBookingHours: kitchen.minimumBookingHours || 1
+      minimumBookingHours: kitchen.minimumBookingHours || 1,
+      taxRatePercent: kitchen.taxRatePercent ? parseFloat(kitchen.taxRatePercent) : null
     };
   } catch (error) {
     console.error("Error getting kitchen pricing:", error);
@@ -7981,17 +7999,24 @@ async function calculateKitchenBookingPrice(kitchenId, startTime, endTime) {
         totalPriceCents: 0,
         durationHours: durationHours2,
         hourlyRateCents: 0,
-        currency: pricing?.currency || "CAD"
+        currency: pricing?.currency || "CAD",
+        taxRatePercent: pricing?.taxRatePercent ?? null,
+        taxAmountCents: 0
       };
     }
     const durationHours = calculateDurationHours(startTime, endTime);
     const effectiveDuration = Math.max(durationHours, pricing.minimumBookingHours);
-    const totalPriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
+    const basePriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
+    const taxAmountCents = calculateTax(basePriceCents, pricing.taxRatePercent ?? null);
     return {
-      totalPriceCents,
+      totalPriceCents: basePriceCents,
+      // This is the subtotal
       durationHours: effectiveDuration,
       hourlyRateCents: pricing.hourlyRate,
-      currency: pricing.currency
+      currency: pricing.currency,
+      taxRatePercent: pricing.taxRatePercent ?? null,
+      taxAmountCents
+      // New field
     };
   } catch (error) {
     console.error("Error calculating kitchen booking price:", error);
@@ -8021,8 +8046,14 @@ async function calculatePlatformFeeDynamic(basePriceCents) {
   const rate = await getServiceFeeRate();
   return calculatePlatformFee(basePriceCents, rate);
 }
-function calculateTotalWithFees(basePriceCents, serviceFeeCents = 0, damageDepositCents = 0) {
-  return basePriceCents + serviceFeeCents + damageDepositCents;
+function calculateTax(basePriceCents, taxRatePercent) {
+  if (!taxRatePercent || taxRatePercent <= 0) {
+    return 0;
+  }
+  return Math.round(basePriceCents * (taxRatePercent / 100));
+}
+function calculateTotalWithFees(basePriceCents, serviceFeeCents = 0, damageDepositCents = 0, taxAmountCents = 0) {
+  return basePriceCents + serviceFeeCents + damageDepositCents + taxAmountCents;
 }
 var init_pricing_service = __esm({
   "server/services/pricing-service.ts"() {
@@ -8739,10 +8770,15 @@ __export(revenue_service_v2_exports, {
 import { sql as sql4 } from "drizzle-orm";
 async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endDate, locationId) {
   try {
+    if (managerId === void 0 || managerId === null || isNaN(managerId)) {
+      console.error("[Revenue Service V2] Invalid managerId:", managerId);
+      throw new Error("Invalid manager ID");
+    }
     const params = [managerId];
     if (locationId) {
       params.push(locationId);
     }
+    console.log("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
     const tableCheck = await db2.execute(sql4`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
@@ -8755,6 +8791,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       console.log("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
       throw new Error("payment_transactions table does not exist");
     }
+    const managerIdParam = sql4`${managerId}`;
     const countCheck = await db2.execute(sql4`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
@@ -8762,8 +8799,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
       LEFT JOIN locations l ON k.location_id = l.id
       WHERE (
-        pt.manager_id = ${managerId} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerId})
+        pt.manager_id = ${managerIdParam} 
+        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
       )
         AND pt.booking_type IN ('kitchen', 'bundle')
     `);
@@ -8778,11 +8815,11 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN payment_transactions pt_kitchen ON pt_kitchen.booking_id = kb.id 
         AND pt_kitchen.booking_type = 'kitchen'
-        AND (pt_kitchen.manager_id = ${managerId} OR (pt_kitchen.manager_id IS NULL AND l.manager_id = ${managerId}))
+        AND (pt_kitchen.manager_id = ${managerIdParam} OR (pt_kitchen.manager_id IS NULL AND l.manager_id = ${managerIdParam}))
       LEFT JOIN payment_transactions pt_bundle ON pt_bundle.booking_id = kb.id 
         AND pt_bundle.booking_type = 'bundle'
-        AND (pt_bundle.manager_id = ${managerId} OR (pt_bundle.manager_id IS NULL AND l.manager_id = ${managerId}))
-      WHERE l.manager_id = ${managerId}
+        AND (pt_bundle.manager_id = ${managerIdParam} OR (pt_bundle.manager_id IS NULL AND l.manager_id = ${managerIdParam}))
+      WHERE l.manager_id = ${managerIdParam}
         AND kb.status != 'cancelled'
         AND (kb.payment_intent_id IS NOT NULL OR kb.total_price IS NOT NULL)
     `);
@@ -8799,8 +8836,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     }
     const whereConditions = [sql4`
       (
-        pt.manager_id = ${managerId} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerId})
+        pt.manager_id = ${managerIdParam} 
+        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
       )
     `];
     whereConditions.push(sql4`(pt.status = 'succeeded' OR pt.status = 'processing')`);
@@ -9422,7 +9459,12 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
 }
 async function getRevenueByLocation(managerId, db2, startDate, endDate) {
   try {
-    const whereConditions = [sql5`l.manager_id = ${managerId}`, sql5`kb.status != 'cancelled'`];
+    if (managerId === void 0 || managerId === null || isNaN(managerId)) {
+      console.error("[Revenue Service] Invalid managerId:", managerId);
+      throw new Error("Invalid manager ID");
+    }
+    const managerIdParam = sql5`${managerId}`;
+    const whereConditions = [sql5`l.manager_id = ${managerIdParam}`, sql5`kb.status != 'cancelled'`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
       whereConditions.push(sql5`DATE(kb.booking_date) >= ${start}::date`);
@@ -9479,8 +9521,18 @@ async function getRevenueByLocation(managerId, db2, startDate, endDate) {
 }
 async function getRevenueByDate(managerId, db2, startDate, endDate) {
   try {
-    const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-    const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
+    if (managerId === void 0 || managerId === null || isNaN(managerId)) {
+      console.error("[Revenue Service] Invalid managerId:", managerId);
+      throw new Error("Invalid manager ID");
+    }
+    const start = typeof startDate === "string" ? startDate : startDate ? startDate.toISOString().split("T")[0] : null;
+    const end = typeof endDate === "string" ? endDate : endDate ? endDate.toISOString().split("T")[0] : null;
+    const managerIdParam = sql5`${managerId}`;
+    if (!start || !end) {
+      console.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
+    }
+    const startParam = start ? sql5`${start}::date` : sql5`CURRENT_DATE - INTERVAL '30 days'`;
+    const endParam = end ? sql5`${end}::date` : sql5`CURRENT_DATE`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
     const result = await db2.execute(sql5`
@@ -9501,10 +9553,10 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
-      WHERE l.manager_id = ${managerId}
+      WHERE l.manager_id = ${managerIdParam}
         AND kb.status != 'cancelled'
-        AND DATE(kb.booking_date) >= ${start}::date
-        AND DATE(kb.booking_date) <= ${end}::date
+        AND DATE(kb.booking_date) >= ${startParam}
+        AND DATE(kb.booking_date) <= ${endParam}
       GROUP BY DATE(kb.booking_date)
       ORDER BY date ASC
     `);
@@ -11158,7 +11210,7 @@ var init_manager = __esm({
     router11.post("/kitchens", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
-        const { locationId, name, description, features } = req.body;
+        const { locationId, name, description, features, imageUrl } = req.body;
         const location = await locationService.getLocationById(locationId);
         if (!location) {
           return res.status(404).json({ error: "Location not found" });
@@ -11170,6 +11222,7 @@ var init_manager = __esm({
           locationId,
           name,
           description,
+          imageUrl,
           amenities: features || [],
           isActive: true,
           // Auto-activate
@@ -11302,7 +11355,8 @@ var init_manager = __esm({
           // Let's assume getKitchenById returns it as is.
           currency: kitchen.currency,
           minimumBookingHours: kitchen.minimumBookingHours,
-          pricingModel: kitchen.pricingModel
+          pricingModel: kitchen.pricingModel,
+          taxRatePercent: kitchen.taxRatePercent !== void 0 && kitchen.taxRatePercent !== null ? Number(kitchen.taxRatePercent) : null
         });
       } catch (error) {
         console.error("Error getting kitchen pricing:", error);
@@ -11325,7 +11379,7 @@ var init_manager = __esm({
         if (!hasAccess) {
           return res.status(403).json({ error: "Access denied to this kitchen" });
         }
-        const { hourlyRate, currency, minimumBookingHours, pricingModel } = req.body;
+        const { hourlyRate, currency, minimumBookingHours, pricingModel, taxRatePercent } = req.body;
         if (hourlyRate !== void 0 && hourlyRate !== null && (typeof hourlyRate !== "number" || hourlyRate < 0)) {
           return res.status(400).json({ error: "Hourly rate must be a positive number or null" });
         }
@@ -11344,7 +11398,11 @@ var init_manager = __esm({
         }
         if (currency !== void 0) pricing.currency = currency;
         if (minimumBookingHours !== void 0) pricing.minimumBookingHours = minimumBookingHours;
+        if (minimumBookingHours !== void 0) pricing.minimumBookingHours = minimumBookingHours;
         if (pricingModel !== void 0) pricing.pricingModel = pricingModel;
+        if (taxRatePercent !== void 0) {
+          pricing.taxRatePercent = taxRatePercent ? parseFloat(taxRatePercent) : null;
+        }
         const updated = await kitchenService.updateKitchen({
           id: kitchenId,
           ...pricing
@@ -11849,7 +11907,15 @@ var init_manager = __esm({
     router11.post("/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
-        const { name, address, notificationEmail, notificationPhone } = req.body;
+        const {
+          name,
+          address,
+          notificationEmail,
+          notificationPhone,
+          kitchenLicenseUrl,
+          kitchenLicenseStatus,
+          kitchenLicenseExpiry
+        } = req.body;
         if (!name || !address) {
           return res.status(400).json({ error: "Name and address are required" });
         }
@@ -11863,13 +11929,22 @@ var init_manager = __esm({
           }
           normalizedNotificationPhone = normalized;
         }
-        console.log("Creating location for manager:", { managerId: user.id, name, address, notificationPhone: normalizedNotificationPhone });
+        console.log("Creating location for manager:", {
+          managerId: user.id,
+          name,
+          address,
+          notificationPhone: normalizedNotificationPhone,
+          kitchenLicenseUrl: kitchenLicenseUrl ? "Provided" : "Not provided"
+        });
         const location = await locationService.createLocation({
           name,
           address,
           managerId: user.id,
           notificationEmail: notificationEmail || void 0,
-          notificationPhone: normalizedNotificationPhone
+          notificationPhone: normalizedNotificationPhone,
+          kitchenLicenseUrl: kitchenLicenseUrl || void 0,
+          kitchenLicenseStatus: kitchenLicenseStatus || "pending",
+          kitchenLicenseExpiry: kitchenLicenseExpiry || void 0
         });
         const mappedLocation = {
           ...location,
@@ -14651,18 +14726,16 @@ var init_admin = __esm({
         const { startDate, endDate } = req.query;
         const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
         const serviceFeeRate = await getServiceFeeRate2();
-        const bookingFilters = [`kb.status != 'cancelled'`];
-        const params = [];
+        const conditions = [sql8`kb.status != 'cancelled'`];
         if (startDate) {
-          bookingFilters.push(`kb.booking_date >= $${params.length + 1}::date`);
-          params.push(startDate);
+          conditions.push(sql8`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          bookingFilters.push(`kb.booking_date <= $${params.length + 1}::date`);
-          params.push(endDate);
+          conditions.push(sql8`kb.booking_date <= ${endDate}::date`);
         }
-        params.push("manager");
-        const result = await db.execute(sql8.raw(`
+        const bookingFilters = sql8.join(conditions, sql8` AND `);
+        const managerRole = "manager";
+        const result = await db.execute(sql8`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -14676,11 +14749,11 @@ var init_admin = __esm({
         FROM users u
         LEFT JOIN locations l ON l.manager_id = u.id
         LEFT JOIN kitchens k ON k.location_id = l.id
-        LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id AND ${bookingFilters.join(" AND ")}
-        WHERE u.role = $${params.length}
+        LEFT JOIN kitchen_bookings kb ON kb.kitchen_id = k.id AND ${bookingFilters}
+        WHERE u.role = ${managerRole}
         GROUP BY u.id, u.username, l.id, l.name
         ORDER BY u.username ASC, total_revenue DESC
-      `));
+      `);
         const managerMap = /* @__PURE__ */ new Map();
         result.rows.forEach((row) => {
           const managerId = parseInt(row.manager_id);
@@ -14749,17 +14822,15 @@ var init_admin = __esm({
         const { startDate, endDate } = req.query;
         const managerCountResult = await db.select({ count: sql8`count(*)::int` }).from(users).where(eq24(users.role, "manager"));
         const totalManagers = managerCountResult[0]?.count || 0;
-        const bookingFilters = [`kb.status != 'cancelled'`];
-        const dateParams = [];
+        const conditions = [sql8`kb.status != 'cancelled'`];
         if (startDate) {
-          bookingFilters.push(`kb.booking_date >= $${dateParams.length + 1}::date`);
-          dateParams.push(startDate);
+          conditions.push(sql8`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          bookingFilters.push(`kb.booking_date <= $${dateParams.length + 1}::date`);
-          dateParams.push(endDate);
+          conditions.push(sql8`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingResult = await db.execute(sql8.raw(`
+        const bookingFilters = sql8.join(conditions, sql8` AND `);
+        const bookingResult = await db.execute(sql8`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -14769,8 +14840,8 @@ var init_admin = __esm({
         FROM kitchen_bookings kb
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
-        WHERE ${bookingFilters.join(" AND ")}
-      `));
+        WHERE ${bookingFilters}
+      `);
         const row = bookingResult.rows[0] || {};
         res.json({
           totalPlatformRevenue: (parseInt(row.total_revenue) || 0) / 100,
@@ -15126,6 +15197,110 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch managers" });
       }
     });
+    router16.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { status } = req.query;
+        const query = db.select({
+          id: locations.id,
+          name: locations.name,
+          address: locations.address,
+          managerId: locations.managerId,
+          kitchenLicenseUrl: locations.kitchenLicenseUrl,
+          kitchenLicenseStatus: locations.kitchenLicenseStatus,
+          kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
+          kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
+          kitchenLicenseApprovedAt: locations.kitchenLicenseApprovedAt,
+          managerName: users.username,
+          managerEmail: users.username
+          // simplified for now
+        }).from(locations).leftJoin(users, eq24(locations.managerId, users.id));
+        if (status) {
+          query.where(eq24(locations.kitchenLicenseStatus, status));
+        }
+        const results = await query;
+        const licenses = results.map((loc) => ({
+          id: loc.id,
+          name: loc.name,
+          address: loc.address,
+          managerId: loc.managerId,
+          managerUsername: loc.managerName,
+          kitchenLicenseUrl: loc.kitchenLicenseUrl,
+          kitchenLicenseStatus: loc.kitchenLicenseStatus || "pending",
+          kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
+          kitchenLicenseFeedback: loc.kitchenLicenseFeedback,
+          kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt
+        }));
+        res.json(licenses);
+      } catch (error) {
+        console.error("Error fetching location licenses:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch location licenses" });
+      }
+    });
+    router16.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const pendingLicenses = await db.select({
+          id: locations.id,
+          name: locations.name,
+          address: locations.address,
+          managerId: locations.managerId,
+          kitchenLicenseUrl: locations.kitchenLicenseUrl,
+          kitchenLicenseStatus: locations.kitchenLicenseStatus,
+          kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
+          kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
+          managerName: users.username
+        }).from(locations).leftJoin(users, eq24(locations.managerId, users.id)).where(eq24(locations.kitchenLicenseStatus, "pending"));
+        const formatted = pendingLicenses.map((loc) => ({
+          id: loc.id,
+          name: loc.name,
+          address: loc.address,
+          managerId: loc.managerId,
+          managerUsername: loc.managerName,
+          kitchenLicenseUrl: loc.kitchenLicenseUrl,
+          kitchenLicenseStatus: loc.kitchenLicenseStatus,
+          kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
+          kitchenLicenseFeedback: loc.kitchenLicenseFeedback
+        }));
+        res.json(formatted);
+      } catch (error) {
+        console.error("Error fetching pending licenses:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
+      }
+    });
+    router16.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const result = await db.select({ count: sql8`count(*)::int` }).from(locations).where(eq24(locations.kitchenLicenseStatus, "pending"));
+        const count2 = result[0]?.count || 0;
+        res.json({ count: count2 });
+      } catch (error) {
+        res.status(500).json({ error: "Failed to get count" });
+      }
+    });
+    router16.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const locationId = parseInt(req.params.id);
+        const { status, feedback } = req.body;
+        if (isNaN(locationId)) {
+          return res.status(400).json({ error: "Invalid location ID" });
+        }
+        if (!["approved", "rejected", "pending"].includes(status)) {
+          return res.status(400).json({ error: "Invalid status" });
+        }
+        const updateData = {
+          kitchenLicenseStatus: status,
+          kitchenLicenseFeedback: feedback || null
+        };
+        if (status === "approved") {
+          updateData.kitchenLicenseApprovedAt = /* @__PURE__ */ new Date();
+        } else {
+          updateData.kitchenLicenseApprovedAt = null;
+        }
+        await db.update(locations).set(updateData).where(eq24(locations.id, locationId));
+        res.json({ message: "License status updated successfully" });
+      } catch (error) {
+        console.error("Error updating license status:", error);
+        res.status(500).json({ error: error.message || "Failed to update license status" });
+      }
+    });
     router16.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
@@ -15231,7 +15406,7 @@ var init_admin = __esm({
         if (user.role !== "admin") {
           return res.status(403).json({ error: "Admin access required" });
         }
-        const { locationId, name, description } = req.body;
+        const { locationId, name, description, taxRatePercent } = req.body;
         if (!locationId || !name) {
           return res.status(400).json({ error: "Location ID and name are required" });
         }
@@ -15250,7 +15425,8 @@ var init_admin = __esm({
           isActive: true,
           hourlyRate: void 0,
           minimumBookingHours: 1,
-          pricingModel: "hourly"
+          pricingModel: "hourly",
+          taxRatePercent: taxRatePercent ? parseFloat(taxRatePercent) : null
         });
         res.status(201).json(kitchen);
       } catch (error) {
@@ -15372,7 +15548,7 @@ var init_admin = __esm({
         if (!currentKitchen) {
           return res.status(404).json({ error: "Kitchen not found" });
         }
-        const { name, description, isActive, locationId } = req.body;
+        const { name, description, isActive, locationId, taxRatePercent } = req.body;
         const updates = {};
         const changesList = [];
         if (name !== void 0 && name !== currentKitchen.name) {
@@ -15399,6 +15575,13 @@ var init_admin = __esm({
           if (locationIdNum !== currentKitchen.locationId) {
             updates.locationId = locationIdNum;
             changesList.push(`Location changed to "${location.name}"`);
+          }
+        }
+        if (taxRatePercent !== void 0) {
+          const newRate = taxRatePercent ? parseFloat(taxRatePercent) : null;
+          if (newRate !== currentKitchen.taxRatePercent) {
+            updates.taxRatePercent = newRate;
+            changesList.push(`Tax rate changed to ${newRate ? newRate + "%" : "None"}`);
           }
         }
         if (Object.keys(updates).length === 0) {

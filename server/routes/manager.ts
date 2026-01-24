@@ -933,7 +933,8 @@ router.get("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
             // Let's assume getKitchenById returns it as is.
             currency: kitchen.currency,
             minimumBookingHours: kitchen.minimumBookingHours,
-            pricingModel: kitchen.pricingModel
+            pricingModel: kitchen.pricingModel,
+            taxRatePercent: kitchen.taxRatePercent !== undefined && kitchen.taxRatePercent !== null ? Number(kitchen.taxRatePercent) : null
         });
     } catch (error: any) {
         console.error("Error getting kitchen pricing:", error);
@@ -963,7 +964,7 @@ router.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
             return res.status(403).json({ error: "Access denied to this kitchen" });
         }
 
-        const { hourlyRate, currency, minimumBookingHours, pricingModel } = req.body;
+        const { hourlyRate, currency, minimumBookingHours, pricingModel, taxRatePercent } = req.body;
 
         // Validate input
         if (hourlyRate !== undefined && hourlyRate !== null && (typeof hourlyRate !== 'number' || hourlyRate < 0)) {
@@ -992,7 +993,11 @@ router.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
         }
         if (currency !== undefined) pricing.currency = currency;
         if (minimumBookingHours !== undefined) pricing.minimumBookingHours = minimumBookingHours;
+        if (minimumBookingHours !== undefined) pricing.minimumBookingHours = minimumBookingHours;
         if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
+        if (taxRatePercent !== undefined) {
+             pricing.taxRatePercent = taxRatePercent ? parseFloat(taxRatePercent) : null;
+        }
 
         const updated = await kitchenService.updateKitchen({
             id: kitchenId,

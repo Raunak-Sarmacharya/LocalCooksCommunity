@@ -26,7 +26,8 @@ export class KitchenRepository {
       galleryImages: (row.galleryImages as string[]) || [], // Ensure type safety for JSONB
       amenities: (row.amenities as string[]) || [],         // Ensure type safety for JSONB
       // Cast enum to specific string union type if needed, or trust strict match
-      pricingModel: row.pricingModel as any
+      pricingModel: row.pricingModel as any,
+      taxRatePercent: row.taxRatePercent ? parseFloat(row.taxRatePercent) : null
     };
   }
 
@@ -142,6 +143,7 @@ export class KitchenRepository {
           currency: dto.currency || 'CAD',
           minimumBookingHours: dto.minimumBookingHours || 1,
           pricingModel: dto.pricingModel || 'hourly',
+          taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : null,
         })
         .returning();
 
@@ -175,6 +177,7 @@ export class KitchenRepository {
           currency: dto.currency,
           minimumBookingHours: dto.minimumBookingHours,
           pricingModel: dto.pricingModel,
+          taxRatePercent: dto.taxRatePercent ? dto.taxRatePercent.toString() : (dto.taxRatePercent === null ? null : undefined),
         })
         .where(eq(kitchens.id, id))
         .returning();

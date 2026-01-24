@@ -33,6 +33,7 @@ export interface CreateKitchenDTO {
   currency?: string;
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
+  taxRatePercent?: number | null;
 }
 
 /**
@@ -51,6 +52,7 @@ export interface UpdateKitchenDTO {
   currency?: string;
   minimumBookingHours?: number;
   pricingModel?: PricingModel;
+  taxRatePercent?: number | null;
 }
 
 /**
@@ -69,6 +71,7 @@ export interface KitchenDTO {
   currency: string;
   minimumBookingHours: number;
   pricingModel: PricingModel;
+  taxRatePercent: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
