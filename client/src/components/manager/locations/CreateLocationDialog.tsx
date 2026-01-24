@@ -73,7 +73,7 @@ export function CreateLocationDialog({
 
             // License is now required, validation happens before this block/API call
             if (!licenseFile) {
-                 toast({
+                toast({
                     title: "License Required",
                     description: "Please upload a kitchen license to create a location.",
                     variant: "destructive",
@@ -106,37 +106,37 @@ export function CreateLocationDialog({
             const newLocation = await response.json();
 
             // License is mandatory, so we always upload it here
-             setIsUploadingLicense(true);
-             const formData = new FormData();
-             formData.append("file", licenseFile);
+            setIsUploadingLicense(true);
+            const formData = new FormData();
+            formData.append("file", licenseFile);
 
-             const uploadResponse = await fetch("/api/upload-file", {
-                 method: "POST",
-                 headers: {
-                     'Authorization': `Bearer ${token}`,
-                 },
-                 credentials: "include",
-                 body: formData,
-             });
+            const uploadResponse = await fetch("/api/files/upload-file", {
+                method: "POST",
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+                credentials: "include",
+                body: formData,
+            });
 
-             if (!uploadResponse.ok) throw new Error("Failed to upload license file"); // or handle gracefully but we require it
+            if (!uploadResponse.ok) throw new Error("Failed to upload license file"); // or handle gracefully but we require it
 
-             const uploadResult = await uploadResponse.json();
-             const licenseUrl = uploadResult.url;
-             setIsUploadingLicense(false);
+            const uploadResult = await uploadResponse.json();
+            const licenseUrl = uploadResult.url;
+            setIsUploadingLicense(false);
 
             // Update location with license
-             await fetch(`/api/manager/locations/${newLocation.id}`, {
-                    method: "PUT",
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    credentials: "include",
-                    body: JSON.stringify({
-                        kitchenLicenseUrl: licenseUrl,
-                        kitchenLicenseStatus: 'pending',
-                    }),
+            await fetch(`/api/manager/locations/${newLocation.id}`, {
+                method: "PUT",
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    kitchenLicenseUrl: licenseUrl,
+                    kitchenLicenseStatus: 'pending',
+                }),
             });
 
             queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
@@ -145,7 +145,7 @@ export function CreateLocationDialog({
                 title: "Location Created",
                 description: `${newLocation.name} has been created. License submitted for approval.`,
             });
-            
+
             onLocationCreated(newLocation);
             onOpenChange(false);
             resetForm();

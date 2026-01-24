@@ -96,7 +96,7 @@ interface ManagerOnboardingContextType {
       hourlyRate: string;
       currency: string;
       minimumBookingHours: string;
-
+      imageUrl: string;
     };
     setData: (data: any) => void;
     showCreate: boolean;
@@ -144,6 +144,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
+  const [isLoadingKitchens, setIsLoadingKitchens] = useState(false);
+  const [kitchensLoaded, setKitchensLoaded] = useState(false); // [FIX]
+  const [requirementsLoaded, setRequirementsLoaded] = useState(false); // [FIX]
 
   // Location Form State
   const [locationName, setLocationName] = useState("");
@@ -165,6 +168,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     hourlyRate: '',
     currency: 'CAD',
     minimumBookingHours: '1',
+    imageUrl: '',
   });
 
   // Listings State
@@ -294,8 +298,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // Build visible steps: show all steps, but skip welcome if returning user with location
   let visibleStepsFiltered = [...steps];
 
-  // Skip welcome screen for returning managers with existing locations (not adding new)
-  if (hasExistingLocation && !isAddingLocation) {
+  // [UX FIX] Hide welcome screen ONLY when explicitly adding a new location (secondary flow)
+  // Keep it visible for the initial onboarding flow (even after location is created) for consistency
+  if (isAddingLocation) {
     visibleStepsFiltered = visibleStepsFiltered.filter(step => step.id !== 'welcome');
   }
 
@@ -371,6 +376,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setNotificationEmail(loc.notificationEmail || "");
       setNotificationPhone(loc.notificationPhone || "");
 
+      // Reset loading flags when location switches/initializes
+      setKitchensLoaded(false);
+      setRequirementsLoaded(false);
+
       // If we have a location, we might want to fast-forward the OnboardJS state if it's on step 0 or 1.
       // However, OnboardJS doesn't expose a direct "jump to index" easily without loop, 
       // or we rely on the persistence of OnboardJS itself.
@@ -385,6 +394,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   //
   // REQUIRED for bookings: Location, Kitchen Space, Availability, Payment
   // OPTIONAL: Application Requirements (chef settings), Storage, Equipment
+
+  // Ref to track if we've already performed the initial auto-skip
+  const hasPerformedInitialAutoSkip = useRef(false);
+
   useEffect(() => {
     if (!engine || !hasExistingLocation || isLoadingLocations || isAddingLocation) return;
 
@@ -392,6 +405,20 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     if (isManualNavigation.current) {
       console.log('[Onboarding] Skipping auto-advance due to manual navigation');
       isManualNavigation.current = false;
+      return;
+    }
+
+    // [FIX] Wait for critical data to load before making any skip decisions
+    // If we have a location selected, we MUST wait for kitchens and requirements to load
+    if (selectedLocationId) {
+      if (!kitchensLoaded || !requirementsLoaded) {
+        return;
+      }
+    }
+
+    // [FIX] Only perform auto-skip logic ONCE per session (on load)
+    // This prevents jarring auto-navigation when a user completes a step actively
+    if (hasPerformedInitialAutoSkip.current) {
       return;
     }
 
@@ -419,6 +446,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       // If this step is incomplete, navigate to it
       if (!completedSteps[stepId]) {
         console.log(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
+        hasPerformedInitialAutoSkip.current = true; // Mark as performed
         engine.goToStep(stepId);
         return;
       }
@@ -434,17 +462,33 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         // Only advance if next step is valid
         if (nextStep && nextStep.id) {
           console.log(`[Onboarding] Advancing from completed required step to: ${nextStep.id}`);
+          hasPerformedInitialAutoSkip.current = true; // Mark as performed
           engine.goToStep(nextStep.id);
         }
       }
     }
-  }, [engine, hasExistingLocation, isLoadingLocations, isAddingLocation, currentStep?.id,
-    completedSteps, isStripeOnboardingComplete]);
+
+    // If we reached here and didn't jump, we only mark initial skip as done 
+    // IF we are confident we have loaded everything and truly don't need to jump.
+    // If we are still loading or waiting for data, we should NOT mark it as done yet.
+    // [FIX] Also wait for selectedLocationId to be set if we have locations, 
+    // otherwise loadKitchens hasn't even started!
+    // We already checked kitchensLoaded/requirementsLoaded above, so if we are here, we are loaded.
+
+    if (hasExistingLocation && Object.keys(completedSteps).length > 0) {
+      hasPerformedInitialAutoSkip.current = true;
+    }
+
+  }, [engine, hasExistingLocation, isLoadingLocations, isLoadingKitchens, isLoadingRequirements, selectedLocationId, isAddingLocation, currentStep?.id,
+    completedSteps, isStripeOnboardingComplete, kitchensLoaded, requirementsLoaded]);
 
   // Load kitchens when location selected
   useEffect(() => {
     if (selectedLocationId) {
       const loadKitchens = async () => {
+        setIsLoadingKitchens(true);
+        // Ensure strictly false until loaded
+        setKitchensLoaded(false);
         try {
           const token = await auth.currentUser?.getIdToken();
           if (!token) return;
@@ -460,6 +504,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           }
         } catch (e) {
           console.error("Error loading kitchens", e);
+        } finally {
+          setIsLoadingKitchens(false);
+          setKitchensLoaded(true);
         }
       };
       loadKitchens();
@@ -535,6 +582,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         return;
       }
       setIsLoadingRequirements(true);
+      setRequirementsLoaded(false);
       try {
         const token = await auth.currentUser?.getIdToken();
         if (!token) return;
@@ -545,8 +593,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
         if (res.ok) {
           const data = await res.json();
-          // Record exists if we get a valid response with an id
-          setHasRequirements(!!data && !!data.id);
+          // Record exists if we get a valid response with an id > 0
+          // Default requirements return id=0 or -1, so we check for positive ID
+          setHasRequirements(!!data && Number(data.id) > 0);
         } else {
           setHasRequirements(false);
         }
@@ -555,6 +604,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         setHasRequirements(false);
       } finally {
         setIsLoadingRequirements(false);
+        setRequirementsLoaded(true);
       }
     };
     checkRequirements();
@@ -598,7 +648,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       const token = await auth.currentUser?.getIdToken();
       const formData = new FormData();
       formData.append("file", licenseFile);
-      const res = await fetch("/api/upload-file", {
+      const res = await fetch("/api/files/upload-file", {
         method: "POST",
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
@@ -682,7 +732,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     setCreatingKitchen(true);
     try {
       const token = await auth.currentUser?.getIdToken();
-      
+
       // 1. Create Kitchen
       const res = await fetch(`/api/manager/kitchens`, {
         method: "POST",
@@ -690,7 +740,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         body: JSON.stringify({
           locationId: selectedLocationId,
           name: kitchenFormData.name,
-          description: kitchenFormData.description
+          description: kitchenFormData.description,
+          imageUrl: kitchenFormData.imageUrl || undefined
         })
       });
       if (!res.ok) throw new Error("Failed to create kitchen");
@@ -714,11 +765,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setKitchens([...kitchens, newKitchen]);
       setSelectedKitchenId(newKitchen.id);
       setShowCreateKitchen(false);
-      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1' });
+      setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1', imageUrl: '' });
 
       await trackStepCompletion(currentStep?.id || 'create-kitchen');
       toast({ title: "Success", description: "Kitchen created" });
-      next();
+      // next(); // [FIX] Do not auto-advance. Let user click Next to avoid race conditions with checks.
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {

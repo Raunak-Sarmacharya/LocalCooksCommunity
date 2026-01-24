@@ -79,6 +79,9 @@ export class LocationRepository {
           logoUrl: dto.logoUrl || null,
           brandImageUrl: dto.brandImageUrl || null,
           timezone: dto.timezone || 'America/St_Johns',
+          kitchenLicenseUrl: dto.kitchenLicenseUrl || null,
+          kitchenLicenseStatus: dto.kitchenLicenseStatus || 'pending',
+          kitchenLicenseExpiry: dto.kitchenLicenseExpiry || null,
         })
         .returning();
 
@@ -113,6 +116,9 @@ export class LocationRepository {
           logoUrl: dto.logoUrl,
           brandImageUrl: dto.brandImageUrl,
           timezone: dto.timezone,
+          kitchenLicenseUrl: dto.kitchenLicenseUrl,
+          kitchenLicenseStatus: dto.kitchenLicenseStatus,
+          kitchenLicenseExpiry: dto.kitchenLicenseExpiry,
         })
         .where(eq(locations.id, id))
         .returning();

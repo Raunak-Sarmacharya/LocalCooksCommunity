@@ -194,7 +194,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
 
             const formData = new FormData();
             formData.append('file', file);
-            const uploadRes = await fetch('/api/upload-file', {
+            const uploadRes = await fetch('/api/files/upload-file', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData,

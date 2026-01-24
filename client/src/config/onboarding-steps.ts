@@ -23,6 +23,7 @@ export const steps: any[] = [
             title: 'Welcome',
             description: 'Learn about the setup process',
         },
+        nextStep: 'location'
     },
     {
         id: 'location',
@@ -37,6 +38,7 @@ export const steps: any[] = [
             title: 'Location & Contact',
             description: 'Set up your location details',
         },
+        nextStep: 'create-kitchen'
     },
     {
         id: 'create-kitchen',
@@ -51,6 +53,7 @@ export const steps: any[] = [
             title: 'Create Kitchen',
             description: 'Set up your first kitchen space',
         },
+        nextStep: 'application-requirements'
     },
     {
         id: 'application-requirements',
@@ -65,6 +68,7 @@ export const steps: any[] = [
             title: 'Application Requirements',
             description: 'Configure chef application fields',
         },
+        nextStep: 'payment-setup'
     },
     {
         id: 'payment-setup',
@@ -79,6 +83,7 @@ export const steps: any[] = [
             title: 'Payment Setup',
             description: 'Connect Stripe to receive payments',
         },
+        nextStep: 'availability'
     },
     {
         id: 'availability',
@@ -93,6 +98,7 @@ export const steps: any[] = [
             title: 'Set Availability',
             description: 'Define when your kitchen is open',
         },
+        nextStep: 'storage-listings'
     },
     {
         id: 'storage-listings',
@@ -107,6 +113,7 @@ export const steps: any[] = [
             title: 'Storage Listings',
             description: 'Add storage options',
         },
+        nextStep: 'equipment-listings'
     },
     {
         id: 'equipment-listings',
@@ -121,6 +128,7 @@ export const steps: any[] = [
             title: 'Equipment Listings',
             description: 'Add equipment options',
         },
+        nextStep: 'completion-summary'
     },
     {
         id: 'completion-summary',

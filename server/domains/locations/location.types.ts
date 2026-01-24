@@ -18,6 +18,9 @@ export interface CreateLocationDTO {
   logoUrl?: string;
   brandImageUrl?: string;
   timezone?: string;
+  kitchenLicenseUrl?: string;
+  kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
+  kitchenLicenseExpiry?: string;
 }
 
 /**
@@ -37,6 +40,9 @@ export interface UpdateLocationDTO {
   logoUrl?: string;
   brandImageUrl?: string;
   timezone?: string;
+  kitchenLicenseUrl?: string;
+  kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
+  kitchenLicenseExpiry?: string;
 }
 
 /**
