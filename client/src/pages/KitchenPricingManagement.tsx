@@ -21,6 +21,7 @@ interface KitchenPricing {
   currency: string;
   minimumBookingHours: number;
   pricingModel: 'hourly' | 'daily' | 'weekly';
+  taxRatePercent?: number | null;
 }
 
 interface KitchenPricingManagementProps {
@@ -62,6 +63,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
     currency: 'CAD',
     minimumBookingHours: 1,
     pricingModel: 'hourly',
+    taxRatePercent: null,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -92,6 +94,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         currency: 'CAD',
         minimumBookingHours: 1,
         pricingModel: 'hourly',
+        taxRatePercent: null,
       });
     }
   }, [selectedKitchenId]);
@@ -148,6 +151,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
             currency: 'CAD',
             minimumBookingHours: 1,
             pricingModel: 'hourly',
+            taxRatePercent: null,
           });
           return;
         }
@@ -170,6 +174,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         currency: data.currency || 'CAD',
         minimumBookingHours: validMinHours,
         pricingModel: data.pricingModel || 'hourly',
+        taxRatePercent: data.taxRatePercent !== undefined ? data.taxRatePercent : null,
       });
     } catch (error: any) {
       console.error('Error loading pricing:', error);
@@ -254,6 +259,7 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
         currency: updated.currency || 'CAD',
         minimumBookingHours: updated.minimumBookingHours || 1,
         pricingModel: updated.pricingModel || 'hourly',
+        taxRatePercent: pricing.taxRatePercent, // Keep existing tax rate as it's not updated here
       });
       
       toast({
@@ -474,6 +480,23 @@ export default function KitchenPricingManagement({ embedded = false }: KitchenPr
                 Minimum number of hours required for a booking (e.g., 2 = minimum 2-hour booking)
               </p>
             </div>
+
+            {/* Tax Rate (Read Only) */}
+            {pricing.taxRatePercent !== null && pricing.taxRatePercent !== undefined && (
+              <div>
+                <Label htmlFor="taxRate">Tax Rate (%)</Label>
+                <Input
+                  id="taxRate"
+                  type="text"
+                  value={pricing.taxRatePercent + '%'}
+                  disabled
+                  className="mt-2 bg-gray-50 text-gray-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Tax rate is managed by administrators. Please contact support to request changes.
+                </p>
+              </div>
+            )}
 
             {/* Info Alert */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

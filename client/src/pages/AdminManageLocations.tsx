@@ -32,6 +32,7 @@ export default function AdminManageLocations() {
     name: "",
     description: "",
     isActive: true,
+    taxRatePercent: "",
   });
 
   const [managerForm, setManagerForm] = useState({
@@ -406,6 +407,16 @@ export default function AdminManageLocations() {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
+      const payload: any = {
+        locationId: parseInt(kitchenForm.locationId),
+        name: kitchenForm.name,
+        description: kitchenForm.description,
+      };
+
+      if (kitchenForm.taxRatePercent) {
+        payload.taxRatePercent = parseFloat(kitchenForm.taxRatePercent);
+      }
+
       const response = await fetch("/api/admin/kitchens", {
         method: "POST",
         headers,
@@ -441,22 +452,28 @@ export default function AdminManageLocations() {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
+      const payload: any = {
+        name: kitchenForm.name,
+        description: kitchenForm.description,
+        isActive: kitchenForm.isActive,
+        locationId: parseInt(kitchenForm.locationId),
+      };
+
+      if (kitchenForm.taxRatePercent) {
+        payload.taxRatePercent = parseFloat(kitchenForm.taxRatePercent);
+      }
+
       const response = await fetch(`/api/admin/kitchens/${editingKitchen.id}`, {
         method: "PUT",
         headers,
         credentials: "include",
-        body: JSON.stringify({
-          name: kitchenForm.name,
-          description: kitchenForm.description,
-          isActive: kitchenForm.isActive,
-          locationId: parseInt(kitchenForm.locationId),
-        }),
+        body: JSON.stringify(payload),
       });
       if (response.ok) {
         toast({ title: "Success", description: "Kitchen updated successfully" });
         setShowKitchenForm(false);
         setEditingKitchen(null);
-        setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
+        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
         if (kitchenForm.locationId) {
           loadKitchens(parseInt(kitchenForm.locationId));
         }
@@ -506,6 +523,7 @@ export default function AdminManageLocations() {
       name: kitchen.name || "",
       description: kitchen.description || "",
       isActive: kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active !== undefined ? kitchen.is_active : true,
+      taxRatePercent: kitchen.taxRatePercent !== undefined && kitchen.taxRatePercent !== null ? kitchen.taxRatePercent.toString() : "",
     });
     setShowKitchenForm(true);
   };
@@ -780,7 +798,8 @@ export default function AdminManageLocations() {
                 <button
                   onClick={() => {
                     setEditingKitchen(null);
-                    setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true });
+                    setEditingKitchen(null);
+                    setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true, taxRatePercent: "" });
                     setShowKitchenForm(true);
                   }}
                   className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
@@ -1040,7 +1059,7 @@ export default function AdminManageLocations() {
                     onClick={() => {
                       setShowKitchenForm(false);
                       setEditingKitchen(null);
-                      setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
+                      setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
                     }}
                     className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
                   >
@@ -1091,6 +1110,24 @@ export default function AdminManageLocations() {
                       rows={3}
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Tax Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={kitchenForm.taxRatePercent}
+                      onChange={(e) => setKitchenForm({ ...kitchenForm, taxRatePercent: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
+                      placeholder="e.g. 13.0"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Percentage tax to apply to bookings (e.g. 13 for 13% HST)
+                    </p>
+                  </div>
                   {editingKitchen && (
                     <div>
                       <div className="flex items-center gap-3">
@@ -1115,7 +1152,7 @@ export default function AdminManageLocations() {
                       onClick={() => {
                         setShowKitchenForm(false);
                         setEditingKitchen(null);
-                        setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
+                        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
                       }}
                       className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
                     >

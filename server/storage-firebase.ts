@@ -675,7 +675,7 @@ export class FirebaseStorage {
 
   // ===== KITCHENS MANAGEMENT =====
 
-  async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean }): Promise<any> {
+  async createKitchen(kitchenData: { locationId: number; name: string; description?: string; isActive?: boolean; taxRatePercent?: number }): Promise<any> {
     try {
       console.log('Inserting kitchen into database:', kitchenData);
 
@@ -695,6 +695,11 @@ export class FirebaseStorage {
         insertData.isActive = kitchenData.isActive;
       } else {
         insertData.isActive = true;
+      }
+
+      // Add taxRatePercent if provided
+      if (kitchenData.taxRatePercent !== undefined) {
+        insertData.taxRatePercent = kitchenData.taxRatePercent !== null ? kitchenData.taxRatePercent.toString() : null;
       }
 
       console.log('Insert data:', insertData);
@@ -890,13 +895,17 @@ export class FirebaseStorage {
     }
   }
 
-  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; galleryImages?: string[]; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string }): Promise<any> {
+  async updateKitchen(id: number, updates: { name?: string; description?: string; isActive?: boolean; locationId?: number; imageUrl?: string; galleryImages?: string[]; hourlyRate?: number | null; currency?: string; minimumBookingHours?: number; pricingModel?: string; taxRatePercent?: number | null }): Promise<any> {
     try {
       // Convert hourlyRate to string for numeric type if provided
       const dbUpdates: any = { ...updates, updatedAt: new Date() };
       if (updates.hourlyRate !== undefined) {
         // Drizzle numeric type expects string representation
         dbUpdates.hourlyRate = updates.hourlyRate === null ? null : updates.hourlyRate.toString();
+      }
+      
+      if (updates.taxRatePercent !== undefined) {
+          dbUpdates.taxRatePercent = updates.taxRatePercent === null ? null : updates.taxRatePercent.toString();
       }
 
       const [updated] = await db
@@ -918,7 +927,7 @@ export class FirebaseStorage {
       if (pool && 'query' in pool) {
         try {
           const directQuery = await pool.query(
-            'SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model FROM kitchens WHERE id = $1',
+            'SELECT hourly_rate::text as hourly_rate, currency, minimum_booking_hours, pricing_model, tax_rate_percent::text as tax_rate_percent FROM kitchens WHERE id = $1',
             [kitchenId]
           );
           if (directQuery.rows && directQuery.rows[0]) {
@@ -931,6 +940,7 @@ export class FirebaseStorage {
               currency: row.currency || 'CAD',
               minimumBookingHours: row.minimum_booking_hours || 1,
               pricingModel: row.pricing_model || 'hourly',
+              taxRatePercent: row.tax_rate_percent ? parseFloat(row.tax_rate_percent) : null,
             };
           }
         } catch (error) {
@@ -950,6 +960,7 @@ export class FirebaseStorage {
         currency: kitchen.currency || 'CAD',
         minimumBookingHours: kitchen.minimumBookingHours || 1,
         pricingModel: kitchen.pricingModel || 'hourly',
+        taxRatePercent: kitchen.taxRatePercent ? parseFloat(kitchen.taxRatePercent.toString()) : null,
       };
     } catch (error) {
       console.error('Error getting kitchen pricing:', error);
@@ -2851,11 +2862,21 @@ export class FirebaseStorage {
       const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
 
       // Calculate total with fees
+      // If we have tax, we should include it in total
+      // But verify how calculateTotalWithFees works
+      // Current implementation: basePriceCents + serviceFeeCents + damageDepositCents
+      // We need to add tax to this manually as pricing service's helper might not have it yet
+      
+      let taxAmountCents = 0;
+      if (pricing.taxRatePercent && pricing.taxRatePercent > 0) {
+        taxAmountCents = Math.round(pricing.totalPriceCents * (pricing.taxRatePercent / 100));
+      }
+
       const totalWithFeesCents = calculateTotalWithFees(
         pricing.totalPriceCents,
         serviceFeeCents,
         0 // No damage deposit for kitchen bookings alone
-      );
+      ) + taxAmountCents; // Add tax to total
 
       // Build the insert data, excluding optional fields if undefined
       const insertData: any = {
@@ -2869,6 +2890,7 @@ export class FirebaseStorage {
         hourlyRate: pricing.hourlyRateCents.toString(),
         durationHours: pricing.durationHours.toString(),
         serviceFee: serviceFeeCents.toString(),
+        taxAmount: taxAmountCents.toString(),
         currency: pricing.currency,
         paymentStatus: 'pending',
         storageItems: [],
@@ -2932,11 +2954,17 @@ export class FirebaseStorage {
       const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents, pool);
 
       // Calculate total with fees
+      
+      let taxAmountCents = 0;
+      if (pricing.taxRatePercent && pricing.taxRatePercent > 0) {
+        taxAmountCents = Math.round(pricing.totalPriceCents * (pricing.taxRatePercent / 100));
+      }
+
       const totalWithFeesCents = calculateTotalWithFees(
         pricing.totalPriceCents,
         serviceFeeCents,
         0 // No damage deposit for kitchen bookings alone
-      );
+      ) + taxAmountCents;
 
       const insertData: any = {
         kitchenId: bookingData.kitchenId,
@@ -2951,6 +2979,7 @@ export class FirebaseStorage {
         hourlyRate: pricing.hourlyRateCents.toString(),
         durationHours: pricing.durationHours.toString(),
         serviceFee: serviceFeeCents.toString(),
+        taxAmount: taxAmountCents.toString(),
         currency: pricing.currency,
         paymentStatus: bookingData.paymentStatus || 'pending',
         paymentIntentId: bookingData.paymentIntentId || null,
@@ -3088,7 +3117,7 @@ export class FirebaseStorage {
         `SELECT 
           id, chef_id, kitchen_id, booking_date, start_time, end_time, 
           status, special_notes, created_at, updated_at,
-          total_price, payment_status, payment_intent_id, service_fee, currency
+          total_price, payment_status, payment_intent_id, service_fee, currency, tax_amount
         FROM kitchen_bookings 
         WHERE kitchen_id = ANY($1::int[])
         ORDER BY booking_date DESC, start_time ASC`,
@@ -3183,6 +3212,7 @@ export class FirebaseStorage {
             paymentStatus: booking.payment_status || null,
             paymentIntentId: booking.payment_intent_id || null,
             serviceFee: booking.service_fee ? parseInt(String(booking.service_fee)) || 0 : null,
+            taxAmount: booking.tax_amount ? parseInt(String(booking.tax_amount)) || 0 : null,
             currency: booking.currency || 'CAD',
           };
         })

@@ -10375,11 +10375,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { locationId, name, description } = req.body;
+      const { locationId, name, description, taxRatePercent } = req.body;
 
       // Validate required fields
       if (!locationId || !name) {
         return res.status(400).json({ error: "Location ID and name are required" });
+      }
+
+      // Validate taxRatePercent if provided
+      if (taxRatePercent !== undefined && taxRatePercent !== null) {
+        if (typeof taxRatePercent !== 'number' || taxRatePercent < 0) {
+          return res.status(400).json({ error: "Tax rate must be a non-negative number" });
+        }
       }
 
       // Validate locationId is a valid number
@@ -10394,7 +10401,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Location with ID ${locationIdNum} does not exist` });
       }
 
-      const kitchen = await firebaseStorage.createKitchen({ locationId: locationIdNum, name, description, isActive: true });
+      const kitchen = await firebaseStorage.createKitchen({ 
+        locationId: locationIdNum, 
+        name, 
+        description, 
+        isActive: true,
+        taxRatePercent: taxRatePercent 
+      });
       res.status(201).json(kitchen);
     } catch (error: any) {
       console.error("Error creating kitchen:", error);
@@ -10564,7 +10577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Kitchen not found" });
       }
 
-      const { name, description, isActive, locationId } = req.body;
+      const { name, description, isActive, locationId, taxRatePercent } = req.body;
 
       const updates: any = {};
       const changesList: string[] = [];
@@ -10581,6 +10594,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updates.isActive = isActive;
         changesList.push(`Status changed to ${isActive ? 'Active' : 'Inactive'}`);
       }
+      // Compare tax rates (handle nulls and type differences)
+      const currentTax = currentKitchen.taxRatePercent ? parseFloat(currentKitchen.taxRatePercent.toString()) : null;
+      if (taxRatePercent !== undefined && taxRatePercent !== currentTax) {
+         if (taxRatePercent !== null && (typeof taxRatePercent !== 'number' || taxRatePercent < 0)) {
+           return res.status(400).json({ error: "Tax rate must be a non-negative number" });
+         }
+         updates.taxRatePercent = taxRatePercent;
+         changesList.push(`Tax rate changed from ${currentTax}% to ${taxRatePercent}%`);
+      }
+
       if (locationId !== undefined) {
         const locationIdNum = parseInt(locationId.toString());
         if (isNaN(locationIdNum) || locationIdNum <= 0) {

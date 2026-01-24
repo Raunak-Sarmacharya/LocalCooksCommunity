@@ -331,6 +331,7 @@ export const kitchens = pgTable("kitchens", {
   currency: text("currency").default("CAD").notNull(), // Currency code (ISO 4217)
   minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
   pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
+  taxRatePercent: numeric("tax_rate_percent"), // Optional tax percentage (e.g., 13 for 13%)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -384,6 +385,7 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID (nullable, unique)
   damageDeposit: numeric("damage_deposit").default("0"), // Damage deposit amount (in cents)
   serviceFee: numeric("service_fee").default("0"), // Platform commission (in cents)
+  taxAmount: numeric("tax_amount").default("0"), // Tax amount (in cents)
   currency: text("currency").default("CAD").notNull(), // Currency code
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -560,6 +562,7 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
+  taxRatePercent: z.number().min(0).max(100).nullable().optional(),
 }).omit({
   id: true,
   createdAt: true,
@@ -575,6 +578,7 @@ export const updateKitchenSchema = z.object({
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
+  taxRatePercent: z.number().min(0).max(100).nullable().optional(),
 });
 
 export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailability, {

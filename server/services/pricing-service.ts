@@ -25,6 +25,7 @@ export interface KitchenPricingInfo {
   hourlyRate: number; // in cents
   currency: string;
   minimumBookingHours: number;
+  taxRatePercent: number | null;
 }
 
 export interface BookingDuration {
@@ -67,7 +68,8 @@ export async function getKitchenPricing(kitchenId: number, dbPool?: Pool | null)
       SELECT 
         hourly_rate::text as hourly_rate,
         currency,
-        minimum_booking_hours
+        minimum_booking_hours,
+        tax_rate_percent::text as tax_rate_percent
       FROM kitchens
       WHERE id = $1
     `, [kitchenId]);
@@ -78,11 +80,13 @@ export async function getKitchenPricing(kitchenId: number, dbPool?: Pool | null)
 
     const row = result.rows[0];
     const hourlyRateCents = row.hourly_rate ? parseFloat(row.hourly_rate) : 0;
+    const taxRatePercent = row.tax_rate_percent ? parseFloat(row.tax_rate_percent) : null;
 
     return {
       hourlyRate: hourlyRateCents,
       currency: row.currency || 'CAD',
       minimumBookingHours: row.minimum_booking_hours || 1,
+      taxRatePercent: Number.isNaN(taxRatePercent) ? null : taxRatePercent,
     };
   } catch (error) {
     console.error('Error getting kitchen pricing:', error);
@@ -108,6 +112,8 @@ export async function calculateKitchenBookingPrice(
   durationHours: number;
   hourlyRateCents: number;
   currency: string;
+  taxRatePercent: number | null;
+  taxAmountCents: number;
 }> {
   try {
     // Get kitchen pricing
@@ -121,6 +127,8 @@ export async function calculateKitchenBookingPrice(
         durationHours,
         hourlyRateCents: 0,
         currency: pricing?.currency || 'CAD',
+        taxRatePercent: pricing?.taxRatePercent ?? null,
+        taxAmountCents: 0,
       };
     }
 
@@ -131,13 +139,25 @@ export async function calculateKitchenBookingPrice(
     const effectiveDuration = Math.max(durationHours, pricing.minimumBookingHours);
     
     // Calculate total price (hourly rate × duration)
-    const totalPriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
+    // Note: This is the SUB-TOTAL before fees and taxes
+    const basePriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
 
+    // Calculate Tax
+    const taxAmountCents = calculateTax(basePriceCents, pricing.taxRatePercent ?? null);
+
+    // Note: calculateKitchenBookingPrice traditionally returned just the base price for the booking
+    // But to be enterprise-grade, we should probably return the components.
+    // However, existing callers might expect 'totalPriceCents' to be the base booking cost.
+    // Let's check callers. Most callers seem to take this result and then call calculateTotalWithFees.
+    // So we should return the components needed for that.
+    
     return {
-      totalPriceCents,
+      totalPriceCents: basePriceCents, // This is the subtotal
       durationHours: effectiveDuration,
       hourlyRateCents: pricing.hourlyRate,
       currency: pricing.currency,
+      taxRatePercent: pricing.taxRatePercent ?? null,
+      taxAmountCents, // New field
     };
   } catch (error) {
     console.error('Error calculating kitchen booking price:', error);
@@ -151,36 +171,8 @@ export async function calculateKitchenBookingPrice(
  * @returns Service fee rate as decimal (e.g., 0.05 for 5%), defaults to 0.05 if not found
  */
 export async function getServiceFeeRate(dbPool?: Pool | null): Promise<number> {
-  try {
-    const activePool = dbPool || pool;
-    if (!activePool) {
-      console.warn('Database pool not available, using default service fee rate of 5%');
-      return 0.05; // Default 5%
-    }
-
-    const result = await activePool.query(
-      'SELECT value FROM platform_settings WHERE key = $1',
-      ['service_fee_rate']
-    );
-
-    if (result.rows.length === 0) {
-      console.warn('Service fee rate not found in platform_settings, using default 5%');
-      return 0.05; // Default 5%
-    }
-
-    const rate = parseFloat(result.rows[0].value);
-    
-    // Validate rate is between 0 and 1
-    if (isNaN(rate) || rate < 0 || rate > 1) {
-      console.warn(`Invalid service fee rate: ${rate}, using default 5%`);
-      return 0.05;
-    }
-
-    return rate;
-  } catch (error) {
-    console.error('Error getting service fee rate from platform_settings:', error);
-    return 0.05; // Default to 5% on error
-  }
+  // Service fees are now disabled (0%)
+  return 0;
 }
 
 /**
@@ -208,6 +200,20 @@ export async function calculatePlatformFeeDynamic(
 }
 
 /**
+ * Calculate tax amount
+ * @param basePriceCents - Base price in cents
+ * @param taxRatePercent - Tax rate as percentage (e.g., 13 for 13%)
+ * @returns Tax amount in cents
+ */
+export function calculateTax(basePriceCents: number, taxRatePercent: number | null): number {
+  if (!taxRatePercent || taxRatePercent <= 0) {
+    return 0;
+  }
+  // Formula: Base * (Rate / 100)
+  return Math.round(basePriceCents * (taxRatePercent / 100));
+}
+
+/**
  * Calculate total booking price including fees
  * @param basePriceCents - Base price in cents
  * @param serviceFeeCents - Service fee in cents
@@ -217,9 +223,10 @@ export async function calculatePlatformFeeDynamic(
 export function calculateTotalWithFees(
   basePriceCents: number,
   serviceFeeCents: number = 0,
-  damageDepositCents: number = 0
+  damageDepositCents: number = 0,
+  taxAmountCents: number = 0
 ): number {
-  return basePriceCents + serviceFeeCents + damageDepositCents;
+  return basePriceCents + serviceFeeCents + damageDepositCents + taxAmountCents;
 }
 
 
