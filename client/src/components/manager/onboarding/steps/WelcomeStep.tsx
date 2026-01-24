@@ -22,7 +22,7 @@ export default function WelcomeStep() {
             <div>
               <h3 className="text-2xl font-bold text-foreground">Getting Started</h3>
               <p className="text-muted-foreground mt-1">
-                We'll help you set up your kitchen space so chefs can start booking
+                We&apos;ll help you set up your kitchen space so chefs can start booking
               </p>
             </div>
           </div>
@@ -37,8 +37,9 @@ export default function WelcomeStep() {
             <StepPreview number={1} title="Location & Contact Info" desc="Tell us about your kitchen location, contact info, and upload your license (optional)" />
             <StepPreview number={2} title="Create Your Kitchen" desc="Set up your first kitchen space (you can add more later)" />
             <StepPreview number={3} title="Availability" desc="Set your opening hours" />
-            <StepPreview number={4} title="Storage Listings" desc="Add storage options that chefs can book (Optional)" isOptional />
-            <StepPreview number={5} title="Equipment Listings" desc="Add equipment options - you can skip and add these later (Optional)" isOptional />
+            <StepPreview number={4} title="Payments" desc="Connect your Stripe account to receive payouts" />
+            <StepPreview number={5} title="Storage Listings" desc="Add storage options that chefs can book (Optional)" isOptional />
+            <StepPreview number={6} title="Equipment Listings" desc="Add equipment options - you can skip and add these later (Optional)" isOptional />
           </div>
 
           <div className="mt-8 flex justify-end">

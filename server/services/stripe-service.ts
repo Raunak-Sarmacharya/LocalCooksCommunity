@@ -81,13 +81,37 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
   }
 
   // Validate Connect parameters if provided
-  if (managerConnectAccountId && !applicationFeeAmount) {
-    throw new Error('applicationFeeAmount is required when managerConnectAccountId is provided');
-  }
-  if (applicationFeeAmount && !managerConnectAccountId) {
+  const hasApplicationFee = applicationFeeAmount !== undefined && applicationFeeAmount !== null;
+
+  if (hasApplicationFee && !managerConnectAccountId) {
     throw new Error('managerConnectAccountId is required when applicationFeeAmount is provided');
   }
-  if (applicationFeeAmount && applicationFeeAmount >= amount) {
+  if (managerConnectAccountId && !hasApplicationFee) {
+    // Optional: enforce fee if connect account is present? 
+    // The original code enforced: if (managerConnectAccountId && !applicationFeeAmount) throw...
+    // Let's keep that enforcement if it was there, or adapt.
+    // Original code:
+    // if (managerConnectAccountId && !applicationFeeAmount) throw...
+    // if (applicationFeeAmount && !managerConnectAccountId) throw...
+    // if (applicationFeeAmount && applicationFeeAmount >= amount) throw...
+    
+    // New code from diff:
+    // const hasApplicationFee = applicationFeeAmount !== undefined && applicationFeeAmount !== null;
+    // if (hasApplicationFee && !managerConnectAccountId) throw...
+    // if (hasApplicationFee && applicationFeeAmount < 0) throw...
+    // if (hasApplicationFee && applicationFeeAmount >= amount) throw...
+    // It seems to have REMOVED the check "if (managerConnectAccountId && !applicationFeeAmount)"?
+    // Let's look at the diff again.
+    // -  if (managerConnectAccountId && !applicationFeeAmount) {
+    // -    throw new Error('applicationFeeAmount is required when managerConnectAccountId is provided');
+    // -  }
+    // This block was REMOVED. So I should remove it too.
+  }
+  
+  if (hasApplicationFee && applicationFeeAmount < 0) {
+    throw new Error('Application fee must be 0 or a positive amount');
+  }
+  if (hasApplicationFee && applicationFeeAmount >= amount) {
     throw new Error('Application fee must be less than total amount');
   }
 
@@ -177,15 +201,18 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       paymentIntentParams.customer = customerId;
     }
 
-    // Add Stripe Connect split payment if manager has Connect account
-    if (managerConnectAccountId && applicationFeeAmount) {
-      paymentIntentParams.application_fee_amount = applicationFeeAmount;
+    // Add Stripe Connect destination if manager has Connect account
+    if (managerConnectAccountId) {
       paymentIntentParams.transfer_data = {
         destination: managerConnectAccountId,
       };
       // Add manager account ID to metadata for tracking
       paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-      paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+
+      if (hasApplicationFee) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        paymentIntentParams.metadata.platform_fee = applicationFeeAmount!.toString();
+      }
     }
 
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);

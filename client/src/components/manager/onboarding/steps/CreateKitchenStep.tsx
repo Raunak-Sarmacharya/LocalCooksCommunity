@@ -137,6 +137,7 @@ export default function CreateKitchenStep() {
     setExpandedKitchenId(prev => prev === kitchenId ? null : kitchenId);
   };
 
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
       {/* Header */}
@@ -220,7 +221,7 @@ export default function CreateKitchenStep() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="kitchen-description">Description</Label>
+                <Label htmlFor="kitchen-description">Description <span className="text-muted-foreground font-normal ml-1">(Optional)</span></Label>
                 <Textarea
                   id="kitchen-description"
                   value={data.description}
@@ -286,7 +287,7 @@ export default function CreateKitchenStep() {
                 {isCreating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
                 {isCreating ? "Creating..." : "Create Kitchen"}
               </Button>
-              <Button variant="outline" onClick={() => setShowCreate(false)} disabled={isCreating}>
+                <Button variant="outline" onClick={() => setShowCreate(false)} disabled={isCreating}>
                 Cancel
               </Button>
             </div>

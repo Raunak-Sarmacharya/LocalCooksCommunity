@@ -78,7 +78,8 @@ export default function CompletionSummaryStep() {
 
         let licenseItemStatus: SetupItem['status'] = 'incomplete';
         if (licenseStatus === 'approved') licenseItemStatus = 'complete';
-        else if (hasLicenseUrl || licenseStatus === 'pending') licenseItemStatus = 'pending';
+        // Only pending if URL exists. If status is pending but no URL, it's incomplete (invalid state).
+        else if (hasLicenseUrl && (licenseStatus === 'pending' || !licenseStatus)) licenseItemStatus = 'pending';
 
         items.push({
             id: "license",

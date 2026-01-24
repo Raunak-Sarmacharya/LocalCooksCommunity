@@ -245,6 +245,76 @@ export default function ManagerBookingDashboard() {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
+  // Handle Stripe Connect Return
+  useEffect(() => {
+    const handleStripeReturn = async () => {
+      // Check if we are on the return path
+      if (window.location.pathname.includes('/manager/stripe-connect/return')) {
+         const params = new URLSearchParams(window.location.search);
+         if (params.get('success') === 'true') {
+           // Calls the backend to sync status with Stripe
+           try {
+             const { auth } = await import('@/lib/firebase');
+             const token = await auth.currentUser?.getIdToken();
+             if (token) {
+                const response = await fetch('/api/manager/stripe-connect/sync', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    const err = await response.text();
+                    console.error("Sync response not OK:", response.status, err);
+                    throw new Error(`Sync failed: ${response.status}`);
+                }
+                
+                console.log("Stripe status synced successfully via return handler");
+             } else {
+                 console.error("No token available for sync");
+                 throw new Error("Authentication missing");
+             }
+           } catch (e) {
+             console.error("Failed to sync stripe status:", e);
+             toast({
+                 title: "Sync Warning",
+                 description: "We couldn't automatically confirm your status. Please click 'Refresh Status' if needed.",
+                 variant: "destructive"
+             });
+             // Don't return early - still allow navigation, but maybe don't broadcast success if we aren't sure?
+             // Actually, if sync failed, we shouldn't broadcast success.
+             return; 
+           }
+
+           // Show success message
+           toast({
+             title: "Stripe Connected Successfully",
+             description: "Your account is now ready to receive payments.",
+             variant: "default",
+           });
+           
+           // Force refresh of user profile to get the new connected status
+           await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+           
+           // Switch to payments view
+           setActiveView('payments');
+           
+           // Clean up URL
+           window.history.replaceState({}, '', '/manager/dashboard?view=payments');
+
+           // [NEW] Broadcast success to other tabs
+           const channel = new BroadcastChannel('stripe_onboarding_channel');
+           channel.postMessage({ type: 'STRIPE_SETUP_COMPLETE' });
+           channel.close();
+         }
+      }
+    };
+    
+    handleStripeReturn();
+  }, [toast, queryClient]);
+
   // Auto-select location if only one exists
   useEffect(() => {
     if (!isLoadingLocations && locations.length === 1 && !selectedLocation) {
