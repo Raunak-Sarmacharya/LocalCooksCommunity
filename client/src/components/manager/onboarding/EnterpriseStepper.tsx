@@ -11,6 +11,7 @@ const EnterpriseStepper = () => {
         visibleSteps,
         currentStepIndex,
         completedSteps,
+        goToStep,
     } = useManagerOnboarding();
 
     return (
@@ -48,9 +49,16 @@ const EnterpriseStepper = () => {
                         return (
                             <div
                                 key={step.id}
+                                onClick={() => {
+                                    // Allow clicking on completed steps or current step
+                                    if (isCompleted || isActive) {
+                                        goToStep(step.id);
+                                    }
+                                }}
                                 className={cn(
                                     "relative z-10 flex items-center gap-3 p-3 rounded-lg transition-all duration-200 group",
-                                    isActive ? "bg-background shadow-sm border border-border" : "hover:bg-muted/50"
+                                    isActive ? "bg-background shadow-sm border border-border" : "hover:bg-muted/50",
+                                    (isCompleted || isActive) ? "cursor-pointer" : "cursor-default"
                                 )}
                             >
                                 {/* Icon Circle */}

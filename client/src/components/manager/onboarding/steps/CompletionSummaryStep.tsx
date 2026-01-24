@@ -1,5 +1,5 @@
-import React from "react";
-import { CheckCircle2, XCircle, AlertTriangle, Sparkles, ExternalLink } from "lucide-react";
+import React, { useMemo } from "react";
+import { CheckCircle2, XCircle, AlertTriangle, Sparkles, ExternalLink, Clock, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,231 +11,279 @@ import { useManagerOnboarding } from "../ManagerOnboardingContext";
 interface SetupItem {
     id: string;
     label: string;
-    isComplete: boolean;
+    status: 'complete' | 'pending' | 'incomplete' | 'optional_skipped';
     isRequired: boolean;
     description?: string;
     actionLabel?: string;
     actionHref?: string;
+    stepId?: string; // [NEW] For goToStep navigation
 }
 
 export default function CompletionSummaryStep() {
     const {
-        completedSteps,
         selectedLocation,
         kitchens,
         setIsOpen,
+        isStripeOnboardingComplete,
+        hasAvailability,
+        hasRequirements, // [NEW] For requirements tracking
+        storageForm,
+        equipmentForm,
+        goToStep,
     } = useManagerOnboarding();
 
-    // Define all setup items with their completion status
-    const setupItems: SetupItem[] = [
-        {
+    // Calculate status for each item
+    const setupItems: SetupItem[] = useMemo(() => {
+        const items: SetupItem[] = [];
+
+        // 1. Location
+        items.push({
             id: "location",
-            label: "Location Created",
-            isComplete: !!selectedLocation,
+            label: "Location Details",
+            status: selectedLocation ? 'complete' : 'incomplete',
             isRequired: true,
-            description: selectedLocation?.name || "Location details configured"
-        },
-        {
+            description: selectedLocation?.name || "Address and contact info",
+            stepId: 'location'
+        });
+
+        // 2. Kitchen
+        items.push({
             id: "kitchen",
             label: "Kitchen Space",
-            isComplete: kitchens.length > 0,
+            status: kitchens.length > 0 ? 'complete' : 'incomplete',
             isRequired: true,
             description: kitchens.length > 0
-                ? `${kitchens.length} kitchen${kitchens.length > 1 ? 's' : ''} configured`
-                : "No kitchen created yet"
-        },
-        {
+                ? `${kitchens.length} kitchen${kitchens.length > 1 ? 's' : ''} added`
+                : "Define your kitchen spaces",
+            stepId: 'create-kitchen'
+        });
+
+        // 3. Requirements (Chef application settings)
+        items.push({
+            id: "requirements",
+            label: "Application Requirements",
+            status: hasRequirements ? 'complete' : 'incomplete',
+            isRequired: true,
+            description: hasRequirements
+                ? "Chef application fields configured"
+                : "Configure chef application fields",
+            stepId: 'application-requirements'
+        });
+
+        // 4. License
+        // Logic: Complete if approved. Pending if uploaded but not approved. Incomplete if not uploaded.
+        // If status is empty/null but url exists -> Pending
+        const licenseStatus = selectedLocation?.kitchenLicenseStatus;
+        const hasLicenseUrl = !!selectedLocation?.kitchenLicenseUrl;
+
+        let licenseItemStatus: SetupItem['status'] = 'incomplete';
+        if (licenseStatus === 'approved') licenseItemStatus = 'complete';
+        else if (hasLicenseUrl || licenseStatus === 'pending') licenseItemStatus = 'pending';
+
+        items.push({
             id: "license",
             label: "Kitchen License",
-            isComplete: !!selectedLocation?.kitchenLicenseUrl,
-            isRequired: false,
-            description: selectedLocation?.kitchenLicenseStatus === "approved"
+            status: licenseItemStatus,
+            isRequired: true,
+            description: licenseItemStatus === 'complete'
                 ? "Approved"
-                : selectedLocation?.kitchenLicenseUrl
-                    ? `Status: ${selectedLocation?.kitchenLicenseStatus || "Pending"}`
-                    : "Not uploaded"
-        },
-        {
+                : licenseItemStatus === 'pending'
+                    ? "Uploaded - Pending Approval"
+                    : "Required for activation",
+            stepId: 'location' // License is uploaded on Location step
+        });
+
+        // 4. Availability
+        items.push({
             id: "availability",
-            label: "Availability Set",
-            isComplete: !!completedSteps["availability"],
+            label: "Availability Schedule",
+            status: hasAvailability ? 'complete' : 'incomplete',
             isRequired: true,
-            description: "Kitchen operating hours configured"
-        },
-        {
+            description: hasAvailability ? "Operating hours set" : "Set when you are open",
+            stepId: 'availability'
+        });
+
+        // 5. Payment
+        items.push({
             id: "payment",
-            label: "Payment Setup (Stripe)",
-            isComplete: !!completedSteps["payment-setup"],
+            label: "Payment Setup",
+            status: isStripeOnboardingComplete ? 'complete' : 'incomplete',
             isRequired: true,
-            description: "Required to receive payouts",
-            actionLabel: "Set up payments",
-            actionHref: "/manager/settings?tab=stripe"
-        },
-        {
+            description: isStripeOnboardingComplete ? "Connected to Stripe" : "Required for payouts",
+            actionLabel: !isStripeOnboardingComplete ? "Setup Payments" : undefined,
+            actionHref: "/manager/settings?tab=stripe",
+            stepId: 'payment-setup'
+        });
+
+        // 6. Storage (Optional)
+        const hasStorage = storageForm?.listings?.length > 0;
+        items.push({
             id: "storage",
             label: "Storage Listings",
-            isComplete: !!completedSteps["storage-listings"],
+            status: hasStorage ? 'complete' : 'optional_skipped',
             isRequired: false,
-            description: "Optional storage options for chefs"
-        },
-        {
+            description: hasStorage ? `${storageForm.listings.length} listings` : "Optional add-on"
+        });
+
+        // 7. Equipment (Optional)
+        const hasEquipment = equipmentForm?.listings?.length > 0;
+        items.push({
             id: "equipment",
             label: "Equipment Listings",
-            isComplete: !!completedSteps["equipment-listings"],
+            status: hasEquipment ? 'complete' : 'optional_skipped',
             isRequired: false,
-            description: "Optional equipment rentals"
-        },
-    ];
+            description: hasEquipment ? `${equipmentForm.listings.length} listings` : "Optional add-on"
+        });
 
-    // Calculate progress
+        return items;
+    }, [selectedLocation, kitchens, hasAvailability, isStripeOnboardingComplete, storageForm, equipmentForm]);
+
+    // Calculate Readiness (Only Required Items count towards "Blocking")
     const requiredItems = setupItems.filter(item => item.isRequired);
-    const completedRequiredItems = requiredItems.filter(item => item.isComplete);
-    const progressPercentage = Math.round((completedRequiredItems.length / requiredItems.length) * 100);
+    // For Readiness, we count 'complete' as good. 
+    // Is 'pending' (license) "ready"? User says "until I'm approved I won't be able to take bookings".
+    // So Pending is NOT ready.
+    const completedRequiredItems = requiredItems.filter(item => item.status === 'complete');
+    const readinessPercentage = Math.round((completedRequiredItems.length / requiredItems.length) * 100);
+    const isFullyReady = completedRequiredItems.length === requiredItems.length;
 
-    const isReadyForBookings = completedRequiredItems.length === requiredItems.length;
-    const pendingRequiredItems = requiredItems.filter(item => !item.isComplete);
+    const blockingItems = requiredItems.filter(item => item.status !== 'complete');
 
     const handleClose = () => {
         setIsOpen(false);
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in zoom-in duration-300 max-w-2xl mx-auto">
+        <div className="space-y-6 animate-in fade-in zoom-in duration-300 max-w-2xl mx-auto pb-10">
             {/* Header */}
             <div className="text-center space-y-2">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-4">
-                    <Sparkles className="w-8 h-8 text-primary" />
+                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${isFullyReady ? 'bg-green-100' : 'bg-amber-100'}`}>
+                    {isFullyReady ? (
+                        <Sparkles className="w-8 h-8 text-green-600" />
+                    ) : (
+                        <Clock className="w-8 h-8 text-amber-600" />
+                    )}
                 </div>
-                <h2 className="text-2xl font-bold tracking-tight">Setup Complete!</h2>
+                <h2 className="text-2xl font-bold tracking-tight">Onboarding Summary</h2>
                 <p className="text-muted-foreground">
-                    Here's a summary of your kitchen setup progress
+                    {isFullyReady
+                        ? "You are all set! Your kitchen is ready for business."
+                        : "Review your setup status below."}
                 </p>
             </div>
 
-            {/* Progress Card */}
-            <Card>
+            {/* Readiness Card */}
+            <Card className={isFullyReady ? "border-green-200 bg-green-50/30" : ""}>
                 <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">Booking Readiness</CardTitle>
-                        <Badge variant={isReadyForBookings ? "default" : "secondary"}>
-                            {progressPercentage}% Complete
+                        <CardTitle className="text-lg">Profile Readiness</CardTitle>
+                        <Badge variant={isFullyReady ? "default" : "secondary"} className={isFullyReady ? "bg-green-600 hover:bg-green-700" : ""}>
+                            {readinessPercentage}% Ready
                         </Badge>
                     </div>
                     <CardDescription>
-                        {isReadyForBookings
-                            ? "Your kitchen is ready to accept bookings!"
-                            : `Complete ${pendingRequiredItems.length} more required item${pendingRequiredItems.length > 1 ? 's' : ''} to start accepting bookings`
+                        {isFullyReady
+                            ? "Your kitchen is live!"
+                            : `${blockingItems.length} required steps remaining to accept bookings`
                         }
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Progress value={progressPercentage} className="h-2" />
+                    <Progress value={readinessPercentage} className={`h-2 ${isFullyReady ? "[&>div]:bg-green-600" : ""}`} />
                 </CardContent>
             </Card>
 
-            {/* Alert for pending required items */}
-            {!isReadyForBookings && (
-                <Alert variant="destructive">
+            {/* Blocking Alerts */}
+            {blockingItems.length > 0 && (
+                <Alert variant={blockingItems.some(i => i.status === 'pending') ? "default" : "destructive"}>
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Action Required</AlertTitle>
+                    <AlertTitle>Attention Needed</AlertTitle>
                     <AlertDescription>
-                        Complete the following to start accepting bookings:
                         <ul className="list-disc list-inside mt-2 space-y-1">
-                            {pendingRequiredItems.map(item => (
-                                <li key={item.id}>{item.label}</li>
+                            {blockingItems.map(item => (
+                                <li key={item.id}>
+                                    <span className="font-medium">{item.label}</span>:
+                                    {item.status === 'pending' ? " Waiting for approval" : " Incomplete"}
+                                </li>
                             ))}
                         </ul>
                     </AlertDescription>
                 </Alert>
             )}
 
-            {/* Setup Items List */}
+            {/* Detailed Checklist */}
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-lg">Setup Checklist</CardTitle>
+                    <CardTitle className="text-lg">Detailed Status</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1">
-                    {setupItems.map((item, index) => (
-                        <React.Fragment key={item.id}>
-                            <div className="flex items-center justify-between py-3 px-2 rounded-lg hover:bg-muted/50 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    {item.isComplete ? (
-                                        <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
-                                    ) : item.isRequired ? (
-                                        <XCircle className="w-5 h-5 text-destructive shrink-0" />
-                                    ) : (
-                                        <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0" />
+                <CardContent className="space-y-0 divide-y">
+                    {setupItems.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
+                            <div className="flex items-center gap-4">
+                                {/* Status Icon */}
+                                <div className="shrink-0">
+                                    {item.status === 'complete' && (
+                                        <CheckCircle2 className="w-6 h-6 text-green-600" />
                                     )}
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`font-medium ${item.isComplete ? "text-foreground" : "text-muted-foreground"}`}>
-                                                {item.label}
-                                            </span>
-                                            {item.isRequired && !item.isComplete && (
-                                                <Badge variant="destructive" className="text-xs px-1.5 py-0">Required</Badge>
-                                            )}
-                                            {!item.isRequired && (
-                                                <Badge variant="outline" className="text-xs px-1.5 py-0">Optional</Badge>
-                                            )}
+                                    {item.status === 'pending' && (
+                                        <Clock className="w-6 h-6 text-amber-500" />
+                                    )}
+                                    {item.status === 'incomplete' && (
+                                        <XCircle className="w-6 h-6 text-destructive" />
+                                    )}
+                                    {item.status === 'optional_skipped' && (
+                                        <div className="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center">
+                                            <div className="w-2 h-2 rounded-full bg-gray-300" />
                                         </div>
-                                        <p className="text-sm text-muted-foreground">{item.description}</p>
-                                    </div>
+                                    )}
                                 </div>
-                                {!item.isComplete && item.actionHref && (
-                                    <Button variant="outline" size="sm" asChild>
-                                        <a href={item.actionHref}>
-                                            {item.actionLabel} <ExternalLink className="w-3 h-3 ml-1" />
-                                        </a>
-                                    </Button>
-                                )}
+
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className={item.status === 'optional_skipped' ? "text-muted-foreground" : "font-medium"}>
+                                            {item.label}
+                                        </span>
+                                        {item.isRequired && item.status !== 'complete' && item.status !== 'pending' && (
+                                            <Badge variant="destructive" className="text-[10px] px-1.5 h-5">Required</Badge>
+                                        )}
+                                        {item.status === 'pending' && (
+                                            <Badge variant="secondary" className="text-[10px] px-1.5 h-5 bg-amber-100 text-amber-800 hover:bg-amber-200">Pending</Badge>
+                                        )}
+                                        {!item.isRequired && (
+                                            <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-muted-foreground border-muted-foreground/30">Optional</Badge>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">{item.description}</p>
+                                </div>
                             </div>
-                            {index < setupItems.length - 1 && <Separator />}
-                        </React.Fragment>
+
+                            {/* Action */}
+                            {item.actionHref && item.status !== 'complete' && (
+                                <Button variant="outline" size="sm" asChild>
+                                    <a href={item.actionHref} target="_blank" rel="noopener noreferrer">
+                                        {item.actionLabel} <ExternalLink className="w-3 h-3 ml-1" />
+                                    </a>
+                                </Button>
+                            )}
+                            {/* [NEW] Complete Now button for incomplete items with stepId */}
+                            {item.status === 'incomplete' && item.stepId && !item.actionHref && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => goToStep(item.stepId!)}
+                                    className="text-primary border-primary hover:bg-primary/5"
+                                >
+                                    Complete Now
+                                </Button>
+                            )}
+                        </div>
                     ))}
                 </CardContent>
             </Card>
 
-            {/* Next Steps */}
-            <Card className="bg-primary/5 border-primary/20">
-                <CardHeader>
-                    <CardTitle className="text-lg">What's Next?</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                    <ul className="space-y-2 text-sm">
-                        {isReadyForBookings ? (
-                            <>
-                                <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                                    <span>Your kitchen is <strong>live</strong> and visible to chefs</span>
-                                </li>
-                                <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                                    <span>You'll receive notifications when chefs request bookings</span>
-                                </li>
-                                <li className="flex items-start gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                                    <span>Manage bookings from your dashboard</span>
-                                </li>
-                            </>
-                        ) : (
-                            <>
-                                <li className="flex items-start gap-2">
-                                    <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                                    <span>Complete required items above to go live</span>
-                                </li>
-                                <li className="flex items-start gap-2">
-                                    <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                                    <span>You can access this wizard anytime from the Help menu</span>
-                                </li>
-                            </>
-                        )}
-                    </ul>
-                </CardContent>
-            </Card>
-
-            {/* Action Buttons */}
-            <div className="flex justify-center gap-4 pt-4">
-                <Button size="lg" onClick={handleClose}>
+            {/* Footer Action */}
+            <div className="flex justify-center pt-4">
+                <Button size="lg" onClick={handleClose} className="px-8">
                     Go to Dashboard
                 </Button>
             </div>

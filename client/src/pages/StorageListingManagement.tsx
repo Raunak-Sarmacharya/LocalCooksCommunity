@@ -71,7 +71,11 @@ interface StorageListing {
 
 
 
-export default function StorageListingManagement() {
+interface StorageListingManagementProps {
+  embedded?: boolean;
+}
+
+export default function StorageListingManagement({ embedded }: StorageListingManagementProps = {}) {
   return (
     <ManagerPageLayout
       title="Storage Management"
@@ -107,10 +111,10 @@ function StorageListingContent({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
   const [currentStep, setCurrentStep] = useState(1);
-  
+
   // Form state - simplified to daily pricing
   const [formData, setFormData] = useState<Partial<StorageListing>>({
     storageType: 'dry',
@@ -129,7 +133,7 @@ function StorageListingContent({
     houseRules: [],
     prohibitedItems: [],
   });
-  
+
   const [isSaving, setIsSaving] = useState(false);
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listings, setListings] = useState<StorageListing[]>([]);
@@ -156,7 +160,7 @@ function StorageListingContent({
 
   const loadKitchens = async () => {
     if (!selectedLocationId) return;
-    
+
     try {
       const data = await apiGet(`/manager/kitchens/${selectedLocationId}`);
       setKitchens(data);
@@ -172,7 +176,7 @@ function StorageListingContent({
 
   const loadListings = async () => {
     if (!selectedKitchenId) return;
-    
+
     try {
       const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/storage-listings`);
       setListings(data);
@@ -191,7 +195,7 @@ function StorageListingContent({
       console.log('Loading storage listing for edit:', listingId);
       const data = await apiGet(`/manager/storage-listings/${listingId}`);
       console.log('Storage listing loaded:', data);
-      
+
       // Ensure proper data types - basePrice should already be in dollars from backend
       setFormData(data);
       setEditingListingId(listingId);
@@ -248,10 +252,10 @@ function StorageListingContent({
       });
       return;
     }
-    
+
     if (!formData.minimumBookingDuration || formData.minimumBookingDuration < 1) {
       toast({
-        title: "Validation Error", 
+        title: "Validation Error",
         description: "Minimum rental period must be at least 1 day",
         variant: "destructive",
       });
@@ -260,12 +264,12 @@ function StorageListingContent({
 
     setIsSaving(true);
     try {
-      const endpoint = editingListingId 
+      const endpoint = editingListingId
         ? `/manager/storage-listings/${editingListingId}`
         : '/manager/storage-listings';
-      
+
       const operation = editingListingId ? apiPut : apiPost;
-      
+
       // Build payload with daily rate pricing model - ensure basePrice is a number
       const payload = {
         kitchenId: selectedKitchenId,
@@ -299,10 +303,10 @@ function StorageListingContent({
       };
 
       console.log('Saving storage listing:', { listingId: editingListingId, payload });
-      
+
       const saved = await operation(endpoint, payload);
       console.log('Storage listing saved successfully:', saved);
-      
+
       toast({
         title: "Success",
         description: editingListingId ? "Storage listing updated successfully" : "Storage listing created successfully",
@@ -327,7 +331,7 @@ function StorageListingContent({
       });
       setEditingListingId(null);
       setCurrentStep(1);
-      
+
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/storage-listings`] });
     } catch (error: any) {
@@ -355,7 +359,7 @@ function StorageListingContent({
 
   // Toggle active status - using simple state instead of useMutation
   const [isToggling, setIsToggling] = useState(false);
-  
+
   const doToggleActive = async (id: number, isActive: boolean) => {
     setIsToggling(true);
     try {
@@ -383,7 +387,7 @@ function StorageListingContent({
 
   const handleToggleActive = (listingId: number, currentStatus: boolean) => {
     const newStatus = !currentStatus;
-    
+
     // If deactivating, show confirmation dialog
     if (!newStatus) {
       setPendingToggle({ id: listingId, isActive: newStatus });
@@ -487,8 +491,8 @@ function StorageListingContent({
               {[1, 2, 3, 4].map((step) => (
                 <div key={step} className="flex items-center flex-1">
                   <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-medium transition-colors ${step === currentStep ? 'bg-primary text-primary-foreground shadow-sm' :
-                      step < currentStep ? 'bg-primary/20 text-primary' :
-                        'bg-muted text-muted-foreground'
+                    step < currentStep ? 'bg-primary/20 text-primary' :
+                      'bg-muted text-muted-foreground'
                     }`}>
                     {step < currentStep ? <Check className="h-4 w-4" /> : step}
                   </div>

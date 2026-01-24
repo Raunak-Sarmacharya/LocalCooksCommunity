@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -8,6 +8,7 @@ import { Location, Kitchen, StorageListing, EquipmentListing } from "./types";
 import { optionalPhoneNumberSchema } from "@shared/phone-validation";
 import { useOnboarding } from '@onboardjs/react';
 import { steps } from "@/config/onboarding-steps";
+import { Link, useLocation } from "wouter";
 
 // Step ID mapping for backwards compatibility with legacy numeric format in database
 const STEP_ID_MAP: Record<string, number> = {
@@ -40,6 +41,7 @@ interface ManagerOnboardingContextType {
   handleNext: () => Promise<void>;
   handleBack: () => void;
   handleSkip: () => Promise<void>;
+  goToStep: (stepId: string) => Promise<void>; // [NEW] Direct navigation
 
   // Legacy/Derived State
   currentStep: number;
@@ -61,6 +63,11 @@ interface ManagerOnboardingContextType {
   selectedKitchenId: number | null;
   setSelectedKitchenId: (id: number | null) => void;
   isLoadingLocations: boolean;
+  isStripeOnboardingComplete?: boolean;
+  hasAvailability?: boolean;
+  refreshAvailability?: () => Promise<void>; // [NEW] Trigger refresh after saving availability
+  hasRequirements?: boolean;
+  refreshRequirements?: () => Promise<void>;
 
   // Forms State
   locationForm: {
@@ -165,6 +172,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [existingEquipmentListings, setExistingEquipmentListings] = useState<EquipmentListing[]>([]);
   const [isLoadingEquipment, setIsLoadingEquipment] = useState(false);
 
+  // Availability State
+  const [hasAvailability, setHasAvailability] = useState(false);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
+
+  // Requirements State [NEW] - tracks if location_requirements record exists
+  const [hasRequirements, setHasRequirements] = useState(false);
+  const [isLoadingRequirements, setIsLoadingRequirements] = useState(false);
+
   // Multi-location State
   const [isAddingLocation, setIsAddingLocation] = useState(false);
 
@@ -186,7 +201,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   const userData = firebaseUserData;
   const isStripeOnboardingComplete = userData?.stripe_connect_onboarding_status === 'complete' || userData?.stripeConnectOnboardingStatus === 'complete';
-  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({});
+  const [dbCompletedSteps, setDbCompletedSteps] = useState<Record<string, boolean>>({});
 
   // Normalize legacy numeric step keys to string format for UI consumption
   useEffect(() => {
@@ -208,13 +223,71 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           normalized[key] = Boolean(value);
         }
       }
-      setCompletedSteps(normalized);
+      setDbCompletedSteps(normalized);
     }
   }, [userData]);
 
-  // Derived State
+  // Derived State - declare BEFORE useMemo that depends on it
   const hasExistingLocation = !isLoadingLocations && locations.length > 0;
   const selectedLocation = locations.find((loc) => loc.id === selectedLocationId) as Location | undefined;
+
+  // [ENTERPRISE] Compute completedSteps based on ACTUAL DATA existence ONLY
+  // This ensures the sidebar shows correct completion state based on real conditions
+  // 
+  // REQUIRED for bookings: Location, Kitchen Space, Requirements, Availability, Payment
+  // OPTIONAL: Storage, Equipment
+  //
+  // NOTE: We do NOT include dbCompletedSteps here for required steps.
+  // Required steps are ONLY marked complete when actual data exists.
+  // Optional steps can use dbCompletedSteps for "seen" tracking.
+  const completedSteps = useMemo((): Record<string, boolean> => {
+    const result: Record<string, boolean> = {};
+
+    // Welcome is complete if user has seen it OR has existing location
+    // Check both snake_case and potential legacy/new field names for valid welcome flag
+    if (userData?.has_seen_welcome || userData?.has_seen_welcome_screen || locations.length > 0) {
+      result['welcome'] = true;
+    }
+
+    // Location is complete if location exists AND is selected
+    if (selectedLocationId && locations.length > 0) {
+      result['location'] = true;
+    }
+
+    // Kitchen Space is complete if kitchens exist for this location
+    if (kitchens.length > 0) {
+      result['create-kitchen'] = true;
+    }
+
+    // Application Requirements is complete if location_requirements record exists
+    // This is DATA-DRIVEN - must be saved via the Save button
+    if (hasRequirements) {
+      result['application-requirements'] = true;
+    }
+
+    // Availability is complete ONLY if any day is actually set available
+    // This is DATA-DRIVEN - must have data in kitchen_availability table
+    if (hasAvailability) {
+      result['availability'] = true;
+    }
+
+    // Payment is complete if Stripe is connected
+    if (isStripeOnboardingComplete) {
+      result['payment-setup'] = true;
+    }
+
+    // Optional steps: Keep from dbCompletedSteps for "seen" tracking only
+    if (dbCompletedSteps['storage-listings'] || existingStorageListings.length > 0) {
+      result['storage-listings'] = true;
+    }
+    if (dbCompletedSteps['equipment-listings'] || existingEquipmentListings.length > 0) {
+      result['equipment-listings'] = true;
+    }
+
+    return result;
+  }, [userData, locations.length, selectedLocationId, kitchens.length,
+    hasRequirements, hasAvailability, isStripeOnboardingComplete,
+    dbCompletedSteps, existingStorageListings.length, existingEquipmentListings.length]);
 
   // Build visible steps: show all steps, but skip welcome if returning user with location
   let visibleStepsFiltered = [...steps];
@@ -258,7 +331,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       const isManagerOnboardingComplete = userData.manager_onboarding_completed;
       // Only auto-open for managers who haven't completed onboarding AND have no locations
       if (!isManagerOnboardingComplete && locations.length === 0) {
-        setIsOpen(true);
+        // setIsOpen(true); // OLD MODAL
+        setLocation('/manager/setup');
       }
     }
   }, [userData, isLoadingLocations, locations, setIsOpen]);
@@ -300,6 +374,60 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       // or we rely on the persistence of OnboardJS itself.
     }
   }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId]);
+
+  // [ENTERPRISE] Auto-skip to first incomplete required step when returning
+  // This provides a seamless UX where users jump directly to what needs attention
+  //
+  // REQUIRED for bookings: Location, Kitchen Space, Availability, Payment
+  // OPTIONAL: Application Requirements (chef settings), Storage, Equipment
+  useEffect(() => {
+    if (!engine || !hasExistingLocation || isLoadingLocations || isAddingLocation) return;
+
+    const currentId = currentStep?.id;
+    if (!currentId) return;
+
+    // Check if current step is already completed - if so, auto-navigate to first incomplete
+    const isCurrentStepComplete = completedSteps[String(currentId)];
+
+    // Only auto-skip from these steps when they're complete
+    const autoSkipFromSteps = ['welcome', 'location', 'create-kitchen', 'application-requirements', 'availability', 'payment-setup'];
+    if (!autoSkipFromSteps.includes(String(currentId))) return;
+
+    // Only proceed if current step is complete
+    if (!isCurrentStepComplete) return;
+
+    // Find first incomplete REQUIRED step in order
+    // Required for bookings: location -> kitchen -> requirements -> availability -> payment
+    const requiredStepOrder = ['location', 'create-kitchen', 'application-requirements', 'payment-setup', 'availability', 'completion-summary'];
+
+    for (const stepId of requiredStepOrder) {
+      // Skip payment-setup if already complete (it's hidden from visibleSteps)
+      if (stepId === 'payment-setup' && isStripeOnboardingComplete) continue;
+
+      // If this step is incomplete, navigate to it
+      if (!completedSteps[stepId]) {
+        console.log(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
+        engine.goToStep(stepId);
+        return;
+      }
+    }
+
+    // All required steps complete - Do not force jump to summary
+    // Instead, advance to the next step in the sequence (even if optional)
+    if (requiredStepOrder.includes(String(currentId)) && isCurrentStepComplete) {
+      const currentIndex = steps.findIndex(s => s.id === currentId);
+      // Ensure we are not at the end and the current step is actually found
+      if (currentIndex !== -1 && currentIndex < steps.length - 1) {
+        const nextStep = steps[currentIndex + 1];
+        // Only advance if next step is valid
+        if (nextStep && nextStep.id) {
+          console.log(`[Onboarding] Advancing from completed required step to: ${nextStep.id}`);
+          engine.goToStep(nextStep.id);
+        }
+      }
+    }
+  }, [engine, hasExistingLocation, isLoadingLocations, isAddingLocation, currentStep?.id,
+    completedSteps, isStripeOnboardingComplete]);
 
   // Load kitchens when location selected
   useEffect(() => {
@@ -356,6 +484,70 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     loadListings();
   }, [selectedKitchenId, currentStep]);
 
+  // Load Availability check [NEW]
+  useEffect(() => {
+    const checkAvailability = async () => {
+      if (!selectedKitchenId) {
+        setHasAvailability(false);
+        return;
+      }
+      setIsLoadingAvailability(true);
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+
+        const res = await fetch(`/api/manager/availability/${selectedKitchenId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Check if any day is set to available
+          const isSet = Array.isArray(data) && data.some((day: any) => day.isAvailable || day.is_available);
+          setHasAvailability(isSet);
+        }
+      } catch (e) {
+        console.error("Failed to check availability", e);
+      } finally {
+        setIsLoadingAvailability(false);
+      }
+    };
+    checkAvailability();
+  }, [selectedKitchenId]);
+
+  // Load Requirements check [NEW] - checks if location_requirements record exists
+  useEffect(() => {
+    const checkRequirements = async () => {
+      if (!selectedLocationId) {
+        setHasRequirements(false);
+        return;
+      }
+      setIsLoadingRequirements(true);
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+
+        const res = await fetch(`/api/manager/locations/${selectedLocationId}/requirements`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Record exists if we get a valid response with an id
+          setHasRequirements(!!data && !!data.id);
+        } else {
+          setHasRequirements(false);
+        }
+      } catch (e) {
+        console.error("Failed to check requirements", e);
+        setHasRequirements(false);
+      } finally {
+        setIsLoadingRequirements(false);
+      }
+    };
+    checkRequirements();
+  }, [selectedLocationId]);
+
 
   // Track step completion - saves to backend and optimistically updates local state
   const trackStepCompletion = useCallback(async (stepId: number | string) => {
@@ -368,7 +560,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if (!stringId) return;
 
       // Optimistically update local state for immediate UI feedback
-      setCompletedSteps(prev => ({ ...prev, [stringId]: true }));
+      setDbCompletedSteps((prev: Record<string, boolean>) => ({ ...prev, [stringId]: true }));
 
       const res = await fetch("/api/manager/onboarding/step", {
         method: "POST",
@@ -588,6 +780,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   };
 
+  const [, setLocation] = useLocation();
+
   const value: ManagerOnboardingContextType = {
     // Adapter
     currentStepData: currentStep?.payload,
@@ -600,6 +794,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     handleNext: handleNextAction,
     handleBack: previous,
     handleSkip: handleSkipAction,
+    goToStep: async (stepId: string) => {
+      if (engine) {
+        console.log(`[Onboarding] Navigating directly to step: ${stepId}`);
+        await engine.goToStep(stepId);
+      }
+    },
 
     // Missing props:
     currentStep: (state as any)?.currentStep ?? 0,
@@ -612,6 +812,44 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // Domain
     locations, selectedLocationId, setSelectedLocationId, selectedLocation,
     kitchens, selectedKitchenId, setSelectedKitchenId, isLoadingLocations,
+    isStripeOnboardingComplete,
+    hasAvailability,
+    refreshAvailability: async () => {
+      // Refetch availability status after save
+      if (!selectedKitchenId) return;
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const res = await fetch(`/api/manager/availability/${selectedKitchenId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const isSet = Array.isArray(data) && data.some((day: any) => day.isAvailable || day.is_available);
+          setHasAvailability(isSet);
+        }
+      } catch (e) {
+        console.error("Failed to refresh availability", e);
+      }
+    },
+    hasRequirements,
+    refreshRequirements: async () => {
+      // Refetch requirements status after save
+      if (!selectedLocationId) return;
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const res = await fetch(`/api/manager/locations/${selectedLocationId}/requirements`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setHasRequirements(!!data && !!data.id);
+        }
+      } catch (e) {
+        console.error("Failed to refresh requirements", e);
+      }
+    },
 
     locationForm: {
       name: locationName, setName: setLocationName,
@@ -642,11 +880,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setLicenseFile(null);
       setLicenseExpiryDate("");
       setIsAddingLocation(true);
-      setIsOpen(true);
-      // Reset engine if possible, or manually navigate to 'location'?
-      // Since 'location' is strictly Step 1, and 'welcome' is Step 0.
-      // If we are adding location, we likely want to skip 'welcome' too?
-      // For now, let's just open. If engine state persists, it might need reset.
+      // setIsOpen(true); // OLD MODAL
+      setLocation('/manager/setup'); // NEW FULL PAGE
     }
   };
 

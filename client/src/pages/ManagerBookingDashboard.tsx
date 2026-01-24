@@ -23,7 +23,7 @@ import ManagerHeader from "@/components/layout/ManagerHeader";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
-import ManagerKitchenApplications from "./ManagerKitchenApplications";
+import { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplications";
 import KitchenPricingManagement from "./KitchenPricingManagement";
 import StorageListingManagement from "./StorageListingManagement";
 import EquipmentListingManagement from "./EquipmentListingManagement";
@@ -138,7 +138,7 @@ export default function ManagerBookingDashboard() {
   const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  
+
   // Tab state - check URL params first, then default to 'overview'
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -525,20 +525,20 @@ export default function ManagerBookingDashboard() {
         <ManagerBookingsPanel embedded={true} />
       )}
 
-      {activeView === 'availability' && selectedLocation && (
-        <KitchenAvailabilityManagement embedded={true} />
-      )}
-
-      {activeView === 'availability' && !selectedLocation && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-          <p className="text-gray-500">Choose a location to manage availability</p>
+      {activeView === 'availability' && (
+        <div className="h-[calc(100vh-100px)] -m-4 md:-m-8">
+          <KitchenAvailabilityManagement
+            initialLocationId={selectedLocation?.id}
+          />
         </div>
       )}
 
       {activeView === 'applications' && (
-        <ManagerKitchenApplications embedded={true} />
+        <ManagerKitchenApplicationsContent
+          selectedLocationId={selectedLocation?.id ?? null}
+          isLayoutLoading={isLoadingLocations}
+          setLocation={setLocation}
+        />
       )}
 
       {activeView === 'settings' && selectedLocation && (
@@ -1542,7 +1542,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
         <div className="p-6">
           <Tabs
             value={activeTab}
-            onValueChange={setActiveTab}
+            onValueChange={(val) => setActiveTab(val as SettingsTab)}
             className="w-full"
           >
             {/* Settings Header with Breadcrumbs */}

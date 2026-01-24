@@ -104,32 +104,32 @@ export function ManagerPageLayout({
 
   return (
     <div className="flex flex-col flex-1 h-full min-h-[500px] overflow-hidden bg-background rounded-xl border shadow-sm">
-       {/* Mobile Header with Sidebar Trigger */}
-       <div className="md:hidden flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Mobile Header with Sidebar Trigger */}
+      <div className="md:hidden flex items-center justify-between p-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-2">
-           {title && <h1 className="font-semibold text-lg">{title}</h1>}
+          {title && <h1 className="font-semibold text-lg">{title}</h1>}
         </div>
         <Sheet>
           <SheetContent side="left" className="w-[80%] max-w-[300px] p-0">
-             <SidebarContent 
-               isLoadingLocations={isLoadingLocations}
-               locations={locations}
-               selectedLocationId={selectedLocationId}
-               handleLocationChange={handleLocationChange}
-               showKitchenSelector={showKitchenSelector}
-               isLoadingKitchens={isLoadingKitchens}
-               availableKitchens={availableKitchens}
-               selectedKitchenId={selectedKitchenId}
-               handleKitchenChange={handleKitchenChange}
-             />
+            <SidebarContent
+              isLoadingLocations={isLoadingLocations}
+              locations={locations}
+              selectedLocationId={selectedLocationId}
+              handleLocationChange={handleLocationChange}
+              showKitchenSelector={showKitchenSelector}
+              isLoadingKitchens={isLoadingKitchens}
+              availableKitchens={availableKitchens}
+              selectedKitchenId={selectedKitchenId}
+              handleKitchenChange={handleKitchenChange}
+            />
           </SheetContent>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="-mr-2">
-               <Menu className="h-5 w-5" />
+              <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
         </Sheet>
-       </div>
+      </div>
 
 
       <ResizablePanelGroup direction="horizontal" className="h-full items-stretch">
@@ -141,19 +141,19 @@ export function ManagerPageLayout({
         >
           <ScrollArea className="h-full">
             <div className="flex flex-col h-full">
-              <SidebarContent 
-                 isLoadingLocations={isLoadingLocations}
-                 locations={locations}
-                 selectedLocationId={selectedLocationId}
-                 handleLocationChange={handleLocationChange}
-                 showKitchenSelector={showKitchenSelector}
-                 isLoadingKitchens={isLoadingKitchens}
-                 availableKitchens={availableKitchens}
-                 selectedKitchenId={selectedKitchenId}
-                 handleKitchenChange={handleKitchenChange}
+              <SidebarContent
+                isLoadingLocations={isLoadingLocations}
+                locations={locations}
+                selectedLocationId={selectedLocationId}
+                handleLocationChange={handleLocationChange}
+                showKitchenSelector={showKitchenSelector}
+                isLoadingKitchens={isLoadingKitchens}
+                availableKitchens={availableKitchens}
+                selectedKitchenId={selectedKitchenId}
+                handleKitchenChange={handleKitchenChange}
               />
               <div className="mt-auto px-6 py-4 border-t bg-muted/20">
-                 <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold opacity-50">Local Cooks Community</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold opacity-50">Local Cooks Community</p>
               </div>
             </div>
           </ScrollArea>
@@ -165,12 +165,12 @@ export function ManagerPageLayout({
           <ScrollArea className="flex-1">
             <div className="p-4 md:p-8">
               <div className="max-w-6xl mx-auto space-y-6">
-                 {(title || description) && (
-                   <div className="hidden md:block mb-6 space-y-1.5 border-b pb-4">
-                      {title && <h2 className="text-2xl font-bold tracking-tight">{title}</h2>}
-                      {description && <p className="text-muted-foreground">{description}</p>}
-                   </div>
-                 )}
+                {(title || description) && (
+                  <div className="hidden md:block mb-6 space-y-1.5 border-b pb-4">
+                    {title && <h2 className="text-2xl font-bold tracking-tight">{title}</h2>}
+                    {description && <p className="text-muted-foreground">{description}</p>}
+                  </div>
+                )}
 
                 {children({
                   selectedLocationId,
@@ -216,7 +216,7 @@ function SidebarContent({
         <h1 className="text-xl font-bold tracking-tight">Manager Dashboard</h1>
         <p className="text-xs text-muted-foreground mt-0.5">Control your inventory & bookings</p>
       </div>
-      
+
       <Separator orientation="horizontal" className="mx-6 w-auto" />
 
       <div className="flex-1 px-6 space-y-6">
@@ -232,10 +232,6 @@ function SidebarContent({
           </Label>
           {isLoadingLocations ? (
             <Skeleton className="h-10 w-full" />
-          ) : locations.length === 1 ? (
-            <div className="flex items-center px-3 py-2 text-sm font-medium bg-background border rounded-md shadow-sm">
-              {locations[0].name}
-            </div>
           ) : (
             <Select
               value={selectedLocationId?.toString() || ""}

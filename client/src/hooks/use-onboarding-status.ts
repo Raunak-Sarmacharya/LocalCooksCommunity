@@ -71,16 +71,33 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         enabled: !!locationId,
     });
 
-    // 4. Fetch Availability (New Check)
-    // We need a way to check if ANY availability exists for these kitchens.
-    // Assuming we have an endpoint or we check via a new query.
-    // For now, let's assume if they have kitchens, they MIGHT have availability, 
-    // but ideally we check `kitchen_availability` table count.
-    // Let's verify if we can check this via an existing endpoint or adding a light one.
-    // "KitchenAvailabilityManagement" uses `useQuery` for availability.
+    // 4. Fetch Availability (Check if any kitchen has days set)
+    const { data: availabilityData } = useQuery({
+        queryKey: ['locationAvailabilityStatus', locationId, kitchens?.map((k: any) => k.id)],
+        queryFn: async () => {
+            if (!kitchens?.length) return false;
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) return false;
 
-    // Placeholder for robust availability check:
-    const hasAvailability = true; // TODO: Implement actual check
+            // Check each kitchen for availability
+            for (const kitchen of kitchens) {
+                const res = await fetch(`/api/manager/availability/${kitchen.id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    // If any day is available, return true
+                    if (Array.isArray(data) && data.some((d: any) => d.isAvailable || d.is_available)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        },
+        enabled: !!locationId && !!kitchens?.length,
+    });
+
+    const hasAvailability = !!availabilityData;
 
     // --- Logic ---
 

@@ -54,14 +54,14 @@ import { useLocation } from "wouter";
 export default function ManagerKitchenApplications() {
   const [, setLocation] = useLocation();
   return (
-    <ManagerPageLayout 
-      title="Chef Applications" 
+    <ManagerPageLayout
+      title="Chef Applications"
       description="Review and manage chef applications to your kitchen locations."
       showKitchenSelector={false} // Applications are currently location-based, so kitchen filter is not needed. [BUSINESS LOGIC]
     >
       {({ selectedLocationId, isLoading: isLayoutLoading }) => (
-        <ManagerKitchenApplicationsContent 
-          selectedLocationId={selectedLocationId} 
+        <ManagerKitchenApplicationsContent
+          selectedLocationId={selectedLocationId}
           isLayoutLoading={isLayoutLoading}
           setLocation={setLocation}
         />
@@ -70,12 +70,12 @@ export default function ManagerKitchenApplications() {
   );
 }
 
-function ManagerKitchenApplicationsContent({ 
-  selectedLocationId, 
+export function ManagerKitchenApplicationsContent({
+  selectedLocationId,
   isLayoutLoading,
   setLocation
-}: { 
-  selectedLocationId: number | null, 
+}: {
+  selectedLocationId: number | null,
   isLayoutLoading: boolean,
   setLocation: (path: string) => void
 }) {
@@ -99,7 +99,7 @@ function ManagerKitchenApplicationsContent({
   const [chatLocationName, setChatLocationName] = useState<string | null>(null);
 
   // Business Logic: Filter applications by location if selected
-  const filteredApplications = selectedLocationId 
+  const filteredApplications = selectedLocationId
     ? applications.filter(a => a.locationId === selectedLocationId)
     : applications;
 
@@ -626,7 +626,7 @@ function ManagerKitchenApplicationsContent({
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-            <ChefHat className="h-5 w-5 text-primary" />
+              <ChefHat className="h-5 w-5 text-primary" />
               Review Chef Application
             </DialogTitle>
             <DialogDescription>
@@ -687,7 +687,7 @@ function ManagerKitchenApplicationsContent({
                     <Briefcase className="h-4 w-4" />
                     Business Information
                   </h3>
-                <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                  <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                     {(() => {
                       const info = parseBusinessInfo(selectedApplication.businessDescription);
                       if (!info) return <p className="text-gray-600">No business information provided.</p>;

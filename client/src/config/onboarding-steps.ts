@@ -57,7 +57,7 @@ export const steps: any[] = [
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Requirements',
-            isOptional: false,
+            isOptional: false,  // REQUIRED - managers must configure chef application requirements
             canSkip: false
         },
         payload: {

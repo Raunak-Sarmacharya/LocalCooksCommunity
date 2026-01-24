@@ -9,7 +9,8 @@ const AvailabilityStep = () => {
         selectedKitchenId,
         handleNext,
         handleBack,
-        isFirstStep
+        isFirstStep,
+        refreshAvailability
     } = useManagerOnboarding();
 
     return (
@@ -25,6 +26,7 @@ const AvailabilityStep = () => {
                         embedded={true}
                         initialLocationId={selectedLocationId}
                         initialKitchenId={selectedKitchenId || undefined}
+                        onSaveSuccess={refreshAvailability}
                     />
                 ) : (
                     <div className="text-center p-4 text-muted-foreground">Please create a location first.</div>
