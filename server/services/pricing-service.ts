@@ -13,6 +13,7 @@ export interface KitchenPricingInfo {
   hourlyRate: number; // in cents
   currency: string;
   minimumBookingHours: number;
+  taxRatePercent?: number | null;
 }
 
 export interface BookingDuration {
@@ -50,6 +51,7 @@ export async function getKitchenPricing(kitchenId: number): Promise<KitchenPrici
         hourlyRate: kitchens.hourlyRate,
         currency: kitchens.currency,
         minimumBookingHours: kitchens.minimumBookingHours,
+        taxRatePercent: kitchens.taxRatePercent,
       })
       .from(kitchens)
       .where(eq(kitchens.id, kitchenId));
@@ -64,6 +66,7 @@ export async function getKitchenPricing(kitchenId: number): Promise<KitchenPrici
       hourlyRate: hourlyRateCents,
       currency: kitchen.currency || 'CAD',
       minimumBookingHours: kitchen.minimumBookingHours || 1,
+      taxRatePercent: kitchen.taxRatePercent ? parseFloat(kitchen.taxRatePercent) : null,
     };
   } catch (error) {
     console.error('Error getting kitchen pricing:', error);
@@ -87,6 +90,8 @@ export async function calculateKitchenBookingPrice(
   durationHours: number;
   hourlyRateCents: number;
   currency: string;
+  taxRatePercent: number | null;
+  taxAmountCents: number;
 }> {
   try {
     // Get kitchen pricing
@@ -100,6 +105,8 @@ export async function calculateKitchenBookingPrice(
         durationHours,
         hourlyRateCents: 0,
         currency: pricing?.currency || 'CAD',
+        taxRatePercent: pricing?.taxRatePercent ?? null,
+        taxAmountCents: 0,
       };
     }
 
@@ -110,13 +117,25 @@ export async function calculateKitchenBookingPrice(
     const effectiveDuration = Math.max(durationHours, pricing.minimumBookingHours);
 
     // Calculate total price (hourly rate × duration)
-    const totalPriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
+    // Note: This is the SUB-TOTAL before fees and taxes
+    const basePriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
+
+    // Calculate Tax
+    const taxAmountCents = calculateTax(basePriceCents, pricing.taxRatePercent ?? null);
+
+    // Note: calculateKitchenBookingPrice traditionally returned just the base price for the booking
+    // But to be enterprise-grade, we should probably return the components.
+    // However, existing callers might expect 'totalPriceCents' to be the base booking cost.
+    // Let's check callers. Most callers seem to take this result and then call calculateTotalWithFees.
+    // So we should return the components needed for that.
 
     return {
-      totalPriceCents,
+      totalPriceCents: basePriceCents, // This is the subtotal
       durationHours: effectiveDuration,
       hourlyRateCents: pricing.hourlyRate,
       currency: pricing.currency,
+      taxRatePercent: pricing.taxRatePercent ?? null,
+      taxAmountCents, // New field
     };
   } catch (error) {
     console.error('Error calculating kitchen booking price:', error);
@@ -171,8 +190,25 @@ export function calculatePlatformFee(basePriceCents: number, commissionRate: num
 export async function calculatePlatformFeeDynamic(
   basePriceCents: number
 ): Promise<number> {
+  // NOTE: The instruction provided `dbPool` here, but `db` is the imported Drizzle instance.
+  // Assuming `dbPool` was a typo and `db` should be used, or `getServiceFeeRate`
+  // would need to be updated to accept a parameter. Sticking to existing `getServiceFeeRate` signature.
   const rate = await getServiceFeeRate();
   return calculatePlatformFee(basePriceCents, rate);
+}
+
+/**
+ * Calculate tax amount
+ * @param basePriceCents - Base price in cents
+ * @param taxRatePercent - Tax rate as percentage (e.g., 13 for 13%)
+ * @returns Tax amount in cents
+ */
+export function calculateTax(basePriceCents: number, taxRatePercent: number | null): number {
+  if (!taxRatePercent || taxRatePercent <= 0) {
+    return 0;
+  }
+  // Formula: Base * (Rate / 100)
+  return Math.round(basePriceCents * (taxRatePercent / 100));
 }
 
 /**
@@ -185,7 +221,8 @@ export async function calculatePlatformFeeDynamic(
 export function calculateTotalWithFees(
   basePriceCents: number,
   serviceFeeCents: number = 0,
-  damageDepositCents: number = 0
+  damageDepositCents: number = 0,
+  taxAmountCents: number = 0
 ): number {
-  return basePriceCents + serviceFeeCents + damageDepositCents;
+  return basePriceCents + serviceFeeCents + damageDepositCents + taxAmountCents;
 }

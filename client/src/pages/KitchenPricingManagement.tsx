@@ -16,6 +16,7 @@ interface KitchenPricing {
   currency: string;
   minimumBookingHours: number;
   pricingModel: 'hourly' | 'daily' | 'weekly';
+  taxRatePercent: number | null;
 }
 
 interface KitchenPricingManagementProps {
@@ -61,6 +62,7 @@ function KitchenPricingContent({
     currency: 'CAD',
     minimumBookingHours: 1,
     pricingModel: 'hourly',
+    taxRatePercent: null,
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -90,6 +92,7 @@ function KitchenPricingContent({
         currency: data.currency || 'CAD',
         minimumBookingHours: validMinHours,
         pricingModel: data.pricingModel || 'hourly',
+        taxRatePercent: data.taxRatePercent !== undefined && data.taxRatePercent !== null ? Number(data.taxRatePercent) : null,
       });
     } catch (error) {
       console.error('Error loading pricing:', error);
@@ -108,6 +111,7 @@ function KitchenPricingContent({
     } else {
       setPricing({
         hourlyRate: null,
+        taxRatePercent: null,
         currency: 'CAD',
         minimumBookingHours: 1,
         pricingModel: 'hourly',
@@ -170,6 +174,7 @@ function KitchenPricingContent({
       // Update state with the response data (convert cents back to dollars for UI)
       setPricing({
         hourlyRate: updated.hourlyRate !== null && updated.hourlyRate !== undefined ? Number(updated.hourlyRate) / 100 : null,
+        taxRatePercent: updated.taxRatePercent !== undefined && updated.taxRatePercent !== null ? Number(updated.taxRatePercent) : null,
         currency: updated.currency || 'CAD',
         minimumBookingHours: updated.minimumBookingHours || 1,
         pricingModel: updated.pricingModel || 'hourly',
@@ -276,6 +281,33 @@ function KitchenPricingContent({
                   ? 'Amount charged per day'
                   : 'Amount charged per week'}
             </p>
+
+          </div>
+
+          {/* Tax Rate */}
+          <div>
+            <Label htmlFor="taxRatePercent">Tax Rate (%)</Label>
+            <div className="mt-2 relative">
+                <Input
+                  id="taxRatePercent"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  value={pricing.taxRatePercent === null ? '' : pricing.taxRatePercent}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPricing({
+                      ...pricing,
+                      taxRatePercent: value === '' ? null : parseFloat(value),
+                    });
+                  }}
+                  placeholder="e.g. 13"
+                />
+            </div>
+             <p className="text-xs text-muted-foreground mt-1">
+               Percentage tax to apply to bookings (e.g., GST/HST)
+             </p>
           </div>
 
           {/* Currency */}

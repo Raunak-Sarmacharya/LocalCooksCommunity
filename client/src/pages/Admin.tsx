@@ -277,7 +277,7 @@ function AdminDashboard() {
 
   // Fetch all applications - Firebase auth
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
-    queryKey: ["/api/firebase/admin/applications"],
+    queryKey: ["/api/applications"],
     queryFn: async ({ queryKey }) => {
       if (!firebaseUser) {
         throw new Error("Admin not authenticated");
@@ -403,7 +403,7 @@ function AdminDashboard() {
           'Content-Type': 'application/json',
         };
 
-        const response = await fetch(`/api/firebase/admin/applications/${id}/status`, {
+        const response = await fetch(`/api/applications/${id}/status`, {
           method: 'PATCH',
           headers,
           credentials: 'include',
@@ -428,7 +428,7 @@ function AdminDashboard() {
 
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] })
       ]);
@@ -459,7 +459,7 @@ function AdminDashboard() {
       };
 
       const updateData = { [field]: status };
-      const response = await fetch(`/api/firebase/admin/applications/${id}/document-verification`, {
+      const response = await fetch(`/api/applications/${id}/document-verification`, {
         method: 'PATCH',
         headers,
         credentials: 'include',
@@ -479,7 +479,7 @@ function AdminDashboard() {
 
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] })
       ]);
@@ -2229,7 +2229,7 @@ function KitchenLicenseApprovalView() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {
+                            onClick={async () => {
                               if (!license.kitchenLicenseUrl) {
                                 toast({
                                   title: "No License",
@@ -2239,21 +2239,32 @@ function KitchenLicenseApprovalView() {
                                 return;
                               }
 
-                              // Determine the correct URL based on the stored URL format
-                              let viewUrl = license.kitchenLicenseUrl;
-
-                              // If it's a public R2 URL (.r2.dev), use directly
-                              if (viewUrl.includes('.r2.dev/')) {
+                              try {
+                                const token = await auth.currentUser?.getIdToken();
+                                let viewUrl = license.kitchenLicenseUrl;
+                                
+                                // For local/protected files, append auth token
+                                if (viewUrl.includes('/api/files/documents/')) {
+                                   if (viewUrl.includes('?')) {
+                                     viewUrl += `&token=${token}`;
+                                   } else {
+                                     viewUrl += `?token=${token}`;
+                                   }
+                                } 
+                                // If it's an R2 URL that needs proxying
+                                else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
+                                  viewUrl = `/api/files/r2-proxy?url=${encodeURIComponent(viewUrl)}`;
+                                }
+                                
                                 window.open(viewUrl, '_blank');
-                                return;
+                              } catch (error) {
+                                console.error("Error opening license:", error);
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to open license document. Please try again.",
+                                  variant: "destructive"
+                                });
                               }
-
-                              // If it's a private R2 URL or custom domain, use the proxy
-                              if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
-                                viewUrl = `/api/files/r2-proxy?url=${encodeURIComponent(viewUrl)}`;
-                              }
-
-                              window.open(viewUrl, '_blank');
                             }}
                             className="inline-flex items-center gap-2"
                           >

@@ -32,7 +32,8 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     // Generate unique filename: userId_documentType_timestamp_originalname
-    const userId = req.user?.id || 'unknown';
+    // Check both req.user (legacy) and req.neonUser (Firebase auth)
+    const userId = (req as any).neonUser?.id || req.user?.id || 'unknown';
     const timestamp = Date.now();
     const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
     const ext = path.extname(file.originalname);
@@ -76,8 +77,8 @@ export const upload = multer({
 // Helper function to upload file to Cloudflare R2 (production) or local storage (development)
 export const uploadToBlob = async (file: Express.Multer.File, userId: number, folder: string = 'documents'): Promise<string> => {
   try {
-    // In production, use Cloudflare R2 if configured, otherwise fall back to local
-    if (isProduction && isR2Configured()) {
+    // Use Cloudflare R2 if configured (production OR development with keys)
+    if (isR2Configured()) {
       return await uploadToR2(file, userId, folder);
     } else {
       // Development: return local file path
@@ -117,8 +118,8 @@ export const cleanupApplicationDocuments = async (application: {
   try {
     const { deleteFromR2 } = await import('./r2-storage');
     
-    // In production with R2, delete from R2
-    if (isProduction && isR2Configured()) {
+    // Use R2 if configured
+    if (isR2Configured()) {
       if (application.foodSafetyLicenseUrl) {
         await deleteFromR2(application.foodSafetyLicenseUrl);
         console.log(`Deleted food safety license file from R2: ${application.foodSafetyLicenseUrl}`);

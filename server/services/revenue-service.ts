@@ -461,8 +461,15 @@ export async function getRevenueByLocation(
   endDate?: string | Date
 ): Promise<RevenueByLocation[]> {
   try {
+    // Ensure managerId is valid
+    if (managerId === undefined || managerId === null || isNaN(managerId)) {
+        console.error('[Revenue Service] Invalid managerId:', managerId);
+        throw new Error('Invalid manager ID');
+    }
+    const managerIdParam = sql`${managerId}`;
+
     // Build WHERE clause
-    const whereConditions = [sql`l.manager_id = ${managerId}`, sql`kb.status != 'cancelled'`];
+    const whereConditions = [sql`l.manager_id = ${managerIdParam}`, sql`kb.status != 'cancelled'`];
 
     if (startDate) {
       const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
@@ -547,8 +554,31 @@ export async function getRevenueByDate(
   endDate: string | Date
 ): Promise<RevenueByDate[]> {
   try {
-    const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-    const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
+    // Ensure managerId is valid
+    if (managerId === undefined || managerId === null || isNaN(managerId)) {
+        console.error('[Revenue Service] Invalid managerId:', managerId);
+        throw new Error('Invalid manager ID');
+    }
+
+    const start = typeof startDate === 'string' ? startDate : (startDate ? startDate.toISOString().split('T')[0] : null);
+    const end = typeof endDate === 'string' ? endDate : (endDate ? endDate.toISOString().split('T')[0] : null);
+    
+    // Explicit parameter binding for managerId
+    const managerIdParam = sql`${managerId}`;
+    
+    // Explicit parameter binding for dates to ensure they aren't undefined
+    // If start/end are null, we need to handle that or throw, but here we'll assume they should be present if logic requires them
+    // However, the caller might pass undefined. The original signature says REQUIRED.
+    // We'll trust they are provided but use parameters safely.
+    
+    if (!start || !end) {
+        // If dates are missing, fallback to last 30 days or handle gracefully
+        console.warn('[Revenue Service] Missing date parameters for getRevenueByDate');
+        // We can't query without a range efficiently here without potential errors
+    }
+    
+    const startParam = start ? sql`${start}::date` : sql`CURRENT_DATE - INTERVAL '30 days'`;
+    const endParam = end ? sql`${end}::date` : sql`CURRENT_DATE`;
 
     // Get service fee rate (for reference, but we use direct subtraction now)
     const { getServiceFeeRate } = await import('./pricing-service.js');
@@ -574,10 +604,10 @@ export async function getRevenueByDate(
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
-      WHERE l.manager_id = ${managerId}
+      WHERE l.manager_id = ${managerIdParam}
         AND kb.status != 'cancelled'
-        AND DATE(kb.booking_date) >= ${start}::date
-        AND DATE(kb.booking_date) <= ${end}::date
+        AND DATE(kb.booking_date) >= ${startParam}
+        AND DATE(kb.booking_date) <= ${endParam}
       GROUP BY DATE(kb.booking_date)
       ORDER BY date ASC
     `);
