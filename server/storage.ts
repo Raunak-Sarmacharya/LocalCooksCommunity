@@ -94,6 +94,7 @@ export class MemStorage implements IStorage {
       applicationType: null,
       stripeConnectAccountId: null,
       stripeConnectOnboardingStatus: 'not_started',
+      updatedAt: new Date(),
       managerProfileData: {},
     };
     this.users.set(adminUser.id, adminUser);
@@ -170,6 +171,7 @@ export class MemStorage implements IStorage {
       stripeConnectAccountId: (insertUser as any).stripeConnectAccountId || null,
       stripeConnectOnboardingStatus: (insertUser as any).stripeConnectOnboardingStatus || 'not_started',
       managerProfileData: (insertUser as any).managerProfileData || {},
+      updatedAt: new Date(),
     };
 
     this.users.set(user.id, user);

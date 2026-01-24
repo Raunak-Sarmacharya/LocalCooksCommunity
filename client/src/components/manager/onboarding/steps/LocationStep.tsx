@@ -71,7 +71,7 @@ export default function LocationStep() {
       </div>
 
       <div className="border-t pt-4 mt-4">
-        <h4 className="text-sm font-semibold text-foreground mb-3">Kitchen License (Optional)</h4>
+        <h4 className="text-sm font-semibold text-foreground mb-3">Kitchen License <span className="text-destructive">*</span></h4>
 
         {selectedLocation?.kitchenLicenseUrl &&
           selectedLocation?.kitchenLicenseStatus !== "rejected" &&
@@ -86,7 +86,7 @@ export default function LocationStep() {
 
         <div className="space-y-4">
           <div className="grid gap-2">
-            <Label htmlFor="license-file">Kitchen License File</Label>
+            <Label htmlFor="license-file">Kitchen License File <span className="text-destructive">*</span></Label>
             <div className="border-2 border-dashed border-border rounded-lg p-4 mt-1 hover:bg-muted/50 transition-colors">
               <input
                 type="file"
@@ -143,7 +143,7 @@ export default function LocationStep() {
         onNext={handleNext}
         onBack={handleBack}
         showBack={!isFirstStep}
-        isNextDisabled={!locationForm.name || !locationForm.address}
+        isNextDisabled={!locationForm.name || !locationForm.address || (!licenseForm.file && !selectedLocation?.kitchenLicenseUrl)}
       />
     </div>
   );

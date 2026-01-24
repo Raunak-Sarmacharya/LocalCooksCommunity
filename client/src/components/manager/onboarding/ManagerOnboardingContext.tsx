@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
@@ -96,6 +96,7 @@ interface ManagerOnboardingContextType {
       hourlyRate: string;
       currency: string;
       minimumBookingHours: string;
+
     };
     setData: (data: any) => void;
     showCreate: boolean;
@@ -245,7 +246,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
     // Welcome is complete if user has seen it OR has existing location
     // Check both snake_case and potential legacy/new field names for valid welcome flag
-    if (userData?.has_seen_welcome || userData?.has_seen_welcome_screen || locations.length > 0) {
+    // Also check dbCompletedSteps for real-time updates within session
+    if (userData?.has_seen_welcome || userData?.has_seen_welcome_screen || locations.length > 0 || dbCompletedSteps['welcome']) {
       result['welcome'] = true;
     }
 
@@ -375,6 +377,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId]);
 
+  // Manual navigation flag to prevent auto-skip when user explicitly navigates
+  const isManualNavigation = useRef(false);
+
   // [ENTERPRISE] Auto-skip to first incomplete required step when returning
   // This provides a seamless UX where users jump directly to what needs attention
   //
@@ -382,6 +387,13 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // OPTIONAL: Application Requirements (chef settings), Storage, Equipment
   useEffect(() => {
     if (!engine || !hasExistingLocation || isLoadingLocations || isAddingLocation) return;
+
+    // Skip auto-advance if user manually navigated
+    if (isManualNavigation.current) {
+      console.log('[Onboarding] Skipping auto-advance due to manual navigation');
+      isManualNavigation.current = false;
+      return;
+    }
 
     const currentId = currentStep?.id;
     if (!currentId) return;
@@ -670,6 +682,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     setCreatingKitchen(true);
     try {
       const token = await auth.currentUser?.getIdToken();
+      
+      // 1. Create Kitchen
       const res = await fetch(`/api/manager/kitchens`, {
         method: "POST",
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -680,8 +694,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         })
       });
       if (!res.ok) throw new Error("Failed to create kitchen");
-      const newKitchen = await res.json();
+      let newKitchen = await res.json();
 
+
+
+      // 3. Update Pricing
       if (kitchenFormData.hourlyRate) {
         await fetch(`/api/manager/kitchens/${newKitchen.id}/pricing`, {
           method: "PUT",
@@ -792,10 +809,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     hasExistingLocation,
 
     handleNext: handleNextAction,
-    handleBack: previous,
+    handleBack: () => {
+      isManualNavigation.current = true;
+      previous();
+    },
     handleSkip: handleSkipAction,
     goToStep: async (stepId: string) => {
       if (engine) {
+        isManualNavigation.current = true;
         console.log(`[Onboarding] Navigating directly to step: ${stepId}`);
         await engine.goToStep(stepId);
       }

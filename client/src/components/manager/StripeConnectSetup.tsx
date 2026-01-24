@@ -5,6 +5,7 @@
  * after the platform service fee is deducted.
  */
 
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,6 +63,26 @@ export default function StripeConnectSetup() {
   });
 
   const serviceFeePercentage = serviceFeeRateData?.percentage ;
+
+  // [NEW] Listen for cross-tab completion events
+  useEffect(() => {
+    const channel = new BroadcastChannel('stripe_onboarding_channel');
+    
+    channel.onmessage = (event) => {
+      console.log('Received broadcast message:', event.data);
+      if (event.data?.type === 'STRIPE_SETUP_COMPLETE') {
+        toast({
+          title: "Setup Verified",
+          description: "We detected your completed setup from the other tab.",
+        });
+        queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, [queryClient, toast]);
 
   // Invalidate user profile query after creating account to refresh the UI
   const handleAccountCreated = () => {
@@ -204,6 +225,44 @@ export default function StripeConnectSetup() {
         variant: 'destructive',
       });
     },
+  });
+
+  const checkStatusMutation = useMutation({
+    mutationFn: async () => {
+      if (!firebaseUser) throw new Error('Not authenticated');
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/manager/stripe-connect/sync', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) throw new Error('Failed to sync status');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+      if (data.status === 'complete' || data.detailsSubmitted) {
+        toast({
+          title: "Setup Complete",
+          description: "Your Stripe account is now fully connected.",
+        });
+      } else {
+         toast({
+          title: "Still Pending",
+          description: "Stripe reports that onboarding is not yet complete.",
+          variant: "destructive"
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Sync Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
   });
 
   const handleAccessDashboard = () => {
@@ -365,6 +424,34 @@ export default function StripeConnectSetup() {
               <p className="text-xs text-muted-foreground text-center">
                 Click to complete your Stripe Connect setup and start receiving payments. The setup page will open in a new tab.
               </p>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-2">Already completed setup?</p>
+                <Button 
+                  variant="outline"
+                  onClick={() => checkStatusMutation.mutate()}
+                  disabled={checkStatusMutation.isPending}
+                  className="w-full"
+                >
+                  {checkStatusMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Checking Status...
+                    </>
+                  ) : (
+                    "Refresh Status"
+                  )}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

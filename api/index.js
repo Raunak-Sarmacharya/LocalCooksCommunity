@@ -341,8 +341,9 @@ var init_schema = __esm({
       // Stripe Connect fields for manager payments
       stripeConnectAccountId: text("stripe_connect_account_id").unique(),
       // Stripe Connect Express account ID
-      stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull()
+      stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(),
       // Status: 'not_started', 'in_progress', 'complete', 'failed'
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
     applications = pgTable("applications", {
       id: serial("id").primaryKey(),
@@ -574,6 +575,8 @@ var init_schema = __esm({
       // Minimum booking duration
       pricingModel: text("pricing_model").default("hourly").notNull(),
       // Pricing structure ('hourly', 'daily', 'weekly')
+      taxRatePercent: numeric("tax_rate_percent"),
+      // Optional tax percentage (e.g., 13 for 13%)
       createdAt: timestamp("created_at").defaultNow().notNull(),
       updatedAt: timestamp("updated_at").defaultNow().notNull()
     });
@@ -817,7 +820,8 @@ var init_schema = __esm({
       hourlyRate: z2.number().int().positive("Hourly rate must be positive").optional(),
       currency: z2.string().min(3).max(3).optional(),
       minimumBookingHours: z2.number().int().positive("Minimum booking hours must be positive").optional(),
-      pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional()
+      pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional(),
+      taxRatePercent: z2.number().min(0).max(100).nullable().optional()
     }).omit({
       id: true,
       createdAt: true,
@@ -831,7 +835,8 @@ var init_schema = __esm({
       hourlyRate: z2.number().int().positive("Hourly rate must be positive").optional(),
       currency: z2.string().min(3).max(3).optional(),
       minimumBookingHours: z2.number().int().positive("Minimum booking hours must be positive").optional(),
-      pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional()
+      pricingModel: z2.enum(["hourly", "daily", "weekly"]).optional(),
+      taxRatePercent: z2.number().min(0).max(100).nullable().optional()
     });
     insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailability, {
       kitchenId: z2.number(),
@@ -10070,10 +10075,13 @@ __export(invoice_service_exports, {
 });
 import PDFDocument from "pdfkit";
 import { eq as eq18 } from "drizzle-orm";
-async function generateInvoicePDF(booking, chef, kitchen, location, storageBookings2, equipmentBookings2, paymentIntentId) {
+async function generateInvoicePDF(booking, chef, kitchen, location, storageBookings2, equipmentBookings2, paymentIntentId, options) {
+  const invoiceViewer = options?.viewer ?? "chef";
   let stripePlatformFee = 0;
   let stripeTotalAmount = 0;
   let stripeBaseAmount = 0;
+  let stripeNetAmount = 0;
+  let stripeProcessingFeeCents = 0;
   const stripeStorageBaseAmounts = /* @__PURE__ */ new Map();
   const stripeEquipmentBaseAmounts = /* @__PURE__ */ new Map();
   if (paymentIntentId) {
@@ -10083,6 +10091,12 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
         stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0;
         stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0;
+        if (paymentTransaction.metadata) {
+          const meta = typeof paymentTransaction.metadata === "string" ? JSON.parse(paymentTransaction.metadata) : paymentTransaction.metadata;
+          if (meta?.stripeFees?.processingFee) {
+            stripeProcessingFeeCents = Math.round(Number(meta.stripeFees.processingFee));
+          }
+        }
         console.log(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
       }
     } catch (error) {
@@ -10273,8 +10287,19 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
     }
   }
   const stripeProcessingFee = 0.3;
-  const serviceFee = platformFee + stripeProcessingFee;
-  const grandTotal = stripeTotalAmount > 0 ? stripeTotalAmount / 100 : totalAmount + serviceFee;
+  const processingFee = stripeProcessingFeeCents > 0 ? stripeProcessingFeeCents / 100 : stripeProcessingFee;
+  const processingFeeCents = stripeProcessingFeeCents > 0 ? stripeProcessingFeeCents : Math.round(stripeProcessingFee * 100);
+  const serviceFee = platformFee + processingFee;
+  const platformFeeCents = Math.round(platformFee * 100);
+  const taxAmount = booking.taxAmount ? Number(booking.taxAmount) / 100 : 0;
+  const taxCents = Math.round(taxAmount * 100);
+  const subtotalCents = Math.round(totalAmount * 100);
+  const subtotalWithTaxCents = subtotalCents + taxCents;
+  const chefTotalCents = subtotalWithTaxCents - platformFeeCents - processingFeeCents;
+  const platformFeeForInvoiceCents = invoiceViewer === "chef" ? Math.max(0, chefTotalCents - subtotalWithTaxCents) : platformFeeCents;
+  const platformFeeForInvoice = platformFeeForInvoiceCents / 100;
+  const totalForInvoice = invoiceViewer === "manager" ? (subtotalWithTaxCents - platformFeeCents - processingFeeCents) / 100 : subtotalWithTaxCents / 100;
+  const grandTotal = totalForInvoice;
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
@@ -10321,7 +10346,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       let leftY = 120;
       doc.fontSize(14).font("Helvetica-Bold").text("Local Cooks Community", 50, leftY);
       leftY += 18;
-      doc.fontSize(10).font("Helvetica").text("support@localcooks.ca", 50, leftY);
+      doc.fontSize(10).font("Helvetica").text("support@localcook.shop", 50, leftY);
       leftY += 30;
       doc.fontSize(12).font("Helvetica-Bold").text("Bill To:", 50, leftY);
       leftY += 18;
@@ -10378,13 +10403,25 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       currentY += 10;
       doc.moveTo(50, currentY).lineTo(550, currentY).stroke();
       currentY += 15;
-      doc.fontSize(10).font("Helvetica");
-      doc.text("Subtotal:", 380, currentY, { width: 110, align: "right" });
-      doc.text(`$${totalAmount.toFixed(2)}`, 500, currentY, { align: "right", width: 50 });
-      currentY += 20;
-      doc.text("Platform Fee:", 380, currentY, { width: 110, align: "right" });
-      doc.text(`$${serviceFee.toFixed(2)}`, 500, currentY, { align: "right", width: 50 });
-      currentY += 20;
+      const formatAmount = (amount, negative = false) => {
+        const normalized = Math.abs(amount);
+        return `${negative ? "-" : ""}$${normalized.toFixed(2)}`;
+      };
+      const addTotalRow = (label, amount, negative = false) => {
+        doc.text(label, 380, currentY, { width: 110, align: "right" });
+        doc.text(formatAmount(amount, negative), 500, currentY, { align: "right", width: 50 });
+        currentY += 20;
+      };
+      addTotalRow("Subtotal:", totalAmount);
+      if (taxAmount > 0) {
+        addTotalRow("Tax:", taxAmount);
+      }
+      if (platformFeeForInvoice > 0) {
+        addTotalRow("Platform Fee:", platformFeeForInvoice, invoiceViewer === "manager");
+      }
+      if (invoiceViewer === "manager" && processingFee > 0) {
+        addTotalRow("Stripe Processing Fee:", processingFee, true);
+      }
       doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
       currentY += 10;
       doc.fontSize(12).font("Helvetica-Bold");
@@ -10408,7 +10445,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       const footerY = pageHeight - 80;
       doc.moveTo(50, footerY).lineTo(550, footerY).stroke("#e5e7eb");
       doc.fontSize(9).fillColor("#6b7280").text("Thank you for your business!", 50, footerY + 15, { align: "center", width: 500 });
-      doc.text("For questions, contact support@localcooks.ca", 50, footerY + 30, { align: "center", width: 500 });
+      doc.text("For questions, contact support@localcook.shop", 50, footerY + 30, { align: "center", width: 500 });
       doc.fillColor("#000000");
       doc.end();
     } catch (error) {
@@ -10810,8 +10847,8 @@ var init_manager = __esm({
         };
         const { createConnectAccount: createConnectAccount2, createAccountLink: createAccountLink2, isAccountReady: isAccountReady2, createDashboardLoginLink: createDashboardLoginLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
         const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
-        const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
         if (user.stripeConnectAccountId) {
           const isReady = await isAccountReady2(user.stripeConnectAccountId);
           if (isReady) {
@@ -10850,8 +10887,8 @@ var init_manager = __esm({
         }
         const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
         const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
-        const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
         const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
       } catch (error) {
@@ -10879,8 +10916,8 @@ var init_manager = __esm({
           return res.json({ url: link.url });
         } else {
           const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-          const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
-          const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
+          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
           const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
           return res.json({ url: link.url, requiresOnboarding: true });
         }
@@ -10892,8 +10929,8 @@ var init_manager = __esm({
     router11.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
-        const managerLocations = await locationService.getLocationsByManagerId(managerId);
-        if (!managerLocations || managerLocations.length === 0) {
+        const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq19(users.id, managerId)).limit(1);
+        if (!manager?.stripeConnectAccountId) {
           return res.json({
             connected: false,
             accountId: null,
@@ -10904,11 +10941,35 @@ var init_manager = __esm({
         }
         res.json({
           connected: true,
-          accountId: null,
-          // Would be populated from Stripe
+          accountId: manager.stripeConnectAccountId,
           payoutsEnabled: true,
           chargesEnabled: true,
           detailsSubmitted: true
+        });
+      } catch (error) {
+        return errorResponse(res, error);
+      }
+    });
+    router11.post("/stripe-connect/sync", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const [manager] = await db.select().from(users).where(eq19(users.id, managerId)).limit(1);
+        if (!manager?.stripeConnectAccountId) {
+          return res.status(400).json({ error: "No Stripe account connected" });
+        }
+        const { getAccountStatus: getAccountStatus2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+        const status = await getAccountStatus2(manager.stripeConnectAccountId);
+        const onboardingStatus = status.detailsSubmitted ? "complete" : "in_progress";
+        await db.update(users).set({
+          stripeConnectOnboardingStatus: onboardingStatus
+          // If they are fully ready, ensure manager onboarding is arguably complete for payments part
+          // keeping it simple for now, just updating stripe status
+        }).where(eq19(users.id, managerId));
+        res.json({
+          connected: true,
+          accountId: manager.stripeConnectAccountId,
+          status: onboardingStatus,
+          details: status
         });
       } catch (error) {
         return errorResponse(res, error);
@@ -12356,13 +12417,16 @@ async function createPaymentIntent(params) {
   if (amount <= 0) {
     throw new Error("Payment amount must be greater than 0");
   }
-  if (managerConnectAccountId && !applicationFeeAmount) {
-    throw new Error("applicationFeeAmount is required when managerConnectAccountId is provided");
-  }
-  if (applicationFeeAmount && !managerConnectAccountId) {
+  const hasApplicationFee = applicationFeeAmount !== void 0 && applicationFeeAmount !== null;
+  if (hasApplicationFee && !managerConnectAccountId) {
     throw new Error("managerConnectAccountId is required when applicationFeeAmount is provided");
   }
-  if (applicationFeeAmount && applicationFeeAmount >= amount) {
+  if (managerConnectAccountId && !hasApplicationFee) {
+  }
+  if (hasApplicationFee && applicationFeeAmount < 0) {
+    throw new Error("Application fee must be 0 or a positive amount");
+  }
+  if (hasApplicationFee && applicationFeeAmount >= amount) {
     throw new Error("Application fee must be less than total amount");
   }
   if (!enableACSS && !enableCards) {
@@ -12418,13 +12482,15 @@ async function createPaymentIntent(params) {
     if (customerId) {
       paymentIntentParams.customer = customerId;
     }
-    if (managerConnectAccountId && applicationFeeAmount) {
-      paymentIntentParams.application_fee_amount = applicationFeeAmount;
+    if (managerConnectAccountId) {
       paymentIntentParams.transfer_data = {
         destination: managerConnectAccountId
       };
       paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-      paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+      if (hasApplicationFee) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+      }
     }
     const paymentIntent = await stripe2.paymentIntents.create(paymentIntentParams);
     return {
@@ -16709,6 +16775,31 @@ async function handleChargeRefunded(charge, webhookEventId) {
     logger.error(`[Webhook] Error updating refund status for charge ${charge.id}:`, error);
   }
 }
+async function handleAccountUpdated(account, webhookEventId) {
+  if (!pool) {
+    logger.error("Database pool not available for webhook");
+    return;
+  }
+  try {
+    const { getAccountStatus: getAccountStatus2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+    const chargesEnabled = account.charges_enabled;
+    const payoutsEnabled = account.payouts_enabled;
+    const detailsSubmitted = account.details_submitted;
+    const onboardingStatus = detailsSubmitted ? "complete" : "in_progress";
+    const [manager] = await db.select({ id: users.id }).from(users).where(eq25(users.stripeConnectAccountId, account.id)).limit(1);
+    if (manager) {
+      await db.update(users).set({
+        stripeConnectOnboardingStatus: onboardingStatus,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq25(users.id, manager.id));
+      logger.info(`[Webhook] Updated onboarding status to '${onboardingStatus}' for manager ${manager.id} (Account: ${account.id})`);
+    } else {
+      logger.warn(`[Webhook] Received account.updated for unknown account ${account.id}`);
+    }
+  } catch (error) {
+    logger.error(`[Webhook] Error handling account.updated for ${account.id}:`, error);
+  }
+}
 var router17, webhooks_default;
 var init_webhooks = __esm({
   "server/routes/webhooks.ts"() {
@@ -16763,6 +16854,9 @@ var init_webhooks = __esm({
             break;
           case "charge.refunded":
             await handleChargeRefunded(event.data.object, webhookEventId);
+            break;
+          case "account.updated":
+            await handleAccountUpdated(event.data.object, webhookEventId);
             break;
           default:
             if (event.type.startsWith("charge.")) {

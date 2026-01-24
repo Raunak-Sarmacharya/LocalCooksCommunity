@@ -71,27 +71,15 @@ export function CreateLocationDialog({
 
             const token = await currentFirebaseUser.getIdToken();
 
-            // Upload license file if provided
-            let licenseUrl: string | undefined;
-            if (licenseFile) {
-                setIsUploadingLicense(true);
-                const formData = new FormData();
-                formData.append("file", licenseFile);
-
-                const uploadResponse = await fetch("/api/upload-file", {
-                    method: "POST",
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                    credentials: "include",
-                    body: formData,
+            // License is now required, validation happens before this block/API call
+            if (!licenseFile) {
+                 toast({
+                    title: "License Required",
+                    description: "Please upload a kitchen license to create a location.",
+                    variant: "destructive",
                 });
-
-                if (!uploadResponse.ok) throw new Error("Failed to upload license file");
-
-                const uploadResult = await uploadResponse.json();
-                licenseUrl = uploadResult.url;
-                setIsUploadingLicense(false);
+                setIsCreating(false);
+                return;
             }
 
             // Create the location
@@ -117,10 +105,28 @@ export function CreateLocationDialog({
 
             const newLocation = await response.json();
 
-            // Update location with license if uploaded
-            if (licenseUrl) {
-                // Optimistically ignore failure here as location is already created
-                await fetch(`/api/manager/locations/${newLocation.id}`, {
+            // License is mandatory, so we always upload it here
+             setIsUploadingLicense(true);
+             const formData = new FormData();
+             formData.append("file", licenseFile);
+
+             const uploadResponse = await fetch("/api/upload-file", {
+                 method: "POST",
+                 headers: {
+                     'Authorization': `Bearer ${token}`,
+                 },
+                 credentials: "include",
+                 body: formData,
+             });
+
+             if (!uploadResponse.ok) throw new Error("Failed to upload license file"); // or handle gracefully but we require it
+
+             const uploadResult = await uploadResponse.json();
+             const licenseUrl = uploadResult.url;
+             setIsUploadingLicense(false);
+
+            // Update location with license
+             await fetch(`/api/manager/locations/${newLocation.id}`, {
                     method: "PUT",
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -131,18 +137,15 @@ export function CreateLocationDialog({
                         kitchenLicenseUrl: licenseUrl,
                         kitchenLicenseStatus: 'pending',
                     }),
-                }).catch(err => console.error("Failed to update license on new location", err));
-            }
+            });
 
             queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 
             toast({
                 title: "Location Created",
-                description: licenseUrl
-                    ? `${newLocation.name} has been created. License submitted for approval.`
-                    : `${newLocation.name} has been created. Upload a license to activate bookings.`,
+                description: `${newLocation.name} has been created. License submitted for approval.`,
             });
-
+            
             onLocationCreated(newLocation);
             onOpenChange(false);
             resetForm();
@@ -174,17 +177,15 @@ export function CreateLocationDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {hasExistingLocations && (
-                    <Alert className="bg-amber-50 border-amber-200">
-                        <AlertTitle className="text-amber-800 flex items-center gap-2">
-                            <FileText className="h-4 w-4" />
-                            License Required
-                        </AlertTitle>
-                        <AlertDescription className="text-amber-700 text-xs mt-1">
-                            Each location requires its own kitchen license approval before bookings can be accepted.
-                        </AlertDescription>
-                    </Alert>
-                )}
+                <Alert className="bg-amber-50 border-amber-200">
+                    <AlertTitle className="text-amber-800 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        License Required
+                    </AlertTitle>
+                    <AlertDescription className="text-amber-700 text-xs mt-1">
+                        A valid kitchen license or food establishment permit is required to create a location.
+                    </AlertDescription>
+                </Alert>
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-2">
@@ -246,7 +247,7 @@ export function CreateLocationDialog({
                         </div>
 
                         <div className="space-y-2">
-                            <FormLabel>Kitchen License {hasExistingLocations ? '*' : '(Optional)'}</FormLabel>
+                            <FormLabel>Kitchen License <span className="text-destructive">*</span></FormLabel>
                             <div
                                 className={cn(
                                     "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors bg-muted/10",

@@ -113,16 +113,16 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         hasAvailability;
 
     const missingSteps = [];
-    if (!isStripeComplete) missingSteps.push("Connect Stripe");
     if (!hasApprovedLicense) missingSteps.push("Upload Kitchen License");
     if (!hasKitchens) missingSteps.push("Create a Kitchen");
     // if (!hasAvailability) missingSteps.push("Set Availability");
+    if (!isStripeComplete) missingSteps.push("Connect Stripe");
 
     const showOnboardingModal =
         !userData?.manager_onboarding_completed &&
         !userData?.has_seen_welcome;
 
-    const showSetupBanner = !isReadyForBookings && !showOnboardingModal;
+    const showSetupBanner = !isReadyForBookings;
 
     const isLoading = isLoadingUser || (!!locationId && (isLoadingLocation || isLoadingKitchens));
 

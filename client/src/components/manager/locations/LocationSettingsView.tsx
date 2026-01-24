@@ -234,7 +234,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                 <div className="p-6">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 mb-6">
-                            <TabsTrigger value="setup">Setup</TabsTrigger>
+                            <TabsTrigger value="setup">License</TabsTrigger>
                             <TabsTrigger value="branding">Kitchen</TabsTrigger>
                             <TabsTrigger value="notifications">Notifications</TabsTrigger>
                             <TabsTrigger value="booking-rules">Rules</TabsTrigger>

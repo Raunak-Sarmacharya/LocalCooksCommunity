@@ -70,6 +70,9 @@ router.post("/stripe", async (req: Request, res: Response) => {
             case 'charge.refunded':
                 await handleChargeRefunded(event.data.object as Stripe.Charge, webhookEventId);
                 break;
+            case 'account.updated':
+                await handleAccountUpdated(event.data.object as Stripe.Account, webhookEventId);
+                break;
             default:
                 // Handle charge.partially_refunded and other charge events
                 if (event.type.startsWith('charge.')) {
@@ -511,6 +514,50 @@ async function handleChargeRefunded(charge: Stripe.Charge, webhookEventId: strin
         logger.info(`[Webhook] Updated booking payment status to '${refundStatus}' for PaymentIntent ${paymentIntentId}`);
     } catch (error: any) {
         logger.error(`[Webhook] Error updating refund status for charge ${charge.id}:`, error);
+    }
+}
+
+async function handleAccountUpdated(account: Stripe.Account, webhookEventId: string) {
+    if (!pool) {
+        logger.error('Database pool not available for webhook');
+        return;
+    }
+
+    try {
+        const { getAccountStatus } = await import('../services/stripe-connect-service');
+        
+        // We can just check the account object directly from the event, 
+        // but using the service ensures consistent logic if we have it there.
+        // For efficiency, let's process the event object directly first.
+        
+        const chargesEnabled = account.charges_enabled;
+        const payoutsEnabled = account.payouts_enabled;
+        const detailsSubmitted = account.details_submitted;
+        
+        const onboardingStatus = detailsSubmitted ? 'complete' : 'in_progress';
+        
+        // Find which manager owns this account
+        const [manager] = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.stripeConnectAccountId, account.id))
+            .limit(1);
+            
+        if (manager) {
+            await db.update(users)
+                .set({ 
+                    stripeConnectOnboardingStatus: onboardingStatus,
+                    updatedAt: new Date()
+                })
+                .where(eq(users.id, manager.id));
+                
+            logger.info(`[Webhook] Updated onboarding status to '${onboardingStatus}' for manager ${manager.id} (Account: ${account.id})`);
+        } else {
+            logger.warn(`[Webhook] Received account.updated for unknown account ${account.id}`);
+        }
+        
+    } catch (error: any) {
+        logger.error(`[Webhook] Error handling account.updated for ${account.id}:`, error);
     }
 }
 
