@@ -138,7 +138,17 @@ export default function ManagerBookingDashboard() {
   const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [activeView, setActiveView] = useState<ViewType>('overview');
+  
+  // Tab state - check URL params first, then default to 'overview'
+  const [activeView, setActiveView] = useState<ViewType>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile'];
+    if (view && validViews.includes(view as ViewType)) {
+      return view as ViewType;
+    }
+    return 'overview';
+  });
   // State for Create Location Sheet
   const [showCreateLocation, setShowCreateLocation] = useState(false);
 
@@ -217,6 +227,23 @@ export default function ManagerBookingDashboard() {
     missingSteps,
     isReadyForBookings
   } = useOnboardingStatus(selectedLocation?.id);
+
+  // Sync activeView with URL parameters
+  useEffect(() => {
+    const handleLocationChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const view = params.get('view');
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile'];
+      if (view && validViews.includes(view as ViewType)) {
+        setActiveView(view as ViewType);
+      }
+    };
+
+    // Check on mount and when URL might have changed externally
+    handleLocationChange();
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
 
   // Auto-select location if only one exists
   useEffect(() => {
@@ -1023,16 +1050,30 @@ function KitchenGalleryImages({
   );
 }
 
+// Valid tab values for settings view - defined at module level for stability
+const VALID_SETTINGS_TABS = ['setup', 'branding', 'notifications', 'booking-rules', 'application-requirements', 'location'] as const;
+type SettingsTab = typeof VALID_SETTINGS_TABS[number];
+
 function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Tab state - check URL params first, then default to 'setup'
-  const [activeTab, setActiveTab] = useState<string>(() => {
+  // IMPORTANT: We consume and clear the URL param after reading to prevent
+  // stale navigation state on page reload
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
-    if (tab && ['setup', 'branding', 'notifications', 'booking-rules', 'application-requirements', 'location'].includes(tab)) {
-      return tab;
+    if (tab && VALID_SETTINGS_TABS.includes(tab as SettingsTab)) {
+      // Clear the tab parameter from URL to prevent it from persisting on reload
+      // This is the "consume once" pattern - URL params are for navigation, not persistence
+      params.delete('tab');
+      const newUrl = params.toString()
+        ? `${window.location.pathname}?${params.toString()}`
+        : window.location.pathname + (params.get('view') ? `?view=${params.get('view')}` : '');
+      // Use replaceState to update URL without adding to history
+      window.history.replaceState({}, '', newUrl);
+      return tab as SettingsTab;
     }
     return 'setup';
   });
@@ -1129,24 +1170,29 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   });
 
 
-  // Handle URL parameter changes for tab navigation (on mount and when URL changes)
+  // Handle URL parameter changes for tab navigation (popstate only - for back/forward)
+  // Note: Initial tab is handled in useState initializer above with consume-once pattern
   useEffect(() => {
-    const handleLocationChange = () => {
+    const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab');
-      if (tab && ['setup', 'branding', 'notifications', 'booking-rules', 'application-requirements', 'location'].includes(tab)) {
-        setActiveTab(tab);
+      if (tab && VALID_SETTINGS_TABS.includes(tab as SettingsTab)) {
+        setActiveTab(tab as SettingsTab);
+        // Clear the tab param after consuming
+        params.delete('tab');
+        const newUrl = params.toString()
+          ? `${window.location.pathname}?${params.toString()}`
+          : window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
       }
     };
 
-    // Check on mount
-    handleLocationChange();
-
-    // Listen for popstate (back/forward button)
-    window.addEventListener('popstate', handleLocationChange);
+    // Only listen for popstate (back/forward button), not initial mount
+    // Initial mount is handled by useState initializer
+    window.addEventListener('popstate', handlePopState);
 
     return () => {
-      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('popstate', handlePopState);
     };
   }, []);
 

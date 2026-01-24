@@ -1,10 +1,10 @@
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
-import ManagerHeader from "@/components/layout/ManagerHeader";
+import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
   User,
-  MapPin,
   CheckCircle,
   XCircle,
   Clock,
@@ -41,9 +41,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ChatPanel from "@/components/chat/ChatPanel";
 import { getConversationForApplication, createConversation } from "@/services/chat-service";
 
-interface ManagerKitchenApplicationsProps {
-  embedded?: boolean;
-}
+
+import { useLocation } from "wouter";
 
 /**
  * Manager Kitchen Applications Page
@@ -52,20 +51,41 @@ interface ManagerKitchenApplicationsProps {
  * Chefs apply directly to kitchens via the KitchenApplicationForm.
  * Managers can approve/reject applications and view chef documents.
  */
-export default function ManagerKitchenApplications({ embedded = false }: ManagerKitchenApplicationsProps) {
+export default function ManagerKitchenApplications() {
+  const [, setLocation] = useLocation();
+  return (
+    <ManagerPageLayout 
+      title="Chef Applications" 
+      description="Review and manage chef applications to your kitchen locations."
+      showKitchenSelector={false} // Applications are currently location-based, so kitchen filter is not needed. [BUSINESS LOGIC]
+    >
+      {({ selectedLocationId, isLoading: isLayoutLoading }) => (
+        <ManagerKitchenApplicationsContent 
+          selectedLocationId={selectedLocationId} 
+          isLayoutLoading={isLayoutLoading}
+          setLocation={setLocation}
+        />
+      )}
+    </ManagerPageLayout>
+  );
+}
+
+function ManagerKitchenApplicationsContent({ 
+  selectedLocationId, 
+  isLayoutLoading,
+  setLocation
+}: { 
+  selectedLocationId: number | null, 
+  isLayoutLoading: boolean,
+  setLocation: (path: string) => void
+}) {
   const {
     applications,
-    pendingApplications,
-    approvedApplications,
-    rejectedApplications,
-    pendingCount,
-    approvedCount,
-    rejectedCount,
     isLoading,
     updateApplicationStatus,
-    verifyDocuments,
     revokeAccess
   } = useManagerKitchenApplications();
+
   const { toast } = useToast();
   const [selectedApplication, setSelectedApplication] = useState<any | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
@@ -77,6 +97,29 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
   const [chatLocationName, setChatLocationName] = useState<string | null>(null);
+
+  // Business Logic: Filter applications by location if selected
+  const filteredApplications = selectedLocationId 
+    ? applications.filter(a => a.locationId === selectedLocationId)
+    : applications;
+
+  // Re-derive filtered sets for tabs based on location filter
+  const isTier2Pending = (a: any) =>
+    a.status === 'approved' && a.current_tier === 2 && !!a.tier2_completed_at;
+
+  const pendingApplications = filteredApplications.filter(
+    (a) => a.status === "inReview" || isTier2Pending(a)
+  );
+  const approvedApplications = filteredApplications.filter(
+    (a) => a.status === "approved" && !isTier2Pending(a)
+  );
+  const rejectedApplications = filteredApplications.filter(
+    (a) => a.status === "rejected"
+  );
+
+  const pendingCount = pendingApplications.length;
+  const approvedCount = approvedApplications.length;
+  const rejectedCount = rejectedApplications.length;
 
   // Get manager ID from API
   const { data: managerInfo } = useQuery({
@@ -399,12 +442,21 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isLayoutLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#208D80] mx-auto mb-4" />
-          <p className="text-gray-600">Loading applications...</p>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
+          ))}
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-64" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} className="h-48 w-full rounded-xl" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -425,11 +477,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
             variant="outline"
             onClick={() => {
               // Navigate to settings with application requirements tab
-              const url = new URL(window.location.href);
-              url.pathname = '/manager/booking-dashboard';
-              url.searchParams.set('view', 'settings');
-              url.searchParams.set('tab', 'application-requirements');
-              window.location.href = url.toString();
+              setLocation('/manager/dashboard?view=settings&tab=application-requirements');
             }}
             className="flex items-center gap-2"
           >
@@ -438,12 +486,12 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
             <ExternalLink className="h-3 w-3" />
           </Button>
         </div>
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mt-4 p-3 bg-primary/5 border border-primary/10 rounded-lg">
           <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm text-blue-900 font-medium mb-1">Customize Application Requirements</p>
-              <p className="text-xs text-blue-700">
+              <p className="text-sm text-foreground font-medium mb-1">Customize Application Requirements</p>
+              <p className="text-xs text-muted-foreground">
                 Control which fields are required when chefs apply to your kitchens. You can make fields optional to streamline the application process.
               </p>
             </div>
@@ -453,26 +501,26 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="border-l-4 border-l-yellow-500">
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Pending Review</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Review</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-yellow-600">{pendingCount}</div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-green-500">
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Approved</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-600">{approvedCount}</div>
             <p className="text-xs text-gray-500 mt-1">Can book kitchens</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-red-500">
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Rejected</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Rejected</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-600">{rejectedCount}</div>
@@ -516,7 +564,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
               <CardContent className="py-12 text-center">
                 <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">All Caught Up!</h3>
-                <p className="text-gray-600">No pending applications to review.</p>
+                <p className="text-muted-foreground">No pending applications to review.</p>
               </CardContent>
             </Card>
           )}
@@ -541,7 +589,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Approved Applications</h3>
-                <p className="text-gray-600">Approved chef applications will appear here.</p>
+                <p className="text-muted-foreground">Approved chef applications will appear here.</p>
               </CardContent>
             </Card>
           )}
@@ -566,7 +614,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Rejected Applications</h3>
-                <p className="text-gray-600">Rejected applications will appear here.</p>
+                <p className="text-muted-foreground">Rejected applications will appear here.</p>
               </CardContent>
             </Card>
           )}
@@ -578,11 +626,11 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ChefHat className="h-5 w-5 text-[#208D80]" />
+            <ChefHat className="h-5 w-5 text-primary" />
               Review Chef Application
             </DialogTitle>
             <DialogDescription>
-              Review the chef's application details and documents.
+              Review the chef&apos;s application details and documents.
             </DialogDescription>
           </DialogHeader>
 
@@ -639,7 +687,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     <Briefcase className="h-4 w-4" />
                     Business Information
                   </h3>
-                  <div className="p-4 bg-[#208D80]/5 rounded-lg border border-[#208D80]/20">
+                <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                     {(() => {
                       const info = parseBusinessInfo(selectedApplication.businessDescription);
                       if (!info) return <p className="text-gray-600">No business information provided.</p>;
@@ -1126,18 +1174,9 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     </>
   );
 
-  if (embedded) {
-    return content;
-  }
-
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <ManagerHeader />
-      <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
-        <div className="container mx-auto px-4 py-8 max-w-7xl">
-          {content}
-        </div>
-      </main>
+    <div className="space-y-6">
+      {content}
     </div>
   );
 }

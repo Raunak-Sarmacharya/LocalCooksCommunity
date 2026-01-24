@@ -274,6 +274,149 @@ router.get("/revenue/transactions", requireFirebaseAuthWithUser, requireManager,
     }
 });
 
+// Create Stripe Connect account and get onboarding link
+// ===================================
+// STRIPE CONNECT ENDPOINTS
+// ===================================
+
+// Create Stripe Connect account and get onboarding link
+router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    console.log('[Stripe Connect] Create request received for manager:', req.neonUser?.id);
+    try {
+        const managerId = req.neonUser!.id;
+        
+        // Use raw SQL to bypass circular dependency/undefined schema issues
+        const userResult = await db.execute(sql`
+            SELECT id, username as email, stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+
+        const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
+
+        if (!userRow) {
+            console.error('[Stripe Connect] User not found for ID:', managerId);
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        // Map raw row to expected object structure
+        const user = {
+            id: userRow.id,
+            email: userRow.email,
+            stripeConnectAccountId: userRow.stripe_connect_account_id
+        };
+
+        const { createConnectAccount, createAccountLink, isAccountReady, createDashboardLoginLink } = await import('../services/stripe-connect-service');
+
+        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
+        const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+
+        // Case 1: User already has a Stripe Connect account
+        if (user.stripeConnectAccountId) {
+             const isReady = await isAccountReady(user.stripeConnectAccountId);
+             
+             if (isReady) {
+                 return res.json({ alreadyExists: true, accountId: user.stripeConnectAccountId });
+             } else {
+                 const link = await createAccountLink(user.stripeConnectAccountId, refreshUrl, returnUrl);
+                 return res.json({ url: link.url });
+             }
+        }
+
+        // Case 2: No account, create one
+        console.log('[Stripe Connect] Creating new account for email:', user.email);
+        const { accountId } = await createConnectAccount({
+            managerId,
+            email: user.email,
+            country: 'CA',
+        });
+
+        // Save account ID to user
+        await userService.updateUser(managerId, { stripeConnectAccountId: accountId });
+
+        // Create onboarding link
+        const link = await createAccountLink(accountId, refreshUrl, returnUrl);
+        
+        return res.json({ url: link.url });
+
+    } catch (error) {
+        console.error('[Stripe Connect] Error in create route:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get Stripe Onboarding Link
+router.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        
+        const userResult = await db.execute(sql`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+        const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
+        
+        if (!userRow?.stripe_connect_account_id) {
+             return res.status(400).json({ error: "No Stripe Connect account found" });
+        }
+        
+        const { createAccountLink } = await import('../services/stripe-connect-service');
+        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
+        const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+        
+        const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
+        return res.json({ url: link.url });
+    } catch (error) {
+        console.error('[Stripe Connect] Error in onboarding-link route:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get Stripe Dashboard login link
+router.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        
+        const userResult = await db.execute(sql`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+        const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
+
+        if (!userRow?.stripe_connect_account_id) {
+            return res.status(400).json({ error: "No Stripe Connect account found" });
+        }
+
+        const { createDashboardLoginLink, isAccountReady, createAccountLink } = await import('../services/stripe-connect-service');
+        
+        const isReady = await isAccountReady(userRow.stripe_connect_account_id);
+        
+        if (isReady) {
+            const link = await createDashboardLoginLink(userRow.stripe_connect_account_id);
+            return res.json({ url: link.url });
+        } else {
+             const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+             const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
+             const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+             
+             const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
+             
+             return res.json({ url: link.url, requiresOnboarding: true });
+        }
+
+    } catch (error) {
+        console.error('[Stripe Connect] Error in dashboard-link route:', error);
+        return errorResponse(res, error);
+    }
+});
+
 // Get Stripe Connect status for manager
 router.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {

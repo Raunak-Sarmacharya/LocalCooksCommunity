@@ -1,6 +1,5 @@
 import React from "react";
 import { useManagerOnboarding } from "@/components/manager/onboarding/ManagerOnboardingContext";
-import { ManagerOnboardingProvider } from "@/components/manager/onboarding/ManagerOnboardingProvider";
 import { componentRegistry } from "@/config/onboarding";
 import EnterpriseStepper from "@/components/manager/onboarding/EnterpriseStepper";
 import { Button } from "@/components/ui/button";
@@ -9,16 +8,13 @@ import { useLocation } from "wouter";
 
 export default function ManagerSetupPage() {
     return (
-        <ManagerOnboardingProvider>
-            <ManagerSetupPageContent />
-        </ManagerOnboardingProvider>
+        <ManagerSetupPageContent />
     );
 }
 
 function ManagerSetupPageContent() {
     const {
         currentStepData,
-        handleSkip // Using skip as "Complete Later" / Exit
     } = useManagerOnboarding();
 
     const [, setLocation] = useLocation();
