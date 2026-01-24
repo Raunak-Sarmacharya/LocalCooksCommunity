@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { auth } from "@/lib/firebase";
 
 // Interface for kitchen applications with enriched data
-interface KitchenApplicationForManager {
+export interface KitchenApplicationForManager {
   id: number;
   chefId: number;
   locationId: number;
