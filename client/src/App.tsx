@@ -1,5 +1,6 @@
 import { CustomAlertsProvider, useCustomAlerts } from "@/components/ui/custom-alerts";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -565,6 +566,7 @@ function App() {
         <CustomAlertsProvider>
           <TooltipProvider>
             <Toaster />
+            <SonnerToaster />
             <Router />
           </TooltipProvider>
         </CustomAlertsProvider>

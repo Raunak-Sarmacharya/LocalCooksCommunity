@@ -2279,9 +2279,6 @@ export default function ApplicantDashboard() {
           <div className="mb-8">
             <ChefChatView
               chefId={chefId}
-              embedded={true}
-              showHeader={true}
-              hideIfEmpty={true}
             />
           </div>
 

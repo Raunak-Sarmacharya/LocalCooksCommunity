@@ -14,7 +14,8 @@ import {
     Package,
     DollarSign,
     MessageCircle,
-    FileText
+    FileText,
+    Loader2
 } from "lucide-react"
 
 import {
@@ -27,6 +28,8 @@ import {
     CommandSeparator,
     CommandShortcut,
 } from "@/components/ui/command"
+import { useQuery } from "@tanstack/react-query"
+import { auth } from "@/lib/firebase"
 
 interface CommandMenuProps {
     open: boolean
@@ -53,15 +56,34 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout }: Comm
         command()
     }, [onOpenChange])
 
+    // --- Dynamic Data Fetching ---
+
+    // Fetch Manager Locations
+    const { data: locations = [] } = useQuery({
+        queryKey: ["/api/manager/locations/summary"],
+        queryFn: async () => {
+            if (!auth.currentUser) return [];
+            const token = await auth.currentUser.getIdToken();
+            // Using existing endpoint or fallback to simple fetch
+            const res = await fetch("/api/manager/locations", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) return [];
+            return res.json();
+        },
+        enabled: open // Only fetch when open
+    });
+
     return (
         <>
             <div className="hidden">
-                {/* Hidden trigger for accessibility or debugging if needed */}
+                {/* Hidden trigger */}
             </div>
             <CommandDialog open={open} onOpenChange={onOpenChange}>
                 <CommandInput placeholder="Type a command or search..." />
                 <CommandList>
                     <CommandEmpty>No results found.</CommandEmpty>
+
                     <CommandGroup heading="Suggestions">
                         <CommandItem onSelect={() => runCommand(() => onViewChange?.("overview"))}>
                             <LayoutDashboard className="mr-2 h-4 w-4" />
@@ -76,11 +98,31 @@ export function CommandMenu({ open, onOpenChange, onViewChange, onLogout }: Comm
                             <span>Messages</span>
                         </CommandItem>
                     </CommandGroup>
+
                     <CommandSeparator />
+
+                    {/* Dynamic Kitchens */}
+                    {locations.length > 0 && (
+                        <CommandGroup heading="Your Kitchens">
+                            {locations.map((loc: any) => (
+                                <CommandItem key={loc.id} onSelect={() => runCommand(() => {
+                                    // Navigate to settings or specific location view if supported
+                                    // For now, switch to locations view
+                                    onViewChange?.("my-locations");
+                                })}>
+                                    <MapPin className="mr-2 h-4 w-4" />
+                                    <span>{loc.name}</span>
+                                    <span className="ml-2 text-xs text-muted-foreground truncate max-w-[100px]">{loc.address}</span>
+                                </CommandItem>
+                            ))}
+                        </CommandGroup>
+                    )}
+                    {(locations.length > 0) && <CommandSeparator />}
+
                     <CommandGroup heading="Management">
                         <CommandItem onSelect={() => runCommand(() => onViewChange?.("my-locations"))}>
                             <MapPin className="mr-2 h-4 w-4" />
-                            <span>My Locations</span>
+                            <span>All Locations</span>
                         </CommandItem>
                         <CommandItem onSelect={() => runCommand(() => onViewChange?.("settings"))}>
                             <Settings className="mr-2 h-4 w-4" />

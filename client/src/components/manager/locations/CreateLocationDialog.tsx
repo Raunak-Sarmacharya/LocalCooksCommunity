@@ -6,7 +6,6 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
     Dialog,
     DialogContent,
@@ -17,6 +16,17 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createLocationSchema, CreateLocationFormValues } from "@/schemas/locationSchema";
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from "@/components/ui/form";
 
 interface CreateLocationDialogProps {
     open: boolean;
@@ -34,33 +44,26 @@ export function CreateLocationDialog({
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
-    const [name, setName] = useState('');
-    const [address, setAddress] = useState('');
-    const [notificationEmail, setNotificationEmail] = useState('');
-    const [notificationPhone, setNotificationPhone] = useState('');
     const [licenseFile, setLicenseFile] = useState<File | null>(null);
-
     const [isUploadingLicense, setIsUploadingLicense] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
 
+    const form = useForm<CreateLocationFormValues>({
+        resolver: zodResolver(createLocationSchema),
+        defaultValues: {
+            name: "",
+            address: "",
+            notificationEmail: "",
+            notificationPhone: "",
+        },
+    });
+
     const resetForm = () => {
-        setName('');
-        setAddress('');
-        setNotificationEmail('');
-        setNotificationPhone('');
+        form.reset();
         setLicenseFile(null);
     };
 
-    const handleCreateLocation = async () => {
-        if (!name.trim() || !address.trim()) {
-            toast({
-                title: "Missing Information",
-                description: "Please fill in location name and address",
-                variant: "destructive",
-            });
-            return;
-        }
-
+    const onSubmit = async (data: CreateLocationFormValues) => {
         setIsCreating(true);
         try {
             const currentFirebaseUser = auth.currentUser;
@@ -100,10 +103,10 @@ export function CreateLocationDialog({
                 },
                 credentials: "include",
                 body: JSON.stringify({
-                    name: name.trim(),
-                    address: address.trim(),
-                    notificationEmail: notificationEmail.trim() || undefined,
-                    notificationPhone: notificationPhone.trim() || undefined,
+                    name: data.name.trim(),
+                    address: data.address.trim(),
+                    notificationEmail: data.notificationEmail?.trim() || undefined,
+                    notificationPhone: data.notificationPhone?.trim() || undefined,
                 }),
             });
 
@@ -183,126 +186,146 @@ export function CreateLocationDialog({
                     </Alert>
                 )}
 
-                <div className="space-y-4 py-2">
-                    <div className="space-y-2">
-                        <Label htmlFor="location-name">Location Name <span className="text-destructive">*</span></Label>
-                        <Input
-                            id="location-name"
-                            placeholder="e.g., Downtown Kitchen"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="location-address">Address <span className="text-destructive">*</span></Label>
-                        <Input
-                            id="location-address"
-                            placeholder="e.g., 123 Main St, St. John's, NL"
-                            value={address}
-                            onChange={(e) => setAddress(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="notif-email">Notification Email</Label>
-                            <Input
-                                id="notif-email"
-                                type="email"
-                                placeholder="email@example.com"
-                                value={notificationEmail}
-                                onChange={(e) => setNotificationEmail(e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="notif-phone">Notification Phone</Label>
-                            <Input
-                                id="notif-phone"
-                                type="tel"
-                                placeholder="(709) 555-1234"
-                                value={notificationPhone}
-                                onChange={(e) => setNotificationPhone(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label>Kitchen License {hasExistingLocations ? '*' : '(Optional)'}</Label>
-                        <div
-                            className={cn(
-                                "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors bg-muted/10",
-                                licenseFile ? "border-primary/50 bg-primary/5" : ""
+                <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-2">
+                        <FormField
+                            control={form.control}
+                            name="name"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Location Name <span className="text-destructive">*</span></FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="e.g., Downtown Kitchen" {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )}
-                        >
-                            {licenseFile ? (
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <FileText className="h-5 w-5 text-primary" />
-                                        <span className="text-sm text-foreground truncate max-w-[200px]">{licenseFile.name}</span>
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="address"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Address <span className="text-destructive">*</span></FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="e.g., 123 Main St, St. John's, NL" {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <FormField
+                                control={form.control}
+                                name="notificationEmail"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Notification Email</FormLabel>
+                                        <FormControl>
+                                            <Input type="email" placeholder="email@example.com" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="notificationPhone"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Notification Phone</FormLabel>
+                                        <FormControl>
+                                            <Input type="tel" placeholder="(709) 555-1234" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <FormLabel>Kitchen License {hasExistingLocations ? '*' : '(Optional)'}</FormLabel>
+                            <div
+                                className={cn(
+                                    "border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors bg-muted/10",
+                                    licenseFile ? "border-primary/50 bg-primary/5" : ""
+                                )}
+                            >
+                                {licenseFile ? (
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <FileText className="h-5 w-5 text-primary" />
+                                            <span className="text-sm text-foreground truncate max-w-[200px]">{licenseFile.name}</span>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setLicenseFile(null)}
+                                            className="h-8 w-8 p-0"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </Button>
                                     </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setLicenseFile(null)}
-                                        className="h-8 w-8 p-0"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            ) : (
-                                <label className="cursor-pointer flex flex-col items-center gap-2">
-                                    <input
-                                        type="file"
-                                        accept=".pdf,.jpg,.jpeg,.png"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                                if (file.size > 10 * 1024 * 1024) {
-                                                    toast({
-                                                        title: "File Too Large",
-                                                        description: "Please upload a file smaller than 10MB",
-                                                        variant: "destructive",
-                                                    });
-                                                    return;
+                                ) : (
+                                    <label className="cursor-pointer flex flex-col items-center gap-2">
+                                        <input
+                                            type="file"
+                                            accept=".pdf,.jpg,.jpeg,.png"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    if (file.size > 10 * 1024 * 1024) {
+                                                        toast({
+                                                            title: "File Too Large",
+                                                            description: "Please upload a file smaller than 10MB",
+                                                            variant: "destructive",
+                                                        });
+                                                        return;
+                                                    }
+                                                    setLicenseFile(file);
                                                 }
-                                                setLicenseFile(file);
-                                            }
-                                        }}
-                                        className="hidden"
-                                    />
-                                    <Upload className="h-8 w-8 text-muted-foreground" />
-                                    <span className="text-sm font-medium text-primary">Click to upload license</span>
-                                    <span className="text-xs text-muted-foreground">PDF, JPG, or PNG (max 10MB)</span>
-                                </label>
-                            )}
+                                            }}
+                                            className="hidden"
+                                        />
+                                        <Upload className="h-8 w-8 text-muted-foreground" />
+                                        <span className="text-sm font-medium text-primary">Click to upload license</span>
+                                        <span className="text-xs text-muted-foreground">PDF, JPG, or PNG (max 10MB)</span>
+                                    </label>
+                                )}
+                            </div>
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                Upload a valid food establishment permit or kitchen license.
+                            </p>
                         </div>
-                    </div>
-                </div>
 
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>
-                        Cancel
-                    </Button>
-                    <Button onClick={handleCreateLocation} disabled={isCreating || isUploadingLicense}>
-                        {isUploadingLicense ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Uploading...
-                            </>
-                        ) : isCreating ? (
-                            <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Creating...
-                            </>
-                        ) : (
-                            <>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Create Location
-                            </>
-                        )}
-                    </Button>
-                </DialogFooter>
+                        <DialogFooter className="mt-6">
+                            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isCreating}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isCreating || isUploadingLicense}>
+                                {isUploadingLicense ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Uploading...
+                                    </>
+                                ) : isCreating ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Creating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Create Location
+                                    </>
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </Form>
             </DialogContent>
         </Dialog>
     );

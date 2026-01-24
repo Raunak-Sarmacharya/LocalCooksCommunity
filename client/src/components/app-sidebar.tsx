@@ -72,9 +72,9 @@ const data = {
             title: "Property",
             items: [
                 {
-                    title: "Kitchens",
+                    title: "Settings",
                     url: "settings",
-                    icon: Wrench,
+                    icon: Settings,
                 },
                 {
                     title: "Availability",

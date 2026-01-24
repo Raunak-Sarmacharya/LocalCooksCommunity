@@ -241,7 +241,7 @@ export default function Header() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b border-gray-200/50" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
+    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 hover:scale-[1.02] group">
           <Logo variant="brand" className="h-8 sm:h-10 md:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110 flex-shrink-0" />
