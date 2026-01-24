@@ -93,23 +93,29 @@ function getCalendarDays(year: number, month: number) {
 
 interface KitchenAvailabilityManagementProps {
   embedded?: boolean;
+  initialLocationId?: number;
+  initialKitchenId?: number;
 }
 
-export default function KitchenAvailabilityManagement({ embedded = false }: KitchenAvailabilityManagementProps = {}) {
+export default function KitchenAvailabilityManagement({
+  embedded = false,
+  initialLocationId,
+  initialKitchenId
+}: KitchenAvailabilityManagementProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
 
-  // Initialize from URL params
+  // Initialize from props (for embedded mode) or URL params
   const urlParams = new URLSearchParams(window.location.search);
   const urlLocationId = urlParams.get('location');
   const urlKitchenId = urlParams.get('kitchen');
 
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
-    urlLocationId ? parseInt(urlLocationId) : null
+    initialLocationId ?? (urlLocationId ? parseInt(urlLocationId) : null)
   );
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(
-    urlKitchenId ? parseInt(urlKitchenId) : null
+    initialKitchenId ?? (urlKitchenId ? parseInt(urlKitchenId) : null)
   );
   const [kitchens, setKitchens] = useState<any[]>([]);
 

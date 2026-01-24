@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Info, Plus, CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,13 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
+import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 
 export default function StorageListingsStep() {
-  const { 
-    kitchens, 
-    selectedKitchenId, 
+  const {
+    kitchens,
+    selectedKitchenId,
     setSelectedKitchenId,
-    storageForm: { listings, isLoading } 
+    storageForm: { listings, isLoading },
+    handleNext,
+    handleBack
   } = useManagerOnboarding();
   const { toast } = useToast();
 
@@ -69,12 +71,6 @@ export default function StorageListingsStep() {
         basePrice: 0,
         minimumBookingDuration: 1,
       });
-      // Optionally trigger reload via Context, but for now assuming Context re-fetches/updates or we should add a reload function to Context.
-      // Ideally Context exposes a reload function. The Context `useEffect` listens to Step change. 
-      // We might want to force a reload. 
-      // Since we don't have a reload function exposed, we might rely on re-mounting or update via parent.
-      // But actually, Context `existingStorageListings` is set via useEffect.
-      // We should probably expose a `refreshListings` from context.
     } catch (error: any) {
       toast({
         title: "Error",
@@ -149,7 +145,7 @@ export default function StorageListingsStep() {
                 <div className="space-y-3">
                   <div className="grid gap-2">
                     <Label>Storage Type</Label>
-                    <Select value={formData.storageType} onValueChange={(v: any) => setFormData({...formData, storageType: v})}>
+                    <Select value={formData.storageType} onValueChange={(v: any) => setFormData({ ...formData, storageType: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="dry">Dry Storage</SelectItem>
@@ -158,25 +154,25 @@ export default function StorageListingsStep() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="grid gap-2">
                     <Label>Name *</Label>
-                    <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Main Dry Storage" />
+                    <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Main Dry Storage" />
                   </div>
 
                   <div className="grid gap-2">
                     <Label>Description</Label>
-                    <Textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} rows={2} />
+                    <Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} rows={2} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-2">
                       <Label>Daily Rate ($) *</Label>
-                      <Input type="number" value={formData.basePrice} onChange={e => setFormData({...formData, basePrice: parseFloat(e.target.value) || 0})} />
+                      <Input type="number" value={formData.basePrice} onChange={e => setFormData({ ...formData, basePrice: parseFloat(e.target.value) || 0 })} />
                     </div>
                     <div className="grid gap-2">
-                       <Label>Min Days *</Label>
-                       <Input type="number" value={formData.minimumBookingDuration} onChange={e => setFormData({...formData, minimumBookingDuration: parseInt(e.target.value) || 1})} />
+                      <Label>Min Days *</Label>
+                      <Input type="number" value={formData.minimumBookingDuration} onChange={e => setFormData({ ...formData, minimumBookingDuration: parseInt(e.target.value) || 1 })} />
                     </div>
                   </div>
 
@@ -190,6 +186,12 @@ export default function StorageListingsStep() {
           )}
         </div>
       )}
+
+      <OnboardingNavigationFooter
+        onNext={handleNext}
+        onBack={handleBack}
+        isNextDisabled={kitchens.length === 0}
+      />
     </div>
   );
 }

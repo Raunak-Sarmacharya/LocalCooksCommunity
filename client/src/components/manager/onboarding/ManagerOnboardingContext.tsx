@@ -1,90 +1,67 @@
-
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
-import { OnboardingStep, Location, Kitchen, StorageListing, EquipmentListing } from "./types";
+import { Location, Kitchen, StorageListing, EquipmentListing } from "./types";
 import { optionalPhoneNumberSchema } from "@shared/phone-validation";
+import { useOnboarding } from '@onboardjs/react';
+import { steps } from "@/config/onboarding-steps";
 
-// Define the steps structure
-import { 
-  Building2, 
-  Settings, 
-  Users, 
-  CreditCard, 
-  Package, 
-  Wrench, 
-  Sparkles 
-} from "lucide-react";
+// Step ID mapping for backwards compatibility with legacy numeric format in database
+const STEP_ID_MAP: Record<string, number> = {
+  'welcome': 0,
+  'location': 1,
+  'create-kitchen': 2,
+  'application-requirements': 3,
+  'payment-setup': 4,
+  'availability': 5,
+  'storage-listings': 6,
+  'equipment-listings': 7,
+  'completion-summary': 8
+};
 
-export const STEPS: OnboardingStep[] = [
-  {
-    id: 0,
-    title: "Welcome",
-    description: "Learn about the setup process",
-    icon: <Sparkles className="h-6 w-6" />,
-  },
-  {
-    id: 1,
-    title: "Location & Contact",
-    description: "Set up your location details, notification preferences, and kitchen license",
-    icon: <Building2 className="h-6 w-6" />,
-  },
-  {
-    id: 2,
-    title: "Create Kitchen",
-    description: "Set up your first kitchen space",
-    icon: <Settings className="h-6 w-6" />,
-  },
-  {
-    id: 3,
-    title: "Application Requirements",
-    description: "Configure which fields are required when chefs apply to your kitchens",
-    icon: <Users className="h-6 w-6" />,
-  },
-  {
-    id: 4,
-    title: "Payment Setup",
-    description: "Connect Stripe to receive payments for bookings",
-    icon: <CreditCard className="h-6 w-6" />,
-  },
-  {
-    id: 5,
-    title: "Storage Listings",
-    description: "Add storage options (optional - can add later)",
-    icon: <Package className="h-6 w-6" />,
-  },
-  {
-    id: 6,
-    title: "Equipment Listings",
-    description: "Add equipment options (optional - can add later)",
-    icon: <Wrench className="h-6 w-6" />,
-  },
-];
+const NUMERIC_TO_STRING_MAP: Record<number, string> = Object.entries(STEP_ID_MAP)
+  .reduce((acc, [str, num]) => ({ ...acc, [num]: str }), {});
+
+
+// We re-export the step interface from types or core if needed, 
+// but for this context we mainly need the logic.
 
 interface ManagerOnboardingContextType {
-  // State
-  isOpen: boolean;
-  setIsOpen: (isOpen: boolean) => void;
+  // OnboardJS State & Actions
+  currentStepData: any; // The payload of the current step
+  currentStepIndex: number;
+  isFirstStep: boolean;
+  isLastStep: boolean;
+  isOnboardingCompleted: boolean;
+  hasExistingLocation: boolean;
+  handleNext: () => Promise<void>;
+  handleBack: () => void;
+  handleSkip: () => Promise<void>;
+
+  // Legacy/Derived State
   currentStep: number;
   setCurrentStep: (step: number) => void;
-  visibleSteps: OnboardingStep[];
+  visibleSteps: any[];
   completedSteps: Record<string, boolean>;
-  hasExistingLocation: boolean;
-  
-  // Data
+
+  // Dialog State (Controlled by parent or local)
+  isOpen: boolean;
+  setIsOpen: (isOpen: boolean) => void;
+
+  // Domain Data
   locations: Location[];
   selectedLocationId: number | null;
   setSelectedLocationId: (id: number | null) => void;
   selectedLocation?: Location;
-  
+
   kitchens: Kitchen[];
   selectedKitchenId: number | null;
   setSelectedKitchenId: (id: number | null) => void;
   isLoadingLocations: boolean;
-  
+
   // Forms State
   locationForm: {
     name: string;
@@ -96,7 +73,7 @@ interface ManagerOnboardingContextType {
     setNotificationEmail: (val: string) => void;
     setNotificationPhone: (val: string) => void;
   };
-  
+
   licenseForm: {
     file: File | null;
     setFile: (file: File | null) => void;
@@ -118,49 +95,54 @@ interface ManagerOnboardingContextType {
     setShowCreate: (show: boolean) => void;
     isCreating: boolean;
   };
-  
+
   storageForm: {
     listings: StorageListing[];
     isLoading: boolean;
   };
-  
+
   equipmentForm: {
     listings: EquipmentListing[];
     isLoading: boolean;
   };
 
   // Actions
-  handleNext: () => Promise<void>;
-  handleBack: () => void;
-  handleSkip: () => Promise<void>;
   updateLocation: () => Promise<void>;
   createKitchen: () => Promise<void>;
   uploadLicense: () => Promise<string | null>;
+  startNewLocation: () => void;
 }
 
 const ManagerOnboardingContext = createContext<ManagerOnboardingContextType | undefined>(undefined);
 
-export function ManagerOnboardingProvider({ children }: { children: ReactNode }) {
+// Internal component to consume OnboardJS hook and provide the blended context
+function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: ReactNode, isOpen: boolean, setIsOpen: (val: boolean) => void }) {
+  const {
+    currentStep,
+    isCompleted,
+    next,
+    previous,
+    skip: onboardSkip,
+    state,
+    engine
+  } = useOnboarding();
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { locations, isLoadingLocations } = useManagerDashboard();
   const { user: firebaseUser } = useFirebaseAuth();
 
-  // Dialog State
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  
   // Data State
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
   const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
-  
+
   // Location Form State
   const [locationName, setLocationName] = useState("");
   const [locationAddress, setLocationAddress] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationPhone, setNotificationPhone] = useState("");
-  
+
   // License Form State
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
@@ -183,13 +165,8 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
   const [existingEquipmentListings, setExistingEquipmentListings] = useState<EquipmentListing[]>([]);
   const [isLoadingEquipment, setIsLoadingEquipment] = useState(false);
 
-  // Derived State
-  const hasExistingLocation = !isLoadingLocations && locations.length > 0;
-  const selectedLocation = locations.find((loc) => loc.id === selectedLocationId) as Location | undefined;
-
-  const visibleSteps = hasExistingLocation
-    ? STEPS.filter(step => step.id >= 2)
-    : STEPS;
+  // Multi-location State
+  const [isAddingLocation, setIsAddingLocation] = useState(false);
 
   // --- Auth & Profile Queries ---
   const { data: firebaseUserData } = useQuery({
@@ -208,10 +185,105 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
   });
 
   const userData = firebaseUserData;
-  const isManager = userData?.role === "manager";
-  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>(userData?.manager_onboarding_steps_completed || {});
+  const isStripeOnboardingComplete = userData?.stripe_connect_onboarding_status === 'complete' || userData?.stripeConnectOnboardingStatus === 'complete';
+  const [completedSteps, setCompletedSteps] = useState<Record<string, boolean>>({});
 
-  // --- Effects ---
+  // Normalize legacy numeric step keys to string format for UI consumption
+  useEffect(() => {
+    if (userData?.manager_onboarding_steps_completed) {
+      const rawSteps = userData.manager_onboarding_steps_completed as Record<string, boolean>;
+      const normalized: Record<string, boolean> = {};
+
+      for (const [key, value] of Object.entries(rawSteps)) {
+        // Handle legacy format: step_0, step_1, step_0_location_28
+        const match = key.match(/^step_(\d+)(?:_location_\d+)?$/);
+        if (match) {
+          const numericId = parseInt(match[1]);
+          const stringId = NUMERIC_TO_STRING_MAP[numericId];
+          if (stringId && !normalized[stringId]) {
+            normalized[stringId] = Boolean(value);
+          }
+        } else {
+          // Already string format (new)
+          normalized[key] = Boolean(value);
+        }
+      }
+      setCompletedSteps(normalized);
+    }
+  }, [userData]);
+
+  // Derived State
+  const hasExistingLocation = !isLoadingLocations && locations.length > 0;
+  const selectedLocation = locations.find((loc) => loc.id === selectedLocationId) as Location | undefined;
+
+  // Build visible steps: show all steps, but skip welcome if returning user with location
+  let visibleStepsFiltered = [...steps];
+
+  // Skip welcome screen for returning managers with existing locations (not adding new)
+  if (hasExistingLocation && !isAddingLocation) {
+    visibleStepsFiltered = visibleStepsFiltered.filter(step => step.id !== 'welcome');
+  }
+
+  // Skip payment setup if already completed globally
+  if (isStripeOnboardingComplete) {
+    visibleStepsFiltered = visibleStepsFiltered.filter(step => step.id !== 'payment-setup');
+  }
+
+  // CRITICAL FIX: Compute the correct index in the visible steps array
+  // OnboardJS currentStep is index in ORIGINAL steps array, we need index in FILTERED array
+  const currentStepId = currentStep?.id;
+  const currentVisibleStepIndex = visibleStepsFiltered.findIndex(step => step.id === currentStepId);
+
+  // AUTO-SKIP: If OnboardJS navigates to a step that should be hidden, skip it
+  // Only skip steps that are EXPLICITLY filtered out, not due to timing issues
+  useEffect(() => {
+    if (!currentStepId || isCompleted) return;
+
+    // Define which steps CAN be skipped based on current conditions
+    const stepsToSkip: string[] = [];
+    if (isStripeOnboardingComplete) stepsToSkip.push('payment-setup');
+    if (hasExistingLocation && !isAddingLocation) stepsToSkip.push('welcome');
+
+    // Only auto-skip if current step is in the explicit skip list
+    const stepIdStr = String(currentStepId);
+    if (stepsToSkip.includes(stepIdStr)) {
+      console.log(`[Onboarding] Auto-skipping step: ${stepIdStr}`);
+      next();
+    }
+  }, [currentStepId, isCompleted, isStripeOnboardingComplete, hasExistingLocation, isAddingLocation, next]);
+
+  // Auto-open logic: show onboarding if manager hasn't completed it and has no locations
+  useEffect(() => {
+    if (userData && !isLoadingLocations) {
+      const isManagerOnboardingComplete = userData.manager_onboarding_completed;
+      // Only auto-open for managers who haven't completed onboarding AND have no locations
+      if (!isManagerOnboardingComplete && locations.length === 0) {
+        setIsOpen(true);
+      }
+    }
+  }, [userData, isLoadingLocations, locations, setIsOpen]);
+
+  // Listen for manual trigger from Help Center or other parts of the app
+  useEffect(() => {
+    const handleOpenRequest = () => setIsOpen(true);
+    const handleNewLocationRequest = () => value.startNewLocation();
+
+    window.addEventListener('open-onboarding-from-help', handleOpenRequest);
+    window.addEventListener('start-new-location', handleNewLocationRequest);
+
+    return () => {
+      window.removeEventListener('open-onboarding-from-help', handleOpenRequest);
+      window.removeEventListener('start-new-location', handleNewLocationRequest);
+    }
+  }, [setIsOpen]);
+
+  // Reset multi-location state when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAddingLocation(false);
+    }
+  }, [isOpen]);
+
 
   // Auto-select location
   useEffect(() => {
@@ -223,9 +295,11 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
       setNotificationEmail(loc.notificationEmail || "");
       setNotificationPhone(loc.notificationPhone || "");
 
-      if (currentStep < 2) setCurrentStep(2);
+      // If we have a location, we might want to fast-forward the OnboardJS state if it's on step 0 or 1.
+      // However, OnboardJS doesn't expose a direct "jump to index" easily without loop, 
+      // or we rely on the persistence of OnboardJS itself.
     }
-  }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId, currentStep]);
+  }, [isLoadingLocations, hasExistingLocation, locations, selectedLocationId]);
 
   // Load kitchens when location selected
   useEffect(() => {
@@ -259,7 +333,9 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
       const token = await auth.currentUser?.getIdToken();
       if (!token) return;
 
-      if (currentStep === 5) { // Storage
+      const stepId = currentStep?.id;
+
+      if (stepId === 'storage-listings') {
         setIsLoadingStorage(true);
         try {
           const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, {
@@ -267,7 +343,7 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
           });
           if (res.ok) setExistingStorageListings(await res.json());
         } finally { setIsLoadingStorage(false); }
-      } else if (currentStep === 6) { // Equipment
+      } else if (stepId === 'equipment-listings') {
         setIsLoadingEquipment(true);
         try {
           const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
@@ -281,29 +357,35 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
   }, [selectedKitchenId, currentStep]);
 
 
-  // --- Actions & API Calls ---
-
-  const trackStepCompletion = async (stepId: number) => {
+  // Track step completion - saves to backend and optimistically updates local state
+  const trackStepCompletion = useCallback(async (stepId: number | string) => {
     try {
       const token = await auth.currentUser?.getIdToken();
       if (!token) return;
+
+      // Normalize to string ID
+      const stringId = typeof stepId === 'number' ? NUMERIC_TO_STRING_MAP[stepId] : stepId;
+      if (!stringId) return;
+
+      // Optimistically update local state for immediate UI feedback
+      setCompletedSteps(prev => ({ ...prev, [stringId]: true }));
+
       const res = await fetch("/api/manager/onboarding/step", {
         method: "POST",
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json' 
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ stepId, locationId: selectedLocationId || undefined }),
+        body: JSON.stringify({ stepId: stringId, locationId: selectedLocationId || undefined }),
       });
+
       if (res.ok) {
-        const data = await res.json();
-        setCompletedSteps(data.stepsCompleted || {});
         queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
       }
     } catch (e) {
-      console.error(e);
+      console.error('[Onboarding] Failed to track step completion:', e);
     }
-  };
+  }, [selectedLocationId, queryClient]);
 
   const uploadLicense = async (): Promise<string | null> => {
     if (!licenseFile) return null;
@@ -314,7 +396,7 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
       formData.append("file", licenseFile);
       const res = await fetch("/api/upload-file", {
         method: "POST",
-        headers: { 'Authorization': `Bearer ${token}` }, // Form data, don't set Content-Type
+        headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
       if (!res.ok) throw new Error("Upload failed");
@@ -327,8 +409,8 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
 
   const updateLocation = async () => {
     if (!locationName || !locationAddress) {
-       toast({ title: "Error", description: "Missing location details", variant: "destructive" });
-       return;
+      toast({ title: "Error", description: "Missing location details", variant: "destructive" });
+      return;
     }
 
     try {
@@ -342,13 +424,12 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
       }
 
       const token = await auth.currentUser?.getIdToken();
-      
-      // Validation (simplified)
-      let phone = notificationPhone; 
+
+      let phone = notificationPhone;
       if (phone) {
-         const p = optionalPhoneNumberSchema.safeParse(phone);
-         if (!p.success) throw new Error("Invalid phone");
-         phone = p.data || "";
+        const p = optionalPhoneNumberSchema.safeParse(phone);
+        if (!p.success) throw new Error("Invalid phone");
+        phone = p.data || "";
       }
 
       const body: any = {
@@ -357,7 +438,6 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
         notificationEmail,
         notificationPhone: phone
       };
-      // Add license info
       if (licenseUrl) {
         body.kitchenLicenseUrl = licenseUrl;
         body.kitchenLicenseStatus = "pending";
@@ -366,7 +446,7 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
         body.kitchenLicenseExpiry = licenseExpiryDate;
       }
 
-      const endpoint = (!selectedLocationId || locations.length === 0) 
+      const endpoint = (!selectedLocationId || locations.length === 0)
         ? `/api/manager/locations`
         : `/api/manager/locations/${selectedLocationId}`;
       const method = (!selectedLocationId || locations.length === 0) ? "POST" : "PUT";
@@ -376,16 +456,18 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      
+
       if (!res.ok) throw new Error("Failed to save location");
       const data = await res.json();
-      
+
       if (method === "POST") setSelectedLocationId(data.id);
-      
+
       queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
       toast({ title: "Success", description: "Location saved" });
-      await trackStepCompletion(1);
-      setCurrentStep(2);
+
+      await trackStepCompletion(currentStep?.id || 'location');
+      next(); // Move to next step via OnboardJS
+
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     }
@@ -407,8 +489,7 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
       });
       if (!res.ok) throw new Error("Failed to create kitchen");
       const newKitchen = await res.json();
-      
-      // Set pricing
+
       if (kitchenFormData.hourlyRate) {
         await fetch(`/api/manager/kitchens/${newKitchen.id}/pricing`, {
           method: "PUT",
@@ -425,9 +506,10 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
       setSelectedKitchenId(newKitchen.id);
       setShowCreateKitchen(false);
       setKitchenFormData({ name: '', description: '', hourlyRate: '', currency: 'CAD', minimumBookingHours: '1' });
-      await trackStepCompletion(2);
+
+      await trackStepCompletion(currentStep?.id || 'create-kitchen');
       toast({ title: "Success", description: "Kitchen created" });
-      setCurrentStep(3);
+      next();
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
@@ -435,73 +517,102 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
     }
   };
 
-  const handleNext = async () => {
-    const visibleIndex = visibleSteps.findIndex(s => s.id === currentStep);
-    
-    // Logic mapping
-    if (currentStep === 0) {
-      await trackStepCompletion(0);
-      setCurrentStep(1);
-    } else if (currentStep === 1) {
-      await updateLocation(); // This handles step increment on success
-    } else if (currentStep === 2) {
-      if (kitchens.length > 0 || selectedKitchenId) {
-        await trackStepCompletion(2);
-        setCurrentStep(3);
-      } else if (!showCreateKitchen) {
-         toast({ title: "Kitchen Required", description: "Please create a kitchen", variant: "destructive" });
-      } else {
-        // Form is showing, user needs to submit. Button inside CreateKitchenStep handles submission.
-        // If we want "Next" to trigger form submission, we'd need a ref. 
-        // For now, let's assume the Create button on the step moves us forward (which it does in createKitchen function above).
+  // --- Event Listeners ---
+  // --- Event Listeners ---
+  useEffect(() => {
+    if (!engine) return;
+
+    // Listen for step completion to track progress and auto-save
+    const unsubscribeStepCompleted = engine.addStepCompletedListener(async (event: any) => {
+      const stepId = event.step?.id;
+      console.log('✅ Step Completed:', stepId);
+
+      // Persist step completion
+      if (stepId) {
+        await trackStepCompletion(stepId);
       }
-    } else {
-      // Generic Next for steps 3,4,5,6
-      await trackStepCompletion(currentStep);
-      
-      if (visibleIndex < visibleSteps.length - 1) {
-         const nextStepId = visibleSteps[visibleIndex + 1].id;
-         setCurrentStep(nextStepId);
-      } else {
-        // Complete
-        await handleSkip(); // Logic to finish
-      }
+
+      // NOTE: Location save is handled in handleNextAction, NOT here
+      // to prevent double next() calls that skip steps
+    });
+
+    // Listen for flow completion
+    const unsubscribeFlowCompleted = engine.addFlowCompletedListener(async () => {
+      console.log('🎉 Flow Complete');
+      await handleSkipAction();
+    });
+
+    return () => {
+      unsubscribeStepCompleted?.();
+      unsubscribeFlowCompleted?.();
     }
+  }, [engine, locationName, locationAddress]); // Dependencies important for closures
+
+  // --- Actions ---
+
+  // Legacy handleNext kept for manual triggers if needed, but Engine handles flow now.
+  // We can just proxy to next() and let the event listener handle the side effects.
+  const handleNextAction = async () => {
+    // Specialized logic for form validation before moving next
+    const stepId = currentStep?.id;
+
+    if (stepId === 'location') {
+      await updateLocation(); // This saves AND moves next inside updateLocation currently
+      // refactor updateLocation to NOT move next, but return success?
+      // For now, let's keep the existing flow but ensure we don't double-fire updates.
+      return;
+    }
+
+    if (stepId === 'create-kitchen' && showCreateKitchen) {
+      // logic internal to createKitchen handles next()
+      return;
+    }
+
+    // Default: let engine move
+    next();
   };
 
-  const handleBack = () => {
-    const visibleIndex = visibleSteps.findIndex(s => s.id === currentStep);
-    if (visibleIndex > 0) {
-       setCurrentStep(visibleSteps[visibleIndex - 1].id);
-    } else if (currentStep > 0 && !hasExistingLocation) {
-       setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleSkip = async () => {
-    // Complete onboarding logic
+  const handleSkipAction = async () => {
     try {
       const token = await auth.currentUser?.getIdToken();
       await fetch("/api/manager/complete-onboarding", {
-         method: "POST",
-         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-         body: JSON.stringify({ skipped: false }) // OR true if actually skipping
+        method: "POST",
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skipped: false })
       });
       setIsOpen(false);
-      toast({ title: "Onboarding Completed", description: "You are all set!" });
+      onboardSkip();
+      toast({ title: "Flow Completed", description: "All set!" });
     } catch (e) {
       console.error(e);
     }
   };
 
-  const value = {
-    isOpen, setIsOpen,
-    currentStep, setCurrentStep,
-    visibleSteps, completedSteps,
+  const value: ManagerOnboardingContextType = {
+    // Adapter
+    currentStepData: currentStep?.payload,
+    currentStepIndex: currentVisibleStepIndex >= 0 ? currentVisibleStepIndex : 0,
+    isFirstStep: currentVisibleStepIndex === 0,
+    isLastStep: !!isCompleted,
+    isOnboardingCompleted: !!isCompleted,
     hasExistingLocation,
+
+    handleNext: handleNextAction,
+    handleBack: previous,
+    handleSkip: handleSkipAction,
+
+    // Missing props:
+    currentStep: (state as any)?.currentStep ?? 0,
+    setCurrentStep: () => { }, // No-op
+    visibleSteps: visibleStepsFiltered,
+    completedSteps,
+
+    isOpen, setIsOpen,
+
+    // Domain
     locations, selectedLocationId, setSelectedLocationId, selectedLocation,
     kitchens, selectedKitchenId, setSelectedKitchenId, isLoadingLocations,
-    
+
     locationForm: {
       name: locationName, setName: setLocationName,
       address: locationAddress, setAddress: setLocationAddress,
@@ -520,9 +631,23 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
     },
     storageForm: { listings: existingStorageListings, isLoading: isLoadingStorage },
     equipmentForm: { listings: existingEquipmentListings, isLoading: isLoadingEquipment },
-    
-    handleNext, handleBack, handleSkip,
-    updateLocation, createKitchen, uploadLicense
+
+    updateLocation, createKitchen, uploadLicense,
+    startNewLocation: () => {
+      setSelectedLocationId(null);
+      setLocationName("");
+      setLocationAddress("");
+      setNotificationEmail("");
+      setNotificationPhone("");
+      setLicenseFile(null);
+      setLicenseExpiryDate("");
+      setIsAddingLocation(true);
+      setIsOpen(true);
+      // Reset engine if possible, or manually navigate to 'location'?
+      // Since 'location' is strictly Step 1, and 'welcome' is Step 0.
+      // If we are adding location, we likely want to skip 'welcome' too?
+      // For now, let's just open. If engine state persists, it might need reset.
+    }
   };
 
   return (
@@ -531,6 +656,9 @@ export function ManagerOnboardingProvider({ children }: { children: ReactNode })
     </ManagerOnboardingContext.Provider>
   );
 }
+
+// Provider moved to ManagerOnboardingProvider.tsx
+export { ManagerOnboardingLogic }; // Export Logic for the Provider to use
 
 export const useManagerOnboarding = () => {
   const context = useContext(ManagerOnboardingContext);

@@ -60,6 +60,7 @@ const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
+const ManagerSetupPage = lazy(() => import("@/pages/ManagerSetupPage")); // [NEW]
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
@@ -319,6 +320,14 @@ function Router() {
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
               <ManagerBookingDashboard />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
+        <Route path="/manager/setup"> {/* [NEW] Full-screen onboarding */}
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              {/* Reset layout to full screen without header/sidebar from dashboard */}
+              <ManagerSetupPage />
             </ManagerProtectedRoute>
           ) : null}
         </Route>
