@@ -10,12 +10,16 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 
+import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter"; // [NEW]
+
 export default function EquipmentListingsStep() {
-  const { 
-    kitchens, 
-    selectedKitchenId, 
+  const {
+    kitchens,
+    selectedKitchenId,
     setSelectedKitchenId,
-    equipmentForm: { listings, isLoading } 
+    equipmentForm: { listings, isLoading },
+    handleNext, // [NEW]
+    handleBack // [NEW] 
   } = useManagerOnboarding();
   const { toast } = useToast();
 
@@ -150,13 +154,13 @@ export default function EquipmentListingsStep() {
                 <div className="space-y-3">
                   <div className="grid gap-2">
                     <Label>Equipment Name *</Label>
-                    <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Robot Coupe" />
+                    <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Robot Coupe" />
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-2">
                       <Label>Category</Label>
-                      <Select value={formData.category} onValueChange={(v: any) => setFormData({...formData, category: v})}>
+                      <Select value={formData.category} onValueChange={(v: any) => setFormData({ ...formData, category: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="food-prep">Food Prep</SelectItem>
@@ -169,7 +173,7 @@ export default function EquipmentListingsStep() {
                     </div>
                     <div className="grid gap-2">
                       <Label>Condition</Label>
-                      <Select value={formData.condition} onValueChange={(v: any) => setFormData({...formData, condition: v})}>
+                      <Select value={formData.condition} onValueChange={(v: any) => setFormData({ ...formData, condition: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="excellent">Excellent</SelectItem>
@@ -183,15 +187,15 @@ export default function EquipmentListingsStep() {
 
                   <div className="grid gap-2">
                     <Label>Description</Label>
-                    <Textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} rows={2} />
+                    <Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} rows={2} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="grid gap-2">
                       <Label>Availability</Label>
-                      <Select 
-                        value={formData.availabilityType} 
-                        onValueChange={(v: 'included' | 'rental') => setFormData({...formData, availabilityType: v, sessionRate: v === 'included' ? 0 : formData.sessionRate})}
+                      <Select
+                        value={formData.availabilityType}
+                        onValueChange={(v: 'included' | 'rental') => setFormData({ ...formData, availabilityType: v, sessionRate: v === 'included' ? 0 : formData.sessionRate })}
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -201,10 +205,10 @@ export default function EquipmentListingsStep() {
                       </Select>
                     </div>
                     {formData.availabilityType === 'rental' && (
-                       <div className="grid gap-2">
-                         <Label>Session Fee ($)</Label>
-                         <Input type="number" value={formData.sessionRate} onChange={e => setFormData({...formData, sessionRate: parseFloat(e.target.value) || 0})} />
-                       </div>
+                      <div className="grid gap-2">
+                        <Label>Session Fee ($)</Label>
+                        <Input type="number" value={formData.sessionRate} onChange={e => setFormData({ ...formData, sessionRate: parseFloat(e.target.value) || 0 })} />
+                      </div>
                     )}
                   </div>
 
@@ -218,6 +222,12 @@ export default function EquipmentListingsStep() {
           )}
         </div>
       )}
+
+
+      <OnboardingNavigationFooter
+        onNext={handleNext}
+        onBack={handleBack}
+      />
     </div>
   );
 }

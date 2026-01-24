@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, MapPin, ChefHat, Settings, BookOpen,
   X, Check, Save, AlertCircle, Building2, FileText,
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle, MessageCircle
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle, MessageCircle, Sparkles
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
@@ -12,6 +12,7 @@ import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
+import { useOnboardingStatus } from "@/hooks/use-onboarding-status"; // [NEW]
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
@@ -28,7 +29,7 @@ import StorageListingManagement from "./StorageListingManagement";
 import EquipmentListingManagement from "./EquipmentListingManagement";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
 import BookingKPIStats from "@/components/manager/dashboard/BookingKPIStats";
-import ManagerOnboardingWizard from "@/components/manager/ManagerOnboardingWizard";
+// Wizard overlay removed
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
 // import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar"; // Deprecated
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
@@ -134,6 +135,7 @@ type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'set
 export default function ManagerBookingDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
   const { locations, isLoadingLocations } = useManagerDashboard();
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('overview');
@@ -202,49 +204,19 @@ export default function ManagerBookingDashboard() {
     enabled: !!firebaseUser,
   });
 
-  // Check if license is expired for selected location (must be defined before use)
-  const isLicenseExpired = selectedLocation?.kitchenLicenseExpiry
-    ? new Date(selectedLocation.kitchenLicenseExpiry) < new Date()
-    : false;
-
   // Get manager ID from userData
   const managerId = userData?.id || null;
 
   // Check if Stripe is connected
   const hasStripeAccount = !!userData?.stripeConnectAccountId || !!userData?.stripe_connect_account_id;
-  const isStripeOnboardingComplete = userData?.stripeConnectOnboardingStatus === 'complete' || userData?.stripe_connect_onboarding_status === 'complete';
 
-  // Check if selected location has approved license
-  const hasApprovedLicense = selectedLocation?.kitchenLicenseStatus === "approved" && !isLicenseExpired;
 
-  // Check if location has at least one kitchen
-  const { data: locationKitchens } = useQuery({
-    queryKey: ['managerKitchens', selectedLocation?.id],
-    queryFn: async () => {
-      if (!selectedLocation?.id) return [];
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/kitchens/${selectedLocation.id}`, {
-        headers,
-        credentials: "include",
-      });
-      if (!response.ok) return [];
-      return response.json();
-    },
-    enabled: !!selectedLocation?.id,
-  });
-
-  const hasKitchens = (locationKitchens?.length || 0) > 0;
-
-  // Determine if onboarding is needed
-  // Show banner if:
-  // 1. User is a manager AND
-  // 2. Onboarding not completed AND not skipped AND
-  // 3. (No location selected OR any of these are missing: approved license, Stripe setup, or kitchens)
-  const needsOnboarding =
-    userData?.role === "manager" &&
-    !userData?.manager_onboarding_completed &&
-    !userData?.manager_onboarding_skipped &&
-    (!selectedLocation || !hasApprovedLicense || !isStripeOnboardingComplete || !hasKitchens);
+  // [REF] Use new hook for consolidated status
+  const {
+    showSetupBanner,
+    missingSteps,
+    isReadyForBookings
+  } = useOnboardingStatus(selectedLocation?.id);
 
   // Auto-select location if only one exists
   useEffect(() => {
@@ -462,7 +434,12 @@ export default function ManagerBookingDashboard() {
 
 
 
-  const showCreateLocationHandler = () => setShowCreateLocation(true);
+  /* New Setup Handler */
+  const handleContinueSetup = () => {
+    setLocation('/manager/setup');
+  };
+
+  const showCreateLocationHandler = () => window.dispatchEvent(new Event('start-new-location'));
 
   return (
     <DashboardLayout
@@ -473,7 +450,27 @@ export default function ManagerBookingDashboard() {
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
       onCreateLocation={showCreateLocationHandler}
     >
-      <ManagerOnboardingWizard />
+      {/* Onboarding Banner - Replacing Wizard Overlay */}
+      {showSetupBanner && (
+        <div className="bg-blue-600 text-white px-6 py-4 shadow-md mb-6 mx-6 mt-6 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white/20 rounded-full">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">Complete your kitchen setup</h3>
+              <p className="text-blue-100/90 text-sm">Finish adding your details to start accepting bookings.</p>
+            </div>
+          </div>
+          <Button
+            onClick={handleContinueSetup}
+            variant="secondary"
+            className="font-semibold shadow-lg hover:bg-blue-50"
+          >
+            Continue Setup <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
+      )}
 
       {activeView === 'profile' && (
         <ManagerProfileSettings />
@@ -482,9 +479,11 @@ export default function ManagerBookingDashboard() {
       {activeView === 'overview' && (
         <div className="space-y-6 animate-fade-in">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Welcome back, {userData?.first_name || 'Manager'}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Welcome back!</h1>
             <p className="text-muted-foreground">Here's what's happening at your kitchens today.</p>
           </div>
+
+
 
           <KitchenDashboardOverview
             selectedLocation={selectedLocation}

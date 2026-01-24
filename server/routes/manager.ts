@@ -1706,11 +1706,12 @@ router.post("/onboarding/step", requireFirebaseAuthWithUser, requireManager, asy
 
         console.log(`[POST] /api/manager/onboarding/step - User: ${user.id}, stepId: ${stepId}, locationId: ${locationId}`);
 
-        // Get current steps
+        // Get current steps from user profile
         const currentSteps = (user as any).managerOnboardingStepsCompleted || {};
 
-        // Create new step key
-        const stepKey = locationId ? `step_${stepId}_location_${locationId}` : `step_${stepId}`;
+        // Support both string (new) and numeric (legacy) stepId formats
+        // Key format: "{stepId}" or "{stepId}_location_{locationId}"
+        const stepKey = locationId ? `${stepId}_location_${locationId}` : `${stepId}`;
         const newSteps = {
             ...currentSteps,
             [stepKey]: true
