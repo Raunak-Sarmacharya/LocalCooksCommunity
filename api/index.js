@@ -10788,6 +10788,107 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
+    router11.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      console.log("[Stripe Connect] Create request received for manager:", req.neonUser?.id);
+      try {
+        const managerId = req.neonUser.id;
+        const userResult = await db.execute(sql6`
+            SELECT id, username as email, stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+        const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
+        if (!userRow) {
+          console.error("[Stripe Connect] User not found for ID:", managerId);
+          return res.status(404).json({ error: "User not found" });
+        }
+        const user = {
+          id: userRow.id,
+          email: userRow.email,
+          stripeConnectAccountId: userRow.stripe_connect_account_id
+        };
+        const { createConnectAccount: createConnectAccount2, createAccountLink: createAccountLink2, isAccountReady: isAccountReady2, createDashboardLoginLink: createDashboardLoginLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+        const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+        const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
+        const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+        if (user.stripeConnectAccountId) {
+          const isReady = await isAccountReady2(user.stripeConnectAccountId);
+          if (isReady) {
+            return res.json({ alreadyExists: true, accountId: user.stripeConnectAccountId });
+          } else {
+            const link2 = await createAccountLink2(user.stripeConnectAccountId, refreshUrl, returnUrl);
+            return res.json({ url: link2.url });
+          }
+        }
+        console.log("[Stripe Connect] Creating new account for email:", user.email);
+        const { accountId } = await createConnectAccount2({
+          managerId,
+          email: user.email,
+          country: "CA"
+        });
+        await userService.updateUser(managerId, { stripeConnectAccountId: accountId });
+        const link = await createAccountLink2(accountId, refreshUrl, returnUrl);
+        return res.json({ url: link.url });
+      } catch (error) {
+        console.error("[Stripe Connect] Error in create route:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router11.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const userResult = await db.execute(sql6`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+        const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
+        if (!userRow?.stripe_connect_account_id) {
+          return res.status(400).json({ error: "No Stripe Connect account found" });
+        }
+        const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+        const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+        const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
+        const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+        const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
+        return res.json({ url: link.url });
+      } catch (error) {
+        console.error("[Stripe Connect] Error in onboarding-link route:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router11.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const userResult = await db.execute(sql6`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${managerId} 
+            LIMIT 1
+        `);
+        const userRow = userResult.rows ? userResult.rows[0] : userResult[0];
+        if (!userRow?.stripe_connect_account_id) {
+          return res.status(400).json({ error: "No Stripe Connect account found" });
+        }
+        const { createDashboardLoginLink: createDashboardLoginLink2, isAccountReady: isAccountReady2, createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
+        const isReady = await isAccountReady2(userRow.stripe_connect_account_id);
+        if (isReady) {
+          const link = await createDashboardLoginLink2(userRow.stripe_connect_account_id);
+          return res.json({ url: link.url });
+        } else {
+          const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+          const refreshUrl = `${baseUrl}/manager/payouts?refresh=true`;
+          const returnUrl = `${baseUrl}/manager/payouts?success=true`;
+          const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
+          return res.json({ url: link.url, requiresOnboarding: true });
+        }
+      } catch (error) {
+        console.error("[Stripe Connect] Error in dashboard-link route:", error);
+        return errorResponse(res, error);
+      }
+    });
     router11.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
@@ -11837,7 +11938,7 @@ var init_manager = __esm({
         }
         console.log(`[POST] /api/manager/onboarding/step - User: ${user.id}, stepId: ${stepId}, locationId: ${locationId}`);
         const currentSteps = user.managerOnboardingStepsCompleted || {};
-        const stepKey = locationId ? `step_${stepId}_location_${locationId}` : `step_${stepId}`;
+        const stepKey = locationId ? `${stepId}_location_${locationId}` : `${stepId}`;
         const newSteps = {
           ...currentSteps,
           [stepKey]: true

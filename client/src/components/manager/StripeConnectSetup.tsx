@@ -215,7 +215,7 @@ export default function StripeConnectSetup() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         </CardContent>
       </Card>
@@ -277,7 +277,7 @@ export default function StripeConnectSetup() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <CheckCircle2 className="h-5 w-5" />
               Payment Setup Complete
             </CardTitle>
             <CardDescription>
@@ -286,9 +286,9 @@ export default function StripeConnectSetup() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <Alert className="border-green-200 bg-green-50">
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-800">
+              <Alert>
+                <CheckCircle2 className="h-4 w-4" />
+                <AlertDescription>
                   ✅ You'll receive payments automatically after each booking.
                   The platform service fee ({serviceFeePercentage}%) will be deducted automatically, and the remaining amount
                   will be transferred to your bank account within 2-7 business days.
@@ -301,7 +301,7 @@ export default function StripeConnectSetup() {
               )} */}
               <Button 
                 onClick={handleAccessDashboard}
-                className="w-full bg-[#635BFF] hover:bg-[#5851E6] text-white"
+                className="w-full"
                 disabled={getDashboardLinkMutation.isPending}
               >
                 {getDashboardLinkMutation.isPending ? (
@@ -316,7 +316,7 @@ export default function StripeConnectSetup() {
                   </>
                 )}
               </Button>
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 Click to open your Stripe Express Dashboard in a new tab where you can view payments, payouts, and manage your account settings.
               </p>
             </div>
@@ -329,7 +329,7 @@ export default function StripeConnectSetup() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-600" />
+              <AlertCircle className="h-5 w-5" />
               Complete Stripe Setup
             </CardTitle>
             <CardDescription>
@@ -338,16 +338,16 @@ export default function StripeConnectSetup() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <Alert className="border-amber-200 bg-amber-50">
-                <AlertCircle className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-800">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
                   ⚠️ You need to complete Stripe's onboarding process to start receiving payments.
                   This takes about 5 minutes and includes providing business information and bank account details.
                 </AlertDescription>
               </Alert>
               <Button 
                 onClick={handleAccessDashboard}
-                className="w-full bg-[#635BFF] hover:bg-[#5851E6] text-white"
+                className="w-full"
                 disabled={getDashboardLinkMutation.isPending}
               >
                 {getDashboardLinkMutation.isPending ? (
@@ -362,7 +362,7 @@ export default function StripeConnectSetup() {
                   </>
                 )}
               </Button>
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 Click to complete your Stripe Connect setup and start receiving payments. The setup page will open in a new tab.
               </p>
             </div>

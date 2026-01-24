@@ -1,7 +1,6 @@
-import { Wrench, Save, Loader2, Plus, X, ChevronRight, ChevronLeft, Info, AlertCircle, Check } from "lucide-react";
+import { Wrench, Save, Loader2, Plus, X, ChevronRight, ChevronLeft, Info, Check } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useManagerDashboard } from "../hooks/use-manager-dashboard";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 
 interface Kitchen {
   id: number;
@@ -74,53 +77,44 @@ interface EquipmentListingManagementProps {
 }
 
 
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  try {
-    const { auth } = await import('@/lib/firebase');
-    const currentUser = auth.currentUser;
-
-    if (currentUser) {
-      // Get fresh Firebase token
-      try {
-        const token = await currentUser.getIdToken();
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-      } catch (tokenError) {
-        console.error('Failed to get Firebase token:', tokenError);
-      }
-    } else {
-      // Fallback to localStorage token if Firebase auth not ready
-      const storedToken = localStorage.getItem('firebaseToken');
-
-      if (storedToken) {
-        headers['Authorization'] = `Bearer ${storedToken}`;
-      }
-    }
-  } catch (error) {
-    console.error('Error getting auth headers:', error);
-    // Fallback to localStorage
-    const storedToken = localStorage.getItem('firebaseToken');
-
-    if (storedToken) {
-      headers['Authorization'] = `Bearer ${storedToken}`;
-    }
-  }
-
-  return headers;
-}
 
 export default function EquipmentListingManagement({ embedded = false }: EquipmentListingManagementProps = {}) {
+  return (
+    <ManagerPageLayout
+      title="Equipment Management"
+      description="Manage your kitchen equipment listings"
+      showKitchenSelector={true}
+    >
+      {({ selectedLocationId, selectedKitchenId, isLoading }) => {
+        if (isLoading) {
+          return (
+            <div className="space-y-6">
+              <Skeleton className="h-[200px] w-full" />
+              <Skeleton className="h-[400px] w-full" />
+            </div>
+          );
+        }
+        return (
+          <EquipmentListingContent
+            selectedLocationId={selectedLocationId}
+            selectedKitchenId={selectedKitchenId}
+          />
+        );
+      }}
+    </ManagerPageLayout>
+  );
+}
+
+function EquipmentListingContent({
+  selectedLocationId,
+  selectedKitchenId
+}: {
+  selectedLocationId: number | null,
+  selectedKitchenId: number | null
+}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { locations, isLoadingLocations } = useManagerDashboard();
 
-  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
-  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 4;
@@ -151,20 +145,12 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
   const [toggleDialogOpen, setToggleDialogOpen] = useState(false);
   const [pendingToggle, setPendingToggle] = useState<{ id: number; isActive: boolean } | null>(null);
 
-  // Auto-select location if only one exists
-  useEffect(() => {
-    if (!isLoadingLocations && locations.length === 1 && !selectedLocationId) {
-      setSelectedLocationId(locations[0].id);
-    }
-  }, [locations, isLoadingLocations, selectedLocationId]);
-
   // Load kitchens when location is selected
   useEffect(() => {
     if (selectedLocationId) {
       loadKitchens();
     } else {
       setKitchens([]);
-      setSelectedKitchenId(null);
     }
   }, [selectedLocationId]);
 
@@ -181,22 +167,8 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     if (!selectedLocationId) return;
 
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/kitchens/${selectedLocationId}`, {
-        headers,
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load kitchens');
-      }
-
-      const data = await response.json();
+      const data = await apiGet(`/manager/kitchens/${selectedLocationId}`);
       setKitchens(data);
-
-      if (data.length === 1 && !selectedKitchenId) {
-        setSelectedKitchenId(data[0].id);
-      }
     } catch (error: any) {
       console.error('Error loading kitchens:', error);
       toast({
@@ -211,17 +183,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     if (!selectedKitchenId) return;
 
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
-        headers,
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load equipment listings');
-      }
-
-      const data = await response.json();
+      const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/equipment-listings`);
       setListings(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.error('Error loading equipment listings:', error);
@@ -235,21 +197,10 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
 
   const handleEdit = async (listingId: number) => {
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/equipment-listings/${listingId}`, {
-        headers,
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load listing');
-      }
-
-      const data = await response.json();
+      const data = await apiGet(`/manager/equipment-listings/${listingId}`);
       setFormData(data);
       setEditingListingId(listingId);
       setCurrentStep(1);
-      setSelectedKitchenId(data.kitchenId);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -265,16 +216,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     }
 
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/equipment-listings/${listingId}`, {
-        method: 'DELETE',
-        headers,
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete listing');
-      }
+      await apiDelete(`/manager/equipment-listings/${listingId}`);
 
       toast({
         title: "Success",
@@ -325,30 +267,17 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
 
     setIsSaving(true);
     try {
-      const headers = await getAuthHeaders();
-      const url = editingListingId
-        ? `/api/manager/equipment-listings/${editingListingId}`
-        : '/api/manager/equipment-listings';
+      const endpoint = editingListingId
+        ? `/manager/equipment-listings/${editingListingId}`
+        : '/manager/equipment-listings';
 
-      const method = editingListingId ? 'PUT' : 'POST';
+      const operation = editingListingId ? apiPut : apiPost;
       const payload = {
         kitchenId: selectedKitchenId,
         ...formData,
       };
 
-      const response = await fetch(url, {
-        method,
-        headers,
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to save listing' }));
-        throw new Error(errorData.error || 'Failed to save listing');
-      }
-
-      const saved = await response.json();
+      await operation(endpoint, payload);
 
       toast({
         title: "Success",
@@ -402,33 +331,22 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
     setFormData({ ...formData, [field]: current.filter((_, i) => i !== index) });
   };
 
-  // Toggle active status mutation
-  const toggleActiveMutation = useMutation({
-    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/equipment-listings/${id}`, {
-        method: 'PUT',
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ isActive }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to update status' }));
-        throw new Error(errorData.error || 'Failed to update status');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
+  // Toggle active status - using simple state instead of useMutation
+  const [isToggling, setIsToggling] = useState(false);
+  
+  const doToggleActive = async (id: number, isActive: boolean) => {
+    setIsToggling(true);
+    try {
+      await apiPut(`/manager/equipment-listings/${id}`, { isActive });
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
-      loadListings(); // Reload listings to get updated status
+      loadListings();
       toast({
         title: "Status Updated",
-        description: `Equipment listing is now ${pendingToggle?.isActive ? 'active' : 'inactive'}`,
+        description: `Equipment listing is now ${isActive ? 'active' : 'inactive'}`,
       });
       setToggleDialogOpen(false);
       setPendingToggle(null);
-    },
-    onError: (error: any) => {
+    } catch (error: any) {
       toast({
         title: "Error",
         description: error.message || "Failed to update status",
@@ -436,8 +354,10 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
       });
       setToggleDialogOpen(false);
       setPendingToggle(null);
-    },
-  });
+    } finally {
+      setIsToggling(false);
+    }
+  };
 
   const handleToggleActive = (listingId: number, currentStatus: boolean) => {
     const newStatus = !currentStatus;
@@ -448,85 +368,32 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
       setToggleDialogOpen(true);
     } else {
       // Activating - proceed immediately
-      toggleActiveMutation.mutate({ id: listingId, isActive: newStatus });
+      doToggleActive(listingId, newStatus);
     }
   };
 
   const confirmToggle = () => {
     if (pendingToggle) {
-      toggleActiveMutation.mutate(pendingToggle);
+      doToggleActive(pendingToggle.id, pendingToggle.isActive);
     }
   };
 
   const selectedKitchen = kitchens.find(k => k.id === selectedKitchenId);
 
-  return (
-    <div className="space-y-6">
-      {/* Location & Kitchen Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Select Location & Kitchen</CardTitle>
-          <CardDescription>Choose a location and kitchen to manage equipment listings</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="location">Location</Label>
-            {isLoadingLocations ? (
-              <div className="text-sm text-gray-500 mt-2">Loading locations...</div>
-            ) : locations.length === 0 ? (
-              <div className="text-sm text-gray-500 mt-2">No locations available</div>
-            ) : locations.length === 1 ? (
-              <div className="mt-2 px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
-                {locations[0].name}
-              </div>
-            ) : (
-              <Select
-                value={selectedLocationId?.toString() || ""}
-                onValueChange={(value) => {
-                  setSelectedLocationId(parseInt(value));
-                  setSelectedKitchenId(null);
-                }}
-              >
-                <SelectTrigger id="location" className="mt-2">
-                  <SelectValue placeholder="Choose location..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((loc: any) => (
-                    <SelectItem key={loc.id} value={loc.id.toString()}>
-                      {loc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          {selectedLocationId && (
-            <div>
-              <Label htmlFor="kitchen">Kitchen</Label>
-              {kitchens.length === 0 ? (
-                <div className="text-sm text-gray-500 mt-2">Loading kitchens...</div>
-              ) : (
-                <Select
-                  value={selectedKitchenId?.toString() || ""}
-                  onValueChange={(value) => setSelectedKitchenId(parseInt(value))}
-                >
-                  <SelectTrigger id="kitchen" className="mt-2">
-                    <SelectValue placeholder="Choose kitchen..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {kitchens.map((kitchen) => (
-                      <SelectItem key={kitchen.id} value={kitchen.id.toString()}>
-                        {kitchen.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          )}
+  if (!selectedKitchenId) {
+    return (
+      <Card className="border-dashed h-full">
+        <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
+          <Wrench className="h-12 w-12 mb-4 opacity-20" />
+          <h3 className="text-lg font-medium text-foreground mb-1">No Kitchen Selected</h3>
+          <p>Select a location and kitchen from the sidebar to manage equipment.</p>
         </CardContent>
       </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
 
       {/* Existing Listings */}
       {selectedKitchenId && listings.length > 0 && (
@@ -543,16 +410,12 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-medium">{listing.equipmentType}</h4>
                       <Badge
-                        variant={listing.isActive !== false ? "default" : "secondary"}
-                        className={listing.isActive !== false
-                          ? "bg-green-100 text-green-700 border-green-300"
-                          : "bg-gray-100 text-gray-600 border-gray-300"
-                        }
+                        variant={listing.isActive !== false ? "outline" : "secondary"}
                       >
                         {listing.isActive !== false ? '✓ Active' : '✗ Inactive'}
                       </Badge>
                     </div>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       {listing.category} • {listing.condition} • {
                         listing.availabilityType === 'included'
                           ? 'Included (Free with kitchen)'
@@ -562,14 +425,14 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
-                      <Label htmlFor={`toggle-${listing.id}`} className="text-sm text-gray-600">
+                      <Label htmlFor={`toggle-${listing.id}`} className="text-sm text-muted-foreground">
                         {listing.isActive !== false ? 'Active' : 'Inactive'}
                       </Label>
                       <Switch
                         id={`toggle-${listing.id}`}
                         checked={listing.isActive !== false}
                         onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)}
-                        disabled={toggleActiveMutation.isPending}
+                        disabled={isToggling}
                       />
                     </div>
                     <div className="flex gap-2">
@@ -605,14 +468,14 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
             <div className="flex items-center justify-between mb-6">
               {[1, 2, 3, 4].map((step) => (
                 <div key={step} className="flex items-center flex-1">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${step === currentStep ? 'bg-rose-500 text-white' :
-                      step < currentStep ? 'bg-green-500 text-white' :
-                        'bg-gray-200 text-gray-600'
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-medium transition-colors ${step === currentStep ? 'bg-primary text-primary-foreground shadow-sm' :
+                      step < currentStep ? 'bg-primary/20 text-primary' :
+                        'bg-muted text-muted-foreground'
                     }`}>
-                    {step < currentStep ? <Check className="h-5 w-5" /> : step}
+                    {step < currentStep ? <Check className="h-4 w-4" /> : step}
                   </div>
                   {step < totalSteps && (
-                    <div className={`flex-1 h-1 mx-2 ${step < currentStep ? 'bg-green-500' : 'bg-gray-200'
+                    <div className={`flex-1 h-0.5 mx-2 transition-colors ${step < currentStep ? 'bg-primary/20' : 'bg-muted'
                       }`} />
                   )}
                 </div>
@@ -649,7 +512,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       <SelectItem value="rental">Rental (Paid addon during booking)</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {formData.availabilityType === 'included'
                       ? 'This equipment comes free with kitchen bookings - no additional charge'
                       : 'Chefs will pay to rent this equipment when booking the kitchen'}
@@ -768,7 +631,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       }
                     }}
                     disabled={!formData.equipmentType || !formData.category || !formData.condition || !formData.availabilityType}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
                   >
                     Next <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
@@ -784,25 +646,21 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   Set a flat session rate for this equipment. Chefs pay this amount once per kitchen booking, regardless of booking duration.
                 </p>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <div className="flex items-start gap-2">
-                    <Info className="h-5 w-5 text-blue-500 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Flat Session Pricing</p>
-                      <p className="text-sm text-blue-600">
-                        Equipment is charged as a one-time fee per kitchen booking session.
-                        For example, if a chef books the kitchen for 2 hours or 8 hours, they pay the same equipment fee.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <Alert className="mb-4">
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Flat Session Pricing</AlertTitle>
+                  <AlertDescription>
+                    Equipment is charged as a one-time fee per kitchen booking session.
+                    For example, if a chef books the kitchen for 2 hours or 8 hours, they pay the same equipment fee.
+                  </AlertDescription>
+                </Alert>
 
                 <div>
                   <Label htmlFor="sessionRate">Session Rate (CAD) *</Label>
-                  <p className="text-sm text-gray-500 mb-2">Flat fee charged per kitchen booking session</p>
+                  <p className="text-sm text-muted-foreground mb-2">Flat fee charged per kitchen booking session</p>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500">$</span>
+                      <span className="text-muted-foreground">$</span>
                     </div>
                     <Input
                       id="sessionRate"
@@ -819,10 +677,10 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
 
                 <div>
                   <Label htmlFor="damageDeposit">Damage Deposit (CAD)</Label>
-                  <p className="text-sm text-gray-500 mb-2">Refundable deposit to cover potential damage (optional)</p>
+                  <p className="text-sm text-muted-foreground mb-2">Refundable deposit to cover potential damage (optional)</p>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500">$</span>
+                      <span className="text-muted-foreground">$</span>
                     </div>
                     <Input
                       id="damageDeposit"
@@ -844,7 +702,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   <Button
                     onClick={() => setCurrentStep(3)}
                     disabled={!formData.sessionRate || formData.sessionRate <= 0}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
                   >
                     Next <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
@@ -856,7 +713,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
             {currentStep === 2 && formData.availabilityType === 'included' && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Included Equipment - No Pricing Required</h3>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   This equipment is included with the kitchen booking at no extra charge.
                 </p>
                 <div className="flex justify-between gap-3 pt-4">
@@ -865,7 +722,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   </Button>
                   <Button
                     onClick={() => setCurrentStep(3)}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
                   >
                     Next <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
@@ -1064,7 +920,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   </Button>
                   <Button
                     onClick={() => setCurrentStep(4)}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
                   >
                     Next <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
@@ -1120,7 +975,7 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                       <Label htmlFor="damageDeposit">Damage Deposit (CAD)</Label>
                       <div className="mt-2 relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-gray-500">$</span>
+                          <span className="text-muted-foreground">$</span>
                         </div>
                         <Input
                           id="damageDeposit"
@@ -1213,7 +1068,6 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                   <Button
                     onClick={saveListing}
                     disabled={isSaving}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
                   >
                     {isSaving ? (
                       <>
@@ -1252,16 +1106,16 @@ export default function EquipmentListingManagement({ embedded = false }: Equipme
                 setToggleDialogOpen(false);
                 setPendingToggle(null);
               }}
-              disabled={toggleActiveMutation.isPending}
+              disabled={isToggling}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={confirmToggle}
-              disabled={toggleActiveMutation.isPending}
+              disabled={isToggling}
             >
-              {toggleActiveMutation.isPending ? (
+              {isToggling ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Deactivating...

@@ -7,6 +7,7 @@ import {
 import { useManagerOnboarding } from "./ManagerOnboardingContext";
 import { componentRegistry } from "@/config/onboarding";
 import EnterpriseStepper from "./EnterpriseStepper";
+import { useLocation } from "wouter";
 
 export default function ManagerOnboardingDialog() {
   const {
@@ -19,6 +20,9 @@ export default function ManagerOnboardingDialog() {
   const StepComponent = currentStepData?.componentKey
     ? componentRegistry[currentStepData.componentKey as keyof typeof componentRegistry]
     : null;
+
+  const [location] = useLocation();
+  if (location === "/manager/setup") return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
