@@ -284,7 +284,7 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
     console.log('[Stripe Connect] Create request received for manager:', req.neonUser?.id);
     try {
         const managerId = req.neonUser!.id;
-        
+
         // Use raw SQL to bypass circular dependency/undefined schema issues
         const userResult = await db.execute(sql`
             SELECT id, username as email, stripe_connect_account_id 
@@ -315,14 +315,14 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
 
         // Case 1: User already has a Stripe Connect account
         if (user.stripeConnectAccountId) {
-             const isReady = await isAccountReady(user.stripeConnectAccountId);
-             
-             if (isReady) {
-                 return res.json({ alreadyExists: true, accountId: user.stripeConnectAccountId });
-             } else {
-                 const link = await createAccountLink(user.stripeConnectAccountId, refreshUrl, returnUrl);
-                 return res.json({ url: link.url });
-             }
+            const isReady = await isAccountReady(user.stripeConnectAccountId);
+
+            if (isReady) {
+                return res.json({ alreadyExists: true, accountId: user.stripeConnectAccountId });
+            } else {
+                const link = await createAccountLink(user.stripeConnectAccountId, refreshUrl, returnUrl);
+                return res.json({ url: link.url });
+            }
         }
 
         // Case 2: No account, create one
@@ -338,7 +338,7 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
 
         // Create onboarding link
         const link = await createAccountLink(accountId, refreshUrl, returnUrl);
-        
+
         return res.json({ url: link.url });
 
     } catch (error) {
@@ -351,7 +351,7 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
 router.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
-        
+
         const userResult = await db.execute(sql`
             SELECT stripe_connect_account_id 
             FROM users 
@@ -359,16 +359,16 @@ router.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requi
             LIMIT 1
         `);
         const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
-        
+
         if (!userRow?.stripe_connect_account_id) {
-             return res.status(400).json({ error: "No Stripe Connect account found" });
+            return res.status(400).json({ error: "No Stripe Connect account found" });
         }
-        
+
         const { createAccountLink } = await import('../services/stripe-connect-service');
         const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
         const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
         const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
-        
+
         const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
     } catch (error) {
@@ -381,7 +381,7 @@ router.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requi
 router.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
-        
+
         const userResult = await db.execute(sql`
             SELECT stripe_connect_account_id 
             FROM users 
@@ -395,20 +395,20 @@ router.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requir
         }
 
         const { createDashboardLoginLink, isAccountReady, createAccountLink } = await import('../services/stripe-connect-service');
-        
+
         const isReady = await isAccountReady(userRow.stripe_connect_account_id);
-        
+
         if (isReady) {
             const link = await createDashboardLoginLink(userRow.stripe_connect_account_id);
             return res.json({ url: link.url });
         } else {
-             const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-             const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
-             const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
-             
-             const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
-             
-             return res.json({ url: link.url, requiresOnboarding: true });
+            const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+            const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
+            const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
+
+            const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
+
+            return res.json({ url: link.url, requiresOnboarding: true });
         }
 
     } catch (error) {
@@ -443,7 +443,7 @@ router.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager
         // In the future, this would query Stripe API for detailed account status
         res.json({
             connected: true,
-            accountId: manager.stripeConnectAccountId, 
+            accountId: manager.stripeConnectAccountId,
             payoutsEnabled: true,
             chargesEnabled: true,
             detailsSubmitted: true,
@@ -474,9 +474,9 @@ router.post("/stripe-connect/sync", requireFirebaseAuthWithUser, requireManager,
 
         // Update user status in DB
         const onboardingStatus = status.detailsSubmitted ? 'complete' : 'in_progress';
-        
+
         await db.update(users)
-            .set({ 
+            .set({
                 stripeConnectOnboardingStatus: onboardingStatus,
                 // If they are fully ready, ensure manager onboarding is arguably complete for payments part
                 // keeping it simple for now, just updating stripe status
@@ -743,7 +743,7 @@ router.get("/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager,
 router.post("/kitchens", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const user = req.neonUser!;
-        const { locationId, name, description, features } = req.body;
+        const { locationId, name, description, features, imageUrl } = req.body;
 
         // Verify manager owns this location
         const location = await locationService.getLocationById(locationId);
@@ -759,6 +759,7 @@ router.post("/kitchens", requireFirebaseAuthWithUser, requireManager, async (req
             locationId,
             name,
             description,
+            imageUrl,
             amenities: features || [],
             isActive: true, // Auto-activate
             hourlyRate: undefined, // Manager sets pricing later
@@ -1702,7 +1703,15 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
         // Firebase auth verified by middleware - req.neonUser is guaranteed to be a manager
         const user = req.neonUser!;
 
-        const { name, address, notificationEmail, notificationPhone } = req.body;
+        const {
+            name,
+            address,
+            notificationEmail,
+            notificationPhone,
+            kitchenLicenseUrl,
+            kitchenLicenseStatus,
+            kitchenLicenseExpiry
+        } = req.body;
 
         if (!name || !address) {
             return res.status(400).json({ error: "Name and address are required" });
@@ -1723,14 +1732,23 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
             normalizedNotificationPhone = normalized;
         }
 
-        console.log('Creating location for manager:', { managerId: user.id, name, address, notificationPhone: normalizedNotificationPhone });
+        console.log('Creating location for manager:', {
+            managerId: user.id,
+            name,
+            address,
+            notificationPhone: normalizedNotificationPhone,
+            kitchenLicenseUrl: kitchenLicenseUrl ? 'Provided' : 'Not provided'
+        });
 
         const location = await locationService.createLocation({
             name,
             address,
             managerId: user.id,
             notificationEmail: notificationEmail || undefined,
-            notificationPhone: normalizedNotificationPhone
+            notificationPhone: normalizedNotificationPhone,
+            kitchenLicenseUrl: kitchenLicenseUrl || undefined,
+            kitchenLicenseStatus: kitchenLicenseStatus || 'pending',
+            kitchenLicenseExpiry: kitchenLicenseExpiry || undefined
         });
 
         // Map snake_case to camelCase for consistent API response

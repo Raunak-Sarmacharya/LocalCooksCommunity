@@ -42,8 +42,9 @@ export class KitchenService {
       console.error('[KitchenService] Error creating kitchen:', error);
       throw new DomainError(
         KitchenErrorCodes.INVALID_PRICING,
-        'Failed to create kitchen',
-        500
+        `Failed to create kitchen: ${error.message || 'Unknown error'}`,
+        500,
+        { originalError: error }
       );
     }
   }

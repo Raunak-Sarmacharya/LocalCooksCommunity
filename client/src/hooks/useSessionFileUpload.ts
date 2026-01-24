@@ -122,7 +122,7 @@ export const useSessionFileUpload = (options: UseSessionFileUploadOptions = {}) 
         });
 
         // Use Firebase-authenticated upload endpoint
-        xhr.open('POST', '/api/upload-file');
+        xhr.open('POST', '/api/files/upload-file');
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
         xhr.withCredentials = true; // Include cookies
 

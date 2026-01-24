@@ -11,8 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { KitchenGalleryImages } from "@/components/manager/kitchen/KitchenGalleryImages";
+import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
+
 
 interface KitchenCardProps {
   kitchen: any;
@@ -138,6 +140,8 @@ export default function CreateKitchenStep() {
   };
 
 
+
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
       {/* Header */}
@@ -230,6 +234,21 @@ export default function CreateKitchenStep() {
                   rows={3}
                 />
               </div>
+
+              {/* Image Upload Section */}
+              <div className="grid gap-2">
+                <Label>Cover Image <span className="text-muted-foreground font-normal ml-1">(Optional)</span></Label>
+                <div className="max-w-md">
+                  <ImageWithReplace
+                    imageUrl={data.imageUrl || undefined}
+                    onImageChange={(url) => setData({ ...data, imageUrl: url || '' })}
+                    onRemove={() => setData({ ...data, imageUrl: '' })}
+                    className="h-48 object-cover rounded-lg"
+                    aspectRatio="16/9"
+                    fieldName="kitchen-cover"
+                  />
+                </div>
+              </div>
             </div>
 
             <Separator />
@@ -287,7 +306,7 @@ export default function CreateKitchenStep() {
                 {isCreating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
                 {isCreating ? "Creating..." : "Create Kitchen"}
               </Button>
-                <Button variant="outline" onClick={() => setShowCreate(false)} disabled={isCreating}>
+              <Button variant="outline" onClick={() => setShowCreate(false)} disabled={isCreating}>
                 Cancel
               </Button>
             </div>

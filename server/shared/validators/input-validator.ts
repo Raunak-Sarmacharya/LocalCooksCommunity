@@ -65,8 +65,8 @@ export async function validateApplicationInput(data: unknown) {
     foodSafetyLicense: z.enum(['yes', 'no', 'notSure']),
     foodEstablishmentCert: z.enum(['yes', 'no', 'notSure']),
     kitchenPreference: z.enum(['commercial', 'home', 'notSure']),
-    foodSafetyLicenseUrl: z.string().url('Invalid URL format').optional(),
-    foodEstablishmentCertUrl: z.string().url('Invalid URL format').optional(),
+    foodSafetyLicenseUrl: z.string().optional(),
+    foodEstablishmentCertUrl: z.string().optional(),
     feedback: z.string().optional(),
   });
 
@@ -94,9 +94,12 @@ export async function validateLocationInput(data: unknown) {
     cancellationPolicyMessage: z.string().optional(),
     defaultDailyBookingLimit: z.number().positive('Daily booking limit must be positive').optional(),
     minimumBookingWindowHours: z.number().positive('Minimum booking window must be positive').optional(),
-    logoUrl: z.string().url('Invalid URL format').optional(),
-    brandImageUrl: z.string().url('Invalid URL format').optional(),
+    logoUrl: z.string().optional(),
+    brandImageUrl: z.string().optional(),
     timezone: z.string().optional(),
+    kitchenLicenseUrl: z.string().optional(),
+    kitchenLicenseStatus: z.enum(['pending', 'approved', 'rejected']).optional(),
+    kitchenLicenseExpiry: z.string().optional(),
   });
 
   try {
@@ -116,9 +119,9 @@ export async function validateKitchenInput(data: unknown) {
   const kitchenSchema = z.object({
     locationId: z.number().positive('Location ID must be positive'),
     name: z.string().min(1, 'Kitchen name is required'),
-    description: z.string().min(5, 'Description must be at least 5 characters').optional(),
-    imageUrl: z.string().url('Invalid URL format').optional(),
-    galleryImages: z.array(z.string().url('Invalid URL format')).optional(),
+    description: z.string().optional(),
+    imageUrl: z.string().optional(), // Allow relative paths for local dev (starts with /)
+    galleryImages: z.array(z.string()).optional(),
     amenities: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
     hourlyRate: z.number().positive('Hourly rate must be positive').optional(),

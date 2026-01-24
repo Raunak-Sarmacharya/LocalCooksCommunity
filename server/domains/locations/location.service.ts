@@ -263,7 +263,7 @@ export class LocationService {
 
       // Return default requirements if none configured
       return {
-        id: 0,
+        id: -1,
         locationId,
         requireFirstName: true,
         requireLastName: true,
