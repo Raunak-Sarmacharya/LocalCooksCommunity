@@ -3,11 +3,199 @@ import { inventoryService } from "../domains/inventory/inventory.service";
 import { locationService } from "../domains/locations/location.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { chefService } from "../domains/users/chef.service";
+import { userService } from "../domains/users/user.service";
 import { requireChef } from "./middleware";
 import { storage } from "../storage";
-import { pool } from "../db";
+import { pool, db } from "../db";
+import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { users } from "@shared/schema";
+import { errorResponse } from "../api-response";
 
 const router = Router();
+
+// ===================================
+// STRIPE CONNECT - CHEF PAYMENT SETUP
+// ===================================
+// These routes allow chefs to set up Stripe Connect to receive payments
+// when selling on the LocalCooks platform. Only available after seller
+// application is approved.
+
+// Create Stripe Connect account for chef
+router.post("/stripe-connect/create", requireChef, async (req: Request, res: Response) => {
+    console.log('[Chef Stripe Connect] Create request received for chef:', req.neonUser?.id);
+    try {
+        const chefId = req.neonUser!.id;
+
+        // Get user data
+        const userResult = await db.execute(sql`
+            SELECT id, username as email, stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${chefId} 
+            LIMIT 1
+        `);
+
+        const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
+
+        if (!userRow) {
+            console.error('[Chef Stripe Connect] User not found for ID:', chefId);
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const user = {
+            id: userRow.id,
+            email: userRow.email,
+            stripeConnectAccountId: userRow.stripe_connect_account_id
+        };
+
+        const { createConnectAccount, createAccountLink, isAccountReady } = await import('../services/stripe-connect-service');
+
+        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
+        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
+
+        // Case 1: User already has a Stripe Connect account
+        if (user.stripeConnectAccountId) {
+            const isReady = await isAccountReady(user.stripeConnectAccountId);
+
+            if (isReady) {
+                return res.json({ alreadyExists: true, accountId: user.stripeConnectAccountId });
+            } else {
+                const link = await createAccountLink(user.stripeConnectAccountId, refreshUrl, returnUrl);
+                return res.json({ url: link.url });
+            }
+        }
+
+        // Case 2: No account, create one
+        console.log('[Chef Stripe Connect] Creating new account for email:', user.email);
+        const { accountId } = await createConnectAccount({
+            managerId: chefId, // Using managerId field for consistency with service
+            email: user.email,
+            country: 'CA',
+        });
+
+        // Save account ID to user
+        await userService.updateUser(chefId, { stripeConnectAccountId: accountId });
+
+        // Create onboarding link
+        const link = await createAccountLink(accountId, refreshUrl, returnUrl);
+
+        return res.json({ url: link.url });
+
+    } catch (error) {
+        console.error('[Chef Stripe Connect] Error in create route:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get Stripe Onboarding Link for chef
+router.get("/stripe-connect/onboarding-link", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const userResult = await db.execute(sql`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${chefId} 
+            LIMIT 1
+        `);
+        const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
+
+        if (!userRow?.stripe_connect_account_id) {
+            return res.status(400).json({ error: "No Stripe Connect account found" });
+        }
+
+        const { createAccountLink } = await import('../services/stripe-connect-service');
+        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
+        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
+
+        const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
+        return res.json({ url: link.url });
+    } catch (error) {
+        console.error('[Chef Stripe Connect] Error in onboarding-link route:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get Stripe Dashboard login link for chef
+router.get("/stripe-connect/dashboard-link", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        const userResult = await db.execute(sql`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${chefId} 
+            LIMIT 1
+        `);
+        const userRow = userResult.rows ? userResult.rows[0] : (userResult as any)[0];
+
+        if (!userRow?.stripe_connect_account_id) {
+            return res.status(400).json({ error: "No Stripe Connect account found" });
+        }
+
+        const { createDashboardLoginLink, isAccountReady, createAccountLink } = await import('../services/stripe-connect-service');
+
+        const isReady = await isAccountReady(userRow.stripe_connect_account_id);
+
+        if (isReady) {
+            const link = await createDashboardLoginLink(userRow.stripe_connect_account_id);
+            return res.json({ url: link.url });
+        } else {
+            const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+            const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
+            const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
+
+            const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
+
+            return res.json({ url: link.url, requiresOnboarding: true });
+        }
+
+    } catch (error) {
+        console.error('[Chef Stripe Connect] Error in dashboard-link route:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Sync Stripe Connect account status for chef
+router.post("/stripe-connect/sync", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        // Get chef data
+        const [chef] = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+        if (!chef?.stripeConnectAccountId) {
+            return res.status(400).json({ error: "No Stripe account connected" });
+        }
+
+        const { getAccountStatus } = await import('../services/stripe-connect-service');
+        const status = await getAccountStatus(chef.stripeConnectAccountId);
+
+        // Update user status in DB
+        const onboardingStatus = status.detailsSubmitted ? 'complete' : 'in_progress';
+
+        await db.update(users)
+            .set({
+                stripeConnectOnboardingStatus: onboardingStatus,
+            })
+            .where(eq(users.id, chefId));
+
+        res.json({
+            connected: true,
+            accountId: chef.stripeConnectAccountId,
+            status: onboardingStatus,
+            details: status
+        });
+    } catch (error) {
+        return errorResponse(res, error);
+    }
+});
 
 // Routes will be appended here
 

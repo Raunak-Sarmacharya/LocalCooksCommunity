@@ -61,6 +61,7 @@ const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
 const ManagerSetupPage = lazy(() => import("@/pages/ManagerSetupPage")); // [NEW]
+const ChefSetupPage = lazy(() => import("@/pages/ChefSetupPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
@@ -270,6 +271,7 @@ function Router() {
           </div>
         </Route>
         <SubdomainRoute path="/dashboard" component={ApplicantDashboard} subdomain={subdomain} />
+        <SubdomainRoute path="/chef-setup" component={ChefSetupPage} subdomain={subdomain} />
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
         <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />

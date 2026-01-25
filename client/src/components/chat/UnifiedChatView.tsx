@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertCircle, MessageCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -66,6 +66,11 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   // Track failed fetches to prevent infinite retries
   const failedLocationIds = useRef(new Set<number>());
 
+  // Memoize the refresh callback to prevent re-renders in ChatPanel -> useChat
+  const handleUnreadCountUpdate = useCallback(() => {
+    refetch();
+  }, [refetch]);
+
   // Fetch application details
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -81,8 +86,8 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
         const partners: Record<number, string> = {};
 
         // Choose endpoint based on role
-        const endpoint = role === 'manager' 
-          ? '/api/manager/kitchen-applications' 
+        const endpoint = role === 'manager'
+          ? '/api/manager/kitchen-applications'
           : '/api/firebase/chef/kitchen-applications';
 
         const appsResponse = await fetch(endpoint, {
@@ -162,7 +167,9 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
     };
 
     fetchApplicationDetails();
-  }, [conversations, role, locationNames]);
+    // Removed locationNames from dependency array to prevent infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations, role]);
 
   const handleSelectConversation = (conversation: Conversation) => {
     setSelectedConversation(conversation);
@@ -241,7 +248,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
             locationName={getPartnerLocation(selectedConversation)}
             chefName={role === 'chef' ? (auth.currentUser?.displayName || "Me") : getPartnerNameLabel(selectedConversation)}
             managerName={role === 'manager' ? (auth.currentUser?.displayName || "Me") : getPartnerNameLabel(selectedConversation)}
-            onUnreadCountUpdate={() => refetch()}
+            onUnreadCountUpdate={handleUnreadCountUpdate}
             embedded={true}
             onClose={() => setIsMobileListVisible(true)}
           />

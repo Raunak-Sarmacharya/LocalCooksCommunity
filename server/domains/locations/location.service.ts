@@ -5,6 +5,9 @@
  * Handles validation, business rules, and orchestrates repository calls.
  */
 
+import { db } from '../../db';
+import { chefKitchenApplications } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 import { LocationRepository } from './location.repository';
 import type { CreateLocationDTO, UpdateLocationDTO, VerifyKitchenLicenseDTO, LocationDTO, LocationRequirements, UpdateLocationRequirements } from './location.types';
 import { DomainError, LocationErrorCodes } from '../../shared/errors/domain-error';
@@ -203,6 +206,9 @@ export class LocationService {
 
       return location;
     } catch (error: any) {
+      if (error instanceof DomainError) {
+        throw error;
+      }
       console.error('[LocationService] Error getting location by ID:', error);
       throw new DomainError(
         LocationErrorCodes.LOCATION_NOT_FOUND,
@@ -352,12 +358,33 @@ export class LocationService {
     // I should update Repository to check for kitchens or handle the FK error.
 
     try {
+      // 1. Get all applications associated with this location
+      // We need to clean up their conversations in Firestore
+      const locationApps = await db
+        .select({
+          id: chefKitchenApplications.id,
+          conversationId: chefKitchenApplications.chat_conversation_id
+        })
+        .from(chefKitchenApplications)
+        .where(eq(chefKitchenApplications.locationId, id));
+
+      // 2. Delete associated conversations in Firestore
+      if (locationApps.length > 0) {
+        const { deleteConversation } = await import('../../chat-service');
+        const cleanupPromises = locationApps
+          .filter(app => app.conversationId)
+          .map(app => deleteConversation(app.conversationId!)
+            .catch((err: any) => console.error(`Failed to delete conversation ${app.conversationId}:`, err))
+          );
+
+        await Promise.all(cleanupPromises);
+        console.log(`[LocationService] Cleaned up ${cleanupPromises.length} conversations for deleted location ${id}`);
+      }
+
+      // 3. Delete location in Postgres
       await this.locationRepo.delete(id);
     } catch (error: any) {
       console.error('[LocationService] Error deleting location:', error);
-      // Map foreign key violation to user friendly error if possible, though Drizzle might just throw.
-      // In `storage-firebase.ts` it was checking manually `locationKitchens.length > 0`.
-      // I'll leave it as simple delete for now as standardizing.
       throw error;
     }
   }
