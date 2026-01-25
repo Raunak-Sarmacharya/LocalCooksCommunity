@@ -67,7 +67,14 @@ router.get("/locations", requireChef, async (req: Request, res: Response) => {
 
         console.log(`[API] /api/chef/locations - Returning ${locationsWithKitchens.length} locations with active kitchens`);
 
-        res.json(locationsWithKitchens);
+        const { normalizeImageUrl } = await import('./utils');
+        const normalizedLocations = locationsWithKitchens.map((location: any) => ({
+            ...location,
+            brandImageUrl: normalizeImageUrl(location.brandImageUrl, req),
+            logoUrl: normalizeImageUrl(location.logoUrl, req)
+        }));
+
+        res.json(normalizedLocations);
     } catch (error: any) {
         console.error("Error fetching locations:", error);
         res.status(500).json({ error: "Failed to fetch locations" });

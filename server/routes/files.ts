@@ -332,18 +332,20 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
         // Local file serving (development)
         const filePath = path.join(process.cwd(), 'uploads', 'documents', filename);
 
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ message: "File not found" });
-        }
-
         // Check permissions based on filename prefix (userId_...)
         const filenameParts = filename.split('_');
         let fileUserId: number | null = null;
+        let isPublicAccess = false;
+
+        // AUTH CHECK:
+        // 1. If user is Admin/Manager -> Allow
+        // 2. If user owns the file -> Allow
+        // 3. If file is a purely public asset (Kitchen Image) -> Allow (verified via DB)
 
         if (filenameParts[0] === 'unknown') {
-            if (userRole !== "admin" && userRole !== "manager") {
-                return res.status(403).json({ message: "Access denied" });
+            // "unknown" user ID files are tricky. Usually unsafe unless verify they are public.
+            if (userRole === "admin" || userRole === "manager") {
+                isPublicAccess = true;
             }
         } else {
             const userIdMatch = filenameParts[0].match(/^\d+$/);
@@ -352,25 +354,101 @@ router.get("/documents/:filename", optionalFirebaseAuth, async (req: Request, re
             }
         }
 
-        if (fileUserId !== null && userId !== fileUserId && userRole !== "admin" && userRole !== "manager") {
+        const isOwner = fileUserId !== null && userId === fileUserId;
+        const isAdminOrManager = userRole === "admin" || userRole === "manager";
+
+        if (!isOwner && !isAdminOrManager) {
+            // Fallback: Check if this file is actually a public kitchen image
+            // Only perform this DB check if we are about to deny access
+            try {
+                // We need to look for this filename in the kitchens table (image_url or gallery_images)
+                // The stored URL might be the full path "/api/files/documents/filename"
+                const searchPattern = `%${filename}`;
+
+                // Use dynamic import to avoid circular dependencies if any, 
+                // but standard import would be better if top-level is clean.
+                // Using existing imports from top of file or dynamic if safer.
+                // Since this is inside an async function:
+                const { kitchens } = await import('@shared/schema');
+                const { db } = await import('../db');
+                const { or, like, sql } = await import('drizzle-orm');
+
+                // Check if this filename appears in any kitchen's image_url
+                // Note: gallery_images is JSONB so we use specific operator
+                const [kitchenMatch] = await db
+                    .select({ id: kitchens.id })
+                    .from(kitchens)
+                    .where(
+                        or(
+                            like(kitchens.imageUrl, searchPattern),
+                            sql`${kitchens.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
+                            // also try with just filename if that's how it's stored in array
+                            sql`${kitchens.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
+                        )
+                    )
+                    .limit(1);
+
+                if (kitchenMatch) {
+                    console.log(`[FILE ACCESS] Public access granted for kitchen image: ${filename}`);
+                    isPublicAccess = true;
+                }
+            } catch (dbError) {
+                console.error("Error checking public access:", dbError);
+                // Fail safe - deny
+            }
+        }
+
+        if (!isOwner && !isAdminOrManager && !isPublicAccess) {
             return res.status(403).json({ message: "Access denied" });
         }
 
         // Serve file
-        const stat = fs.statSync(filePath);
-        const ext = path.extname(filename).toLowerCase();
-        let contentType = 'application/octet-stream';
-        if (ext === '.pdf') contentType = 'application/pdf';
-        else if (['.jpg', '.jpeg'].includes(ext)) contentType = 'image/jpeg';
-        else if (ext === '.png') contentType = 'image/png';
-        else if (ext === '.webp') contentType = 'image/webp';
+        if (fs.existsSync(filePath)) {
+            // Local file serving (development or locally cached)
+            const stat = fs.statSync(filePath);
+            const ext = path.extname(filename).toLowerCase();
+            let contentType = 'application/octet-stream';
+            if (ext === '.pdf') contentType = 'application/pdf';
+            else if (['.jpg', '.jpeg'].includes(ext)) contentType = 'image/jpeg';
+            else if (ext === '.png') contentType = 'image/png';
+            else if (ext === '.webp') contentType = 'image/webp';
 
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Length', stat.size);
-        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Length', stat.size);
+            res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
 
-        const readStream = fs.createReadStream(filePath);
-        readStream.pipe(res);
+            const readStream = fs.createReadStream(filePath);
+            readStream.pipe(res);
+        } else {
+            // File not found locally - Try R2 (Production Fallback)
+            // This handles the case where files are in R2 but requested via /api/files/documents/
+            const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+            // Even if not strictly production env, if we are here and file is missing locally,
+            // and we passed auth, we should try R2 if configured.
+            // Rely on top-level or new import
+            const { getPresignedUrl, isR2Configured } = await import('../r2-storage');
+
+            if (isR2Configured()) {
+                try {
+                    // Try to get R2 URL
+                    // We need to pass the full "original" URL structure or just the key
+                    // getPresignedUrl expects a full "fileUrl" to extract key, OR we can pass a constructed one.
+                    // It extracts key from `pathname`.
+                    // Let's construct a fake URL that will parse correctly to 'documents/filename'
+                    const fakeUrl = `https://r2.localcooks.com/documents/${filename}`;
+                    const presignedUrl = await getPresignedUrl(fakeUrl, 3600);
+
+                    console.log(`[FILE ACCESS] Redirecting to R2 for: ${filename}`);
+                    return res.redirect(307, presignedUrl);
+                } catch (r2Error) {
+                    console.error('[FILE ACCESS] R2 fallback failed:', r2Error);
+                    return res.status(404).json({ message: "File not found" });
+                }
+            } else {
+                return res.status(404).json({ message: "File not found" });
+            }
+        }
     } catch (error) {
         console.error("Error serving file:", error);
         return res.status(500).json({ message: "Internal server error" });

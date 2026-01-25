@@ -1,13 +1,13 @@
-import { 
-  collection, 
-  doc, 
-  addDoc, 
-  updateDoc, 
-  getDoc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
+import {
+  collection,
+  doc,
+  addDoc,
+  updateDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
   limit,
   onSnapshot,
   Timestamp,
@@ -51,6 +51,29 @@ export async function createConversation(
   locationId: number
 ): Promise<string> {
   try {
+    // First check if a conversation already exists for this application
+    const existingConversation = await getConversationForApplication(applicationId);
+    if (existingConversation) {
+      console.log('Using existing conversation:', existingConversation.id);
+
+      // If the existing conversation is missing IDs (legacy data), update it
+      const updates: any = {};
+      if (!existingConversation.chefId || existingConversation.chefId !== chefId) {
+        updates.chefId = chefId;
+      }
+      if (!existingConversation.managerId || existingConversation.managerId !== managerId) {
+        updates.managerId = managerId;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        console.log('Healing existing conversation with missing IDs:', updates);
+        const conversationRef = doc(db, 'conversations', existingConversation.id);
+        await updateDoc(conversationRef, updates);
+      }
+
+      return existingConversation.id;
+    }
+
     const conversationRef = await addDoc(collection(db, 'conversations'), {
       applicationId,
       chefId,
@@ -62,6 +85,7 @@ export async function createConversation(
       unreadManagerCount: 0,
     });
 
+    console.log('Created new conversation:', conversationRef.id);
     return conversationRef.id;
   } catch (error) {
     console.error('Error creating conversation:', error);
@@ -181,7 +205,7 @@ export async function sendMessage(
 
     // Update conversation's lastMessageAt and unread counts
     const conversationRef = doc(db, 'conversations', conversationId);
-    
+
     // Get current conversation to read current unread counts atomically
     const conversation = await getConversation(conversationId);
     if (!conversation) {
@@ -199,6 +223,17 @@ export async function sendMessage(
       updateData.unreadManagerCount = (conversation.unreadManagerCount || 0) + 1;
     } else {
       updateData.unreadChefCount = (conversation.unreadChefCount || 0) + 1;
+    }
+
+    // Self-healing: Update managerId or chefId if missing/incorrect on the conversation
+    // This fixes legacy conversations where managerId might be 0 or undefined
+    if (senderRole === 'manager' && (!conversation.managerId || conversation.managerId !== senderId)) {
+      console.log('Self-healing managerId on conversation:', conversationId, 'from', conversation.managerId, 'to', senderId);
+      updateData.managerId = senderId;
+    }
+    if (senderRole === 'chef' && (!conversation.chefId || conversation.chefId !== senderId)) {
+      console.log('Self-healing chefId on conversation:', conversationId, 'from', conversation.chefId, 'to', senderId);
+      updateData.chefId = senderId;
     }
 
     console.log('Updating conversation:', updateData);
@@ -288,7 +323,7 @@ export function subscribeToMessages(
   limitCount: number = 50
 ): () => void {
   console.log('Setting up Firestore subscription for conversation:', conversationId);
-  
+
   const q = query(
     collection(db, 'conversations', conversationId, 'messages'),
     orderBy('createdAt', 'desc'),
@@ -304,7 +339,7 @@ export function subscribeToMessages(
         hasPendingWrites: snapshot.metadata.hasPendingWrites,
         fromCache: snapshot.metadata.fromCache,
       });
-      
+
       const messages = snapshot.docs
         .map(doc => {
           const data = doc.data();
@@ -321,7 +356,7 @@ export function subscribeToMessages(
           } as ChatMessage;
         })
         .reverse(); // Reverse to show oldest first
-      
+
       console.log('Calling callback with', messages.length, 'messages');
       callback(messages);
     },
@@ -451,12 +486,12 @@ export async function getAllConversations(
       collection(db, 'conversations'),
       where(field, '==', userId)
     );
-    
+
     console.log('Executing Firestore query...');
     const querySnapshot = await getDocs(q);
-    
+
     console.log('Found conversations:', querySnapshot.docs.length);
-    
+
     const conversations: Conversation[] = [];
     querySnapshot.docs.forEach(doc => {
       const data = doc.data();
@@ -475,16 +510,29 @@ export async function getAllConversations(
 
     // Sort by lastMessageAt descending (client-side to avoid index requirement)
     conversations.sort((a, b) => {
-      const dateA = a.lastMessageAt instanceof Date 
-        ? a.lastMessageAt 
+      const dateA = a.lastMessageAt instanceof Date
+        ? a.lastMessageAt
         : (a.lastMessageAt as Timestamp).toDate();
-      const dateB = b.lastMessageAt instanceof Date 
-        ? b.lastMessageAt 
+      const dateB = b.lastMessageAt instanceof Date
+        ? b.lastMessageAt
         : (b.lastMessageAt as Timestamp).toDate();
       return dateB.getTime() - dateA.getTime();
     });
 
-    return conversations;
+    // Deduplicate conversations by applicationId, keeping the most recent one
+    const uniqueConversationsMap = new Map<number, Conversation>();
+
+    conversations.forEach(conv => {
+      const existing = uniqueConversationsMap.get(conv.applicationId);
+      if (!existing || conv.lastMessageAt > existing.lastMessageAt) {
+        uniqueConversationsMap.set(conv.applicationId, conv);
+      }
+    });
+
+    // Convert back to array
+    const uniqueConversations = Array.from(uniqueConversationsMap.values());
+
+    return uniqueConversations;
   } catch (error) {
     console.error('Error getting conversations:', error);
     // Log more details about the error
@@ -517,7 +565,7 @@ export async function getUnreadCount(
       where(field, '==', userId)
     );
     const querySnapshot = await getDocs(q);
-    
+
     let totalUnread = 0;
     querySnapshot.docs.forEach(doc => {
       const data = doc.data();
@@ -528,5 +576,32 @@ export async function getUnreadCount(
   } catch (error) {
     console.error('Error getting unread count:', error);
     return 0;
+  }
+}
+
+/**
+ * Ensure conversation has the correct managerId (Self-healing for legacy chats)
+ */
+export async function ensureConversationManagerId(
+  conversationId: string,
+  managerId: number
+): Promise<void> {
+  try {
+    if (!conversationId || !managerId) return;
+
+    const conversationRef = doc(db, 'conversations', conversationId);
+    const conversationSnap = await getDoc(conversationRef);
+
+    if (conversationSnap.exists()) {
+      const data = conversationSnap.data();
+      // If managerId is missing or 0 or incorrect, update it
+      if (!data.managerId || data.managerId !== managerId) {
+        console.log(`[ChatService] Healing conversation ${conversationId}: Updating managerId from ${data.managerId} to ${managerId}`);
+        await updateDoc(conversationRef, { managerId });
+      }
+    }
+  } catch (error) {
+    console.error('[ChatService] Error verifying conversation managerId:', error);
+    // Don't throw, just log - this is a background repair operation
   }
 }

@@ -956,6 +956,8 @@ export default function KitchenPreviewPage() {
                   </>
                 ) : isAuthenticated && canBook ? (
                   'Book Now'
+                ) : isAuthenticated && application?.status === 'approved' && (!application.tier2_completed_at) ? (
+                  'Continue Application'
                 ) : isAuthenticated ? (
                   'Apply to Kitchen'
                 ) : (
@@ -1054,6 +1056,16 @@ export default function KitchenPreviewPage() {
                     >
                       <Calendar className="mr-2 h-3.5 w-3.5" />
                       Book This Kitchen
+                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                    </Button>
+                  ) : isAuthenticated && application?.status === 'approved' && (!application.tier2_completed_at) ? (
+                    <Button
+                      onClick={handleApplyClick}
+                      className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
+                      size="sm"
+                    >
+                      <FileText className="mr-2 h-3.5 w-3.5" />
+                      Continue Application
                       <ArrowRight className="ml-2 h-3.5 w-3.5" />
                     </Button>
                   ) : isAuthenticated ? (

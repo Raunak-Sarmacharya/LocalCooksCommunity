@@ -311,6 +311,7 @@ export function useChefApprovedKitchens() {
       brandImageUrl?: string;
       applicationId: number;
       approvedAt: string | null;
+      managerId: number;
     }>,
     Error
   >({

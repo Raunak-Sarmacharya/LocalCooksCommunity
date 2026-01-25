@@ -42,6 +42,15 @@ export function normalizeImageUrl(url: string | null | undefined, req: Request):
 
     // If already an absolute URL (http:// or https://), return as-is
     if (url.startsWith('http://') || url.startsWith('https://')) {
+        // Special case: Normalize R2 URLs to use our proxy
+        // This ensures they go through the auth/public-fallback logic in /api/files/documents
+        if (url.includes('r2.localcooks.com/documents/') || url.includes('.r2.dev/documents/')) {
+            const filename = url.split('/').pop();
+            if (filename) {
+                const origin = getOrigin();
+                return `${origin}/api/files/documents/${filename}`;
+            }
+        }
         return url;
     }
 

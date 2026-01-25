@@ -25,7 +25,15 @@ import {
   Info,
   FileText,
   MessageCircle,
+  AlertCircle,
 } from "lucide-react";
+import {
+  createConversation,
+  ensureConversationManagerId,
+  getConversationForApplication,
+} from '@/services/chat-service';
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -110,6 +118,7 @@ interface LocationWithKitchens {
     tier3: boolean;
     tier4: boolean;
   };
+  managerId?: number;
 }
 
 // Helper function to get Firebase auth headers
@@ -137,6 +146,8 @@ export default function KitchenComparisonPage() {
   const [showChatDialog, setShowChatDialog] = useState(false);
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const queryClient = useQueryClient();
 
   // Scroll to top on mount
   useEffect(() => {
@@ -747,6 +758,7 @@ export default function KitchenComparisonPage() {
         tier3: false, // Not in use
         tier4: false, // Not in use
       },
+      managerId: location.managerId,
     };
   }).filter((loc) => loc.kitchens.length > 0);
 
@@ -896,9 +908,78 @@ export default function KitchenComparisonPage() {
       return;
     }
 
+    // Prepare chat data
     setChatApplication(application);
-    setChatConversationId(application.chat_conversation_id);
-    setShowChatDialog(true);
+
+    try {
+      setIsCreatingChat(true);
+
+      // Check if conversation exists via service first (source of truth)
+      // This handles cases where local state might be stale
+      let conversationId = application.chat_conversation_id;
+
+      if (!conversationId) {
+        // Try getting it from Firestore directly
+        const existingConv = await getConversationForApplication(application.id);
+        if (existingConv) {
+          conversationId = existingConv.id;
+        }
+      }
+
+      // If we have a conversation ID, just open it
+      if (conversationId) {
+        // Self-healing: Ensure managerId is correct on the conversation document
+        const appWithManager = application as any;
+        const managerIdVal = appWithManager.location?.managerId || location.managerId;
+        const managerId = managerIdVal ? Number(managerIdVal) : 0;
+
+        if (managerId) {
+          ensureConversationManagerId(conversationId, managerId);
+        }
+
+        setChatConversationId(conversationId);
+        setShowChatDialog(true);
+        setIsCreatingChat(false);
+        return;
+      }
+
+      // If no conversation exists, create one
+      if (chefId) {
+        // We need managerId. The application object usually has included relation location -> managerId
+        // Fallback: Use the managerID from the application's location property if available
+        const appWithManager = application as any;
+        // Ensure managerId is a number
+        const managerIdVal = appWithManager.location?.managerId || location.managerId;
+        const managerId = managerIdVal ? Number(managerIdVal) : 0;
+
+        if (!managerId) {
+          console.error("Manager ID missing from application or location", { appLocation: appWithManager.location, location });
+          toast.error("Cannot start chat: Manager information missing");
+          setIsCreatingChat(false);
+          return;
+        }
+
+        // createConversation is now idempotent - safe to call
+        const newConvId = await createConversation(
+          application.id,
+          chefId,
+          managerId,
+          location.id
+        );
+
+        setChatConversationId(newConvId);
+
+        // Invalidate applications query to re-fetch with new conversation ID
+        queryClient.invalidateQueries({ queryKey: ["chef-kitchen-applications-status"] });
+
+        setShowChatDialog(true);
+      }
+    } catch (error) {
+      console.error("Failed to open conversation:", error);
+      toast.error("Failed to start conversation");
+    } finally {
+      setIsCreatingChat(false);
+    }
   };
 
   if (authLoading || isLoading) {
@@ -1308,31 +1389,60 @@ export default function KitchenComparisonPage() {
                                         </Button>
                                       </div>
                                     ) : (
-                                      <div className="flex-1">
-                                        <div className="text-xs text-amber-700 font-medium mb-1">
-                                          {location.nextTierToComplete}
+                                      <div className="flex-1 flex flex-col gap-3">
+                                        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm relative overflow-hidden group">
+                                          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+                                          <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                              <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 gap-1 px-2 py-0.5 h-5">
+                                                <Check className="h-3 w-3" />
+                                                Step 1 Approved
+                                              </Badge>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                              50%
+                                            </span>
+                                          </div>
+
+                                          {/* Progress Bar */}
+                                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mb-2.5">
+                                            <div className="h-full bg-blue-500 w-1/2 rounded-full transition-all duration-500 group-hover:w-[52%]" />
+                                          </div>
+
+                                          <div className="flex items-center text-[11px] text-slate-600">
+                                            <AlertCircle className="h-3 w-3 mr-1 text-blue-500" />
+                                            <span>
+                                              Next: <span className="font-medium text-slate-900">{location.nextTierToComplete || "Complete requirements"}</span>
+                                            </span>
+                                          </div>
                                         </div>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          disabled
-                                          className="w-full bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed"
-                                        >
-                                          <Clock className="mr-2 h-4 w-4" />
-                                          Complete All Steps
-                                        </Button>
+
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            onClick={() => handleApplyKitchen(location.id)}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-sm font-medium h-9"
+                                          >
+                                            Continue Application
+                                            <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                                          </Button>
+
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleOpenChat(location)}
+                                            disabled={isCreatingChat}
+                                            className="px-3 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 h-9 shrink-0"
+                                            title="Message Kitchen"
+                                          >
+                                            {isCreatingChat ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <MessageCircle className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </div>
                                       </div>
-                                    )}
-                                    {location.hasChatConversation && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleOpenChat(location)}
-                                        className="flex-1"
-                                      >
-                                        <MessageCircle className="mr-2 h-4 w-4" />
-                                        Chat
-                                      </Button>
                                     )}
                                   </>
                                 ) : location.isPending ? (
