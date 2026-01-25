@@ -47,6 +47,7 @@ export class ChefApplicationService {
                         id: locations.id,
                         name: locations.name,
                         address: locations.address,
+                        managerId: locations.managerId,
                         // city not explicitly in schema snippet I saw, omit to be safe or check if needed
                     }
                 })
@@ -60,7 +61,8 @@ export class ChefApplicationService {
             return apps.map(app => ({
                 ...app,
                 locationName: app.location?.name,
-                locationAddress: app.location?.address
+                locationAddress: app.location?.address,
+                location: app.location // Ensure full location object is passed
             }));
         } catch (error) {
             console.error("[ChefApplicationService] Error fetching chef applications:", error);
@@ -206,7 +208,8 @@ export class ChefApplicationService {
                         name: locations.name,
                         address: locations.address,
                         logoUrl: locations.logoUrl,
-                        brandImageUrl: locations.brandImageUrl
+                        brandImageUrl: locations.brandImageUrl,
+                        managerId: locations.managerId
                     }
                 })
                 .from(chefKitchenApplications)
@@ -227,7 +230,8 @@ export class ChefApplicationService {
                     brandImageUrl: app.location!.brandImageUrl,
                     applicationId: app.applicationId,
                     approvedAt: app.approvedAt,
-                    locationId: app.locationId
+                    locationId: app.locationId,
+                    managerId: app.location!.managerId
                 }));
         } catch (error) {
             console.error("[ChefApplicationService] Error fetching approved kitchens:", error);

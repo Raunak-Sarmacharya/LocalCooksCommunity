@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertCircle, MessageCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -30,7 +30,7 @@ export default function ChefChatView({
   const [applicationDetails, setApplicationDetails] = useState<Record<number, ApplicationDetails>>({});
   const [locationNames, setLocationNames] = useState<Record<number, string>>({});
   const [managerNames, setManagerNames] = useState<Record<number, string>>({});
-  
+
   // Mobile handling
   const [isMobileListVisible, setIsMobileListVisible] = useState(true);
 
@@ -42,8 +42,11 @@ export default function ChefChatView({
       return await getAllConversations(chefId, 'chef');
     },
     enabled: !!chefId,
-    refetchInterval: 30000, 
+    refetchInterval: 30000,
   });
+
+  // Track failed fetches to prevent infinite retries
+  const failedLocationIds = useRef(new Set<number>());
 
   // Fetch application details...
   useEffect(() => {
@@ -66,14 +69,19 @@ export default function ChefChatView({
 
         if (appsResponse.ok) {
           const allApps = await appsResponse.json();
-          for (const conv of conversations) {
-            const matchingApp = allApps.find((app: ApplicationDetails) => app.id === conv.applicationId);
-            if (matchingApp) {
-              details[conv.applicationId] = matchingApp;
-              if (matchingApp?.location?.name) {
-                locations[conv.locationId] = matchingApp.location.name;
+          // Verify it's an array
+          if (Array.isArray(allApps)) {
+            for (const conv of conversations) {
+              const matchingApp = allApps.find((app: ApplicationDetails) => app.id === conv.applicationId);
+              if (matchingApp) {
+                details[conv.applicationId] = matchingApp;
+                if (matchingApp?.location?.name) {
+                  locations[conv.locationId] = matchingApp.location.name;
+                }
               }
             }
+          } else {
+            console.warn('[ChefChatView] Expected applications array but got:', typeof allApps);
           }
         }
       } catch (error) {
@@ -82,7 +90,16 @@ export default function ChefChatView({
 
       // Fill in any missing location names
       const locationPromises = conversations
-        .filter(conv => !locations[conv.locationId])
+        .filter(conv => {
+          // Skip if:
+          // 1. We already have it in the local batch (locations)
+          // 2. We already have it in component state (locationNames)
+          // 3. We already failed to fetch it (failedLocationIds)
+          if (locations[conv.locationId]) return false;
+          if (locationNames[conv.locationId] && !locationNames[conv.locationId].startsWith('Unknown')) return false;
+          if (failedLocationIds.current.has(conv.locationId)) return false;
+          return true;
+        })
         .map(async (conv) => {
           try {
             const locationResponse = await fetch(`/api/public/locations/${conv.locationId}/details`, {
@@ -92,16 +109,24 @@ export default function ChefChatView({
               const locationData = await locationResponse.json();
               if (locationData?.location?.name) {
                 locations[conv.locationId] = locationData.location.name;
+              } else {
+                locations[conv.locationId] = "Unknown Location (No Name)";
+                failedLocationIds.current.add(conv.locationId);
               }
+            } else {
+              locations[conv.locationId] = "Unknown Location (Not Found)";
+              failedLocationIds.current.add(conv.locationId);
             }
           } catch (error) {
             console.error(`Error fetching location ${conv.locationId}:`, error);
+            locations[conv.locationId] = "Unknown Location (Error)";
+            failedLocationIds.current.add(conv.locationId);
           }
         });
 
       await Promise.all(locationPromises);
       setApplicationDetails(details);
-      setLocationNames(locations);
+      setLocationNames(prev => ({ ...prev, ...locations }));
       setManagerNames(managers);
     };
 
@@ -115,10 +140,10 @@ export default function ChefChatView({
 
 
   // Helpers to get display names
-  const getPartnerName = (c: Conversation) => 
+  const getPartnerName = (c: Conversation) =>
     managerNames[c.managerId] || "Manager";
-  
-  const getPartnerLocation = (c: Conversation) => 
+
+  const getPartnerLocation = (c: Conversation) =>
     applicationDetails[c.applicationId]?.location?.name || locationNames[c.locationId] || `Location #${c.locationId}`;
 
 
@@ -142,7 +167,7 @@ export default function ChefChatView({
 
   const filteredConversations = conversations.filter((conversation) => {
     const app = applicationDetails[conversation.applicationId];
-    return app?.tier1_completed_at != null;
+    return !!app;
   });
 
   return (
@@ -152,7 +177,7 @@ export default function ChefChatView({
         "w-full md:w-80 border-r flex-col bg-muted/10",
         isMobileListVisible ? "flex" : "hidden md:flex"
       )}>
-        <ConversationList 
+        <ConversationList
           conversations={filteredConversations}
           selectedId={selectedConversation?.id}
           onSelect={handleSelectConversation}
@@ -183,7 +208,7 @@ export default function ChefChatView({
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">
             <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-               <MessageCircle className="h-8 w-8 text-muted-foreground/50" />
+              <MessageCircle className="h-8 w-8 text-muted-foreground/50" />
             </div>
             <h3 className="font-semibold text-lg">No chat selected</h3>
             <p className="text-sm">Select a conversation from the sidebar to start chatting.</p>

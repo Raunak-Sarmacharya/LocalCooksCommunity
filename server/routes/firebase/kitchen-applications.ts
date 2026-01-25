@@ -545,6 +545,7 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
                 id: (location as any).id,
                 name: (location as any).name,
                 address: (location as any).address,
+                managerId: (location as any).managerId,
             } : null,
         });
     } catch (error) {
@@ -790,37 +791,57 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                 await notifyTierTransition(applicationId, previousTier, currentTier);
             }
 
-            // Grant the chef access to this location ONLY if they have reached Tier 2 or higher
+            // Verify Tier 2 Requirements before granting access
+            // This ensures "Enterprise Grade" validation of all dynamic requirements (documents, custom fields)
             if (currentTier >= 2) {
-                try {
+                // Import Service dynamically or at top (using dynamic here for diff simplicity if top import is hard, but top is better. 
+                // I'll add import at top in a separate tool call or just use it if I can Add it.
+                // Wait, I can't easily add import at top and modify here in one go with replace_file_content unless I do multi.
+                // I will use full name and rely on auto-import? No, I must import it.
+                // Let's modify this block to check requirements.
 
-                    // Check if chef already has access
-                    const existingAccess = await db
-                        .select()
-                        .from(chefLocationAccess)
-                        .where(
-                            and(
-                                eq(chefLocationAccess.chefId, application.chefId),
-                                eq(chefLocationAccess.locationId, application.locationId)
-                            )
-                        );
+                const { tierValidationService } = await import('../../domains/applications/tier-validation');
 
-                    if (existingAccess.length === 0) {
-                        // Grant access
-                        await db.insert(chefLocationAccess).values({
-                            chefId: application.chefId,
-                            locationId: application.locationId,
-                            grantedBy: req.neonUser!.id,
-                            grantedAt: new Date(),
-                        });
-                        console.log(`✅ Granted chef ${application.chefId} access to location ${application.locationId}`);
+                // Fetch requirements for the location
+                const requirements = await locationService.getLocationRequirementsWithDefaults(application.locationId);
+
+                const validation = tierValidationService.validateTierRequirements(
+                    updatedApplication as any,
+                    requirements,
+                    2 // Validate for Tier 2 strictness
+                );
+
+                if (validation.valid) {
+                    try {
+                        // Check if chef already has access
+                        const existingAccess = await db
+                            .select()
+                            .from(chefLocationAccess)
+                            .where(
+                                and(
+                                    eq(chefLocationAccess.chefId, application.chefId),
+                                    eq(chefLocationAccess.locationId, application.locationId)
+                                )
+                            );
+
+                        if (existingAccess.length === 0) {
+                            // Grant access
+                            await db.insert(chefLocationAccess).values({
+                                chefId: application.chefId,
+                                locationId: application.locationId,
+                                grantedBy: req.neonUser!.id,
+                                grantedAt: new Date(),
+                            });
+                            console.log(`✅ Granted chef ${application.chefId} access to location ${application.locationId} (Requirements Met)`);
+                        }
+                    } catch (accessError) {
+                        console.error('Error granting chef access:', accessError);
                     }
-                } catch (accessError) {
-                    console.error('Error granting chef access:', accessError);
-                    // Don't fail the request, just log the error
+                } else {
+                    console.log(`ℹ️ Chef ${application.chefId} at Tier ${currentTier} but missing requirements: ${validation.missingRequirements.join(', ')}`);
+                    // Optionally: Send system message about missing requirements?
+                    // For now, just logging and NOT granting access.
                 }
-            } else {
-                console.log(`ℹ️ Chef ${application.chefId} approved for Tier 1 but waiting for Tier 2 for full access`);
             }
         }
 

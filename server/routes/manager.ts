@@ -794,15 +794,15 @@ router.put("/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, requireMan
 
         // If there's an existing image and it's an R2 URL, delete it
         // But only if we are replacing it
-        if (imageUrl && kitchen.galleryImages && kitchen.galleryImages.length > 0) {
+        if (imageUrl && kitchen.imageUrl) {
             const { deleteFromR2 } = await import('../r2-storage');
             // Only delete if it looks like an R2 URL (usually contains r2.dev or custom domain)
             // This is a basic check; real deletion logic handles errors gracefully
             try {
-                // Assuming first image is primary
-                // But logic at 4208 in routes.ts was specific: await deleteFromR2(kitchen.images[0]);
-                if (kitchen.galleryImages[0]) {
-                    await deleteFromR2(kitchen.galleryImages[0]);
+                // Determine if we should delete the old image
+                // 1. If it's different from the new one
+                if (kitchen.imageUrl !== imageUrl) {
+                    await deleteFromR2(kitchen.imageUrl);
                 }
             } catch (e) {
                 console.error("Failed to delete old image:", e);
@@ -905,6 +905,59 @@ router.put("/kitchens/:kitchenId/details", requireFirebaseAuthWithUser, requireM
     }
 });
 
+// Delete kitchen
+router.delete("/kitchens/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const kitchenId = parseInt(req.params.kitchenId);
+
+        const kitchen = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const location = await locationService.getLocationById(kitchen.locationId);
+        if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+        }
+
+        // Store image URLs for cleanup
+        const imageUrl = kitchen.imageUrl;
+        const galleryImages = kitchen.galleryImages || [];
+
+        // Delete from DB first
+        await kitchenService.deleteKitchen(kitchenId);
+
+        // Cleanup images from R2
+        const { deleteFromR2 } = await import('../r2-storage');
+
+        // Delete main image
+        if (imageUrl) {
+            try {
+                await deleteFromR2(imageUrl);
+            } catch (e) {
+                console.error(`Failed to delete kitchen image ${imageUrl}:`, e);
+            }
+        }
+
+        // Delete gallery images
+        if (galleryImages.length > 0) {
+            await Promise.all(galleryImages.map(async (img) => {
+                try {
+                    await deleteFromR2(img);
+                } catch (e) {
+                    console.error(`Failed to delete gallery image ${img}:`, e);
+                }
+            }));
+        }
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error("Error deleting kitchen:", error);
+        res.status(500).json({ error: error.message || "Failed to delete kitchen" });
+    }
+});
+
 // Get kitchen pricing
 router.get("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
@@ -996,7 +1049,7 @@ router.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireM
         if (minimumBookingHours !== undefined) pricing.minimumBookingHours = minimumBookingHours;
         if (pricingModel !== undefined) pricing.pricingModel = pricingModel;
         if (taxRatePercent !== undefined) {
-             pricing.taxRatePercent = taxRatePercent ? parseFloat(taxRatePercent) : null;
+            pricing.taxRatePercent = taxRatePercent ? parseFloat(taxRatePercent) : null;
         }
 
         const updated = await kitchenService.updateKitchen({

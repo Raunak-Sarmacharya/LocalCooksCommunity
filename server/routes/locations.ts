@@ -1,8 +1,10 @@
+
 import { Router, Request, Response } from 'express';
 import { requireFirebaseAuthWithUser, requireManager } from '../firebase-auth-middleware';
 import { normalizeImageUrl } from './utils';
 import { updateLocationRequirementsSchema } from '@shared/schema';
 import { fromZodError } from 'zod-validation-error';
+
 
 // Import Domain Services
 import { LocationRepository } from '../domains/locations/location.repository';
@@ -21,20 +23,26 @@ const kitchenService = new KitchenService(kitchenRepository);
 // 🔥 Public Locations List
 router.get('/public/locations', async (req: Request, res: Response) => {
     try {
-        // Fetch all locations
-        const allLocations = await locationService.getAllLocations();
+        // Fetch all locations and active kitchens
+        const [allLocations, allKitchens] = await Promise.all([
+            locationService.getAllLocations(),
+            kitchenService.getAllActiveKitchens()
+        ]);
 
         // Filter and sanitize for public consumption
         const publicLocations = allLocations.map(location => {
-            // Normalize images using the request object for host information
-            const brandImageUrl = normalizeImageUrl(
-                location.brandImageUrl || null,
-                req
-            );
-            const logoUrl = normalizeImageUrl(
-                location.logoUrl || null,
-                req
-            );
+            // Find a kitchen for this location to use as featured image
+            // Find a kitchen for this location to use as featured image
+            const locationKitchens = allKitchens.filter(k => k.locationId === location.id);
+            const featuredKitchen = locationKitchens.find(k => k.imageUrl) || locationKitchens[0];
+
+            // Normalize image URLs
+            const featuredKitchenImage = normalizeImageUrl(featuredKitchen?.imageUrl || null, req);
+            const logoUrl = normalizeImageUrl(location.logoUrl || null, req);
+            const brandImageUrl = normalizeImageUrl(location.brandImageUrl || null, req);
+
+            // Calculate kitchen count
+            const kitchenCount = locationKitchens.length;
 
             return {
                 id: location.id,
@@ -44,6 +52,10 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 brand_image_url: brandImageUrl, // compatibility
                 logoUrl,
                 logo_url: logoUrl, // compatibility
+                featuredKitchenImage,
+                featured_kitchen_image: featuredKitchenImage, // compatibility
+                kitchenCount,
+                kitchen_count: kitchenCount // compatibility
             };
         });
 
@@ -215,7 +227,7 @@ router.put('/manager/locations/:locationId/requirements',
             const updates = parseResult.data;
             const requirements = await locationService.upsertLocationRequirements(locationId, updates);
 
-            console.log(`✅ Location requirements updated for location ${locationId} by manager ${user.id}`);
+            console.log(`✅ Location requirements updated for location ${locationId} by manager ${user.id} `);
             res.json({ success: true, requirements });
         } catch (error) {
             // Safe error logging
