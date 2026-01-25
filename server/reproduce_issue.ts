@@ -11,7 +11,6 @@ async function reproduce() {
     const [manager] = await db.insert(users).values({
         username: `manager_${Date.now()}`,
         password: 'password',
-        email: managerEmail, // Include email to satisfy notNull constraint if it exists (schema says notNull usually)
         role: 'manager',
         isManager: true,
         isVerified: true
@@ -48,7 +47,6 @@ async function reproduce() {
     const [chef] = await db.insert(users).values({
         username: `chef_${Date.now()}`,
         password: 'password',
-        email: `chef_${Date.now()}@test.com`,
         role: 'chef',
         isChef: true,
         isVerified: true

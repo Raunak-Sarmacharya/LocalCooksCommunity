@@ -933,7 +933,8 @@ export default function ChefLanding() {
         logoUrl: loc.logoUrl || null,
         featuredKitchenImage: loc.featuredKitchenImage || null,
         mainImage: mainImage, // Combined image for display
-        kitchenCount: loc.kitchenCount || 1
+        kitchenCount: loc.kitchenCount || 1,
+        description: loc.description || null
       };
     });
     console.log(`[ChefLanding] Processed ${mapped.length} locations`);

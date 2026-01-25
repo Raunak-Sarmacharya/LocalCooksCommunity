@@ -9,46 +9,64 @@ import ChatPanel from './ChatPanel';
 import { ConversationList } from './ConversationList';
 import { cn } from '@/lib/utils';
 
-// Define a minimal type for application details to avoid 'any'
 interface ApplicationDetails {
   id: number;
   location?: {
     name?: string;
   };
+  chef?: {
+    username?: string;
+    full_name?: string;
+    first_name?: string;
+    last_name?: string;
+  };
+  fullName?: string;
   tier1_completed_at?: string | null;
 }
 
-interface ChefChatViewProps {
-  chefId: number;
-  embedded?: boolean;
+interface UnifiedChatViewProps {
+  userId: number;
+  role: 'chef' | 'manager';
+  initialConversationId?: string | null;
 }
 
-export default function ChefChatView({
-  chefId,
-}: ChefChatViewProps) {
+export default function UnifiedChatView({ userId, role, initialConversationId }: UnifiedChatViewProps) {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [applicationDetails, setApplicationDetails] = useState<Record<number, ApplicationDetails>>({});
   const [locationNames, setLocationNames] = useState<Record<number, string>>({});
-  const [managerNames, setManagerNames] = useState<Record<number, string>>({});
-
-  // Mobile handling
+  const [partnerNames, setPartnerNames] = useState<Record<number, string>>({});
   const [isMobileListVisible, setIsMobileListVisible] = useState(true);
 
-  // Fetch all conversations for this chef
+  // Fetch all conversations
   const { data: conversations = [], isLoading, error, refetch } = useQuery({
-    queryKey: ['chef-conversations', chefId],
+    queryKey: [`${role}-conversations`, userId],
     queryFn: async () => {
-      if (!chefId) return [];
-      return await getAllConversations(chefId, 'chef');
+      if (!userId) return [];
+      return await getAllConversations(userId, role);
     },
-    enabled: !!chefId,
+    enabled: !!userId,
     refetchInterval: 30000,
+    retry: 2,
+    retryDelay: 1000,
   });
+
+  // Set initial conversation if provided
+  useEffect(() => {
+    if (initialConversationId && conversations.length > 0) {
+      const conv = conversations.find(c => c.id === initialConversationId);
+      if (conv) {
+        setSelectedConversation(conv);
+        setIsMobileListVisible(false);
+      }
+    }
+  }, [initialConversationId, conversations]);
+
+
 
   // Track failed fetches to prevent infinite retries
   const failedLocationIds = useRef(new Set<number>());
 
-  // Fetch application details...
+  // Fetch application details
   useEffect(() => {
     if (conversations.length === 0) return;
 
@@ -56,96 +74,118 @@ export default function ChefChatView({
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
-      const token = await currentUser.getIdToken();
-      const details: Record<number, ApplicationDetails> = {};
-      const locations: Record<number, string> = {};
-      const managers: Record<number, string> = {};
-
       try {
-        const appsResponse = await fetch('/api/firebase/chef/kitchen-applications', {
+        const token = await currentUser.getIdToken();
+        const details: Record<number, ApplicationDetails> = {};
+        const locations: Record<number, string> = {};
+        const partners: Record<number, string> = {};
+
+        // Choose endpoint based on role
+        const endpoint = role === 'manager' 
+          ? '/api/manager/kitchen-applications' 
+          : '/api/firebase/chef/kitchen-applications';
+
+        const appsResponse = await fetch(endpoint, {
           headers: { Authorization: `Bearer ${token}` },
           credentials: 'include',
         });
 
         if (appsResponse.ok) {
           const allApps = await appsResponse.json();
-          // Verify it's an array
           if (Array.isArray(allApps)) {
             for (const conv of conversations) {
               const matchingApp = allApps.find((app: ApplicationDetails) => app.id === conv.applicationId);
               if (matchingApp) {
                 details[conv.applicationId] = matchingApp;
+
                 if (matchingApp?.location?.name) {
                   locations[conv.locationId] = matchingApp.location.name;
                 }
+
+                if (role === 'manager') {
+                  // Partner is chef
+                  if (matchingApp?.chef?.username) {
+                    partners[conv.chefId] = matchingApp.chef.username;
+                  }
+                  if (matchingApp?.fullName) {
+                    partners[conv.chefId] = matchingApp.fullName;
+                  }
+                } else {
+                  // Partner is manager - usually just "Manager" since we don't have manager names easily here
+                  partners[conv.managerId] = "Manager";
+                }
               }
             }
-          } else {
-            console.warn('[ChefChatView] Expected applications array but got:', typeof allApps);
           }
         }
-      } catch (error) {
-        console.error('Error fetching chef applications:', error);
-      }
 
-      // Fill in any missing location names
-      const locationPromises = conversations
-        .filter(conv => {
-          // Skip if:
-          // 1. We already have it in the local batch (locations)
-          // 2. We already have it in component state (locationNames)
-          // 3. We already failed to fetch it (failedLocationIds)
-          if (locations[conv.locationId]) return false;
-          if (locationNames[conv.locationId] && !locationNames[conv.locationId].startsWith('Unknown')) return false;
-          if (failedLocationIds.current.has(conv.locationId)) return false;
-          return true;
-        })
-        .map(async (conv) => {
-          try {
-            const locationResponse = await fetch(`/api/public/locations/${conv.locationId}/details`, {
-              credentials: 'include',
-            });
-            if (locationResponse.ok) {
-              const locationData = await locationResponse.json();
-              if (locationData?.location?.name) {
-                locations[conv.locationId] = locationData.location.name;
+        // Fill in any missing location names
+        const locationPromises = conversations
+          .filter(conv => {
+            if (locations[conv.locationId]) return false;
+            if (locationNames[conv.locationId] && !locationNames[conv.locationId].startsWith('Unknown')) return false;
+            if (failedLocationIds.current.has(conv.locationId)) return false;
+            return true;
+          })
+          .map(async (conv) => {
+            try {
+              const locationResponse = await fetch(`/api/public/locations/${conv.locationId}/details`, {
+                credentials: 'include',
+              });
+              if (locationResponse.ok) {
+                const locationData = await locationResponse.json();
+                if (locationData?.location?.name) {
+                  locations[conv.locationId] = locationData.location.name;
+                } else {
+                  locations[conv.locationId] = "Unknown Location (No Name)";
+                  failedLocationIds.current.add(conv.locationId);
+                }
               } else {
-                locations[conv.locationId] = "Unknown Location (No Name)";
+                locations[conv.locationId] = "Unknown Location (Not Found)";
                 failedLocationIds.current.add(conv.locationId);
               }
-            } else {
-              locations[conv.locationId] = "Unknown Location (Not Found)";
+            } catch (error) {
+              console.error(`Error fetching location ${conv.locationId}:`, error);
+              locations[conv.locationId] = "Unknown Location (Error)";
               failedLocationIds.current.add(conv.locationId);
             }
-          } catch (error) {
-            console.error(`Error fetching location ${conv.locationId}:`, error);
-            locations[conv.locationId] = "Unknown Location (Error)";
-            failedLocationIds.current.add(conv.locationId);
-          }
-        });
+          });
 
-      await Promise.all(locationPromises);
-      setApplicationDetails(details);
-      setLocationNames(prev => ({ ...prev, ...locations }));
-      setManagerNames(managers);
+        await Promise.all(locationPromises);
+
+        setApplicationDetails(prev => ({ ...prev, ...details }));
+        setLocationNames(prev => ({ ...prev, ...locations }));
+        setPartnerNames(prev => ({ ...prev, ...partners }));
+      } catch (err) {
+        console.error('Error in fetchApplicationDetails:', err);
+      }
     };
 
     fetchApplicationDetails();
-  }, [conversations]);
+  }, [conversations, role, locationNames]);
 
   const handleSelectConversation = (conversation: Conversation) => {
     setSelectedConversation(conversation);
     setIsMobileListVisible(false);
   };
 
-
-  // Helpers to get display names
-  const getPartnerName = (c: Conversation) =>
-    managerNames[c.managerId] || "Manager";
+  // Helpers
+  const getPartnerNameLabel = (c: Conversation) => {
+    if (role === 'manager') {
+      const app = applicationDetails[c.applicationId];
+      if (partnerNames[c.chefId]) return partnerNames[c.chefId];
+      if (app?.fullName) return app.fullName;
+      if (app?.chef?.username) return app.chef.username;
+      if (app?.chef?.first_name) {
+        return `${app.chef.first_name} ${app.chef.last_name || ''}`.trim();
+      }
+      return `Chef #${c.chefId}`;
+    }
+    return partnerNames[c.managerId] || "Manager";
+  };
 
   const getPartnerLocation = (c: Conversation) =>
     applicationDetails[c.applicationId]?.location?.name || locationNames[c.locationId] || `Location #${c.locationId}`;
-
 
   if (isLoading) {
     return (
@@ -181,7 +221,7 @@ export default function ChefChatView({
           conversations={filteredConversations}
           selectedId={selectedConversation?.id}
           onSelect={handleSelectConversation}
-          getPartnerName={getPartnerName}
+          getPartnerName={getPartnerNameLabel}
           getPartnerLocation={getPartnerLocation}
         />
       </div>
@@ -195,15 +235,15 @@ export default function ChefChatView({
           <ChatPanel
             key={selectedConversation.id}
             conversationId={selectedConversation.id}
-            chefId={chefId}
+            chefId={selectedConversation.chefId}
             managerId={selectedConversation.managerId}
             locationId={selectedConversation.locationId}
             locationName={getPartnerLocation(selectedConversation)}
-            chefName={auth.currentUser?.displayName || "Me"}
-            managerName={getPartnerName(selectedConversation)}
+            chefName={role === 'chef' ? (auth.currentUser?.displayName || "Me") : getPartnerNameLabel(selectedConversation)}
+            managerName={role === 'manager' ? (auth.currentUser?.displayName || "Me") : getPartnerNameLabel(selectedConversation)}
             onUnreadCountUpdate={() => refetch()}
             embedded={true}
-            onClose={() => setIsMobileListVisible(true)} // In mobile this acts as "Back"
+            onClose={() => setIsMobileListVisible(true)}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">

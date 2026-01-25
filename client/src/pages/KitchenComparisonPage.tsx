@@ -10,7 +10,6 @@ import {
   MapPin,
   Calendar,
   DollarSign,
-  ChefHat,
   ArrowRight,
   ArrowLeft,
   Loader2,
@@ -22,11 +21,11 @@ import {
   Wrench,
   Package,
   Snowflake,
-  Info,
   FileText,
   MessageCircle,
   AlertCircle,
 } from "lucide-react";
+
 import {
   createConversation,
   ensureConversationManagerId,
@@ -41,9 +40,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import ChatPanel from "@/components/chat/ChatPanel";
+import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
+
 
 interface EquipmentListing {
   id: number;
@@ -1501,25 +1501,17 @@ export default function KitchenComparisonPage() {
 
       {/* Chat Dialog */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
-          {chatApplication && chatConversationId && chefId && (
-            <ChatPanel
-              conversationId={chatConversationId}
-              applicationId={chatApplication.id}
-              chefId={chefId}
-              managerId={chatApplication.location?.managerId || 0}
-              locationId={chatApplication.locationId}
-              locationName={chatApplication.location?.name || "Unknown Location"}
-              onClose={() => {
-                setShowChatDialog(false);
-                setChatApplication(null);
-                setChatConversationId(null);
-              }}
-              embedded={true}
+        <DialogContent className="max-w-6xl h-[85vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+          {chatConversationId && chefId && (
+            <UnifiedChatView
+              userId={chefId}
+              role="chef"
+              initialConversationId={chatConversationId}
             />
           )}
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }
