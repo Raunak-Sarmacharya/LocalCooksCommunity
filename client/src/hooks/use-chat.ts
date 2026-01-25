@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import {
@@ -24,6 +24,13 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const queryClient = useQueryClient();
+
+  // Use ref for callback to avoid re-subscribing when it changes
+  const onUnreadCountUpdateRef = useRef(onUnreadCountUpdate);
+
+  useEffect(() => {
+    onUnreadCountUpdateRef.current = onUnreadCountUpdate;
+  }, [onUnreadCountUpdate]);
 
   // Get Neon user ID from API
   const { data: userInfo } = useQuery({
@@ -66,7 +73,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
         if (isChef || isManager) {
           await markAsRead(conversationId, currentUserId, isChef ? 'chef' : 'manager');
           queryClient.invalidateQueries({ queryKey: ['unread-counts'] });
-          if (onUnreadCountUpdate) onUnreadCountUpdate();
+          if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
         }
       } catch (error) {
         console.error('Error loading messages:', error);
@@ -82,7 +89,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     return () => {
       mounted = false;
     };
-  }, [conversationId, currentUserId, isChef, isManager, queryClient, onUnreadCountUpdate]);
+  }, [conversationId, currentUserId, isChef, isManager, queryClient]);
 
   // Subscribe to new messages
   useEffect(() => {
@@ -96,7 +103,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
         if (currentUserId && (isChef || isManager)) {
           markAsRead(conversationId, currentUserId, isChef ? 'chef' : 'manager')
             .then(() => {
-              if (onUnreadCountUpdate) onUnreadCountUpdate();
+              if (onUnreadCountUpdateRef.current) onUnreadCountUpdateRef.current();
             })
             .catch(console.error);
         }
@@ -105,7 +112,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
     );
 
     return () => unsubscribe();
-  }, [conversationId, currentUserId, isChef, isManager, onUnreadCountUpdate]);
+  }, [conversationId, currentUserId, isChef, isManager]);
 
   const handleSendMessage = useCallback(async (content: string, file?: File | { name: string; url: string }) => {
     if (!content.trim() && !file) return;
@@ -127,7 +134,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
         }
       }
 
-      const messageContent = !content.trim() && file 
+      const messageContent = !content.trim() && file
         ? `Attached file: ${fileName}`
         : content;
 
@@ -140,7 +147,7 @@ export function useChat({ conversationId, chefId, managerId, onUnreadCountUpdate
         fileUrl,
         fileName
       );
-      
+
       // No need to setMessages manually as subscription will catch it
       // But we could optimistically update here if desired
     } catch (error) {

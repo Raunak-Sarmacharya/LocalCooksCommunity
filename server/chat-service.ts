@@ -190,18 +190,23 @@ export async function getUnreadCounts(
     const field = role === 'chef' ? 'chefId' : 'managerId';
     const unreadField = role === 'chef' ? 'unreadChefCount' : 'unreadManagerCount';
 
-    const querySnapshot = await adminDb
+    // Use aggregation to count total unread messages across all conversations
+    // efficient: O(1) document reads (billed as 1 read per 1000 index entries)
+    // Note: Depends on firebase-admin >= 11.?, we are on 13.4.0 so it is supported.
+    // However, if strict types fail, we can fallback to old method or cast.
+
+    // Check if AggregateField is supported (runtime check not needed if types pass)
+    const { AggregateField } = await import('firebase-admin/firestore');
+
+    const snapshot = await adminDb
       .collection('conversations')
       .where(field, '==', userId)
+      .aggregate({
+        totalUnread: AggregateField.sum(unreadField)
+      })
       .get();
 
-    let totalUnread = 0;
-    querySnapshot.docs.forEach((doc: any) => {
-      const data = doc.data();
-      totalUnread += data[unreadField] || 0;
-    });
-
-    return totalUnread;
+    return snapshot.data().totalUnread || 0;
   } catch (error) {
     console.error('Error getting unread counts:', error);
     return 0;

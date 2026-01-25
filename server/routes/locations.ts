@@ -11,6 +11,7 @@ import { LocationRepository } from '../domains/locations/location.repository';
 import { LocationService } from '../domains/locations/location.service';
 import { KitchenRepository } from '../domains/kitchens/kitchen.repository';
 import { KitchenService } from '../domains/kitchens/kitchen.service';
+import { DomainError } from '../shared/errors/domain-error';
 
 const router = Router();
 
@@ -143,6 +144,9 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
 
     } catch (error) {
         console.error('Error fetching location details:', error);
+        if (error instanceof DomainError) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
         res.status(500).json({ error: 'Failed to fetch location details' });
     }
 });

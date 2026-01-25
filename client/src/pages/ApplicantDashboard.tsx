@@ -10,7 +10,7 @@ import { useSubdomain } from "@/hooks/use-subdomain";
 import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
 import BookingControlPanel from "@/components/booking/BookingControlPanel";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
-import { ChefPageLayout } from "@/components/layout/ChefPageLayout";
+import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import {
   Dialog,
   DialogContent,
@@ -26,12 +26,6 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
 import {
   formatApplicationStatus
 } from "@/lib/applicationSchema";
@@ -50,12 +44,17 @@ import {
   Shield,
   XCircle,
   AlertCircle,
-  MessageCircle
+  MessageCircle,
+  Store,
+  ArrowRight,
+  Utensils,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
+import ChefStripeConnectSetup from "@/components/chef/ChefStripeConnectSetup";
 
 // Type alias for application
 type AnyApplication = Application;
@@ -383,17 +382,64 @@ export default function ApplicantDashboard() {
     if (user?.uid) localStorage.setItem(`vendorPopupShown_${user.uid}`, 'true');
   };
 
+  // Helper to get kitchen applications status summary (tier-aware)
+  const getKitchenAccessSummary = () => {
+    const total = kitchenApplications.length;
+    if (total === 0) return { label: "No Applications", variant: "outline" as const };
+    
+    // Count by tier status
+    const readyToBook = kitchenApplications.filter(a => 
+      a.status === 'approved' && (a.current_tier >= 3 || (a.current_tier >= 2 && a.tier2_completed_at))
+    ).length;
+    const inProgress = kitchenApplications.filter(a => 
+      a.status === 'approved' && a.current_tier === 2 && !a.tier2_completed_at
+    ).length;
+    const pending = kitchenApplications.filter(a => a.status === 'inReview').length;
+    
+    if (readyToBook > 0) return { label: `${readyToBook} Ready`, variant: "default" as const };
+    if (inProgress > 0) return { label: `${inProgress} In Progress`, variant: "secondary" as const };
+    if (pending > 0) return { label: `${pending} Pending`, variant: "secondary" as const };
+    return { label: `${total} Total`, variant: "outline" as const };
+  };
+
+  const kitchenSummary = getKitchenAccessSummary();
+
   const overviewTabContent = (
     <div className="space-y-8">
+      {/* Welcome Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Welcome back{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}!
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Here's an overview of your LocalCooks journey
+          </p>
+        </div>
+      </div>
+
+      {/* Quick Stats Grid */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
           <CardContent className="p-5 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
-              <FileText className="h-6 w-6 text-primary" />
+              <Store className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Chef Apps</p>
-              <p className="text-2xl font-bold text-foreground">{applications?.length || 0}</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Seller Status</p>
+              <p className="text-sm font-bold text-foreground">{getApplicationStatus() || "Not Started"}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
+          <CardContent className="p-5 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+              <Building className="h-6 w-6 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Kitchen Access</p>
+              <p className="text-sm font-bold text-foreground">{kitchenSummary.label}</p>
             </div>
           </CardContent>
         </Card>
@@ -412,103 +458,323 @@ export default function ApplicantDashboard() {
 
         <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
-              <Shield className="h-6 w-6 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Documents</p>
-              <p className="text-sm font-bold text-foreground">{getDocumentStatus()}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50 shadow-sm overflow-hidden transition-all hover:shadow-md">
-          <CardContent className="p-5 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-              <Clock className="h-6 w-6 text-amber-600" />
+              <Calendar className="h-6 w-6 text-amber-600" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</p>
-              <p className="text-sm font-bold text-foreground truncate">{getApplicationStatus() || "Getting Started"}</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bookings</p>
+              <p className="text-sm font-bold text-foreground">{enrichedBookings?.length || 0} Active</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
-        <Card className="border-border/50 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <div className="space-y-1">
-              <CardTitle className="text-xl">Latest Application</CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <Calendar className="h-3.5 w-3.5" />
-                Submitted on {getMostRecentApplication()?.createdAt ? new Date(getMostRecentApplication()!.createdAt).toLocaleDateString() : 'N/A'}
-              </CardDescription>
+      {/* Two Path Cards - Sell on LocalCooks & Kitchen Access */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Sell on LocalCooks Path */}
+        <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
+          <div className="h-2 bg-gradient-to-r from-primary to-primary/60" />
+          <CardHeader className="pb-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                  <Store className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Sell on LocalCooks</CardTitle>
+                  <CardDescription>Become a verified seller on our platform</CardDescription>
+                </div>
+              </div>
+              {applications?.length > 0 && (
+                <Badge variant={getStatusVariant(getMostRecentApplication()?.status || "")} className="text-[10px]">
+                  {formatApplicationStatus(getMostRecentApplication()?.status || "")}
+                </Badge>
+              )}
             </div>
-            <Badge variant={getStatusVariant(getMostRecentApplication()?.status || "")} className="px-3 py-1 text-xs uppercase tracking-wider font-bold">
-              {formatApplicationStatus(getMostRecentApplication()?.status || "")}
-            </Badge>
           </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-y py-6 border-border/50 mb-6">
-               <div className="space-y-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Full Name</p>
-                    <p className="text-base font-medium">{getMostRecentApplication()?.fullName}</p>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Join our marketplace and sell your homemade food to customers in your area. We handle delivery, payments, and customer support.
+            </p>
+            
+            {applications?.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Application #{getMostRecentApplication()?.id}</span>
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Email Address</p>
-                    <p className="text-base font-medium">{getMostRecentApplication()?.email}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {getMostRecentApplication()?.createdAt ? new Date(getMostRecentApplication()!.createdAt).toLocaleDateString() : ''}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
+                  <div className="flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Documents</span>
                   </div>
-               </div>
-               <div className="flex flex-col justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Next Step</p>
-                    <p className="text-sm text-foreground/80 italic leading-relaxed">
-                      {getMostRecentApplication()?.status === 'inReview' 
-                        ? "Our team is currently reviewing your documents. Keep an eye on your messages for updates." 
-                        : "Continue your onboarding process to unlock access to commercial kitchens."}
-                    </p>
-                  </div>
-               </div>
-            </div>
-            <Button variant="outline" className="w-full h-11" onClick={() => setActiveTab("applications")}>
-              View All Application History
-            </Button>
+                  <Badge variant="outline" className="text-[10px]">{getDocumentStatus()}</Badge>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-primary/5 rounded-lg border border-primary/10 text-center">
+                <Utensils className="h-8 w-8 text-primary mx-auto mb-2" />
+                <p className="text-sm font-medium">Ready to start selling?</p>
+                <p className="text-xs text-muted-foreground">Apply now to become a LocalCooks seller</p>
+              </div>
+            )}
           </CardContent>
+          <CardFooter className="bg-muted/5 border-t border-border/30 pt-4">
+            {applications?.length > 0 ? (
+              <Button 
+                variant="outline" 
+                className="w-full group-hover:bg-primary group-hover:text-primary-foreground transition-colors"
+                onClick={() => setActiveTab("applications")}
+              >
+                View Application Details
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            ) : (
+              <Button asChild className="w-full">
+                <Link href="/apply">
+                  Apply to Sell
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            )}
+          </CardFooter>
         </Card>
-      ) : (
-        <Card className="border-dashed border-2 bg-muted/5">
-          <CardContent className="p-12 text-center flex flex-col items-center gap-6">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center border-4 border-background shadow-inner">
-               <ChefHat className="h-10 w-10 text-primary" />
+
+        {/* Kitchen Access Path */}
+        <Card className="border-border/50 shadow-sm overflow-hidden group hover:shadow-lg transition-all">
+          <div className="h-2 bg-gradient-to-r from-blue-600 to-blue-400" />
+          <CardHeader className="pb-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                  <Building className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl">Kitchen Access</CardTitle>
+                  <CardDescription>Book commercial kitchen spaces</CardDescription>
+                </div>
+              </div>
+              {kitchenApplications.length > 0 && (
+                <Badge variant={kitchenSummary.variant} className="text-[10px]">
+                  {kitchenSummary.label}
+                </Badge>
+              )}
             </div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-bold tracking-tight">Start Your Culinary Journey</h3>
-              <p className="text-muted-foreground text-base max-w-sm mx-auto">
-                Submit your application to become a verified cook and access commercial kitchen spaces.
-              </p>
-            </div>
-            <Button asChild size="lg" className="rounded-xl px-10 shadow-lg shadow-primary/20">
-              <Link href="/apply">Apply Now</Link>
-            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Access our network of commercial kitchens. Apply to kitchens, get approved, and book time slots to prepare your food.
+            </p>
+            
+            {kitchenApplications.length > 0 ? (
+              <div className="space-y-3">
+                {kitchenApplications.slice(0, 2).map((app) => {
+                  // Determine proper status based on tier system (matching manager portal logic)
+                  const getKitchenAppStatus = () => {
+                    if (app.status === 'inReview') {
+                      return { label: 'In Review', variant: 'secondary' as const, color: 'bg-amber-500' };
+                    }
+                    if (app.status === 'rejected') {
+                      return { label: 'Rejected', variant: 'destructive' as const, color: 'bg-red-500' };
+                    }
+                    if (app.status === 'approved') {
+                      // Tier 2 completed and approved = fully ready
+                      if (app.current_tier >= 3 || (app.current_tier >= 2 && app.tier2_completed_at)) {
+                        return { label: 'Ready to Book', variant: 'default' as const, color: 'bg-green-600' };
+                      }
+                      // Tier 2 submitted, awaiting review
+                      if (app.current_tier === 2 && app.tier2_completed_at) {
+                        return { label: 'Step 2 Review', variant: 'secondary' as const, color: 'bg-orange-500' };
+                      }
+                      // Tier 1 approved, waiting for chef to submit tier 2
+                      if (app.current_tier === 2 && !app.tier2_completed_at) {
+                        return { label: 'Step 1 Done', variant: 'secondary' as const, color: 'bg-blue-500' };
+                      }
+                      // Default approved state (step 1 approved)
+                      return { label: 'Step 1 Approved', variant: 'default' as const, color: 'bg-blue-600' };
+                    }
+                    return { label: 'Unknown', variant: 'outline' as const, color: 'bg-gray-500' };
+                  };
+                  const status = getKitchenAppStatus();
+                  return (
+                    <div key={app.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border/50">
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium truncate max-w-[150px]">{app.location?.name || 'Kitchen'}</span>
+                      </div>
+                      <Badge 
+                        variant={status.variant} 
+                        className={cn("text-[10px]", status.color, "text-white hover:" + status.color)}
+                      >
+                        {status.label}
+                      </Badge>
+                    </div>
+                  );
+                })}
+                {kitchenApplications.length > 2 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    +{kitchenApplications.length - 2} more kitchens
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 bg-blue-500/5 rounded-lg border border-blue-500/10 text-center">
+                <Building className="h-8 w-8 text-blue-600 mx-auto mb-2" />
+                <p className="text-sm font-medium">Need a commercial kitchen?</p>
+                <p className="text-xs text-muted-foreground">Explore our partner kitchens</p>
+              </div>
+            )}
           </CardContent>
+          <CardFooter className="bg-muted/5 border-t border-border/30 pt-4 gap-2">
+            {kitchenApplications.length > 0 ? (
+              <>
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => setActiveTab("kitchen-applications")}
+                >
+                  My Kitchens
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="flex-1 group-hover:bg-blue-600 group-hover:text-white transition-colors"
+                  onClick={() => window.location.href = "/compare-kitchens"}
+                >
+                  Discover More
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <Button 
+                className="w-full bg-blue-600 hover:bg-blue-700"
+                onClick={() => window.location.href = "/compare-kitchens"}
+              >
+                Explore Kitchens
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            )}
+          </CardFooter>
         </Card>
-      )}
+      </div>
+
+      {/* Quick Actions / Next Steps */}
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
+              <TrendingUp className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <CardTitle className="text-lg">Recommended Next Steps</CardTitle>
+              <CardDescription>Continue your journey with LocalCooks</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {!microlearningCompletion?.confirmed && (
+              <Button 
+                variant="outline" 
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-green-50 hover:border-green-200"
+                asChild
+              >
+                <Link href="/microlearning/overview">
+                  <BookOpen className="h-5 w-5 text-green-600" />
+                  <div className="text-left">
+                    <p className="font-medium text-sm">Complete Training</p>
+                    <p className="text-xs text-muted-foreground">Food safety certification</p>
+                  </div>
+                </Link>
+              </Button>
+            )}
+            
+            {applications?.length === 0 && (
+              <Button 
+                variant="outline" 
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
+                asChild
+              >
+                <Link href="/apply">
+                  <Store className="h-5 w-5 text-primary" />
+                  <div className="text-left">
+                    <p className="font-medium text-sm">Apply to Sell</p>
+                    <p className="text-xs text-muted-foreground">Start your seller journey</p>
+                  </div>
+                </Link>
+              </Button>
+            )}
+
+            {kitchenApplications.length === 0 && (
+              <Button 
+                variant="outline" 
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-blue-50 hover:border-blue-200"
+                onClick={() => window.location.href = "/compare-kitchens"}
+              >
+                <Building className="h-5 w-5 text-blue-600" />
+                <div className="text-left">
+                  <p className="font-medium text-sm">Find a Kitchen</p>
+                  <p className="text-xs text-muted-foreground">Browse commercial spaces</p>
+                </div>
+              </Button>
+            )}
+
+            {enrichedBookings?.length === 0 && kitchenApplications.some(a => a.status === 'approved') && (
+              <Button 
+                variant="outline" 
+                className="h-auto py-4 px-4 justify-start gap-3 hover:bg-amber-50 hover:border-amber-200"
+                onClick={() => setActiveTab("bookings")}
+              >
+                <Calendar className="h-5 w-5 text-amber-600" />
+                <div className="text-left">
+                  <p className="font-medium text-sm">Book a Session</p>
+                  <p className="text-xs text-muted-foreground">Schedule kitchen time</p>
+                </div>
+              </Button>
+            )}
+
+            <Button 
+              variant="outline" 
+              className="h-auto py-4 px-4 justify-start gap-3 hover:bg-purple-50 hover:border-purple-200"
+              onClick={() => setActiveTab("messages")}
+            >
+              <MessageCircle className="h-5 w-5 text-purple-600" />
+              <div className="text-left">
+                <p className="font-medium text-sm">Messages</p>
+                <p className="text-xs text-muted-foreground">Chat with managers</p>
+              </div>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const applicationsTabContent = (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">My Applications</h2>
-          <p className="text-muted-foreground mt-1">Review and manage your chef verification history.</p>
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
+            <Store className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">Sell on LocalCooks</h2>
+            <p className="text-muted-foreground mt-1">Your seller application and verification status</p>
+          </div>
         </div>
         <Button asChild size="lg" variant="outline" className="rounded-xl border-primary text-primary hover:bg-primary/10">
           <Link href="/apply">New Application</Link>
         </Button>
       </div>
+
+      {/* Stripe Connect Payment Setup - Only visible after seller application is approved */}
+      <ChefStripeConnectSetup 
+        isApproved={userDisplayInfo.applications?.some((app: AnyApplication) => app.status === 'approved')} 
+      />
 
       {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
         <div className="grid gap-6">
@@ -868,47 +1134,33 @@ export default function ApplicantDashboard() {
     </div>
   );
 
+  // Render content based on activeTab (sidebar-driven navigation)
+  const renderContent = () => {
+    switch (activeTab) {
+      case "overview":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
+      case "applications":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{applicationsTabContent}</div>;
+      case "kitchen-applications":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{kitchenApplicationsTabContent}</div>;
+      case "bookings":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{bookingsTabContent}</div>;
+      case "training":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{trainingTabContent}</div>;
+      case "messages":
+        return <div className="animate-in fade-in-50 duration-500">{messagesTabContent}</div>;
+      default:
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
+    }
+  };
+
   return (
-    <ChefPageLayout
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      title={user?.displayName ? `Welcome, ${user.displayName.split(' ')[0]}` : "Chef Portal"}
-      description="Manage your applications, training, and kitchen bookings"
+    <ChefDashboardLayout
+      activeView={activeTab}
+      onViewChange={setActiveTab}
+      messageBadgeCount={0}
     >
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 h-auto p-1 bg-muted/50 border border-border/50 rounded-xl overflow-auto no-scrollbar">
-          <TabsTrigger value="overview" className="rounded-lg py-2.5 transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">Overview</TabsTrigger>
-          <TabsTrigger value="applications" className="rounded-lg py-2.5 transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">Applications</TabsTrigger>
-          <TabsTrigger value="kitchen-applications" className="rounded-lg py-2.5 transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">Kitchen Access</TabsTrigger>
-          <TabsTrigger value="bookings" className="rounded-lg py-2.5 transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">Bookings</TabsTrigger>
-          <TabsTrigger value="training" className="rounded-lg py-2.5 transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">Training</TabsTrigger>
-          <TabsTrigger value="messages" className="rounded-lg py-2.5 transition-all data-[state=active]:bg-background data-[state=active]:shadow-sm">Messages</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-8 animate-in fade-in-50 duration-500">
-          {overviewTabContent}
-        </TabsContent>
-
-        <TabsContent value="applications" className="space-y-8 animate-in fade-in-50 duration-500">
-          {applicationsTabContent}
-        </TabsContent>
-
-        <TabsContent value="kitchen-applications" className="space-y-8 animate-in fade-in-50 duration-500">
-          {kitchenApplicationsTabContent}
-        </TabsContent>
-
-        <TabsContent value="bookings" className="space-y-8 animate-in fade-in-50 duration-500">
-          {bookingsTabContent}
-        </TabsContent>
-
-        <TabsContent value="training" className="space-y-8 animate-in fade-in-50 duration-500">
-          {trainingTabContent}
-        </TabsContent>
-
-        <TabsContent value="messages" className="animate-in fade-in-50 duration-500">
-          {messagesTabContent}
-        </TabsContent>
-      </Tabs>
+      {renderContent()}
 
       {/* Global Modals */}
       <Dialog open={showVendorPortalPopup} onOpenChange={setShowVendorPortalPopup}>
@@ -984,6 +1236,6 @@ export default function ApplicantDashboard() {
           )}
         </DialogContent>
       </Dialog>
-    </ChefPageLayout>
+    </ChefDashboardLayout>
   );
 }
