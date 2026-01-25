@@ -55,7 +55,8 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 featuredKitchenImage,
                 featured_kitchen_image: featuredKitchenImage, // compatibility
                 kitchenCount,
-                kitchen_count: kitchenCount // compatibility
+                kitchen_count: kitchenCount, // compatibility
+                description: location.description || null
             };
         });
 
@@ -135,6 +136,8 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             brand_image_url: brandImageUrl, // compatibility
             logoUrl,
             logo_url: logoUrl, // compatibility
+            description: location.description || null,
+            customOnboardingLink: location.customOnboardingLink || null,
             kitchens: sanitizedKitchens
         });
 

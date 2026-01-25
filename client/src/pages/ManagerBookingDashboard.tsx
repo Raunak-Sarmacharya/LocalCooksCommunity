@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Calendar, Clock, MapPin, ChefHat, Settings, BookOpen,
-  X, Check, Save, AlertCircle, Building2, FileText,
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle, MessageCircle, Sparkles
+  Calendar, Clock, ChefHat, Settings,
+  Check, Save, AlertCircle, FileText,
+  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle, MessageCircle, Sparkles, Trash2
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
@@ -12,15 +12,13 @@ import { Link, useLocation } from "wouter";
 import CalendarComponent from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
-import { useOnboardingStatus } from "@/hooks/use-onboarding-status"; // [NEW]
+import { useOnboardingStatus } from "@/hooks/use-onboarding-status";
 import { useToast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import ManagerHeader from "@/components/layout/ManagerHeader";
-import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
 import { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplications";
@@ -28,13 +26,10 @@ import KitchenPricingManagement from "./KitchenPricingManagement";
 import StorageListingManagement from "./StorageListingManagement";
 import EquipmentListingManagement from "./EquipmentListingManagement";
 import KitchenDashboardOverview from "@/components/dashboard/KitchenDashboardOverview";
-import BookingKPIStats from "@/components/manager/dashboard/BookingKPIStats";
-// Wizard overlay removed
 import StripeConnectSetup from "@/components/manager/StripeConnectSetup";
-// import AnimatedManagerSidebar from "@/components/manager/AnimatedManagerSidebar"; // Deprecated
 import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
-import ManagerChatView from "@/components/chat/ManagerChatView";
+import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -42,6 +37,18 @@ import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ManagerProfileSettings from "@/components/manager/ManagerProfileSettings";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
 
 interface Location {
   id: number;
@@ -62,6 +69,8 @@ interface Location {
   kitchenLicenseFeedback?: string;
   kitchenLicenseExpiry?: string;
   kitchenLicenseUploadedAt?: string;
+  description?: string;
+  customOnboardingLink?: string;
 }
 
 interface Kitchen {
@@ -73,21 +82,6 @@ interface Kitchen {
   isActive: boolean;
 }
 
-interface StorageListing {
-  id: number;
-  kitchenId: number;
-  name: string;
-  storageType: 'dry' | 'cold' | 'freezer';
-  photos?: string[];
-}
-
-interface EquipmentListing {
-  id: number;
-  kitchenId: number;
-  equipmentType: string;
-  category: string;
-  photos?: string[];
-}
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {
@@ -153,40 +147,6 @@ export default function ManagerBookingDashboard() {
   const [showCreateLocation, setShowCreateLocation] = useState(false);
 
 
-  // Helper function to extract filename from URL
-  const getDocumentFilename = (url?: string): string => {
-    if (!url) return 'No document';
-    try {
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname;
-      const filename = pathname.split('/').pop() || 'kitchen-license';
-      // Decode URL encoding
-      return decodeURIComponent(filename);
-    } catch {
-      // If URL parsing fails, try to extract from string
-      const parts = url.split('/');
-      return decodeURIComponent(parts[parts.length - 1] || 'kitchen-license');
-    }
-  };
-
-  // Helper function to calculate days until expiry
-  const getDaysUntilExpiry = (expiryDate?: string): number | null => {
-    if (!expiryDate) return null;
-    const expiry = new Date(expiryDate);
-    const now = new Date();
-    const diffTime = expiry.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
-  // Helper function to check if expiry is approaching (within 30 days)
-  const isExpiryApproaching = (expiryDate?: string): boolean => {
-    const daysUntil = getDaysUntilExpiry(expiryDate);
-    return daysUntil !== null && daysUntil > 0 && daysUntil <= 30;
-  };
-
-  // Helper function to check if expiry is approaching (within 30 days)
-
   // Check onboarding status using Firebase auth
   const { user: firebaseUser } = useFirebaseAuth();
 
@@ -217,15 +177,9 @@ export default function ManagerBookingDashboard() {
   // Get manager ID from userData
   const managerId = userData?.id || null;
 
-  // Check if Stripe is connected
-  const hasStripeAccount = !!userData?.stripeConnectAccountId || !!userData?.stripe_connect_account_id;
-
-
   // [REF] Use new hook for consolidated status
   const {
-    showSetupBanner,
-    missingSteps,
-    isReadyForBookings
+    showSetupBanner
   } = useOnboardingStatus(selectedLocation?.id);
 
   // Sync activeView with URL parameters
@@ -337,11 +291,11 @@ export default function ManagerBookingDashboard() {
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (jsonError) {
+        } catch (_error) {
           try {
             const text = await response.text();
             errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
-          } catch (textError) {
+          } catch (_error) {
             errorMessage = `Server returned ${response.status} ${response.statusText}`;
           }
         }
@@ -404,12 +358,12 @@ export default function ManagerBookingDashboard() {
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorData.message || errorMessage;
-        } catch (jsonError) {
+        } catch (_error) {
           // If response isn't JSON, try to get text
           try {
             const text = await response.text();
             errorMessage = text || `Server returned ${response.status} ${response.statusText}`;
-          } catch (textError) {
+          } catch (_error) {
             errorMessage = `Server returned ${response.status} ${response.statusText}`;
           }
         }
@@ -577,7 +531,7 @@ export default function ManagerBookingDashboard() {
         <div className="space-y-6 animate-fade-in">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Welcome back!</h1>
-            <p className="text-muted-foreground">Here's what's happening at your kitchens today.</p>
+            <p className="text-muted-foreground">Here&apos;s what&apos;s happening at your kitchens today.</p>
           </div>
 
 
@@ -649,7 +603,7 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'messages' && (
         managerId ? (
-          <ManagerChatView managerId={managerId} embedded={true} />
+          <UnifiedChatView userId={managerId} role="manager" />
         ) : (
           <Card>
             <CardContent className="p-12 text-center">
@@ -1157,6 +1111,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
+  const [description, setDescription] = useState(location.description || '');
+  const [customOnboardingLink, setCustomOnboardingLink] = useState(location.customOnboardingLink || '');
   // Timezone is locked to Newfoundland - always use DEFAULT_TIMEZONE
   const timezone = DEFAULT_TIMEZONE;
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -1289,6 +1245,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     });
     setNotificationEmail(savedEmail);
     setNotificationPhone(savedPhone);
+    setDescription(location.description || '');
+    setCustomOnboardingLink(location.customOnboardingLink || '');
   }, [location]);
 
   // Initialize kitchen descriptions when kitchens are loaded
@@ -1314,6 +1272,8 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       notificationEmail: notificationEmail || undefined,
       notificationPhone: notificationPhone || undefined,
       logoUrl: overrideLogoUrl !== undefined ? overrideLogoUrl : (logoUrl || undefined),
+      description: description || undefined,
+      customOnboardingLink: customOnboardingLink || undefined,
       timezone: timezone || DEFAULT_TIMEZONE,
     };
 
@@ -1729,7 +1689,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Location</h3>
                     <p className="text-sm text-gray-600">
-                      View your location's timezone settings (locked to Newfoundland Time)
+                      View your location&apos;s timezone settings (locked to Newfoundland Time)
                     </p>
                   </div>
                 </div>
@@ -2201,6 +2161,66 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                 </div>
               </div>
 
+              {/* Location Landing Section */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <Globe className="h-5 w-5 text-indigo-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Landing Page Content</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Customize the information shown to chefs when they visit your kitchen landing page.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 md:p-6 space-y-4">
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="description" className="text-sm font-medium text-gray-900">
+                        Public Description
+                      </Label>
+                      <textarea
+                        id="description"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="Welcome to our kitchen community! We offer state-of-the-art facilities for culinary professionals..."
+                        className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[100px]"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        A brief overview of your location that will be displayed to chefs.
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="customOnboardingLink" className="text-sm font-medium text-gray-900">
+                        Custom Onboarding Link (optional)
+                      </Label>
+                      <Input
+                        id="customOnboardingLink"
+                        value={customOnboardingLink}
+                        onChange={(e) => setCustomOnboardingLink(e.target.value)}
+                        placeholder="https://example.com/onboarding"
+                        className="mt-1 bg-white"
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        If you have your own onboarding process, provide the URL here to redirect chefs.
+                      </p>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        onClick={() => handleSave()}
+                        disabled={isUpdating}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                      >
+                        {isUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                        Save Landing Content
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Kitchen Images Section */}
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
@@ -2369,7 +2389,53 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                         <div key={kitchen.id} className="bg-white rounded-lg border border-amber-200 p-4">
                           <div className="flex items-start gap-4">
                             <div className="flex-1">
-                              <h4 className="font-semibold text-gray-900 mb-2">{kitchen.name}</h4>
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-semibold text-gray-900">{kitchen.name}</h4>
+                                 <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-1" />
+                                      Delete
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This will permanently delete the kitchen &quot;{kitchen.name}&quot; and all associated bookings, availability settings, and custom overrides. This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-red-600 hover:bg-red-700 text-white"
+                                        onClick={async () => {
+                                          try {
+                                            const currentFirebaseUser = auth.currentUser;
+                                            if (!currentFirebaseUser) throw new Error("Not authenticated");
+                                            const token = await currentFirebaseUser.getIdToken();
+                                            const response = await fetch(`/api/manager/kitchens/${kitchen.id}`, {
+                                              method: 'DELETE',
+                                              headers: { 'Authorization': `Bearer ${token}` }
+                                            });
+                                            if (!response.ok) throw new Error("Failed to delete kitchen");
+                                            queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
+                                            toast({ title: "Kitchen Deleted", description: "Kitchen has been successfully removed." });
+                                          } catch (e: any) {
+                                            toast({ title: "Error", description: e.message, variant: "destructive" });
+                                          }
+                                        }}
+                                      >
+                                        Delete Kitchen
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
                               <div className="space-y-2">
                                 <label className="block text-sm font-medium text-gray-700">
                                   Description
@@ -2724,7 +2790,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                     </p>
                     <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
                       <Info className="h-3 w-3 inline mr-1" />
-                      <strong>Example:</strong> With 1 hour, if it's 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
+                      <strong>Example:</strong> With 1 hour, if it&apos;s 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
                     </div>
                   </div>
 

@@ -17,6 +17,8 @@ export interface CreateLocationDTO {
   minimumBookingWindowHours?: number;
   logoUrl?: string;
   brandImageUrl?: string;
+  description?: string;
+  customOnboardingLink?: string;
   timezone?: string;
   kitchenLicenseUrl?: string;
   kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
@@ -39,6 +41,8 @@ export interface UpdateLocationDTO {
   minimumBookingWindowHours?: number;
   logoUrl?: string;
   brandImageUrl?: string;
+  description?: string;
+  customOnboardingLink?: string;
   timezone?: string;
   kitchenLicenseUrl?: string;
   kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
@@ -72,6 +76,8 @@ export interface LocationDTO {
   minimumBookingWindowHours: number;
   logoUrl: string | null;
   brandImageUrl: string | null;
+  description: string | null;
+  customOnboardingLink: string | null;
   timezone: string;
   kitchenLicenseStatus: string;
   kitchenLicenseUrl: string | null;

@@ -15,6 +15,7 @@ export interface KitchenLocation {
     mainImage: string | null;
     featuredKitchenImage: string | null;
     kitchenCount: number;
+    description?: string | null;
 }
 
 interface KitchenLocationCardProps {
@@ -101,10 +102,16 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
                         {location.name}
                     </h3>
                     {location.address && (
-                        <div className="flex items-start gap-1.5 mb-4">
+                        <div className="flex items-start gap-1.5 mb-2">
                             <span className="text-[#F51042] mt-0.5">📍</span>
-                            <p className="text-sm text-[#6B6B6B] leading-relaxed line-clamp-2">{location.address}</p>
+                            <p className="text-sm text-[#6B6B6B] leading-relaxed line-clamp-1">{location.address}</p>
                         </div>
+                    )}
+
+                    {location.description && (
+                        <p className="text-xs text-[#828282] leading-relaxed line-clamp-2 mb-4 italic">
+                            {location.description}
+                        </p>
                     )}
 
                     <Button

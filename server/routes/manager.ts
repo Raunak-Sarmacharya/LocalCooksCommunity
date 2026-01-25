@@ -1475,7 +1475,7 @@ router.put("/locations/:locationId/cancellation-policy", requireFirebaseAuthWith
             return res.status(400).json({ error: "Invalid location ID" });
         }
 
-        const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone } = req.body;
+        const { cancellationPolicyHours, cancellationPolicyMessage, defaultDailyBookingLimit, minimumBookingWindowHours, notificationEmail, notificationPhone, logoUrl, brandImageUrl, timezone, description, customOnboardingLink } = req.body;
 
         console.log('[PUT] Request body:', {
             cancellationPolicyHours,
@@ -1614,6 +1614,20 @@ router.put("/locations/:locationId/cancellation-policy", requireFirebaseAuthWith
                 note: 'Timezone is locked and cannot be changed'
             });
         }
+        if (description !== undefined) {
+            (updates as any).description = description && description.trim() !== '' ? description.trim() : null;
+            console.log('[PUT] Setting description:', {
+                raw: description,
+                processed: (updates as any).description
+            });
+        }
+        if (customOnboardingLink !== undefined) {
+            (updates as any).customOnboardingLink = customOnboardingLink && customOnboardingLink.trim() !== '' ? customOnboardingLink.trim() : null;
+            console.log('[PUT] Setting customOnboardingLink:', {
+                raw: customOnboardingLink,
+                processed: (updates as any).customOnboardingLink
+            });
+        }
 
         console.log('[PUT] Final updates object before DB update:', JSON.stringify(updates, null, 2));
         console.log('[PUT] Updates keys:', Object.keys(updates));
@@ -1678,6 +1692,8 @@ router.put("/locations/:locationId/cancellation-policy", requireFirebaseAuthWith
             defaultDailyBookingLimit: (updated as any).defaultDailyBookingLimit || (updated as any).default_daily_booking_limit,
             minimumBookingWindowHours: (updated as any).minimumBookingWindowHours || (updated as any).minimum_booking_window_hours || 1,
             timezone: (updated as any).timezone || DEFAULT_TIMEZONE,
+            description: (updated as any).description || null,
+            customOnboardingLink: (updated as any).customOnboardingLink || (updated as any).custom_onboarding_link || null,
         };
 
         // Send email to new notification email if it was changed
@@ -1730,6 +1746,8 @@ router.get("/locations", requireFirebaseAuthWithUser, requireManager, async (req
             minimumBookingWindowHours: (loc as any).minimumBookingWindowHours || (loc as any).minimum_booking_window_hours || 1,
             logoUrl: (loc as any).logoUrl || (loc as any).logo_url || null,
             timezone: (loc as any).timezone || DEFAULT_TIMEZONE,
+            description: (loc as any).description || null,
+            customOnboardingLink: (loc as any).customOnboardingLink || (loc as any).custom_onboarding_link || null,
             // Kitchen license status fields
             kitchenLicenseUrl: (loc as any).kitchenLicenseUrl || (loc as any).kitchen_license_url || null,
             kitchenLicenseStatus: (loc as any).kitchenLicenseStatus || (loc as any).kitchen_license_status || 'pending',
