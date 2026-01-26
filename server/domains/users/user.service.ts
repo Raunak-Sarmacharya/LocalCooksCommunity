@@ -4,6 +4,7 @@ import { locations, users } from "@shared/schema";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { hashPassword } from "../../passwordUtils";
+import { DomainError, UserErrorCodes } from "../../shared/errors/domain-error";
 
 export class UserService {
   private repo: UserRepository;
@@ -36,6 +37,15 @@ export class UserService {
       throw new Error("Username is required");
     }
 
+    const exists = await this.repo.usernameExists(data.username);
+    if (exists) {
+      throw new DomainError(
+        UserErrorCodes.USERNAME_TAKEN,
+        `Username ${data.username} is already taken`,
+        409
+      );
+    }
+
     // Ensure default values match legacy behavior
     const userToCreate = {
       ...data,
@@ -55,6 +65,14 @@ export class UserService {
   }
 
   async updateUserFirebaseUid(id: number, firebaseUid: string): Promise<User | null> {
+    const user = await this.repo.findById(id);
+    if (user && user.firebaseUid) {
+      throw new DomainError(
+        UserErrorCodes.VALIDATION_ERROR,
+        "User already has a linked Firebase account",
+        400
+      );
+    }
     return this.repo.update(id, { firebaseUid });
   }
 
@@ -96,7 +114,11 @@ export class UserService {
   async getCompleteProfile(id: number): Promise<any> {
     const user = await this.repo.findById(id);
     if (!user) {
-      throw new Error(`User not found: ${id}`);
+      throw new DomainError(
+        UserErrorCodes.USER_NOT_FOUND,
+        `User not found: ${id}`,
+        404
+      );
     }
 
     return {

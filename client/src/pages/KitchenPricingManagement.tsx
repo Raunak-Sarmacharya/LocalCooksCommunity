@@ -163,6 +163,7 @@ function KitchenPricingContent({
         currency: pricing.currency || 'CAD',
         minimumBookingHours: Math.max(1, Math.floor(minBookingHours)), // Ensure it's at least 1 and an integer
         pricingModel: pricing.pricingModel || 'hourly',
+        taxRatePercent: pricing.taxRatePercent,
       };
 
       console.log('Saving kitchen pricing:', { kitchenId: selectedKitchenId, payload });

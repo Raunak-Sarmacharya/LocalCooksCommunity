@@ -274,6 +274,8 @@ export const locations = pgTable("locations", {
   kitchenLicenseApprovedAt: timestamp("kitchen_license_approved_at"), // When license was approved/rejected
   kitchenLicenseFeedback: text("kitchen_license_feedback"), // Admin feedback on license
   kitchenLicenseExpiry: date("kitchen_license_expiry"), // Expiration date of the kitchen license
+  description: text("description"), // Description of the location
+  customOnboardingLink: text("custom_onboarding_link"), // Custom link for onboarding
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -490,6 +492,8 @@ export const insertLocationSchema = createInsertSchema(locations, {
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
+  description: z.string().optional(),
+  customOnboardingLink: z.string().optional(),
 }).omit({
   id: true,
   createdAt: true,
@@ -503,6 +507,8 @@ export const updateLocationSchema = z.object({
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
+  description: z.string().optional(),
+  customOnboardingLink: z.string().optional(),
 });
 
 // Zod schemas for location requirements

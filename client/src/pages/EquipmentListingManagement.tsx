@@ -165,7 +165,14 @@ function EquipmentListingContent({
     setIsLoading(true);
     try {
       const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/equipment-listings`);
-      setListings(Array.isArray(data) ? data : []);
+      // Convert proper values to dollars for UI
+      const mappedData = Array.isArray(data) ? data.map((item: any) => ({
+        ...item,
+        sessionRate: item.sessionRate ? item.sessionRate / 100 : 0,
+        damageDeposit: item.damageDeposit ? item.damageDeposit / 100 : 0,
+        hourlyRate: item.hourlyRate ? item.hourlyRate / 100 : 0,
+      })) : [];
+      setListings(mappedData);
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to load equipment listings", variant: "destructive" });
     } finally {
@@ -230,8 +237,8 @@ function EquipmentListingContent({
           description: equipment.description || undefined,
           condition: equipment.condition,
           availabilityType: equipment.availabilityType,
-          sessionRate: equipment.availabilityType === 'rental' ? equipment.sessionRate : 0,
-          damageDeposit: equipment.availabilityType === 'rental' ? equipment.damageDeposit : 0,
+          sessionRate: equipment.availabilityType === 'rental' ? Math.round(equipment.sessionRate * 100) : 0,
+          damageDeposit: equipment.availabilityType === 'rental' ? Math.round(equipment.damageDeposit * 100) : 0,
           trainingRequired: equipment.trainingRequired,
           currency: 'CAD',
           isActive: true,
@@ -264,8 +271,8 @@ function EquipmentListingContent({
     try {
       await apiPut(`/manager/equipment-listings/${editingListing.id}`, {
         ...editingListing,
-        sessionRate: editingListing.availabilityType === 'rental' ? editingListing.sessionRate : 0,
-        damageDeposit: editingListing.availabilityType === 'rental' ? editingListing.damageDeposit : 0,
+        sessionRate: editingListing.availabilityType === 'rental' ? Math.round((editingListing.sessionRate || 0) * 100) : 0,
+        damageDeposit: editingListing.availabilityType === 'rental' ? Math.round((editingListing.damageDeposit || 0) * 100) : 0,
       });
       toast({ title: "Success", description: "Equipment listing updated successfully" });
       setEditDialogOpen(false);

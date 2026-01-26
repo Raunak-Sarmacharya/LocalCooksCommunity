@@ -179,7 +179,13 @@ function StorageListingContent({
 
     try {
       const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/storage-listings`);
-      setListings(data);
+      // Convert cents to dollars for UI
+      const mappedData = Array.isArray(data) ? data.map((item: any) => ({
+        ...item,
+        basePrice: item.basePrice ? item.basePrice / 100 : 0,
+        pricePerCubicFoot: item.pricePerCubicFoot ? item.pricePerCubicFoot / 100 : 0,
+      })) : [];
+      setListings(mappedData);
     } catch (error: any) {
       console.error('Error loading storage listings:', error);
       toast({
@@ -196,8 +202,13 @@ function StorageListingContent({
       const data = await apiGet(`/manager/storage-listings/${listingId}`);
       console.log('Storage listing loaded:', data);
 
-      // Ensure proper data types - basePrice should already be in dollars from backend
-      setFormData(data);
+       // Convert cents to dollars for UI form
+      const formDataDollars = {
+        ...data,
+        basePrice: data.basePrice ? data.basePrice / 100 : 0,
+        pricePerCubicFoot: data.pricePerCubicFoot ? data.pricePerCubicFoot / 100 : 0,
+      };
+      setFormData(formDataDollars);
       setEditingListingId(listingId);
       setCurrentStep(1);
     } catch (error: any) {
@@ -276,7 +287,7 @@ function StorageListingContent({
         name: formData.name,
         description: formData.description || null,
         storageType: formData.storageType,
-        basePrice: Number(formData.basePrice), // Ensure it's a number
+        basePrice: Math.round(Number(formData.basePrice) * 100), // Convert back to cents
         minimumBookingDuration: Number(formData.minimumBookingDuration) || 1,
         currency: 'CAD',
         pricingModel: 'daily',

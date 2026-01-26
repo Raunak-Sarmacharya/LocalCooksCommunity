@@ -19,6 +19,11 @@ export class UserRepository {
     return user || null;
   }
 
+  async usernameExists(username: string): Promise<boolean> {
+    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+    return !!user;
+  }
+
 
 
   async create(data: CreateUserDTO): Promise<User> {

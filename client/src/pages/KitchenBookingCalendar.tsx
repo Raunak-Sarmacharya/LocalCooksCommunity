@@ -1,4 +1,5 @@
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, Lock, FileText } from "lucide-react";
+import { formatCurrency } from "@/lib/formatters";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
@@ -222,7 +223,7 @@ export default function KitchenBookingCalendar() {
   } | null>(null);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
-    serviceFee: number;
+    tax: number;
     totalPrice: number;
     durationHours: number;
   } | null>(null);
@@ -248,26 +249,7 @@ export default function KitchenBookingCalendar() {
   // Calculate storage pricing
   const storagePricing = useStoragePricing(selectedStorage, storageListings);
 
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
 
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-  const flatFeeCents = 30;
 
   // Calculate equipment pricing (base prices only, no service fees)
   const equipmentPricing = useMemo(() => {
@@ -310,18 +292,24 @@ export default function KitchenBookingCalendar() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee on combined subtotal (dynamic rate + $0.30 flat fee)
-  const serviceFee = useMemo(() => {
-    const subtotalCents = Math.round(combinedSubtotal * 100);
+  // Calculate tax on combined subtotal
+  const tax = useMemo(() => {
+    const subtotalCents = combinedSubtotal; // Already in cents
     if (subtotalCents <= 0) return 0;
-    const percentageFeeCents = Math.round(subtotalCents * serviceFeeRate);
-    return (percentageFeeCents + flatFeeCents) / 100;
-  }, [combinedSubtotal, serviceFeeRate, flatFeeCents]);
+    
+    // Tax rate is stored as a percentage (e.g., 5 for 5%, 13 for 13%)
+    // If not set, default to 0
+    const taxRatePercent = selectedKitchen?.taxRatePercent || 0;
+    
+    // Calculate tax: (subtotal * taxRate) / 100
+    // Result is in cents
+    return Math.round((subtotalCents * taxRatePercent) / 100);
+  }, [combinedSubtotal, selectedKitchen?.taxRatePercent]);
 
-  // Calculate grand total (subtotal + service fee)
+  // Calculate grand total (subtotal + tax)
   const grandTotal = useMemo(() => {
-    return combinedSubtotal + serviceFee;
-  }, [combinedSubtotal, serviceFee]);
+    return combinedSubtotal + tax;
+  }, [combinedSubtotal, tax]);
 
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"];
@@ -480,7 +468,13 @@ export default function KitchenBookingCalendar() {
 
       if (storageRes.ok) {
         const storageData = await storageRes.json();
-        setStorageListings(storageData);
+        // Keep cents for internal logic (formatCurrency handles cents)
+        const storageDataCents = storageData.map((s: any) => ({
+          ...s,
+          basePrice: s.basePrice || 0,
+          pricePerCubicFoot: s.pricePerCubicFoot || 0,
+        }));
+        setStorageListings(storageDataCents);
         console.log(`✅ Loaded ${storageData.length} storage listings for kitchen ${kitchenId}`);
       } else {
         console.log(`ℹ️ No storage listings available (status: ${storageRes.status})`);
@@ -496,11 +490,22 @@ export default function KitchenBookingCalendar() {
 
       if (equipmentRes.ok) {
         const equipmentData = await equipmentRes.json();
+        
+        // Helper to ensure equipment rates are valid numbers (keep in cents)
+        const normalizeEquipment = (eq: any) => ({
+          ...eq,
+          sessionRate: eq.sessionRate || 0,
+          hourlyRate: eq.hourlyRate || 0,
+          dailyRate: eq.dailyRate || 0,
+          weeklyRate: eq.weeklyRate || 0,
+          monthlyRate: eq.monthlyRate || 0,
+        });
+
         // Ensure all required properties exist with proper defaults
         const normalizedEquipment = {
-          all: [...(equipmentData.included || []), ...(equipmentData.rental || [])],
-          included: equipmentData.included || [],
-          rental: equipmentData.rental || [],
+          all: [...(equipmentData.included || []), ...(equipmentData.rental || [])].map(normalizeEquipment),
+          included: (equipmentData.included || []).map(normalizeEquipment),
+          rental: (equipmentData.rental || []).map(normalizeEquipment),
         };
         setEquipmentListings(normalizedEquipment);
         console.log(`✅ Loaded equipment listings for kitchen ${kitchenId}:`, {
@@ -591,20 +596,18 @@ export default function KitchenBookingCalendar() {
         console.log('✅ Kitchen pricing fetched:', pricing);
         console.log('✅ Parsed hourlyRate:', pricing.hourlyRate, 'Type:', typeof pricing.hourlyRate);
 
-        // API returns cents - convert to dollars for UI state
+        // API returns cents - use as is
         let hourlyRateCents = pricing.hourlyRate;
         if (typeof hourlyRateCents === 'string') {
           hourlyRateCents = parseFloat(hourlyRateCents);
         }
-        // Convert cents to dollars for UI calculations
-        const hourlyRateDollars = hourlyRateCents ? hourlyRateCents / 100 : null;
-
+        
         setKitchenPricing({
-          hourlyRate: hourlyRateDollars,
+          hourlyRate: hourlyRateCents,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours || 1,
         });
-        console.log('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateDollars, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
+        console.log('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateCents, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
       } else if (response.status === 404) {
         // No pricing set yet - this is expected
         console.log('ℹ️ No pricing set for kitchen:', kitchen.id);
@@ -678,18 +681,21 @@ export default function KitchenBookingCalendar() {
     const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours || 1);
 
     // Only calculate price if hourly rate is set
-    // hourlyRate is already in dollars (converted from cents when fetched from API)
+    // hourlyRate is already in cents
+    // Only calculate price if hourly rate is set
+    // hourlyRate is already in cents
     if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
       const basePrice = kitchenPricing.hourlyRate * durationHours;
-      const baseCents = Math.round(basePrice * 100);
-      const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
-      const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
-      const totalPrice = basePrice + serviceFee;
-
+      // basePrice is already in cents
+      
+      const taxRatePercent = selectedKitchen?.taxRatePercent || 0;
+      const tax = Math.round((basePrice * taxRatePercent) / 100);
+      
+      const totalPrice = basePrice + tax;
 
       setEstimatedPrice({
         basePrice,
-        serviceFee,
+        tax,
         totalPrice,
         durationHours,
       });
@@ -697,12 +703,12 @@ export default function KitchenBookingCalendar() {
       // No pricing set, but still calculate duration for display
       setEstimatedPrice({
         basePrice: 0,
-        serviceFee: 0,
+        tax: 0,
         totalPrice: 0,
-        durationHours,
+        durationHours: 0,
       });
     }
-  }, [selectedSlots, selectedKitchen, kitchenPricing, serviceFeeRate, flatFeeCents]);
+  }, [selectedSlots, selectedKitchen, kitchenPricing]);
 
   const handleSlotClick = (slot: { time: string; available: number; capacity: number; isFullyBooked: boolean }) => {
     // Don't allow selecting fully booked slots
@@ -998,7 +1004,7 @@ export default function KitchenBookingCalendar() {
                           )}
                           {kitchenPricing && kitchenPricing.hourlyRate && (
                             <p className="text-xs sm:text-sm font-semibold text-blue-900 mt-1.5 sm:mt-2">
-                              ${kitchenPricing.hourlyRate.toFixed(2)} {kitchenPricing.currency}/hour
+                              {formatCurrency(kitchenPricing.hourlyRate)} {kitchenPricing.currency}/hour
                             </p>
                           )}
                           {kitchenPricing && !kitchenPricing.hourlyRate && (
@@ -1091,13 +1097,13 @@ export default function KitchenBookingCalendar() {
                                         <p className="text-xs text-gray-500 mt-1 capitalize">{equipment.category} • {equipment.condition}</p>
                                         {equipment.damageDeposit > 0 && (
                                           <p className="text-xs text-gray-500 mt-1">
-                                            Deposit: ${equipment.damageDeposit.toFixed(2)}
+                                            Deposit: {formatCurrency(equipment.damageDeposit)}
                                           </p>
                                         )}
                                       </div>
                                       <div className="text-right flex-shrink-0">
                                         <p className="font-semibold text-amber-700">
-                                          ${rate?.toFixed(2) || '0.00'}/session
+                                          {formatCurrency(rate)}/session
                                         </p>
                                         {isSelected && <span className="text-xs text-amber-600">✓ Selected</span>}
                                       </div>
@@ -1509,7 +1515,7 @@ export default function KitchenBookingCalendar() {
                                     </p>
                                     {estimatedPrice && (
                                       <p className="text-xs sm:text-sm font-semibold text-green-900 mt-1.5 sm:mt-2">
-                                        Estimated Total: ${estimatedPrice.totalPrice.toFixed(2)} {kitchenPricing?.currency || 'CAD'}
+                                        Estimated Total: {formatCurrency(combinedSubtotal)} {kitchenPricing?.currency || 'CAD'}
                                       </p>
                                     )}
                                   </div>

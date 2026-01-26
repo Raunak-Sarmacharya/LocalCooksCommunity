@@ -16,15 +16,7 @@ const mockRepository = {
     findByFirebaseUid: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-    updateFirebaseUid: vi.fn(),
-    setHasSeenWelcome: vi.fn(),
-    setVerified: vi.fn(),
-    updateManagerOnboarding: vi.fn(),
-    findAllManagers: vi.fn(),
-    findAllChefs: vi.fn(),
     usernameExists: vi.fn(),
-    firebaseUidExists: vi.fn(),
-    updatePasswordByFirebaseUid: vi.fn(),
 } as unknown as UserRepository
 
 // Mock Drizzle db for aggregations
@@ -109,21 +101,21 @@ describe('UserService', () => {
         })
     })
 
-    describe('updateFirebaseUid', () => {
+    describe('updateUserFirebaseUid', () => {
         it('should allow linking UID if none exists', async () => {
             const userWithoutUid = { ...mockUser, firebaseUid: null }
             vi.mocked(mockRepository.findById).mockResolvedValue(userWithoutUid as any)
-            vi.mocked(mockRepository.updateFirebaseUid).mockResolvedValue({ ...mockUser } as any)
+            vi.mocked(mockRepository.update).mockResolvedValue({ ...mockUser } as any)
 
-            const result = await service.updateFirebaseUid(1, 'new-uid')
+            const result = await service.updateUserFirebaseUid(1, 'new-uid')
 
-            expect(result.firebaseUid).toBe(mockUser.firebaseUid)
+            expect(result?.firebaseUid).toBe(mockUser.firebaseUid)
         })
 
         it('should throw 400 if UID already linked', async () => {
             vi.mocked(mockRepository.findById).mockResolvedValue(mockUser as any)
 
-            await expect(service.updateFirebaseUid(1, 'new-uid')).rejects.toMatchObject({
+            await expect(service.updateUserFirebaseUid(1, 'new-uid')).rejects.toMatchObject({
                 statusCode: 400,
                 code: UserErrorCodes.VALIDATION_ERROR
             })
