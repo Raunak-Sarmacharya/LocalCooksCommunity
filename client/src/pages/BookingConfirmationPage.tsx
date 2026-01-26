@@ -141,13 +141,12 @@ export default function BookingConfirmationPage() {
 
         if (pricingRes.ok) {
           const pricing = await pricingRes.json();
-          let hourlyRate = pricing.hourlyRate;
-          if (typeof hourlyRate === 'string') {
-            hourlyRate = parseFloat(hourlyRate);
+          // API returns cents - convert to dollars for UI
+          let hourlyRateCents = pricing.hourlyRate;
+          if (typeof hourlyRateCents === 'string') {
+            hourlyRateCents = parseFloat(hourlyRateCents);
           }
-          if (hourlyRate > 100) {
-            hourlyRate = hourlyRate / 100;
-          }
+          const hourlyRate = hourlyRateCents ? hourlyRateCents / 100 : null;
           
           if (!isCancelled) {
             setKitchenPricing({
@@ -686,7 +685,7 @@ export default function BookingConfirmationPage() {
                             <h4 className="text-sm font-semibold text-gray-800 mb-2">Kitchen Booking</h4>
                             <div className="space-y-1.5 text-sm">
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)}/hour):</span>
+                                <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × ${kitchenPricing.hourlyRate.toFixed(2)}/hour):</span>
                                 <span className="font-medium text-gray-900">${estimatedPrice.basePrice.toFixed(2)} {kitchenPricing.currency}</span>
                               </div>
                             </div>

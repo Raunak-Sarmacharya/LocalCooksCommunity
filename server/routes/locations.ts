@@ -104,13 +104,10 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 normalizeImageUrl(img, req)
             ).filter((url: string | null): url is string => url !== null);
 
-            // Handle hourly rate conversion (cents to dollars) - KitchenService might already handle this 
-            // but let's be safe or check KitchenService DTO.
-            // Based on kitchen-service code earlier, it usually returns cents if raw db, or dollars if converted.
-            // Let's assume cents to be safe or check KitchenDTO.
-            const hourlyRateCents = kitchen.hourlyRate;
-            const hourlyRate = hourlyRateCents !== null && hourlyRateCents !== undefined
-                ? (typeof hourlyRateCents === 'string' ? parseFloat(hourlyRateCents) : hourlyRateCents) / 100
+            // Return hourlyRate in cents (enterprise standard: all amounts in smallest currency unit)
+            // Frontend uses formatCurrency() to convert cents to display format
+            const hourlyRateCents = kitchen.hourlyRate !== null && kitchen.hourlyRate !== undefined
+                ? (typeof kitchen.hourlyRate === 'string' ? parseFloat(kitchen.hourlyRate) : kitchen.hourlyRate)
                 : null;
 
             return {
@@ -120,10 +117,10 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
                 imageUrl: kImageUrl,
                 image_url: kImageUrl,
                 galleryImages: kGalleryImages,
-                gallery_images: kGalleryImages, // compatibility
+                gallery_images: kGalleryImages,
                 amenities: kitchen.amenities || [],
-                hourlyRate,
-                hourly_rate: hourlyRate, // compatibility
+                hourlyRate: hourlyRateCents,
+                hourly_rate: hourlyRateCents,
                 pricingModel: kitchen.pricingModel || 'hourly',
                 currency: kitchen.currency || 'CAD'
             };

@@ -20,11 +20,23 @@ export function formatCurrency(amountInCents: number, currency: string = 'CAD'):
 }
 
 /**
- * Format cents to dollars (numeric, for charts)
+ * Format cents to dollars (numeric, for calculations/charts)
  * @param amountInCents - Amount in cents
  */
 export function centsToDollars(amountInCents: number): number {
     return amountInCents / 100;
+}
+
+/**
+ * Format cents to price string without currency symbol (e.g., "50.00")
+ * Use this for inline price displays like "$50.00/hour"
+ * @param amountInCents - Amount in cents (e.g., 5000 = "50.00")
+ */
+export function formatPrice(amountInCents: number | null | undefined): string {
+    if (amountInCents === null || amountInCents === undefined) {
+        return '0.00';
+    }
+    return (amountInCents / 100).toFixed(2);
 }
 
 /**
