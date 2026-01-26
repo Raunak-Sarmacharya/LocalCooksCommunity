@@ -12,7 +12,7 @@ import {
     calculatePlatformFeeDynamic,
     calculateTotalWithFees
 } from "../../services/pricing-service";
-import { bookingStatusEnum, kitchenBookings, kitchens, users, locations, equipmentListings, storageListings, chefLocationAccess } from "@shared/schema";
+import { bookingStatusEnum, kitchenBookings, kitchens, users, locations, equipmentListings, storageListings, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
 import { logger } from "../../logger";
 import { db } from "../../db";
 import { eq, and, ne } from "drizzle-orm";
@@ -55,7 +55,38 @@ export class BookingService {
         });
 
         if (!hasAccess) {
-            throw new Error("You do not have approved access to this kitchen location. Please complete all required application steps (Tier 2) to book.");
+            // Fallback: Check chef_kitchen_applications for approved Tier 2+ applications
+            const [kitchenApplication] = await db
+                .select()
+                .from(chefKitchenApplications)
+                .where(
+                    and(
+                        eq(chefKitchenApplications.chefId, data.chefId),
+                        eq(chefKitchenApplications.locationId, kitchen.locationId)
+                    )
+                );
+
+            const currentTier = (kitchenApplication as any)?.currentTier ?? (kitchenApplication as any)?.current_tier ?? 0;
+            const isApprovedTier2Plus = kitchenApplication && 
+                kitchenApplication.status === 'approved' && 
+                currentTier >= 2;
+
+            if (!isApprovedTier2Plus) {
+                throw new Error("You do not have approved access to this kitchen location. Please complete all required application steps (Tier 2) to book.");
+            }
+
+            // Auto-create access record for future checks (self-healing)
+            try {
+                await db.insert(chefLocationAccess).values({
+                    chefId: data.chefId,
+                    locationId: kitchen.locationId,
+                    grantedBy: kitchenApplication.reviewedBy || data.chefId,
+                    grantedAt: new Date(),
+                }).onConflictDoNothing();
+                console.log(`✅ [BookingService] Auto-created chef_location_access for chef ${data.chefId} at location ${kitchen.locationId}`);
+            } catch (err) {
+                console.error('[BookingService] Error auto-creating chef_location_access:', err);
+            }
         }
 
         // 2. Calculate service fee
