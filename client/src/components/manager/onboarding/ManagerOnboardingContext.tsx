@@ -204,8 +204,27 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     enabled: !!firebaseUser,
   });
 
+  // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
+  const { data: stripeConnectStatus } = useQuery({
+    queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) return null;
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return null;
+      const response = await fetch('/api/manager/stripe-connect/status', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+    staleTime: 1000 * 30, // Cache for 30 seconds
+  });
+
   const userData = firebaseUserData;
-  const isStripeOnboardingComplete = userData?.stripe_connect_onboarding_status === 'complete' || userData?.stripeConnectOnboardingStatus === 'complete';
+  // Use Stripe API status (more accurate) - account is complete only when charges AND payouts are enabled
+  const isStripeOnboardingComplete = stripeConnectStatus?.status === 'complete' && 
+    stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled;
   const [dbCompletedSteps, setDbCompletedSteps] = useState<Record<string, boolean>>({});
 
   // Normalize legacy numeric step keys to string format for UI consumption
