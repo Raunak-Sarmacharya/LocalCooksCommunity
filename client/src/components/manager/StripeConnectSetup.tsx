@@ -20,8 +20,29 @@ export default function StripeConnectSetup() {
   const { user: firebaseUser } = useFirebaseAuth();
   const queryClient = useQueryClient();
 
-  // Fetch user profile to check for Stripe Connect account ID
-  const { data: userProfile, isLoading } = useQuery({
+  // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
+  const { data: stripeStatus, isLoading } = useQuery({
+    queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) throw new Error('Not authenticated');
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/manager/stripe-connect/status', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch Stripe status');
+      }
+      return response.json();
+    },
+    enabled: !!firebaseUser,
+    staleTime: 1000 * 30, // Cache for 30 seconds
+  });
+
+  // Also fetch user profile for account ID display (fallback)
+  const { data: userProfile } = useQuery({
     queryKey: ['/api/user/profile', firebaseUser?.uid],
     queryFn: async () => {
       if (!firebaseUser) throw new Error('Not authenticated');
@@ -40,9 +61,9 @@ export default function StripeConnectSetup() {
     enabled: !!firebaseUser,
   });
 
-  const hasStripeAccount = !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id;
-  const onboardingStatus = userProfile?.stripeConnectOnboardingStatus || userProfile?.stripe_connect_onboarding_status;
-  const isOnboardingComplete = onboardingStatus === 'complete';
+  // Use Stripe API status (more accurate) instead of DB status
+  const hasStripeAccount = stripeStatus?.hasAccount || !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id;
+  const isOnboardingComplete = stripeStatus?.status === 'complete' && stripeStatus?.chargesEnabled && stripeStatus?.payoutsEnabled;
 
   // Fetch service fee rate (public endpoint - no auth required)
   const { data: serviceFeeRateData } = useQuery({
@@ -242,16 +263,26 @@ export default function StripeConnectSetup() {
       return response.json();
     },
     onSuccess: (data) => {
+      // Invalidate both queries to refresh status
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
       queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
-      if (data.status === 'complete' || data.detailsSubmitted) {
+      
+      // Check actual Stripe status fields
+      const isFullyReady = data.details?.chargesEnabled && data.details?.payoutsEnabled;
+      if (isFullyReady || data.status === 'complete') {
         toast({
           title: "Setup Complete",
-          description: "Your Stripe account is now fully connected.",
+          description: "Your Stripe account is now fully connected and ready to receive payments.",
+        });
+      } else if (data.details?.detailsSubmitted) {
+        toast({
+          title: "Verification Pending",
+          description: "Your details have been submitted. Stripe is verifying your identity - this may take a few minutes.",
         });
       } else {
          toast({
-          title: "Still Pending",
-          description: "Stripe reports that onboarding is not yet complete.",
+          title: "Setup Incomplete",
+          description: "Please complete all required steps in Stripe to start receiving payments.",
           variant: "destructive"
         });
       }
