@@ -40,6 +40,23 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         enabled: !!firebaseUser,
     });
 
+    // Fetch Stripe Connect status from dedicated endpoint (queries Stripe API for real status)
+    const { data: stripeConnectStatus, isLoading: isLoadingStripe } = useQuery({
+        queryKey: ['/api/manager/stripe-connect/status', firebaseUser?.uid],
+        queryFn: async () => {
+            if (!firebaseUser) return null;
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) return null;
+            const res = await fetch('/api/manager/stripe-connect/status', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: !!firebaseUser,
+        staleTime: 1000 * 30, // Cache for 30 seconds
+    });
+
     // 2. Fetch Location Details (License)
     const { data: locationData, isLoading: isLoadingLocation } = useQuery({
         queryKey: ['locationDetails', locationId],
@@ -101,7 +118,9 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     // --- Logic ---
 
-    const isStripeComplete = userData?.stripe_connect_onboarding_status === 'complete' || userData?.stripeConnectOnboardingStatus === 'complete';
+    // Use Stripe API status (more accurate) - account is complete only when charges AND payouts are enabled
+    const isStripeComplete = stripeConnectStatus?.status === 'complete' && 
+        stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled;
     const hasApprovedLicense = locationData?.kitchen_license_status === 'approved' || locationData?.kitchenLicenseStatus === 'approved'; // handle snake/camel
     const hasKitchens = (kitchens?.length || 0) > 0;
 
@@ -124,7 +143,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     const showSetupBanner = !isReadyForBookings;
 
-    const isLoading = isLoadingUser || (!!locationId && (isLoadingLocation || isLoadingKitchens));
+    const isLoading = isLoadingUser || isLoadingStripe || (!!locationId && (isLoadingLocation || isLoadingKitchens));
 
     return {
         isLoading,
