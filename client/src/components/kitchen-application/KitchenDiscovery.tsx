@@ -400,7 +400,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                             </div>
 
                             <div className="flex gap-2">
-                              {app.tier2_completed_at && (
+                              {(app.current_tier ?? 1) >= 3 && (
                                 <Link href={`/book-kitchen?location=${app.locationId}`}>
                                   <Button size="sm" className="bg-green-600 hover:bg-green-700">
                                     <Calendar className="mr-2 h-4 w-4" />
@@ -408,7 +408,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                                   </Button>
                                 </Link>
                               )}
-                              {app.status === "approved" && !app.tier2_completed_at && (
+                              {app.status === "approved" && (app.current_tier ?? 1) < 3 && (
                                 <Button size="sm" variant="outline" disabled className="cursor-not-allowed">
                                   Complete tiers to book
                                 </Button>
@@ -474,7 +474,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                               </p>
 
                               <div className="mt-3">
-                                {app.tier2_completed_at ? (
+                                {(app.current_tier ?? 1) >= 3 ? (
                                   <Link href={`/book-kitchen?location=${app.locationId}`}>
                                     <Button className="bg-green-600 hover:bg-green-700" size="sm">
                                       <Calendar className="mr-2 h-4 w-4" />

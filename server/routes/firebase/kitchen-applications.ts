@@ -395,11 +395,46 @@ router.post('/firebase/chef/kitchen-applications',
             };
 
             // Add tier fields if provided
+            const currentTierValue = parseInt(req.body.current_tier) || 1;
             if (req.body.current_tier) {
-                formData.current_tier = parseInt(req.body.current_tier);
+                formData.current_tier = currentTierValue;
             }
-            if (tierData) {
+            
+            // For Step 2 submissions, preserve Step 1 data and store Step 2 custom fields in tier_data
+            if (currentTierValue === 2) {
+                // Get existing application to preserve Step 1 custom fields
+                const existingApp = await chefApplicationService.getChefApplication(req.neonUser!.id, locationId);
+                
+                // Build tier_data with proper structure for enterprise-grade data separation
+                const mergedTierData: Record<string, any> = {
+                    ...(existingApp?.tier_data as Record<string, any> || {}),
+                    ...(tierData || {}),
+                    // Ensure tierFiles are included (uploaded documents like insurance)
+                    tierFiles: {
+                        ...((existingApp?.tier_data as Record<string, any>)?.tierFiles || {}),
+                        ...(tierData?.tierFiles || {}),
+                        ...tierFileUrls,
+                    },
+                    // Store Step 2 custom fields separately in tier_data
+                    tier2_custom_fields_data: customFieldsData || {},
+                    tier2_submitted_at: new Date().toISOString(),
+                };
+                
+                formData.tier_data = mergedTierData;
+                
+                // Preserve Step 1 custom fields - don't overwrite with Step 2 data
+                // Keep the original customFieldsData from Step 1
+                if (existingApp?.customFieldsData) {
+                    formData.customFieldsData = existingApp.customFieldsData;
+                }
+                
+                // Set tier2_completed_at timestamp
+                formData.tier2_completed_at = new Date();
+            } else if (tierData) {
                 formData.tier_data = tierData;
+            } else if (Object.keys(tierFileUrls).length > 0) {
+                // Even if no tier_data was provided, include tier files if uploaded
+                formData.tier_data = { tierFiles: tierFileUrls };
             }
 
             // Validate Tier 2 required documents when submitting Tier 2 application
@@ -466,8 +501,10 @@ router.post('/firebase/chef/kitchen-applications',
             const applicationData = {
                 ...parsedData.data,
                 // Include tier fields (not in Zod schema but needed for storage)
-                ...(req.body.current_tier && { current_tier: parseInt(req.body.current_tier) }),
-                ...(tierData && { tier_data: tierData }),
+                ...(formData.current_tier && { current_tier: formData.current_tier }),
+                ...(formData.tier_data && { tier_data: formData.tier_data }),
+                ...(formData.tier2_completed_at && { tier2_completed_at: formData.tier2_completed_at }),
+                ...(formData.customFieldsData && { customFieldsData: formData.customFieldsData }),
                 ...(foodEstablishmentCertUrl && { foodEstablishmentCertUrl }),
             };
             const application = await chefApplicationService.createApplication(applicationData as any);
@@ -534,13 +571,13 @@ router.get('/firebase/chef/kitchen-applications/location/:locationId', requireFi
         // I will keep the separate fetch for now to maintain identical response structure.
         const location = await locationService.getLocationById(locationId);
 
-        // Check tier status
-        const tier2Completed = !!application.tier2_completed_at;
+        // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
+        const currentTier = (application as any).current_tier ?? 1;
 
         res.json({
             ...application,
             hasApplication: true,
-            canBook: application.status === 'approved' && tier2Completed,
+            canBook: application.status === 'approved' && currentTier >= 3,
             location: location ? {
                 id: (location as any).id,
                 name: (location as any).name,
@@ -763,21 +800,24 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
             return res.status(403).json({ error: 'Access denied to this application' });
         }
 
-        // Update the status with tier support
-        const updateData: any = { id: applicationId, status, feedback };
-        if (req.body.current_tier !== undefined) {
-            updateData.current_tier = req.body.current_tier;
-        }
-        if (req.body.tier_data !== undefined) {
-            updateData.tier_data = req.body.tier_data;
-        }
-
-        const updatedApplication = await chefApplicationService.updateApplicationStatus(
+        // Update the status
+        let updatedApplication = await chefApplicationService.updateApplicationStatus(
             applicationId,
             status,
             feedback,
             user.id
         );
+
+        // If current_tier is provided, also update the tier (for Step 2 approval advancing to tier 3)
+        if (req.body.current_tier !== undefined && updatedApplication) {
+            const newTier = parseInt(req.body.current_tier);
+            const tierData = req.body.tier_data;
+            updatedApplication = await chefApplicationService.updateApplicationTier(
+                applicationId,
+                newTier,
+                tierData
+            ) || updatedApplication;
+        }
 
         console.log(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
 

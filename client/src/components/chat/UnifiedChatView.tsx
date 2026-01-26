@@ -7,6 +7,7 @@ import { auth } from '@/lib/firebase';
 import { getAllConversations, type Conversation } from '@/services/chat-service';
 import ChatPanel from './ChatPanel';
 import { ConversationList } from './ConversationList';
+import { ApplicationStatus } from './ConversationItem';
 import { cn } from '@/lib/utils';
 
 interface ApplicationDetails {
@@ -21,7 +22,10 @@ interface ApplicationDetails {
     last_name?: string;
   };
   fullName?: string;
+  status?: string;
+  current_tier?: number;
   tier1_completed_at?: string | null;
+  tier2_completed_at?: string | null;
 }
 
 interface UnifiedChatViewProps {
@@ -194,6 +198,35 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   const getPartnerLocation = (c: Conversation) =>
     applicationDetails[c.applicationId]?.location?.name || locationNames[c.locationId] || `Location #${c.locationId}`;
 
+  // Compute application status for conversation thread display
+  const getApplicationStatus = useCallback((c: Conversation): ApplicationStatus => {
+    const app = applicationDetails[c.applicationId];
+    if (!app) return 'unknown';
+
+    const status = app.status;
+    const tier = app.current_tier ?? 1;
+
+    if (status === 'rejected') return 'rejected';
+    if (status === 'inReview') return 'inReview';
+
+    if (status === 'approved') {
+      // Step 2 needs review: tier=2 and tier2_completed_at is set
+      if (tier === 2 && app.tier2_completed_at) {
+        return 'step2_review';
+      }
+      // Step 1 approved, awaiting Step 2: tier=1
+      if (tier === 1) {
+        return 'step1_approved';
+      }
+      // Fully approved: tier >= 3
+      if (tier >= 3) {
+        return 'fully_approved';
+      }
+    }
+
+    return 'unknown';
+  }, [applicationDetails]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-12 h-[600px]">
@@ -218,7 +251,7 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
   });
 
   return (
-    <Card className="w-full h-[calc(100vh-120px)] min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
+    <Card className="w-full h-full min-h-[500px] border shadow-sm overflow-hidden flex bg-background">
       {/* Sidebar List */}
       <div className={cn(
         "w-full md:w-80 border-r flex-col bg-muted/10",
@@ -230,6 +263,8 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
           onSelect={handleSelectConversation}
           getPartnerName={getPartnerNameLabel}
           getPartnerLocation={getPartnerLocation}
+          getApplicationStatus={getApplicationStatus}
+          viewerRole={role}
         />
       </div>
 
@@ -250,7 +285,6 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
             managerName={role === 'manager' ? (auth.currentUser?.displayName || "Me") : getPartnerNameLabel(selectedConversation)}
             onUnreadCountUpdate={handleUnreadCountUpdate}
             embedded={true}
-            onClose={() => setIsMobileListVisible(true)}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8">

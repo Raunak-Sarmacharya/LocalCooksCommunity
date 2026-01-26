@@ -256,7 +256,10 @@ router.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req: Request, 
             return res.status(400).json({ error: "Date parameter is required" });
         }
 
-        const bookingDate = new Date(date as string);
+        // Parse date string (YYYY-MM-DD) to avoid timezone issues
+        // Using noon UTC to prevent date shifts across timezones
+        const [year, month, day] = (date as string).split('-').map(Number);
+        const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
         // Validate date
         if (isNaN(bookingDate.getTime())) {
@@ -285,7 +288,10 @@ router.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req: Re
             return res.status(400).json({ error: "Date parameter is required" });
         }
 
-        const bookingDate = new Date(date as string);
+        // Parse date string (YYYY-MM-DD) to avoid timezone issues
+        // Using noon UTC to prevent date shifts across timezones
+        const [year, month, day] = (date as string).split('-').map(Number);
+        const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
         // Validate date
         if (isNaN(bookingDate.getTime())) {

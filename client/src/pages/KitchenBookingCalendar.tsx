@@ -496,10 +496,16 @@ export default function KitchenBookingCalendar() {
 
       if (equipmentRes.ok) {
         const equipmentData = await equipmentRes.json();
-        setEquipmentListings(equipmentData);
+        // Ensure all required properties exist with proper defaults
+        const normalizedEquipment = {
+          all: [...(equipmentData.included || []), ...(equipmentData.rental || [])],
+          included: equipmentData.included || [],
+          rental: equipmentData.rental || [],
+        };
+        setEquipmentListings(normalizedEquipment);
         console.log(`✅ Loaded equipment listings for kitchen ${kitchenId}:`, {
-          included: equipmentData.included?.length || 0,
-          rental: equipmentData.rental?.length || 0,
+          included: normalizedEquipment.included.length,
+          rental: normalizedEquipment.rental.length,
         });
       } else {
         console.log(`ℹ️ No equipment listings available (status: ${equipmentRes.status})`);
@@ -1299,7 +1305,7 @@ export default function KitchenBookingCalendar() {
                                   ? "Your application is pending manager review"
                                   : application?.status === 'rejected'
                                     ? "Your application was rejected. Re-apply with updated documents"
-                                    : application?.tier2_completed_at
+                                    : ((application as any)?.current_tier ?? 1) >= 3
                                       ? "All tiers completed. You can now book kitchens."
                                       : "Complete all application tiers to book kitchens"}
                             </p>

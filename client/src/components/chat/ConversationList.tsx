@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ConversationItem } from './ConversationItem';
+import { ConversationItem, ApplicationStatus } from './ConversationItem';
 import { Conversation } from '@/services/chat-service';
 
 interface ConversationListProps {
@@ -11,6 +11,8 @@ interface ConversationListProps {
   onSelect: (conversation: Conversation) => void;
   getPartnerName: (conversation: Conversation) => string;
   getPartnerLocation: (conversation: Conversation) => string;
+  getApplicationStatus?: (conversation: Conversation) => ApplicationStatus;
+  viewerRole?: 'chef' | 'manager';
 }
 
 export function ConversationList({
@@ -18,7 +20,9 @@ export function ConversationList({
   selectedId,
   onSelect,
   getPartnerName,
-  getPartnerLocation
+  getPartnerLocation,
+  getApplicationStatus,
+  viewerRole
 }: ConversationListProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -57,6 +61,8 @@ export function ConversationList({
                 onClick={() => onSelect(conversation)}
                 partnerName={getPartnerName(conversation)}
                 partnerLocation={getPartnerLocation(conversation)}
+                applicationStatus={getApplicationStatus?.(conversation)}
+                viewerRole={viewerRole}
               />
             ))
           )}

@@ -37,10 +37,14 @@ export interface KitchenApplicationForManager {
   // Tier information
   current_tier?: number;
   tier_data?: any;
+  
+  // Custom fields data (Step 1 custom fields stored here)
+  customFieldsData?: Record<string, any> | null;
 
   // Timestamps
   createdAt: string;
   updatedAt: string;
+  tier1_completed_at?: string | null;
   tier2_completed_at?: string | null;
 
   // Chat

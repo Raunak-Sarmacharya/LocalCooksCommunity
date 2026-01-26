@@ -25,7 +25,8 @@ import {
   ExternalLink,
   MessageCircle
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -99,26 +100,64 @@ export function ManagerKitchenApplicationsContent({
   const [chatLocationName, setChatLocationName] = useState<string | null>(null);
 
   // Business Logic: Filter applications by location if selected
-  const filteredApplications = selectedLocationId
-    ? applications.filter(a => a.locationId === selectedLocationId)
-    : applications;
+  // Memoize to prevent unnecessary re-renders and infinite loops
+  const filteredApplications = useMemo(() => {
+    return selectedLocationId
+      ? applications.filter(a => a.locationId === selectedLocationId)
+      : applications;
+  }, [applications, selectedLocationId]);
 
   // Re-derive filtered sets for tabs based on location filter
-  const isTier2Pending = (a: any) =>
-    a.status === 'approved' && a.current_tier === 2 && !!a.tier2_completed_at;
+  // Memoize these as well to prevent re-creation on every render
+  //
+  // Application lifecycle (2 steps):
+  // 1. Chef submits application -> status='inReview', current_tier=1
+  // 2. Manager approves Step 1 -> status='approved', current_tier=1 (Step 1 Approved, awaiting chef Step 2 submission)
+  // 3. Chef submits Step 2 docs -> status='approved', current_tier=2, tier2_completed_at set (Step 2 Needs Review)
+  // 4. Manager approves Step 2 -> status='approved', current_tier=3 (Fully Approved, can book)
+  //
+  const isStep2NeedsReview = useCallback(
+    (a: any) => a.status === 'approved' && a.current_tier === 2 && !!a.tier2_completed_at,
+    []
+  );
 
-  const pendingApplications = filteredApplications.filter(
-    (a) => a.status === "inReview" || isTier2Pending(a)
+  const isStep1ApprovedAwaitingStep2 = useCallback(
+    (a: any) => a.status === 'approved' && (a.current_tier ?? 1) === 1,
+    []
   );
-  const approvedApplications = filteredApplications.filter(
-    (a) => a.status === "approved" && !isTier2Pending(a)
+
+  const isFullyApproved = useCallback(
+    (a: any) => a.status === 'approved' && (a.current_tier ?? 1) >= 3,
+    []
   );
-  const rejectedApplications = filteredApplications.filter(
-    (a) => a.status === "rejected"
-  );
+
+  const { pendingApplications, awaitingStep2Applications, fullyApprovedApplications, rejectedApplications } = useMemo(() => {
+    // Pending Review: New applications OR Step 2 submitted needing manager review
+    const pending = filteredApplications.filter(
+      (a) => a.status === "inReview" || isStep2NeedsReview(a)
+    );
+
+    // Awaiting Step 2: Manager approved Step 1, waiting for chef to submit Step 2
+    const awaitingStep2 = filteredApplications.filter((a) => isStep1ApprovedAwaitingStep2(a));
+
+    // Fully Approved: Both steps complete, can book kitchens
+    const fullyApproved = filteredApplications.filter((a) => isFullyApproved(a));
+
+    const rejected = filteredApplications.filter(
+      (a) => a.status === "rejected"
+    );
+
+    return {
+      pendingApplications: pending,
+      awaitingStep2Applications: awaitingStep2,
+      fullyApprovedApplications: fullyApproved,
+      rejectedApplications: rejected,
+    };
+  }, [filteredApplications, isStep2NeedsReview, isStep1ApprovedAwaitingStep2, isFullyApproved]);
 
   const pendingCount = pendingApplications.length;
-  const approvedCount = approvedApplications.length;
+  const awaitingStep2Count = awaitingStep2Applications.length;
+  const fullyApprovedCount = fullyApprovedApplications.length;
   const rejectedCount = rejectedApplications.length;
 
   // Get manager ID from API
@@ -140,42 +179,103 @@ export function ManagerKitchenApplicationsContent({
 
   const managerId = managerInfo?.id || null;
 
+  // Create a stable key for applications to prevent infinite re-renders
+  // Only re-fetch when the actual application IDs or their conversation IDs change
+  const applicationIdsKey = useMemo(() => {
+    return filteredApplications
+      .map(app => `${app.id}:${app.chat_conversation_id || 'none'}`)
+      .sort()
+      .join(',');
+  }, [filteredApplications]);
+
+  // Track if we're currently fetching to prevent concurrent fetches
+  const isFetchingRef = useRef(false);
+  const lastFetchKeyRef = useRef<string>('');
+  
+  // Use ref to access current filteredApplications without adding to dependencies
+  const filteredApplicationsRef = useRef(filteredApplications);
+  filteredApplicationsRef.current = filteredApplications;
+
   // Fetch unread counts for all applications with conversations
   useEffect(() => {
     if (!managerId) return;
-
-    // Combine all applications from different tabs
-    const allApplications = [
-      ...pendingApplications,
-      ...approvedApplications,
-      ...rejectedApplications,
-    ];
-
-    if (allApplications.length === 0) return;
+    if (!applicationIdsKey) return; // No applications
+    
+    // Prevent duplicate fetches for the same data
+    const currentKey = `${managerId}:${applicationIdsKey}`;
+    if (currentKey === lastFetchKeyRef.current && isFetchingRef.current) {
+      return;
+    }
 
     const fetchUnreadCounts = async () => {
-      const counts: Record<number, number> = {};
-      for (const app of allApplications) {
-        if (app.chat_conversation_id) {
-          try {
-            // Get conversation and check unread count
-            const conversation = await getConversationForApplication(app.id);
-            if (conversation) {
-              counts[app.id] = conversation.unreadManagerCount || 0;
-            }
-          } catch (error) {
-            console.error('Error fetching unread count for application', app.id, ':', error);
-          }
+      // Prevent concurrent fetches
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      lastFetchKeyRef.current = currentKey;
+
+      try {
+        const counts: Record<number, number> = {};
+        
+        // Access current applications via ref to avoid dependency issues
+        const currentApps = filteredApplicationsRef.current;
+        
+        // Only fetch for applications that have conversations
+        const appsWithConversations = currentApps.filter(app => app.chat_conversation_id);
+        
+        if (appsWithConversations.length === 0) {
+          isFetchingRef.current = false;
+          return;
         }
+        
+        // Use Promise.allSettled for better error handling and parallel fetching
+        const results = await Promise.allSettled(
+          appsWithConversations.map(async (app) => {
+            try {
+              const conversation = await getConversationForApplication(app.id);
+              return { appId: app.id, count: conversation?.unreadManagerCount || 0 };
+            } catch (error) {
+              console.error('Error fetching unread count for application', app.id, ':', error);
+              return { appId: app.id, count: 0 };
+            }
+          })
+        );
+
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            counts[result.value.appId] = result.value.count;
+          }
+        });
+
+        // Only update state if counts actually changed to prevent unnecessary re-renders
+        setUnreadCounts(prevCounts => {
+          const prevKeys = Object.keys(prevCounts);
+          const newKeys = Object.keys(counts);
+          
+          // Check if counts actually changed
+          if (prevKeys.length !== newKeys.length) {
+            return counts;
+          }
+          
+          const hasChanges = newKeys.some(
+            key => prevCounts[Number(key)] !== counts[Number(key)]
+          );
+          
+          return hasChanges ? counts : prevCounts;
+        });
+      } finally {
+        isFetchingRef.current = false;
       }
-      setUnreadCounts(counts);
     };
 
     fetchUnreadCounts();
+    
     // Refresh every 30 seconds
     const interval = setInterval(fetchUnreadCounts, 30000);
-    return () => clearInterval(interval);
-  }, [pendingApplications, approvedApplications, rejectedApplications, managerId]);
+    return () => {
+      clearInterval(interval);
+      isFetchingRef.current = false;
+    };
+  }, [managerId, applicationIdsKey]); // Only depend on stable values
 
   const openChat = async (application: any) => {
     if (!managerId) {
@@ -366,6 +466,34 @@ export function ManagerKitchenApplicationsContent({
     setReviewFeedback(application.feedback || "");
   };
 
+  // Fetch location requirements for the selected application to display custom fields
+  const { data: locationRequirements } = useQuery({
+    queryKey: [`/api/public/locations/${selectedApplication?.locationId}/requirements`],
+    queryFn: async () => {
+      if (!selectedApplication?.locationId) return null;
+      const response = await fetch(`/api/public/locations/${selectedApplication.locationId}/requirements`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!selectedApplication?.locationId && showReviewDialog,
+  });
+
+  // Helper to render custom field value based on type
+  const renderCustomFieldValue = (field: any, value: any) => {
+    if (value === undefined || value === null || value === '') return <span className="text-gray-400 italic">Not provided</span>;
+    
+    if (field.type === 'checkbox') {
+      if (Array.isArray(value)) {
+        return <span className="font-medium">{value.join(', ')}</span>;
+      }
+      return <span className="font-medium">{value ? 'Yes' : 'No'}</span>;
+    }
+    if (field.type === 'date') {
+      return <span className="font-medium">{new Date(value).toLocaleDateString()}</span>;
+    }
+    return <span className="font-medium">{String(value)}</span>;
+  };
+
   // Parse business description JSON
   const parseBusinessInfo = (description: string | null | undefined) => {
     if (!description) return null;
@@ -434,7 +562,7 @@ export function ManagerKitchenApplicationsContent({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Pending Review</CardTitle>
@@ -445,10 +573,19 @@ export function ManagerKitchenApplicationsContent({
         </Card>
         <Card>
           <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Awaiting Step 2</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-blue-600">{awaitingStep2Count}</div>
+            <p className="text-xs text-gray-500 mt-1">Chat enabled</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Approved</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600">{approvedCount}</div>
+            <div className="text-3xl font-bold text-green-600">{fullyApprovedCount}</div>
             <p className="text-xs text-gray-500 mt-1">Can book kitchens</p>
           </CardContent>
         </Card>
@@ -469,9 +606,13 @@ export function ManagerKitchenApplicationsContent({
             <Clock className="h-4 w-4" />
             Pending ({pendingCount})
           </TabsTrigger>
+          <TabsTrigger value="awaiting-tier2" className="gap-2">
+            <Clock className="h-4 w-4" />
+            Awaiting Step 2 ({awaitingStep2Count})
+          </TabsTrigger>
           <TabsTrigger value="approved" className="gap-2">
             <CheckCircle className="h-4 w-4" />
-            Approved ({approvedCount})
+            Approved ({fullyApprovedCount})
           </TabsTrigger>
           <TabsTrigger value="rejected" className="gap-2">
             <XCircle className="h-4 w-4" />
@@ -504,10 +645,35 @@ export function ManagerKitchenApplicationsContent({
           )}
         </TabsContent>
 
-        <TabsContent value="approved">
-          {approvedApplications.length > 0 ? (
+        <TabsContent value="awaiting-tier2">
+          {awaitingStep2Applications.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {approvedApplications.map((application) => (
+              {awaitingStep2Applications.map((application) => (
+                <ApplicationCard
+                  key={application.id}
+                  application={application}
+                  onReview={() => openReviewDialog(application)}
+                  onOpenChat={() => openChat(application)}
+                  unreadCount={unreadCounts[application.id] || 0}
+                  parseBusinessInfo={parseBusinessInfo}
+                />
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Applications Awaiting Step 2</h3>
+                <p className="text-muted-foreground">Chefs who passed Step 1 and still need to submit Step 2 will appear here.</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="approved">
+          {fullyApprovedApplications.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {fullyApprovedApplications.map((application) => (
                 <ApplicationCard
                   key={application.id}
                   application={application}
@@ -523,7 +689,7 @@ export function ManagerKitchenApplicationsContent({
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Approved Applications</h3>
-                <p className="text-muted-foreground">Approved chef applications will appear here.</p>
+                <p className="text-muted-foreground">Fully approved chef applications will appear here.</p>
               </CardContent>
             </Card>
           )}
@@ -671,122 +837,186 @@ export function ManagerKitchenApplicationsContent({
                 </div>
               )}
 
-              {/* Documents */}
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Food Safety Documents
-                </h3>
-                <div className="space-y-3">
-                  {/* Food Safety License */}
-                  <div className={`flex items-center justify-between p-4 rounded-lg border ${selectedApplication.foodSafetyLicenseUrl
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-gray-50 border-gray-200'
-                    }`}>
-                    <div className="flex items-center gap-3">
-                      <FileText className={`h-5 w-5 ${selectedApplication.foodSafetyLicenseUrl ? 'text-green-600' : 'text-gray-400'}`} />
-                      <div>
-                        <p className="font-medium text-gray-900">Food Handler Certificate</p>
-                        <p className="text-xs text-gray-500">
-                          {selectedApplication.foodSafetyLicense === 'yes' ? 'Has certificate' : 'Certificate status: ' + selectedApplication.foodSafetyLicense}
-                        </p>
+              {/* ========== STEP 1 SECTION ========== */}
+              <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50/30">
+                <div className="flex items-center gap-2 mb-4">
+                  <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                    Step 1: Initial Application
+                  </Badge>
+                  {selectedApplication.tier1_completed_at && (
+                    <span className="text-xs text-gray-500">
+                      Submitted: {new Date(selectedApplication.createdAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                {/* Step 1 Documents */}
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Food Safety Documents
+                  </h4>
+                  <div className="space-y-2">
+                    {/* Food Safety License */}
+                    <div className={`flex items-center justify-between p-3 rounded-lg border ${selectedApplication.foodSafetyLicenseUrl
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-gray-50 border-gray-200'
+                      }`}>
+                      <div className="flex items-center gap-3">
+                        <FileText className={`h-4 w-4 ${selectedApplication.foodSafetyLicenseUrl ? 'text-green-600' : 'text-gray-400'}`} />
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">Food Handler Certificate</p>
+                          <p className="text-xs text-gray-500">
+                            {selectedApplication.foodSafetyLicense === 'yes' ? 'Has certificate' : 'Certificate status: ' + selectedApplication.foodSafetyLicense}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    {selectedApplication.foodSafetyLicenseUrl && (
-                      <div className="flex gap-2">
+                      {selectedApplication.foodSafetyLicenseUrl && (
                         <SecureDocumentLink
                           url={selectedApplication.foodSafetyLicenseUrl}
                           fileName="Food Handler Certificate"
                           label="Download"
                         />
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-
-
                 </div>
+
+                {/* Step 1 Custom Fields */}
+                {locationRequirements?.tier1_custom_fields && 
+                 Array.isArray(locationRequirements.tier1_custom_fields) && 
+                 locationRequirements.tier1_custom_fields.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Additional Step 1 Information
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {locationRequirements.tier1_custom_fields.map((field: any) => {
+                        const customData = selectedApplication.customFieldsData || {};
+                        const value = customData[field.id];
+                        return (
+                          <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
+                            <div className="text-xs text-gray-500 mb-1">{field.label}</div>
+                            {renderCustomFieldValue(field, value)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Tier 2 Documents Section - Show when Tier 2 is completed */}
+              {/* ========== STEP 2 SECTION ========== */}
               {selectedApplication.tier2_completed_at && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Step 2 Documents
+                <div className="border-2 border-orange-200 rounded-lg p-4 bg-orange-50/30">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">
+                      Step 2: Kitchen Coordination
+                    </Badge>
                     {selectedApplication.current_tier === 2 && (
-                      <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 ml-2">
+                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
                         Awaiting Review
                       </Badge>
                     )}
                     {selectedApplication.current_tier >= 3 && (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 ml-2">
+                      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
                         Approved
                       </Badge>
                     )}
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="text-xs text-gray-500 mb-2">
+                    <span className="text-xs text-gray-500 ml-auto">
                       Submitted: {new Date(selectedApplication.tier2_completed_at).toLocaleDateString()}
-                    </div>
+                    </span>
+                  </div>
 
-                    {/* Insurance Document */}
-                    {(() => {
-                      const tierData = selectedApplication.tier_data || {};
-                      const tierFiles = tierData.tierFiles || {};
-                      const insuranceUrl = tierFiles.tier2_insurance_document;
+                  {/* Step 2 Documents */}
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Step 2 Documents
+                    </h4>
+                    <div className="space-y-2">
+                      {/* Insurance Document */}
+                      {(() => {
+                        const tierData = selectedApplication.tier_data || {};
+                        const tierFiles = tierData.tierFiles || {};
+                        const insuranceUrl = tierFiles.tier2_insurance_document;
 
-                      return insuranceUrl ? (
-                        <div className="flex items-center justify-between p-4 rounded-lg border bg-purple-50 border-purple-200">
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-5 w-5 text-purple-600" />
-                            <div>
-                              <p className="font-medium text-gray-900">Insurance Document</p>
-                              <p className="text-xs text-gray-500">Uploaded with Step 2 submission</p>
+                        return insuranceUrl ? (
+                          <div className="flex items-center justify-between p-3 rounded-lg border bg-purple-50 border-purple-200">
+                            <div className="flex items-center gap-3">
+                              <FileText className="h-4 w-4 text-purple-600" />
+                              <div>
+                                <p className="font-medium text-gray-900 text-sm">Insurance Document</p>
+                                <p className="text-xs text-gray-500">Uploaded with Step 2 submission</p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex gap-2">
                             <SecureDocumentLink
                               url={insuranceUrl}
                               fileName="Insurance Document"
                               label="Download"
                             />
                           </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center p-4 rounded-lg border bg-gray-50 border-gray-200">
-                          <FileText className="h-5 w-5 text-gray-400 mr-3" />
-                          <div>
-                            <p className="font-medium text-gray-900">Insurance Document</p>
-                            <p className="text-xs text-gray-500">Not uploaded</p>
+                        ) : locationRequirements?.tier2_insurance_document_required ? (
+                          <div className="flex items-center p-3 rounded-lg border bg-red-50 border-red-200">
+                            <FileText className="h-4 w-4 text-red-400 mr-3" />
+                            <div>
+                              <p className="font-medium text-red-900 text-sm">Insurance Document</p>
+                              <p className="text-xs text-red-600">Required but not uploaded</p>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        ) : null;
+                      })()}
 
-                    {/* Food Establishment Certificate from Tier 2 (if different from Tier 1) */}
-                    {selectedApplication.foodEstablishmentCertUrl && selectedApplication.current_tier >= 2 && (
-                      <div className="flex items-center justify-between p-4 rounded-lg border bg-blue-50 border-blue-200">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-blue-600" />
-                          <div>
-                            <p className="font-medium text-gray-900">Food Establishment Certificate</p>
-                            <p className="text-xs text-gray-500">
-                              {selectedApplication.foodEstablishmentCertExpiry
-                                ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
-                                : 'Step 2 requirement'}
-                            </p>
+                      {/* Food Establishment Certificate */}
+                      {selectedApplication.foodEstablishmentCertUrl && (
+                        <div className="flex items-center justify-between p-3 rounded-lg border bg-blue-50 border-blue-200">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">Food Establishment Certificate</p>
+                              <p className="text-xs text-gray-500">
+                                {selectedApplication.foodEstablishmentCertExpiry
+                                  ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
+                                  : 'Step 2 requirement'}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex gap-2">
                           <SecureDocumentLink
                             url={selectedApplication.foodEstablishmentCertUrl}
                             fileName="Establishment Certificate"
                             label="Download"
                           />
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
+
+                  {/* Step 2 Custom Fields - from tier_data.tier2_custom_fields_data */}
+                  {locationRequirements?.tier2_custom_fields && 
+                   Array.isArray(locationRequirements.tier2_custom_fields) && 
+                   locationRequirements.tier2_custom_fields.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Additional Step 2 Information
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {locationRequirements.tier2_custom_fields.map((field: any) => {
+                          // Step 2 custom fields are stored in tier_data.tier2_custom_fields_data
+                          const tierData = selectedApplication.tier_data || {};
+                          const tier2CustomData = tierData.tier2_custom_fields_data || {};
+                          const value = tier2CustomData[field.id];
+                          return (
+                            <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
+                              <div className="text-xs text-gray-500 mb-1">{field.label}</div>
+                              {renderCustomFieldValue(field, value)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -926,36 +1156,50 @@ function ApplicationCard({
             Pending
           </Badge>
         );
-      case 'approved':
-        // Case 1: Tier 2 Pending Review (Chef submitted docs)
-        if (application.current_tier === 2 && application.tier2_completed_at) {
+      case 'approved': {
+        const tier = application.current_tier ?? 1;
+        
+        // Case 1: Step 2 Needs Review (Chef submitted Step 2 docs, manager needs to review)
+        // current_tier=2 AND tier2_completed_at is set
+        if (tier === 2 && application.tier2_completed_at) {
           return (
             <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
               <Clock className="h-3 w-3 mr-1" />
-              Step 2 Review
+              Step 2 Needs Review
             </Badge>
           );
         }
 
-        // Case 2: Tier 1 Approved (Waiting for Chef to submit Tier 2)
-        if (application.current_tier === 2 && !application.tier2_completed_at) {
+        // Case 2: Step 1 Approved (Manager approved Step 1, waiting for Chef to submit Step 2)
+        // current_tier=1 (Step 1 complete, Step 2 not started)
+        if (tier === 1) {
           return (
             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
               <Clock className="h-3 w-3 mr-1" />
-              Tier 1 Approved
+              Step 1 Approved
             </Badge>
           );
         }
 
-        // Check if fully approved (Tier 2 complete)
-        const isFullyApproved = application.current_tier >= 2 && application.tier2_completed_at;
+        // Case 3: Fully Approved (Both steps complete, can book kitchens)
+        // current_tier >= 3
+        if (tier >= 3) {
+          return (
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Fully Approved
+            </Badge>
+          );
+        }
 
+        // Fallback for any edge cases (e.g., tier=2 without tier2_completed_at)
         return (
-          <Badge variant="outline" className={`${isFullyApproved ? 'bg-green-50 text-green-700 border-green-300' : 'bg-blue-50 text-blue-700 border-blue-300'}`}>
-            <CheckCircle className="h-3 w-3 mr-1" />
-            {isFullyApproved ? 'Fully Approved' : 'Step 1 Approved'}
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+            <Clock className="h-3 w-3 mr-1" />
+            In Progress
           </Badge>
         );
+      }
       case 'rejected':
         return (
           <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300">

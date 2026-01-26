@@ -728,18 +728,28 @@ export default function KitchenComparisonPage() {
     const application = applications.find((a) => a.locationId === location.id);
 
 
-    // Check tier completion status (only Tier 1 and Tier 2 are in use)
-    const tier1Completed = !!application?.tier1_completed_at;
-    const tier2Completed = !!application?.tier2_completed_at;
-    const allTiersCompleted = tier2Completed; // Tier 2 is the final tier
+    // Enterprise 3-Tier System (using current_tier as source of truth):
+    // - Tier 1: Application submitted, pending manager review (current_tier = 1)
+    // - Tier 2: Step 1 approved, chef completing Step 2 (current_tier = 2)
+    // - Tier 3: Fully approved, ready to book (current_tier >= 3)
+    const currentTier = (application as any)?.current_tier ?? 1;
+    const allTiersCompleted = currentTier >= 3;
 
-    // Determine next tier to complete
+    // Determine next action based on current tier
     let nextTierToComplete = "";
     if (!application) {
-      nextTierToComplete = "Complete remaining application requirements";
-    } else if (!tier1Completed) nextTierToComplete = "Complete application submission (Step 1)";
-    else if (!tier2Completed) nextTierToComplete = "Complete kitchen coordination (Step 2)";
-
+      nextTierToComplete = "Submit your application";
+    } else if (currentTier === 1) {
+      nextTierToComplete = "Complete application submission (Step 1)";
+    } else if (currentTier === 2) {
+      // Check if Step 2 docs submitted but not yet approved
+      if (application.tier2_completed_at) {
+        nextTierToComplete = "Awaiting manager approval for Step 2";
+      } else {
+        nextTierToComplete = "Complete kitchen coordination (Step 2)";
+      }
+    }
+    // currentTier >= 3 means fully approved, no next step needed
 
     return {
       id: location.id,
@@ -753,10 +763,10 @@ export default function KitchenComparisonPage() {
       nextTierToComplete,
       hasChatConversation: !!application?.chat_conversation_id,
       tierProgress: {
-        tier1: tier1Completed,
-        tier2: tier2Completed,
-        tier3: false, // Not in use
-        tier4: false, // Not in use
+        tier1: currentTier >= 1,
+        tier2: currentTier >= 2,
+        tier3: currentTier >= 3, // Tier 3 = fully approved
+        tier4: false, // Reserved for future use
       },
       managerId: location.managerId,
     };
@@ -883,8 +893,16 @@ export default function KitchenComparisonPage() {
     }))
     .filter((loc) => loc.kitchens.length > 0);
 
-  const handleBookKitchen = (locationId: number) => {
-    navigate(`/kitchen-requirements/${locationId}`);
+  // For fully approved chefs (Tier 3), go directly to booking calendar
+  // For others, show requirements page
+  const handleBookKitchen = (locationId: number, isFullyApproved: boolean = false) => {
+    if (isFullyApproved) {
+      // Tier 3: Skip requirements, go directly to booking calendar with location filter
+      navigate(`/book-kitchen?location=${locationId}`);
+    } else {
+      // Tier 1/2: Show requirements page
+      navigate(`/kitchen-requirements/${locationId}`);
+    }
   };
 
   const handleViewDetails = (locationId: number) => {
@@ -1381,7 +1399,7 @@ export default function KitchenComparisonPage() {
                                         </div>
                                         <Button
                                           size="sm"
-                                          onClick={() => handleBookKitchen(location.id)}
+                                          onClick={() => handleBookKitchen(location.id, true)}
                                           className="w-full bg-green-600 hover:bg-green-700"
                                         >
                                           <Calendar className="mr-2 h-4 w-4" />
