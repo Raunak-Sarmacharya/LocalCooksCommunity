@@ -197,8 +197,16 @@ export default function AuthPage() {
           });
         }
         
-        // Redirect to appropriate dashboard
-        const targetPath = userMeta?.role === 'admin' ? '/admin' : '/dashboard';
+        // Redirect based on role:
+        // - Admins go to admin dashboard
+        // - Chefs go to chef-setup for onboarding wizard
+        // - Others go to dashboard
+        let targetPath = '/dashboard';
+        if (userMeta?.role === 'admin') {
+          targetPath = '/admin';
+        } else if (userMeta?.role === 'chef') {
+          targetPath = '/chef-setup';
+        }
         console.log(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
         setLocation(targetPath);
       } else {
@@ -207,7 +215,12 @@ export default function AuthPage() {
         console.error('⚠️ Error details:', errorText);
         
         // Still redirect on API failure
-        const targetPath = userMeta?.role === 'admin' ? '/admin' : '/dashboard';
+        let targetPath = '/dashboard';
+        if (userMeta?.role === 'admin') {
+          targetPath = '/admin';
+        } else if (userMeta?.role === 'chef') {
+          targetPath = '/chef-setup';
+        }
         console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
         setLocation(targetPath);
       }
@@ -215,7 +228,12 @@ export default function AuthPage() {
       console.error('❌ Error completing welcome screen:', error);
       
       // Still redirect on error
-      const targetPath = userMeta?.role === 'admin' ? '/admin' : '/dashboard';
+      let targetPath = '/dashboard';
+      if (userMeta?.role === 'admin') {
+        targetPath = '/admin';
+      } else if (userMeta?.role === 'chef') {
+        targetPath = '/chef-setup';
+      }
       console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
       setLocation(targetPath);
     }

@@ -206,16 +206,18 @@ export default function EnhancedAuthPage() {
           });
         }
         
-        // Redirect to appropriate page  
+        // Redirect based on role:
+        // - Admins go to admin dashboard
+        // - Chefs go to chef-setup for onboarding wizard
+        // - Others go to dashboard
         const redirectPath = getRedirectPath();
         let targetPath = redirectPath !== '/' ? redirectPath : '/dashboard';
         
-        // Smart redirect based on user roles
         if (redirectPath === '/' || redirectPath === '/dashboard') {
           if (userMeta?.role === 'admin') {
             targetPath = '/admin';
-          } else {
-            targetPath = '/dashboard'; // Dashboard adapts to user roles
+          } else if (userMeta?.role === 'chef') {
+            targetPath = '/chef-setup';
           }
         }
         console.log(`🚀 WELCOME COMPLETE - REDIRECTING TO: ${targetPath}`);
@@ -225,18 +227,26 @@ export default function EnhancedAuthPage() {
         const errorText = await response.text();
         console.error('⚠️ Error details:', errorText);
         
-        // Still redirect on API failure
-        const redirectPath = getRedirectPath();
-        const targetPath = redirectPath !== '/' ? redirectPath : (userMeta?.role === 'admin' ? '/admin' : '/dashboard');
+        // Still redirect on API failure - chefs go to chef-setup
+        let targetPath = '/dashboard';
+        if (userMeta?.role === 'admin') {
+          targetPath = '/admin';
+        } else if (userMeta?.role === 'chef') {
+          targetPath = '/chef-setup';
+        }
         console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
         setLocation(targetPath);
       }
     } catch (error) {
       console.error('❌ Error completing welcome screen:', error);
       
-      // Still redirect on error
-      const redirectPath = getRedirectPath();
-      const targetPath = redirectPath !== '/' ? redirectPath : (userMeta?.role === 'admin' ? '/admin' : '/dashboard');
+      // Still redirect on error - chefs go to chef-setup
+      let targetPath = '/dashboard';
+      if (userMeta?.role === 'admin') {
+        targetPath = '/admin';
+      } else if (userMeta?.role === 'chef') {
+        targetPath = '/chef-setup';
+      }
       console.log(`🔄 REDIRECTING DESPITE ERROR TO: ${targetPath}`);
       setLocation(targetPath);
     }

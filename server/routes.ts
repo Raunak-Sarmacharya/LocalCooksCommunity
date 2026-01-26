@@ -112,6 +112,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount Auth Router (Legacy - removed in favor of Firebase Auth)
   // app.use("/api/auth", (await import("./routes/auth")).default);
 
+  // Mount User Router (profile, onboarding)
+  app.use("/api/user", (await import("./routes/user")).default);
+
+  // Legacy logout endpoint alias (frontend calls /api/logout)
+  app.post("/api/logout", (req, res) => {
+    console.log("🚪 Logout request received (Firebase Auth is stateless)");
+    res.json({ success: true, message: "Logged out successfully" });
+  });
+
   // Mount Applications Router
   app.use("/api/applications", (await import("./routes/applications")).default);
 
@@ -155,29 +164,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get User Profile (Restored)
-  app.get("/api/user/profile", requireFirebaseAuthWithUser, async (req, res) => {
-    try {
-      const user = req.neonUser!;
-      // Drizzle maps is_verified -> isVerified, but legacy frontend code expects is_verified
-      const responseUser = {
-        ...user,
-        is_verified: user.isVerified
-      };
-      res.json(responseUser);
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
-      res.status(500).json({ error: "Failed to fetch user profile" });
-    }
-  });
-
-  // Sync User (Firebase -> Neon)
+  // Sync User (Firebase -> Neon) - Legacy endpoint, delegates to /api/user/sync
   // Called after Firebase login to ensure user exists in Neon and update metadata
   app.post("/api/firebase-sync-user", requireFirebaseAuthWithUser, async (req, res) => {
     try {
-      const user = req.neonUser!;
-      // Update last login or other metadata if needed
-      // For now just return the user to confirm sync
+      let user = req.neonUser!;
+      
+      // CRITICAL: Update is_verified status if Firebase reports email is verified
+      const firebaseEmailVerified = req.firebaseUser?.email_verified;
+      if (firebaseEmailVerified && !user.isVerified) {
+        console.log(`📧 Updating is_verified for user ${user.id} - Firebase email verified`);
+        const updatedUser = await userService.updateUser(user.id, { isVerified: true });
+        if (updatedUser) {
+          user = updatedUser;
+        }
+      }
+      
       res.json(user);
     } catch (error) {
       console.error("Error syncing user:", error);
