@@ -55,6 +55,7 @@ import { useEffect, useState, useMemo } from "react";
 import { Link } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import ChefStripeConnectSetup from "@/components/chef/ChefStripeConnectSetup";
+import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
 
 // Type alias for application
 type AnyApplication = Application;
@@ -65,6 +66,9 @@ export default function ApplicantDashboard() {
   const user = authUser as UserWithFlags | null;
   const [showVendorPortalPopup, setShowVendorPortalPopup] = useState(false);
   const [showChatDialog, setShowChatDialog] = useState(false);
+  
+  // Chef onboarding status for "Continue Setup" banner
+  const { showSetupBanner, missingSteps } = useChefOnboardingStatus();
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const subdomain = useSubdomain();
@@ -1157,6 +1161,34 @@ export default function ApplicantDashboard() {
       onViewChange={setActiveTab}
       messageBadgeCount={0}
     >
+      {/* Continue Setup Banner - Like managers have */}
+      {showSetupBanner && (
+        <div className="bg-blue-600 text-white px-6 py-4 shadow-md mb-6 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white/20 rounded-full">
+              <ChefHat className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold">Complete Your Chef Setup</p>
+              <p className="text-sm text-blue-100">
+                {missingSteps.length > 0 
+                  ? `Next: ${missingSteps[0]}`
+                  : "Finish setting up your chef profile to start booking kitchens"}
+              </p>
+            </div>
+          </div>
+          <Button
+            asChild
+            variant="secondary"
+            className="font-semibold shadow-lg hover:bg-blue-50"
+          >
+            <Link href="/chef-setup">
+              Continue Setup <ChevronRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      )}
+      
       {renderContent()}
 
       {/* Global Modals */}
