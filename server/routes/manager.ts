@@ -422,9 +422,12 @@ router.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager
     try {
         const managerId = req.neonUser!.id;
 
-        // Get manager's stripe account ID
+        // Get manager's stripe account ID and onboarding status from DB
         const [manager] = await db
-            .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+            .select({ 
+                stripeConnectAccountId: users.stripeConnectAccountId,
+                stripeConnectOnboardingStatus: users.stripeConnectOnboardingStatus
+            })
             .from(users)
             .where(eq(users.id, managerId))
             .limit(1);
@@ -432,22 +435,59 @@ router.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager
         if (!manager?.stripeConnectAccountId) {
             return res.json({
                 connected: false,
+                hasAccount: false,
                 accountId: null,
                 payoutsEnabled: false,
                 chargesEnabled: false,
                 detailsSubmitted: false,
+                status: 'not_started',
             });
         }
 
-        // Check if any location has a stripe account (for now, return basic status)
-        // In the future, this would query Stripe API for detailed account status
-        res.json({
-            connected: true,
-            accountId: manager.stripeConnectAccountId,
-            payoutsEnabled: true,
-            chargesEnabled: true,
-            detailsSubmitted: true,
-        });
+        // Query Stripe API for actual account status
+        try {
+            const { getAccountStatus } = await import('../services/stripe-connect-service');
+            const stripeStatus = await getAccountStatus(manager.stripeConnectAccountId);
+
+            // Determine overall status based on Stripe's response
+            let status: 'complete' | 'incomplete' | 'pending' | 'not_started' = 'incomplete';
+            if (stripeStatus.chargesEnabled && stripeStatus.payoutsEnabled) {
+                status = 'complete';
+            } else if (stripeStatus.detailsSubmitted) {
+                status = 'pending'; // Details submitted but not yet verified
+            }
+
+            // Update DB if status changed (sync from Stripe)
+            const dbStatus = manager.stripeConnectOnboardingStatus;
+            if ((status === 'complete' && dbStatus !== 'complete') || 
+                (status !== 'complete' && dbStatus === 'complete')) {
+                await db.update(users)
+                    .set({ stripeConnectOnboardingStatus: status === 'complete' ? 'complete' : 'in_progress' })
+                    .where(eq(users.id, managerId));
+            }
+
+            res.json({
+                connected: true,
+                hasAccount: true,
+                accountId: manager.stripeConnectAccountId,
+                payoutsEnabled: stripeStatus.payoutsEnabled,
+                chargesEnabled: stripeStatus.chargesEnabled,
+                detailsSubmitted: stripeStatus.detailsSubmitted,
+                status,
+            });
+        } catch (stripeError: any) {
+            console.error('Error fetching Stripe account status:', stripeError);
+            // Fallback to DB status if Stripe API fails
+            res.json({
+                connected: true,
+                hasAccount: true,
+                accountId: manager.stripeConnectAccountId,
+                payoutsEnabled: manager.stripeConnectOnboardingStatus === 'complete',
+                chargesEnabled: manager.stripeConnectOnboardingStatus === 'complete',
+                detailsSubmitted: manager.stripeConnectOnboardingStatus === 'complete',
+                status: manager.stripeConnectOnboardingStatus === 'complete' ? 'complete' : 'incomplete',
+            });
+        }
     } catch (error) {
         return errorResponse(res, error);
     }
