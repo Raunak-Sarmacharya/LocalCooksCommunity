@@ -39,19 +39,19 @@ export function calculateCheckoutFees(bookingPrice: number): FeeCalculationResul
   // Convert booking price to cents (round to avoid floating point issues)
   const bookingPriceInCents = Math.round(bookingPrice * 100);
 
-  // Calculate percentage fee: 2.9% of booking price
-  // Round to nearest cent to avoid floating point precision issues
-  const percentageFeeInCents = Math.round(bookingPrice * 0.029 * 100);
-
-  // Flat fee: $0.30 = 30 cents
-  const flatFeeInCents = 30;
-
-  // Total platform fee (percentage + flat fee)
-  const totalPlatformFeeInCents = percentageFeeInCents + flatFeeInCents;
-
-  // Total amount customer will be charged
-  const totalChargeInCents = bookingPriceInCents + totalPlatformFeeInCents;
-
+  // Platform fees are now removed for the customer.
+  // The customer pays the booking price (plus tax, handled separately if applicable).
+  // Stripe processing fees will be deducted from the manager's payout.
+  
+  const percentageFeeInCents = 0;
+  
+  const flatFeeInCents = 0;
+  
+  const totalPlatformFeeInCents = 0;
+  
+  // Total amount customer will be charged is just the booking price
+  const totalChargeInCents = bookingPriceInCents;
+  
   return {
     bookingPriceInCents,
     percentageFeeInCents,

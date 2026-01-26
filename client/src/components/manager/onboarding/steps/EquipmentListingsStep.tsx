@@ -127,11 +127,11 @@ export default function EquipmentListingsStep() {
           },
           body: JSON.stringify({
             kitchenId: selectedKitchenId,
-            name: equipment.name,
-            equipmentType: equipment.category,
+            category: equipment.category,
+            equipmentType: equipment.name,
             condition: equipment.condition,
             availabilityType: equipment.availabilityType,
-            hourlyRate: equipment.availabilityType === 'rental' ? equipment.sessionRate : 0,
+            sessionRate: equipment.availabilityType === 'rental' ? Math.round(equipment.sessionRate * 100) : 0,
             currency: "CAD",
             isActive: true,
           }),
@@ -220,7 +220,7 @@ export default function EquipmentListingsStep() {
                       <div key={l.id} className="bg-white rounded p-2 border border-green-200 text-sm">
                         <p className="font-medium truncate">{l.name}</p>
                         <p className="text-xs text-gray-600">
-                          {l.availabilityType === 'rental' ? `$${l.sessionRate}/session` : 'Included'}
+                          {l.availabilityType === 'rental' ? `$${(Number(l.sessionRate) / 100).toFixed(2)}/session` : 'Included'}
                         </p>
                       </div>
                     ))}

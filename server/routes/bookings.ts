@@ -641,32 +641,43 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         }
 
         // Calculate service fee dynamically from platform_settings + $0.30 flat fee
-        const serviceFeeCents = await calculatePlatformFeeDynamic(totalPriceCents);
-        const stripeProcessingFeeCents = 30; // $0.30 per transaction
-        const totalServiceFeeCents = serviceFeeCents + stripeProcessingFeeCents;
-        const totalWithFeesCents = calculateTotalWithFees(totalPriceCents, totalServiceFeeCents, 0);
-
-        // Get manager's Stripe Connect account ID if available
+        // Get kitchen details including tax rate and manager's Stripe Connect account
         let managerConnectAccountId: string | undefined;
+        let taxRatePercent = 0;
+
         try {
             const rows = await db
                 .select({
-                    stripeConnectAccountId: users.stripeConnectAccountId
+                    stripeConnectAccountId: users.stripeConnectAccountId,
+                    taxRatePercent: kitchens.taxRatePercent
                 })
                 .from(kitchens)
-                .innerJoin(locations, eq(kitchens.locationId, locations.id))
-                .innerJoin(users, eq(locations.managerId, users.id))
+                .leftJoin(locations, eq(kitchens.locationId, locations.id))
+                .leftJoin(users, eq(locations.managerId, users.id))
                 .where(eq(kitchens.id, kitchenId))
                 .limit(1);
 
-            if (rows.length > 0 && rows[0].stripeConnectAccountId) {
-                managerConnectAccountId = rows[0].stripeConnectAccountId;
+            if (rows.length > 0) {
+                if (rows[0].stripeConnectAccountId) {
+                    managerConnectAccountId = rows[0].stripeConnectAccountId;
+                }
+                if (rows[0].taxRatePercent) {
+                    taxRatePercent = parseFloat(rows[0].taxRatePercent);
+                }
             }
         } catch (error) {
-            logger.error(`Error fetching manager Stripe account for kitchen ${kitchenId}:`, error);
+            console.error(`Error fetching kitchen/manager details for payment ${kitchenId}:`, error);
         }
 
-        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Fee=${totalServiceFeeCents}, Total=${totalWithFeesCents}, Expected=${expectedAmountCents}`);
+        // Calculate Tax based on kitchen's tax rate
+        // Tax is calculated on the subtotal (kitchen + storage + equipment)
+        const taxCents = Math.round((totalPriceCents * taxRatePercent) / 100);
+        
+        // Total amount is simply Subtotal + Tax
+        // We no longer add a platform service fee on top
+        const totalWithTaxCents = totalPriceCents + taxCents;
+
+        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}`);
 
         // Create Metadata
         const metadata = {
@@ -677,25 +688,33 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             endTime: String(endTime),
             hasStorage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
             hasEquipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
-            serviceFeeCents: String(serviceFeeCents),
-            stripeProcessingFeeCents: String(stripeProcessingFeeCents)
+            taxCents: String(taxCents),
+            taxRatePercent: String(taxRatePercent)
         };
 
         // Create payment intent
         const paymentIntent = await createPaymentIntent({
-            amount: totalWithFeesCents,
+            amount: totalWithTaxCents,
             currency: kitchenPricing.currency.toLowerCase(),
             chefId,
             kitchenId,
             managerConnectAccountId: managerConnectAccountId,
-            applicationFeeAmount: managerConnectAccountId ? serviceFeeCents : undefined,
+            // Platform fee is now 0 as we removed the service fee
+            // If we want to charge a commission later, we can add it here (deducted from manager payout)
+            applicationFeeAmount: undefined, 
             enableACSS: false, // Disable ACSS - only use card payments with automatic capture
             enableCards: true, // Enable card payments only
             metadata: {
                 booking_date: bookingDate,
                 start_time: startTime,
                 end_time: endTime,
-                expected_amount: totalWithFeesCents.toString(), // Store expected amount for verification
+                expected_amount: totalWithTaxCents.toString(),
+                tax_cents: String(taxCents),
+                tax_rate_percent: String(taxRatePercent),
+                has_storage: selectedStorage && selectedStorage.length > 0 ? "true" : "false",
+                has_equipment: selectedEquipmentIds && selectedEquipmentIds.length > 0 ? "true" : "false",
+                kitchen_id: String(kitchenId),
+                chef_id: String(chefId)
             },
         });
 
@@ -703,12 +722,13 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             clientSecret: paymentIntent.clientSecret || (paymentIntent as any).client_secret,
             paymentIntentId: paymentIntent.id,
             id: paymentIntent.id,
-            amount: totalWithFeesCents,
+            amount: totalWithTaxCents,
             currency: kitchenPricing.currency.toUpperCase(),
             breakdown: {
                 subtotal: totalPriceCents,
-                serviceFee: totalServiceFeeCents,
-                total: totalWithFeesCents
+                tax: taxCents,
+                taxRatePercent: taxRatePercent,
+                total: totalWithTaxCents
             }
         });
 
@@ -835,6 +855,8 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
     try {
         const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;
+        
+        console.log(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
 
         // Get the location for this kitchen
         // Get the location for this kitchen

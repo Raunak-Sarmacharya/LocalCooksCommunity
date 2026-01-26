@@ -102,7 +102,7 @@ describe('ApplicationService', () => {
 
             await expect(service.cancelApplication(1, 11)).rejects.toMatchObject({
                 statusCode: 403,
-                code: ApplicationErrorCodes.VALIDATION_ERROR
+                code: 'FORBIDDEN'
             })
         })
     })

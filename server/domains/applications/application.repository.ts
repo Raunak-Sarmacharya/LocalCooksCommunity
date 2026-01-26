@@ -1,7 +1,7 @@
 
 import { db } from "../../db";
 import { applications, Application, InsertApplication, UpdateApplicationStatus, UpdateApplicationDocuments, UpdateDocumentVerification } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, or } from "drizzle-orm";
 import { CreateApplicationDTO, VerifyDocumentsDTO } from "./application.types";
 
 export class ApplicationRepository {
@@ -16,6 +16,20 @@ export class ApplicationRepository {
 
   async findByUserId(userId: number): Promise<Application[]> {
     return db.select().from(applications).where(eq(applications.userId, userId)).orderBy(desc(applications.createdAt));
+  }
+
+  async hasPendingApplication(userId: number): Promise<boolean> {
+    const results = await db
+      .select({ id: applications.id })
+      .from(applications)
+      .where(
+        and(
+          eq(applications.userId, userId),
+          eq(applications.status, "inReview")
+        )
+      )
+      .limit(1);
+    return results.length > 0;
   }
 
   async create(data: CreateApplicationDTO): Promise<Application> {

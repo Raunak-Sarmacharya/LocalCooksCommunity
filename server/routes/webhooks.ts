@@ -225,6 +225,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent,
                 paidAt: new Date(),
                 lastSyncedAt: new Date(),
                 webhookEventId: webhookEventId,
+                metadata: paymentIntent.metadata, // Sync metadata (includes tax_cents, tax_rate_percent) from Stripe
             };
 
             // If we got Stripe amounts, sync them to override calculated amounts

@@ -239,10 +239,25 @@ export class BookingRepository {
 
     async getStorageBookingsByKitchenBookingId(kitchenBookingId: number) {
         const rows = await db
-            .select()
+            .select({
+                ...getStorageBookingSelection(),
+                storageName: storageListings.name,
+                storageType: storageListings.storageType,
+                kitchenId: storageListings.kitchenId,
+                kitchenName: kitchens.name,
+                basePrice: storageListings.basePrice
+            })
             .from(storageBookings)
+            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
             .where(eq(storageBookings.kitchenBookingId, kitchenBookingId));
-        return rows.map(row => this.mapStorageBookingToDTO(row));
+        
+        return rows.map(row => ({
+            ...this.mapStorageBookingToDTO(row),
+            storageName: row.storageName,
+            storageType: row.storageType,
+            kitchenName: row.kitchenName
+        }));
     }
 
     async getExpiredStorageBookings(today: Date) {
@@ -327,10 +342,39 @@ export class BookingRepository {
 
     async getEquipmentBookingsByKitchenBookingId(kitchenBookingId: number) {
         const rows = await db
-            .select()
+            .select({
+                // Select fields manually as helper doesn't exist
+                id: equipmentBookings.id,
+                equipmentListingId: equipmentBookings.equipmentListingId,
+                kitchenBookingId: equipmentBookings.kitchenBookingId,
+                chefId: equipmentBookings.chefId,
+                startDate: equipmentBookings.startDate,
+                endDate: equipmentBookings.endDate,
+                status: equipmentBookings.status,
+                totalPrice: equipmentBookings.totalPrice,
+                pricingModel: equipmentBookings.pricingModel,
+                paymentStatus: equipmentBookings.paymentStatus,
+                paymentIntentId: equipmentBookings.paymentIntentId,
+                damageDeposit: equipmentBookings.damageDeposit,
+                serviceFee: equipmentBookings.serviceFee,
+                currency: equipmentBookings.currency,
+                createdAt: equipmentBookings.createdAt,
+                updatedAt: equipmentBookings.updatedAt,
+                // Joined fields
+                equipmentType: equipmentListings.equipmentType,
+                brand: equipmentListings.brand,
+                model: equipmentListings.model,
+            })
             .from(equipmentBookings)
+            .innerJoin(equipmentListings, eq(equipmentBookings.equipmentListingId, equipmentListings.id))
             .where(eq(equipmentBookings.kitchenBookingId, kitchenBookingId));
-        return rows.map(row => this.mapEquipmentBookingToDTO(row));
+        
+        return rows.map(row => ({
+            ...this.mapEquipmentBookingToDTO(row),
+            equipmentType: row.equipmentType,
+            brand: row.brand,
+            model: row.model
+        }));
     }
 
     async deleteEquipmentBooking(id: number) {

@@ -48,7 +48,7 @@ export default function StorageListingsStep() {
           name: formData.name,
           storageType: formData.storageType,
           description: formData.description || null,
-          basePrice: formData.basePrice,
+          basePrice: Math.round(formData.basePrice * 100),
           pricingModel: 'daily',
           minimumBookingDuration: formData.minimumBookingDuration,
           bookingDurationUnit: 'daily',
@@ -135,7 +135,7 @@ export default function StorageListingsStep() {
                   {listings.map(l => (
                     <div key={l.id} className="bg-white rounded p-3 border border-green-200">
                       <p className="font-medium">{l.name}</p>
-                      <p className="text-xs text-gray-600">{l.storageType} • ${Number(l.basePrice).toFixed(2)}/day</p>
+                      <p className="text-xs text-gray-600">{l.storageType} • ${(Number(l.basePrice || 0) / 100).toFixed(2)}/day</p>
                     </div>
                   ))}
                 </div>

@@ -1,4 +1,5 @@
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard } from "lucide-react";
+import { formatCurrency } from "@/lib/formatters";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
@@ -14,28 +15,7 @@ export default function BookingConfirmationPage() {
   const { kitchens, createBooking } = useKitchenBookings();
   const { toast } = useToast();
 
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
 
-  const serviceFeeRate = serviceFeeRateData?.rate ;
-  const serviceFeePercentage = serviceFeeRateData?.percentage ;
-  const flatFeeCents = 30;
-  const flatFeeDollars = (flatFeeCents / 100).toFixed(2);
   
   // Get query parameters from URL
   const searchParams = new URLSearchParams(window.location.search);
@@ -68,6 +48,7 @@ export default function BookingConfirmationPage() {
     hourlyRate: number | null;
     currency: string;
     minimumBookingHours: number;
+    taxRatePercent?: number;
   } | null>(null);
 
   // Payment state
@@ -80,7 +61,7 @@ export default function BookingConfirmationPage() {
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
-    serviceFee: number;
+    tax: number;
     totalPrice: number;
     durationHours: number;
   } | null>(null);
@@ -141,30 +122,33 @@ export default function BookingConfirmationPage() {
 
         if (pricingRes.ok) {
           const pricing = await pricingRes.json();
-          // API returns cents - convert to dollars for UI
+          // API returns cents
           let hourlyRateCents = pricing.hourlyRate;
           if (typeof hourlyRateCents === 'string') {
             hourlyRateCents = parseFloat(hourlyRateCents);
           }
-          const hourlyRate = hourlyRateCents ? hourlyRateCents / 100 : null;
+          const hourlyRate = hourlyRateCents || null;
           
           if (!isCancelled) {
             setKitchenPricing({
               hourlyRate,
               currency: pricing.currency || 'CAD',
               minimumBookingHours: pricing.minimumBookingHours || 1,
+              taxRatePercent: pricing.taxRatePercent || 0,
             });
 
-            // Calculate estimated price
+            // Calculate estimated price in CENTS
             if (hourlyRate && selectedSlots.length > 0) {
               const basePrice = hourlyRate * selectedSlots.length;
-              const baseCents = Math.round(basePrice * 100);
-              const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
-              const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
+              // basePrice is already in cents
+              
+              const taxRatePercent = pricing.taxRatePercent || 0;
+              const tax = Math.round((basePrice * taxRatePercent) / 100);
+              
               setEstimatedPrice({
                 basePrice,
-                serviceFee,
-                totalPrice: basePrice + serviceFee,
+                tax,
+                totalPrice: basePrice + tax,
                 durationHours: selectedSlots.length,
               });
             }
@@ -259,7 +243,7 @@ export default function BookingConfirmationPage() {
     };
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
-  // Calculate combined subtotal
+  // Calculate combined subtotal (in CENTS)
   const combinedSubtotal = useMemo(() => {
     const kitchenBase = estimatedPrice?.basePrice || 0;
     const storageBase = storagePricing.subtotal || 0;
@@ -267,18 +251,24 @@ export default function BookingConfirmationPage() {
     return kitchenBase + storageBase + equipmentBase;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee (dynamic rate + $0.30 flat fee)
-  const serviceFee = useMemo(() => {
-    const subtotalCents = Math.round(combinedSubtotal * 100);
+  // Calculate tax on combined subtotal
+  const tax = useMemo(() => {
+    const subtotalCents = combinedSubtotal;
     if (subtotalCents <= 0) return 0;
-    const percentageFeeCents = Math.round(subtotalCents * serviceFeeRate);
-    return (percentageFeeCents + flatFeeCents) / 100;
-  }, [combinedSubtotal, serviceFeeRate, flatFeeCents]);
+    
+    // Tax rate is stored as a percentage
+    // If not set, default to 0
+    const taxRatePercent = selectedKitchen?.taxRatePercent || 0;
+    
+    // Calculate tax: (subtotal * taxRate) / 100
+    // Result is in cents
+    return Math.round((subtotalCents * taxRatePercent) / 100);
+  }, [combinedSubtotal, selectedKitchen?.taxRatePercent]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
-    return combinedSubtotal + serviceFee ;
-  }, [combinedSubtotal, serviceFee]);
+    return combinedSubtotal + tax;
+  }, [combinedSubtotal, tax]);
 
   // Helper functions
   const formatTime = (timeStr: string) => {
@@ -347,8 +337,7 @@ export default function BookingConfirmationPage() {
       const currentUser = auth.currentUser;
       const token = currentUser ? await currentUser.getIdToken() : '';
 
-      // Calculate expected amount in cents from frontend calculation
-      const expectedAmountCents = Math.round(grandTotal * 100);
+
 
       const response = await fetch('/api/payments/create-intent', {
         method: 'POST',
@@ -368,7 +357,7 @@ export default function BookingConfirmationPage() {
             endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
           })) : undefined,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
-          expectedAmountCents, // Send frontend-calculated amount for consistency
+          expectedAmountCents: grandTotal, // Frontend calculation is now in cents
         }),
       });
 
@@ -381,14 +370,13 @@ export default function BookingConfirmationPage() {
       setPaymentIntentId(data.paymentIntentId);
       setClientSecret(data.clientSecret);
       // Debug: Log both frontend and backend amounts to identify calculation mismatch
-      const frontendCents = Math.round(grandTotal * 100);
+
       console.log('Payment amount debug:', {
         frontendGrandTotal: grandTotal,
-        frontendCents: frontendCents,
         backendAmount: data.amount,
         backendAmountDollars: data.amount / 100,
-        difference: data.amount - frontendCents,
-        ratio: data.amount / frontendCents
+        difference: data.amount - grandTotal,
+        ratio: grandTotal > 0 ? data.amount / grandTotal : 0
       });
       // Use backend amount (it's what the PaymentIntent was created with)
       // But log the mismatch so we can fix the backend calculation
@@ -685,8 +673,8 @@ export default function BookingConfirmationPage() {
                             <h4 className="text-sm font-semibold text-gray-800 mb-2">Kitchen Booking</h4>
                             <div className="space-y-1.5 text-sm">
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × ${kitchenPricing.hourlyRate.toFixed(2)}/hour):</span>
-                                <span className="font-medium text-gray-900">${estimatedPrice.basePrice.toFixed(2)} {kitchenPricing.currency}</span>
+                                <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × {formatCurrency(kitchenPricing.hourlyRate)}/hour):</span>
+                                <span className="font-medium text-gray-900">{formatCurrency(estimatedPrice.basePrice)} {kitchenPricing.currency}</span>
                               </div>
                             </div>
                           </div>
@@ -746,13 +734,13 @@ export default function BookingConfirmationPage() {
                                         {item.name}
                                       </span>
                                     </div>
-                                    <span className="font-medium text-amber-700 flex-shrink-0">${item.rate.toFixed(2)}</span>
+                                    <span className="font-medium text-amber-700 flex-shrink-0">{formatCurrency(item.rate)}</span>
                                   </div>
                                 );
                               })}
                               <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
                                 <span className="font-semibold text-amber-800">Equipment Subtotal (base price only):</span>
-                                <span className="font-bold text-amber-900">${equipmentPricing.subtotal.toFixed(2)}</span>
+                                <span className="font-bold text-amber-900">{formatCurrency(equipmentPricing.subtotal)}</span>
                               </div>
                             </div>
                           </div>
@@ -800,7 +788,7 @@ export default function BookingConfirmationPage() {
                             ))}
                             <div className="pt-2 mt-2 border-t border-purple-200 flex justify-between">
                               <span className="font-semibold text-purple-800">Storage Subtotal (base price only):</span>
-                              <span className="font-bold text-purple-900">${storagePricing.subtotal.toFixed(2)}</span>
+                              <span className="font-bold text-purple-900">{formatCurrency(storagePricing.subtotal)}</span>
                             </div>
                           </div>
                         </div>
@@ -813,17 +801,16 @@ export default function BookingConfirmationPage() {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span className="font-semibold text-gray-900">Combined Subtotal (Kitchen + Equipment + Storage):</span>
-                            <span className="font-bold text-gray-900">${combinedSubtotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(combinedSubtotal)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
-                          <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-                            <span className="text-gray-600">
-                              {`Service Fee:`}
-                            </span>
-                            <span className="font-medium text-gray-900">${serviceFee.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1 italic">
-                            {`* Service fee is calculated once on the combined total`}
-                          </p>
+                          {tax > 0 && (
+                            <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                              <span className="text-gray-600">
+                                {`Tax ${kitchenPricing?.taxRatePercent ? `(${kitchenPricing.taxRatePercent}%)` : ''}:`}
+                              </span>
+                              <span className="font-medium text-gray-900">{formatCurrency(tax)} {kitchenPricing?.currency || 'CAD'}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -834,7 +821,7 @@ export default function BookingConfirmationPage() {
                         <div className="flex justify-between items-center">
                           <span className="text-lg font-bold text-white">Grand Total:</span>
                           <span className="text-2xl font-extrabold text-white">
-                            ${grandTotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}
+                            {formatCurrency(grandTotal)} {kitchenPricing?.currency || 'CAD'}
                           </span>
                         </div>
                         {(storagePricing.subtotal > 0 || equipmentPricing.subtotal > 0) && (

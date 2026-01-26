@@ -10,7 +10,8 @@ import {
 import {
     calculateKitchenBookingPrice,
     calculatePlatformFeeDynamic,
-    calculateTotalWithFees
+    calculateTotalWithFees,
+    calculateDurationHours
 } from "../../services/pricing-service";
 import { bookingStatusEnum, kitchenBookings, kitchens, users, locations, equipmentListings, storageListings, chefLocationAccess, chefKitchenApplications } from "@shared/schema";
 import { logger } from "../../logger";
@@ -93,11 +94,9 @@ export class BookingService {
         const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents);
 
         // 3. Calculate total
-        const totalWithFeesCents = calculateTotalWithFees(
-            pricing.totalPriceCents,
-            serviceFeeCents,
-            0 // No damage deposit for kitchen only logic here, handling addons via separate logic if needed or bundled.
-        );
+        // We defer total calculation to step 7 (after addons)
+        // We actually want to start with 0 for logic consistency if we are recalculating everything including addons.
+        // But for step 4, we pass a placeholder.
 
         // Refactored logic: The original `createKitchenBooking` in `storage-firebase.ts` handles addons pricing somewhat loosely or relies on `createBookingKey`
         // We will assume `data.totalPrice` is passed OR we respect the calculation here.
@@ -109,27 +108,149 @@ export class BookingService {
         // 4. Create Booking
         const booking = await this.repo.createKitchenBooking({
             ...data,
-            totalPrice: totalWithFeesCents.toString(),
+            totalPrice: '0', // Will be updated after calculating addons
             hourlyRate: pricing.hourlyRateCents.toString(),
             durationHours: pricing.durationHours.toString(),
             serviceFee: serviceFeeCents.toString(),
             currency: pricing.currency,
-            storageItems: [], // To be populated if needed
-            equipmentItems: [], // To be populated if needed
+            storageItems: [], 
+            equipmentItems: [], 
             paymentStatus: data.paymentStatus || 'pending'
         });
 
-        // 5. Create Storage/Equipment Bookings if IDs provided
+        // 5. Create Storage Bookings
+        let storageTotalCents = 0;
         if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
-            // Logic to create storage bookings
-            // For brevity, assuming this is handled by separate calls or we implement loop here
+            try {
+                const { inventoryService } = await import('../inventory/inventory.service');
+                const endDate = data.endTime ? new Date(data.endTime) : new Date(data.bookingDate); // Logic for storage end date? Usually same as booking?
+                // Actually storage might be daily/monthly. For hourly kitchen booking, assume hourly storage?
+                // bookings.ts used bookingDate + endTime for calculation?
+                // Let's use durationHours from pricing.
+                
+                for (const storageId of data.selectedStorageIds) {
+                    const listing = await inventoryService.getStorageListingById(storageId);
+                    if (listing) {
+                        let priceCents = 0;
+                        const basePriceCents = parseFloat(String(listing.basePrice || '0')); // listing.basePrice is usually dollars string from some sources, but schema says numeric(10,2)? 
+                        // Actually in schema.ts: basePrice: numeric("base_price")
+                        // BookingRepository uses String(basePrice) then /100?
+                        // Let's assume numeric string in DB is CENTS or DOLLARS?
+                        // Schema usually stores money as CENTS or DOLLARS. standard in this codebase seems mixed.
+                        // pricing-service methods return cents.
+                        // bookings.ts lines 602: `basePriceCents = ...`.
+                        // Let's assume listing.basePrice is CENTS. (Need to verify, but for now safe bet for consistency if I follow surrounding code).
+                        // Wait, `bookings.ts` line 593: `const basePriceCents = Math.round(parseFloat(storageListing.basePrice) * 100);` 
+                        // So DB stores DOLLARS?
+                        
+                        const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || '0')) * 100);
+
+                        if (listing.pricingModel === 'hourly') {
+                            const duration = calculateDurationHours(data.startTime, data.endTime);
+                            const effectiveDuration = Math.max(1, Math.ceil(duration));
+                            priceCents = listingBasePriceCents * effectiveDuration;
+                        } else {
+                            // Flat rate (daily/monthly/per-use) - simplified for MVP
+                             priceCents = listingBasePriceCents;
+                        }
+
+                        // Create Storage Booking Record
+                        await this.repo.createStorageBooking({
+                            kitchenBookingId: booking.id,
+                            storageListingId: listing.id,
+                            chefId: data.chefId,
+                            startDate: data.bookingDate,
+                            endDate: data.bookingDate, // Single day for hourly
+                            status: 'confirmed',
+                            totalPrice: priceCents.toString(),
+                            pricingModel: listing.pricingModel || 'daily',
+                            serviceFee: '0', // No service fee for customer
+                            currency: pricing.currency
+                        });
+                        storageTotalCents += priceCents;
+                    }
+                }
+            } catch (err) {
+                logger.error('Error creating storage bookings:', err);
+            }
         }
 
+        // 6. Create Equipment Bookings
+        let equipmentTotalCents = 0;
+        const equipmentItemsForJson: Array<{id: number, equipmentListingId: number, name: string, totalPrice: number}> = [];
+        logger.info(`[BookingService] Equipment IDs received: ${JSON.stringify(data.selectedEquipmentIds)}`);
         if (data.selectedEquipmentIds && data.selectedEquipmentIds.length > 0) {
-            // Logic to create equipment bookings
+            try {
+                const { inventoryService } = await import('../inventory/inventory.service');
+                for (const eqId of data.selectedEquipmentIds) {
+                    logger.info(`[BookingService] Processing equipment ID: ${eqId}`);
+                    const listing = await inventoryService.getEquipmentListingById(eqId);
+                    logger.info(`[BookingService] Equipment listing found: ${JSON.stringify(listing)}`);
+                    if (listing && listing.availabilityType !== 'included') {
+                        // DB stores session_rate in CENTS (e.g., 3500 = $35.00)
+                        const sessionRateCents = Math.round(parseFloat(String(listing.sessionRate || '0')));
+                        logger.info(`[BookingService] Creating equipment booking: kitchenBookingId=${booking.id}, equipmentListingId=${listing.id}, sessionRateCents=${sessionRateCents}`);
+                        
+                        const eqBooking = await this.repo.createEquipmentBooking({
+                            kitchenBookingId: booking.id,
+                            equipmentListingId: listing.id,
+                            chefId: data.chefId,
+                            startDate: data.bookingDate,
+                            endDate: data.bookingDate,
+                            status: 'confirmed',
+                            totalPrice: sessionRateCents.toString(),
+                            damageDeposit: (listing.damageDeposit || '0').toString(), 
+                            serviceFee: '0',
+                            currency: pricing.currency,
+                            pricingModel: listing.pricingModel || 'daily'
+                        });
+                        
+                        // Add to equipment_items JSONB array for denormalized storage
+                        if (eqBooking) {
+                            equipmentItemsForJson.push({
+                                id: eqBooking.id,
+                                equipmentListingId: listing.id,
+                                name: listing.equipmentType || 'Equipment',
+                                totalPrice: sessionRateCents
+                            });
+                        }
+                        
+                        logger.info(`[BookingService] Equipment booking created successfully for listing ${listing.id}`);
+                        equipmentTotalCents += sessionRateCents;
+                    }
+                }
+            } catch (err: any) {
+                 logger.error('[BookingService] Error creating equipment bookings:', {
+                     error: err?.message || err,
+                     stack: err?.stack,
+                     selectedEquipmentIds: data.selectedEquipmentIds
+                 });
+            }
+        } else {
+            logger.info(`[BookingService] No equipment IDs provided in booking data`);
         }
 
-        return booking;
+        // 7. Update Total Price
+        // Base Kitchen Price = pricing.totalPriceCents
+        // Addons = storageTotalCents + equipmentTotalCents
+        // ServiceFee = serviceFeeCents (Wait, strictly kitchen fee? or should it be total fee? 
+        // Manager expects 5% of TOTAL volume? Usually yes.
+        // So recalculated Service Fee = (Kitchen + Storage + Equipment) * 5%.
+        const grandTotalCents = pricing.totalPriceCents + storageTotalCents + equipmentTotalCents;
+        const newServiceFeeCents = await calculatePlatformFeeDynamic(grandTotalCents);
+
+        // Update booking with total price, service fee, and equipment_items JSONB
+        // Store total WITHOUT fee (Customer pays Base + Tax).
+        // Store fee for reporting.
+        await this.repo.updateKitchenBooking(booking.id, {
+            totalPrice: grandTotalCents.toString(),
+            serviceFee: newServiceFeeCents.toString(),
+            equipmentItems: equipmentItemsForJson
+        });
+
+        // Refetch to return complete object
+        const updatedBooking = await this.repo.getKitchenBookingById(booking.id);
+        return updatedBooking || booking;
     }
 
     async getBookingById(id: number) {
