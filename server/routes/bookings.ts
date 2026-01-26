@@ -701,8 +701,10 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
 
         res.json({
             clientSecret: paymentIntent.clientSecret || (paymentIntent as any).client_secret,
+            paymentIntentId: paymentIntent.id,
             id: paymentIntent.id,
             amount: totalWithFeesCents,
+            currency: kitchenPricing.currency.toUpperCase(),
             breakdown: {
                 subtotal: totalPriceCents,
                 serviceFee: totalServiceFeeCents,

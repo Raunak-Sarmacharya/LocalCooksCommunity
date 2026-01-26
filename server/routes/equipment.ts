@@ -194,7 +194,7 @@ router.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithU
 // CHEF EQUIPMENT ENDPOINTS
 // ===================================
 
-// Get equipment listings for a kitchen (chef view - only active/approved listings)
+// Get equipment listings for a kitchen (chef view - only active listings)
 // Distinguishes between 'included' (free with kitchen) and 'rental' (paid addon) equipment
 router.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req: Request, res: Response) => {
     try {
@@ -206,16 +206,24 @@ router.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (r
         // Get all equipment listings for this kitchen
         const allListings = await inventoryService.getEquipmentListingsByKitchen(kitchenId);
 
-        // Filter to only show approved/active listings to chefs
-        // Listings with status 'approved' or 'active' AND isActive=true are visible
+        // Filter to only show active listings to chefs
+        // Equipment is visible if isActive=true (status field is optional/legacy)
         const visibleListings = allListings.filter((listing: any) =>
-            (listing.status === 'approved' || listing.status === 'active') &&
             listing.isActive === true
         );
 
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (out of ${allListings.length} total)`);
+        // Separate into included (free) and rental (paid) for clearer frontend display
+        const includedEquipment = visibleListings.filter((l: any) => l.availabilityType === 'included');
+        const rentalEquipment = visibleListings.filter((l: any) => l.availabilityType === 'rental');
 
-        res.json(visibleListings);
+        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+
+        // Return categorized format expected by frontend
+        res.json({
+            all: visibleListings,
+            included: includedEquipment,
+            rental: rentalEquipment
+        });
     } catch (error: any) {
         console.error("Error getting equipment listings for chef:", error);
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });

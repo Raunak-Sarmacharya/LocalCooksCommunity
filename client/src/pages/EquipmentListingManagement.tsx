@@ -1,5 +1,19 @@
-import { Wrench, Save, Loader2, Plus, X, ChevronRight, ChevronLeft, Info, Check } from "lucide-react";
-import { useState, useEffect } from "react";
+/**
+ * Equipment Listing Management
+ * 
+ * Enterprise-grade equipment management for commercial kitchens.
+ * Features:
+ * - Pre-defined equipment templates for quick selection
+ * - Streamlined 2-step form (select equipment → set pricing)
+ * - Bulk equipment selection
+ * - Modern, intuitive UI with shadcn components
+ */
+
+import { 
+  Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, 
+  Package, Grid3X3, DollarSign, ChevronDown, ChevronUp
+} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -8,7 +22,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
@@ -20,9 +33,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { EQUIPMENT_CATEGORIES, type EquipmentTemplate } from "@/lib/equipment-templates";
 
 interface Kitchen {
   id: number;
@@ -40,45 +61,28 @@ interface EquipmentListing {
   model?: string;
   description?: string;
   condition: 'excellent' | 'good' | 'fair' | 'needs-repair';
-  age?: number;
-  serviceHistory?: string;
-  dimensions?: Record<string, any>;
-  powerRequirements?: string;
-  specifications?: Record<string, any>;
-  certifications?: string[];
-  safetyFeatures?: string[];
-  availabilityType: 'included' | 'rental'; // included (free with kitchen) or rental (paid addon)
-  // SIMPLIFIED: Single flat session rate for rental equipment
-  sessionRate?: number; // Flat rate per kitchen booking session (in dollars)
-  // Legacy fields - kept for backwards compatibility
-  pricingModel?: 'hourly' | 'daily' | 'weekly' | 'monthly';
-  hourlyRate?: number;
-  dailyRate?: number;
-  weeklyRate?: number;
-  monthlyRate?: number;
-  minimumRentalHours?: number;
-  minimumRentalDays?: number;
-  currency: string; // Always CAD
-  usageRestrictions?: string[];
+  availabilityType: 'included' | 'rental';
+  sessionRate?: number;
+  currency: string;
+  damageDeposit?: number;
   trainingRequired?: boolean;
-  cleaningResponsibility?: 'renter' | 'host' | 'shared';
-  prepTimeHours?: number;
-  photos?: string[];
-  manuals?: string[];
-  maintenanceLog?: any[];
-  damageDeposit?: number; // Only for rental
-  insuranceRequired?: boolean;
-  availabilityCalendar?: Record<string, any>;
-  isActive?: boolean; // Active status toggle
+  isActive?: boolean;
 }
 
-interface EquipmentListingManagementProps {
-  embedded?: boolean;
+interface SelectedEquipment {
+  templateId: string;
+  name: string;
+  category: EquipmentListing['category'];
+  condition: EquipmentListing['condition'];
+  availabilityType: 'included' | 'rental';
+  sessionRate: number;
+  damageDeposit: number;
+  description: string;
+  brand: string;
+  trainingRequired: boolean;
 }
 
-
-
-export default function EquipmentListingManagement({ embedded = false }: EquipmentListingManagementProps = {}) {
+export default function EquipmentListingManagement() {
   return (
     <ManagerPageLayout
       title="Equipment Management"
@@ -116,265 +120,201 @@ function EquipmentListingContent({
   const queryClient = useQueryClient();
 
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
-  const [currentStep, setCurrentStep] = useState(1);
-  const totalSteps = 4;
-
-  // Form state
-  const [formData, setFormData] = useState<Partial<EquipmentListing>>({
-    category: 'cooking',
-    condition: 'good',
-    availabilityType: 'rental', // Default to rental
-    sessionRate: 0, // Flat session rate (primary pricing field)
-    currency: 'CAD', // Always CAD
-    trainingRequired: false,
-    prepTimeHours: 4,
-    insuranceRequired: false,
-    damageDeposit: 0,
-    certifications: [],
-    safetyFeatures: [],
-    usageRestrictions: [],
-    manuals: [],
-    maintenanceLog: [],
-    dimensions: {},
-    specifications: {},
-  });
-
-  const [isSaving, setIsSaving] = useState(false);
-  const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listings, setListings] = useState<EquipmentListing[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<string[]>(['cooking', 'food-prep']);
+  const [selectedEquipment, setSelectedEquipment] = useState<Record<string, SelectedEquipment>>({});
+  
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingListing, setEditingListing] = useState<EquipmentListing | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [toggleDialogOpen, setToggleDialogOpen] = useState(false);
   const [pendingToggle, setPendingToggle] = useState<{ id: number; isActive: boolean } | null>(null);
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
 
-  // Load kitchens when location is selected
+  const selectedEquipmentCount = Object.keys(selectedEquipment).length;
+
   useEffect(() => {
-    if (selectedLocationId) {
-      loadKitchens();
-    } else {
-      setKitchens([]);
-    }
+    if (selectedLocationId) loadKitchens();
+    else setKitchens([]);
   }, [selectedLocationId]);
 
-  // Load listings when kitchen is selected
   useEffect(() => {
-    if (selectedKitchenId) {
-      loadListings();
-    } else {
-      setListings([]);
-    }
+    if (selectedKitchenId) loadListings();
+    else setListings([]);
   }, [selectedKitchenId]);
 
   const loadKitchens = async () => {
     if (!selectedLocationId) return;
-
     try {
       const data = await apiGet(`/manager/kitchens/${selectedLocationId}`);
       setKitchens(data);
     } catch (error: any) {
-      console.error('Error loading kitchens:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load kitchens",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to load kitchens", variant: "destructive" });
     }
   };
 
   const loadListings = async () => {
     if (!selectedKitchenId) return;
-
+    setIsLoading(true);
     try {
       const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/equipment-listings`);
       setListings(Array.isArray(data) ? data : []);
     } catch (error: any) {
-      console.error('Error loading equipment listings:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load equipment listings",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to load equipment listings", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleEdit = async (listingId: number) => {
-    try {
-      const data = await apiGet(`/manager/equipment-listings/${listingId}`);
-      setFormData(data);
-      setEditingListingId(listingId);
-      setCurrentStep(1);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load listing",
-        variant: "destructive",
-      });
-    }
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return EQUIPMENT_CATEGORIES;
+    const query = searchQuery.toLowerCase();
+    return EQUIPMENT_CATEGORIES.map(cat => ({
+      ...cat,
+      items: cat.items.filter(item => item.name.toLowerCase().includes(query) || cat.name.toLowerCase().includes(query))
+    })).filter(cat => cat.items.length > 0);
+  }, [searchQuery]);
+
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories(prev => prev.includes(categoryId) ? prev.filter(id => id !== categoryId) : [...prev, categoryId]);
   };
 
-  const handleDelete = async (listingId: number) => {
-    if (!confirm('Are you sure you want to delete this equipment listing?')) {
-      return;
-    }
-
-    try {
-      await apiDelete(`/manager/equipment-listings/${listingId}`);
-
-      toast({
-        title: "Success",
-        description: "Equipment listing deleted successfully",
-      });
-
-      loadListings();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete listing",
-        variant: "destructive",
-      });
-    }
+  const handleTemplateSelect = (template: EquipmentTemplate) => {
+    setSelectedEquipment(prev => {
+      const newState = { ...prev };
+      if (newState[template.id]) {
+        delete newState[template.id];
+      } else {
+        newState[template.id] = {
+          templateId: template.id,
+          name: template.name,
+          category: template.category,
+          condition: template.defaultCondition,
+          availabilityType: template.suggestedSessionRate > 0 ? 'rental' : 'included',
+          sessionRate: template.suggestedSessionRate,
+          damageDeposit: 0,
+          description: '',
+          brand: '',
+          trainingRequired: false,
+        };
+      }
+      return newState;
+    });
   };
 
-  const saveListing = async () => {
-    if (!selectedKitchenId) {
-      toast({
-        title: "Error",
-        description: "Please select a kitchen first",
-        variant: "destructive",
-      });
-      return;
-    }
+  const updateSelectedEquipment = (templateId: string, updates: Partial<SelectedEquipment>) => {
+    setSelectedEquipment(prev => {
+      if (!prev[templateId]) return prev;
+      return { ...prev, [templateId]: { ...prev[templateId], ...updates } };
+    });
+  };
 
-    // Validation
-    if (!formData.equipmentType || !formData.category || !formData.condition || !formData.availabilityType) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields (equipment type, category, condition, availability type)",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // For rental equipment, validate session rate
-    if (formData.availabilityType === 'rental') {
-      if (!formData.sessionRate || formData.sessionRate <= 0) {
-        toast({
-          title: "Validation Error",
-          description: "Session rate is required for rental equipment",
-          variant: "destructive",
+  const saveSelectedEquipment = async () => {
+    if (!selectedKitchenId || selectedEquipmentCount === 0) return;
+    setIsSaving(true);
+    let successCount = 0;
+    for (const equipment of Object.values(selectedEquipment)) {
+      try {
+        await apiPost('/manager/equipment-listings', {
+          kitchenId: selectedKitchenId,
+          category: equipment.category,
+          equipmentType: equipment.name,
+          brand: equipment.brand || undefined,
+          description: equipment.description || undefined,
+          condition: equipment.condition,
+          availabilityType: equipment.availabilityType,
+          sessionRate: equipment.availabilityType === 'rental' ? equipment.sessionRate : 0,
+          damageDeposit: equipment.availabilityType === 'rental' ? equipment.damageDeposit : 0,
+          trainingRequired: equipment.trainingRequired,
+          currency: 'CAD',
+          isActive: true,
         });
-        return;
+        successCount++;
+      } catch (error) {
+        console.error('Error creating equipment listing:', error);
       }
     }
+    setIsSaving(false);
+    if (successCount > 0) {
+      toast({ title: "Equipment Added", description: `Successfully added ${successCount} equipment listing${successCount > 1 ? 's' : ''}.` });
+      setSelectedEquipment({});
+      setActiveTab('list');
+      loadListings();
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
+    } else {
+      toast({ title: "Error", description: "Failed to add equipment listings.", variant: "destructive" });
+    }
+  };
 
+  const handleEdit = (listing: EquipmentListing) => {
+    setEditingListing(listing);
+    setEditDialogOpen(true);
+  };
+
+  const saveEditedListing = async () => {
+    if (!editingListing?.id) return;
     setIsSaving(true);
     try {
-      const endpoint = editingListingId
-        ? `/manager/equipment-listings/${editingListingId}`
-        : '/manager/equipment-listings';
-
-      const operation = editingListingId ? apiPut : apiPost;
-      const payload = {
-        kitchenId: selectedKitchenId,
-        ...formData,
-      };
-
-      await operation(endpoint, payload);
-
-      toast({
-        title: "Success",
-        description: editingListingId ? "Equipment listing updated successfully" : "Equipment listing created successfully",
+      await apiPut(`/manager/equipment-listings/${editingListing.id}`, {
+        ...editingListing,
+        sessionRate: editingListing.availabilityType === 'rental' ? editingListing.sessionRate : 0,
+        damageDeposit: editingListing.availabilityType === 'rental' ? editingListing.damageDeposit : 0,
       });
-
-      // Reset form
-      setFormData({
-        category: 'cooking',
-        condition: 'good',
-        availabilityType: 'rental',
-        sessionRate: 0,
-        currency: 'CAD',
-        trainingRequired: false,
-        prepTimeHours: 4,
-        insuranceRequired: false,
-        damageDeposit: 0,
-        certifications: [],
-        safetyFeatures: [],
-        usageRestrictions: [],
-        manuals: [],
-        maintenanceLog: [],
-        dimensions: {},
-        specifications: {},
-      });
-      setEditingListingId(null);
-      setCurrentStep(1);
-
+      toast({ title: "Success", description: "Equipment listing updated successfully" });
+      setEditDialogOpen(false);
+      setEditingListing(null);
       loadListings();
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
     } catch (error: any) {
-      console.error('Error saving equipment listing:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save equipment listing",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to update listing", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   };
 
-  const addArrayItem = (field: keyof EquipmentListing, value: string) => {
-    if (!value.trim()) return;
-    const current = (formData[field] as string[]) || [];
-    setFormData({ ...formData, [field]: [...current, value.trim()] });
+  const handleDelete = async () => {
+    if (!pendingDeleteId) return;
+    try {
+      await apiDelete(`/manager/equipment-listings/${pendingDeleteId}`);
+      toast({ title: "Success", description: "Equipment listing deleted successfully" });
+      setDeleteDialogOpen(false);
+      setPendingDeleteId(null);
+      loadListings();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete listing", variant: "destructive" });
+    }
   };
 
-  const removeArrayItem = (field: keyof EquipmentListing, index: number) => {
-    const current = (formData[field] as string[]) || [];
-    setFormData({ ...formData, [field]: current.filter((_, i) => i !== index) });
+  const handleToggleActive = (listingId: number, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
+    if (!newStatus) {
+      setPendingToggle({ id: listingId, isActive: newStatus });
+      setToggleDialogOpen(true);
+    } else {
+      doToggleActive(listingId, newStatus);
+    }
   };
 
-  // Toggle active status - using simple state instead of useMutation
-  const [isToggling, setIsToggling] = useState(false);
-  
   const doToggleActive = async (id: number, isActive: boolean) => {
     setIsToggling(true);
     try {
       await apiPut(`/manager/equipment-listings/${id}`, { isActive });
       queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
       loadListings();
-      toast({
-        title: "Status Updated",
-        description: `Equipment listing is now ${isActive ? 'active' : 'inactive'}`,
-      });
+      toast({ title: "Status Updated", description: `Equipment listing is now ${isActive ? 'active' : 'inactive'}` });
       setToggleDialogOpen(false);
       setPendingToggle(null);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update status",
-        variant: "destructive",
-      });
-      setToggleDialogOpen(false);
-      setPendingToggle(null);
+      toast({ title: "Error", description: error.message || "Failed to update status", variant: "destructive" });
     } finally {
       setIsToggling(false);
-    }
-  };
-
-  const handleToggleActive = (listingId: number, currentStatus: boolean) => {
-    const newStatus = !currentStatus;
-
-    // If deactivating, show confirmation dialog
-    if (!newStatus) {
-      setPendingToggle({ id: listingId, isActive: newStatus });
-      setToggleDialogOpen(true);
-    } else {
-      // Activating - proceed immediately
-      doToggleActive(listingId, newStatus);
-    }
-  };
-
-  const confirmToggle = () => {
-    if (pendingToggle) {
-      doToggleActive(pendingToggle.id, pendingToggle.isActive);
     }
   };
 
@@ -394,735 +334,253 @@ function EquipmentListingContent({
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'list' | 'add')}>
+        <div className="flex items-center justify-between mb-4">
+          <TabsList className="grid w-[300px] grid-cols-2">
+            <TabsTrigger value="list" className="flex items-center gap-2"><Package className="h-4 w-4" />My Equipment</TabsTrigger>
+            <TabsTrigger value="add" className="flex items-center gap-2"><Plus className="h-4 w-4" />Add Equipment</TabsTrigger>
+          </TabsList>
+          {selectedKitchen && <Badge variant="outline" className="text-sm">{selectedKitchen.name}</Badge>}
+        </div>
 
-      {/* Existing Listings */}
-      {selectedKitchenId && listings.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Existing Equipment Listings</CardTitle>
-            <CardDescription>Manage your existing equipment listings</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {listings.map((listing) => (
-                <div key={listing.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium">{listing.equipmentType}</h4>
-                      <Badge
-                        variant={listing.isActive !== false ? "outline" : "secondary"}
-                      >
-                        {listing.isActive !== false ? '✓ Active' : '✗ Inactive'}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {listing.category} • {listing.condition} • {
-                        listing.availabilityType === 'included'
-                          ? 'Included (Free with kitchen)'
-                          : `$${(listing.sessionRate || 0).toFixed(2)}/session`
-                      }
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor={`toggle-${listing.id}`} className="text-sm text-muted-foreground">
-                        {listing.isActive !== false ? 'Active' : 'Inactive'}
-                      </Label>
-                      <Switch
-                        id={`toggle-${listing.id}`}
-                        checked={listing.isActive !== false}
-                        onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)}
-                        disabled={isToggling}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(listing.id!)}>
-                        Edit
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDelete(listing.id!)}>
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
+        <TabsContent value="list" className="mt-0">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Equipment Inventory</CardTitle>
+              <CardDescription>{listings.length} equipment listing{listings.length !== 1 ? 's' : ''} for this kitchen</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
+              ) : listings.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <p className="font-medium">No equipment listed yet</p>
+                  <p className="text-sm mt-1">Click "Add Equipment" to get started</p>
+                  <Button className="mt-4" onClick={() => setActiveTab('add')}><Plus className="h-4 w-4 mr-2" />Add Equipment</Button>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Create/Edit Form */}
-      {selectedKitchenId && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wrench className="h-5 w-5" />
-              {editingListingId ? 'Edit Equipment Listing' : 'Create New Equipment Listing'}
-            </CardTitle>
-            <CardDescription>
-              {selectedKitchen && `For ${selectedKitchen.name}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Step Indicator */}
-            <div className="flex items-center justify-between mb-6">
-              {[1, 2, 3, 4].map((step) => (
-                <div key={step} className="flex items-center flex-1">
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-medium transition-colors ${step === currentStep ? 'bg-primary text-primary-foreground shadow-sm' :
-                      step < currentStep ? 'bg-primary/20 text-primary' :
-                        'bg-muted text-muted-foreground'
-                    }`}>
-                    {step < currentStep ? <Check className="h-4 w-4" /> : step}
-                  </div>
-                  {step < totalSteps && (
-                    <div className={`flex-1 h-0.5 mx-2 transition-colors ${step < currentStep ? 'bg-primary/20' : 'bg-muted'
-                      }`} />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Step 1: Category & Type */}
-            {currentStep === 1 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Category & Type</h3>
-
-                <div>
-                  <Label htmlFor="availabilityType">Availability Type *</Label>
-                  <Select
-                    value={formData.availabilityType}
-                    onValueChange={(value: 'included' | 'rental') => {
-                      const updates: any = { availabilityType: value };
-                      // If changing to included, clear pricing fields
-                      if (value === 'included') {
-                        updates.sessionRate = 0;
-                        updates.damageDeposit = 0;
-                      } else {
-                        // If changing to rental, set defaults
-                        updates.sessionRate = updates.sessionRate || 0;
-                      }
-                      setFormData({ ...formData, ...updates });
-                    }}
-                  >
-                    <SelectTrigger id="availabilityType" className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="included">Included (Free with kitchen booking)</SelectItem>
-                      <SelectItem value="rental">Rental (Paid addon during booking)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {formData.availabilityType === 'included'
-                      ? 'This equipment comes free with kitchen bookings - no additional charge'
-                      : 'Chefs will pay to rent this equipment when booking the kitchen'}
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="category">Category *</Label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value: 'food-prep' | 'cooking' | 'refrigeration' | 'cleaning' | 'specialty') =>
-                      setFormData({ ...formData, category: value })
-                    }
-                  >
-                    <SelectTrigger id="category" className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="food-prep">Food Prep</SelectItem>
-                      <SelectItem value="cooking">Cooking</SelectItem>
-                      <SelectItem value="refrigeration">Refrigeration</SelectItem>
-                      <SelectItem value="cleaning">Cleaning</SelectItem>
-                      <SelectItem value="specialty">Specialty</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="equipmentType">Equipment Type *</Label>
-                  <Input
-                    id="equipmentType"
-                    value={formData.equipmentType || ''}
-                    onChange={(e) => setFormData({ ...formData, equipmentType: e.target.value })}
-                    placeholder="e.g., Stand Mixer, Commercial Oven, Walk-in Freezer"
-                    className="mt-2"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="brand">Brand</Label>
-                    <Input
-                      id="brand"
-                      value={formData.brand || ''}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      placeholder="e.g., KitchenAid, Hobart"
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="model">Model</Label>
-                    <Input
-                      id="model"
-                      value={formData.model || ''}
-                      onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                      placeholder="e.g., Professional 600"
-                      className="mt-2"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description || ''}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Describe the equipment, its features, and condition..."
-                    className="mt-2"
-                    rows={4}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="condition">Condition *</Label>
-                    <Select
-                      value={formData.condition}
-                      onValueChange={(value: 'excellent' | 'good' | 'fair' | 'needs-repair') =>
-                        setFormData({ ...formData, condition: value })
-                      }
-                    >
-                      <SelectTrigger id="condition" className="mt-2">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="excellent">Excellent</SelectItem>
-                        <SelectItem value="good">Good</SelectItem>
-                        <SelectItem value="fair">Fair</SelectItem>
-                        <SelectItem value="needs-repair">Needs Repair</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="age">Age (years)</Label>
-                    <Input
-                      id="age"
-                      type="number"
-                      min="0"
-                      value={formData.age || ''}
-                      onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) || undefined })}
-                      placeholder="e.g., 5"
-                      className="mt-2"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    onClick={() => {
-                      // Skip pricing step if included equipment
-                      if (formData.availabilityType === 'included') {
-                        setCurrentStep(3);
-                      } else {
-                        setCurrentStep(2);
-                      }
-                    }}
-                    disabled={!formData.equipmentType || !formData.category || !formData.condition || !formData.availabilityType}
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Pricing Configuration (Only for Rental Equipment) */}
-            {currentStep === 2 && formData.availabilityType === 'rental' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Pricing Configuration</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Set a flat session rate for this equipment. Chefs pay this amount once per kitchen booking, regardless of booking duration.
-                </p>
-
-                <Alert className="mb-4">
-                  <Info className="h-4 w-4" />
-                  <AlertTitle>Flat Session Pricing</AlertTitle>
-                  <AlertDescription>
-                    Equipment is charged as a one-time fee per kitchen booking session.
-                    For example, if a chef books the kitchen for 2 hours or 8 hours, they pay the same equipment fee.
-                  </AlertDescription>
-                </Alert>
-
-                <div>
-                  <Label htmlFor="sessionRate">Session Rate (CAD) *</Label>
-                  <p className="text-sm text-muted-foreground mb-2">Flat fee charged per kitchen booking session</p>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-muted-foreground">$</span>
-                    </div>
-                    <Input
-                      id="sessionRate"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.sessionRate || ''}
-                      onChange={(e) => setFormData({ ...formData, sessionRate: parseFloat(e.target.value) || 0 })}
-                      placeholder="25.00"
-                      className="pl-7 text-lg"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="damageDeposit">Damage Deposit (CAD)</Label>
-                  <p className="text-sm text-muted-foreground mb-2">Refundable deposit to cover potential damage (optional)</p>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-muted-foreground">$</span>
-                    </div>
-                    <Input
-                      id="damageDeposit"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.damageDeposit || ''}
-                      onChange={(e) => setFormData({ ...formData, damageDeposit: parseFloat(e.target.value) || 0 })}
-                      placeholder="0.00"
-                      className="pl-7"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-between gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                  </Button>
-                  <Button
-                    onClick={() => setCurrentStep(3)}
-                    disabled={!formData.sessionRate || formData.sessionRate <= 0}
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2 fallback: If on step 2 but equipment is 'included', skip to step 3 */}
-            {currentStep === 2 && formData.availabilityType === 'included' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Included Equipment - No Pricing Required</h3>
-                <p className="text-sm text-muted-foreground">
-                  This equipment is included with the kitchen booking at no extra charge.
-                </p>
-                <div className="flex justify-between gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                  </Button>
-                  <Button
-                    onClick={() => setCurrentStep(3)}
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Specifications & Features */}
-            {currentStep === 3 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Specifications & Features</h3>
-
-                <div>
-                  <Label htmlFor="powerRequirements">Power Requirements</Label>
-                  <Input
-                    id="powerRequirements"
-                    value={formData.powerRequirements || ''}
-                    onChange={(e) => setFormData({ ...formData, powerRequirements: e.target.value })}
-                    placeholder="e.g., 110V, 208V, 240V, 3-phase"
-                    className="mt-2"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="dimWidth">Width (inches)</Label>
-                    <Input
-                      id="dimWidth"
-                      type="number"
-                      step="0.1"
-                      value={formData.dimensions?.width || ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        dimensions: { ...formData.dimensions, width: parseFloat(e.target.value) || undefined }
-                      })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="dimDepth">Depth (inches)</Label>
-                    <Input
-                      id="dimDepth"
-                      type="number"
-                      step="0.1"
-                      value={formData.dimensions?.depth || ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        dimensions: { ...formData.dimensions, depth: parseFloat(e.target.value) || undefined }
-                      })}
-                      className="mt-2"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="dimHeight">Height (inches)</Label>
-                    <Input
-                      id="dimHeight"
-                      type="number"
-                      step="0.1"
-                      value={formData.dimensions?.height || ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        dimensions: { ...formData.dimensions, height: parseFloat(e.target.value) || undefined }
-                      })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="dimWeight">Weight (lbs)</Label>
-                    <Input
-                      id="dimWeight"
-                      type="number"
-                      step="0.1"
-                      value={formData.dimensions?.weight || ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        dimensions: { ...formData.dimensions, weight: parseFloat(e.target.value) || undefined }
-                      })}
-                      className="mt-2"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="serviceHistory">Service History</Label>
-                  <Textarea
-                    id="serviceHistory"
-                    value={formData.serviceHistory || ''}
-                    onChange={(e) => setFormData({ ...formData, serviceHistory: e.target.value })}
-                    placeholder="Describe maintenance history, recent repairs, etc."
-                    className="mt-2"
-                    rows={3}
-                  />
-                </div>
-
-                <div>
-                  <Label>Certifications</Label>
-                  <div className="mt-2 space-y-2">
-                    {(formData.certifications || []).map((cert, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input value={cert} readOnly className="flex-1" />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeArrayItem('certifications', index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="e.g., NSF Certified, UL Listed"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addArrayItem('certifications', e.currentTarget.value);
-                            e.currentTarget.value = '';
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const input = document.querySelector('input[placeholder*="NSF Certified"]') as HTMLInputElement;
-                          if (input?.value) {
-                            addArrayItem('certifications', input.value);
-                            input.value = '';
-                          }
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Safety Features</Label>
-                  <div className="mt-2 space-y-2">
-                    {(formData.safetyFeatures || []).map((feature, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input value={feature} readOnly className="flex-1" />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeArrayItem('safetyFeatures', index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="e.g., Auto-shutoff, Safety guards"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addArrayItem('safetyFeatures', e.currentTarget.value);
-                            e.currentTarget.value = '';
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const input = document.querySelector('input[placeholder*="Auto-shutoff"]') as HTMLInputElement;
-                          if (input?.value) {
-                            addArrayItem('safetyFeatures', input.value);
-                            input.value = '';
-                          }
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between gap-3 pt-4">
-                  <Button variant="outline" onClick={() => {
-                    // Go back to step 2 for rental, step 1 for included
-                    if (formData.availabilityType === 'included') {
-                      setCurrentStep(1);
-                    } else {
-                      setCurrentStep(2);
-                    }
-                  }}>
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                  </Button>
-                  <Button
-                    onClick={() => setCurrentStep(4)}
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Terms & Conditions */}
-            {currentStep === 4 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Terms & Conditions</h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  {formData.availabilityType === 'included'
-                    ? 'Configure usage terms for equipment that comes free with kitchen bookings.'
-                    : 'Configure rental terms and conditions for this equipment.'}
-                </p>
-
-
-                <div>
-                  <Label htmlFor="cleaningResponsibility">Cleaning Responsibility</Label>
-                  <Select
-                    value={formData.cleaningResponsibility || ''}
-                    onValueChange={(value: 'renter' | 'host' | 'shared' | '') =>
-                      setFormData({ ...formData, cleaningResponsibility: value || undefined })
-                    }
-                  >
-                    <SelectTrigger id="cleaningResponsibility" className="mt-2">
-                      <SelectValue placeholder="Select responsibility..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="renter">Renter (chef cleans after use)</SelectItem>
-                      <SelectItem value="host">Host (we clean after return)</SelectItem>
-                      <SelectItem value="shared">Shared (both parties)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="prepTimeHours">Prep Time Hours</Label>
-                    <Input
-                      id="prepTimeHours"
-                      type="number"
-                      min="0"
-                      value={formData.prepTimeHours || 4}
-                      onChange={(e) => setFormData({ ...formData, prepTimeHours: parseInt(e.target.value) || 4 })}
-                      className="mt-2"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Time needed for cleaning/prep between uses</p>
-                  </div>
-                  {formData.availabilityType === 'rental' && (
-                    <div>
-                      <Label htmlFor="damageDeposit">Damage Deposit (CAD)</Label>
-                      <div className="mt-2 relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <span className="text-muted-foreground">$</span>
+              ) : (
+                <div className="space-y-3">
+                  {listings.map((listing) => (
+                    <div key={listing.id} className={cn("flex items-center justify-between p-4 border rounded-lg transition-colors", listing.isActive === false && "bg-muted/50 opacity-75")}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium truncate">{listing.equipmentType}</h4>
+                          {listing.brand && <span className="text-sm text-muted-foreground">({listing.brand})</span>}
+                          <Badge variant={listing.isActive !== false ? "default" : "secondary"} className="text-xs">{listing.isActive !== false ? 'Active' : 'Inactive'}</Badge>
                         </div>
-                        <Input
-                          id="damageDeposit"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.damageDeposit || 0}
-                          onChange={(e) => setFormData({ ...formData, damageDeposit: parseFloat(e.target.value) || 0 })}
-                          placeholder="0.00"
-                          className="pl-7"
-                        />
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span className="capitalize">{listing.category.replace('-', ' ')}</span>
+                          <span>•</span>
+                          <span className="capitalize">{listing.condition}</span>
+                          <span>•</span>
+                          <span className={cn("font-medium", listing.availabilityType === 'included' ? "text-green-600" : "text-blue-600")}>
+                            {listing.availabilityType === 'included' ? 'Included' : `$${(listing.sessionRate || 0).toFixed(2)}/session`}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">Refundable deposit for rental equipment</p>
+                      <div className="flex items-center gap-2 ml-4">
+                        <Switch checked={listing.isActive !== false} onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)} disabled={isToggling} />
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(listing)}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setPendingDeleteId(listing.id!); setDeleteDialogOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="add" className="mt-0 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search equipment..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2"><Grid3X3 className="h-5 w-5" />Select Equipment</CardTitle>
+                  <CardDescription>Choose equipment from our pre-defined list</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[500px] pr-4">
+                    <div className="space-y-2">
+                      {filteredCategories.map((category) => (
+                        <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" className="w-full justify-between p-3 h-auto font-medium hover:bg-muted/50">
+                              <span className="flex items-center gap-2"><span className="text-lg">{category.icon}</span>{category.name}<Badge variant="secondary" className="ml-2">{category.items.length}</Badge></span>
+                              {expandedCategories.includes(category.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <div className="grid grid-cols-2 gap-2 p-2 pl-8">
+                              {category.items.map((template) => {
+                                const isSelected = !!selectedEquipment[template.id];
+                                const isAlreadyListed = listings.some(l => l.equipmentType.toLowerCase() === template.name.toLowerCase());
+                                return (
+                                  <button key={template.id} onClick={() => !isAlreadyListed && handleTemplateSelect(template)} disabled={isAlreadyListed}
+                                    className={cn("flex items-center gap-2 p-3 rounded-lg border text-left transition-all", isSelected && "border-primary bg-primary/5 ring-1 ring-primary", isAlreadyListed && "opacity-50 cursor-not-allowed bg-muted", !isSelected && !isAlreadyListed && "hover:border-primary/50 hover:bg-muted/50")}>
+                                    <div className={cn("flex items-center justify-center w-5 h-5 rounded border", isSelected ? "bg-primary border-primary" : "border-muted-foreground/30")}>
+                                      {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium truncate">{template.name}</p>
+                                      {template.suggestedSessionRate > 0 && <p className="text-xs text-muted-foreground">~${template.suggestedSessionRate}/session</p>}
+                                    </div>
+                                    {isAlreadyListed && <Badge variant="secondary" className="text-xs">Listed</Badge>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-1">
+              <Card className="sticky top-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center justify-between">
+                    <span className="flex items-center gap-2"><DollarSign className="h-5 w-5" />Configure</span>
+                    {selectedEquipmentCount > 0 && <Badge>{selectedEquipmentCount} selected</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {selectedEquipmentCount === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Package className="h-10 w-10 mx-auto mb-3 opacity-20" />
+                      <p className="text-sm">Select equipment from the list to configure pricing</p>
+                    </div>
+                  ) : (
+                    <ScrollArea className="h-[400px] pr-2">
+                      <div className="space-y-4">
+                        {Object.entries(selectedEquipment).map(([templateId, equipment]) => (
+                          <div key={templateId} className="p-3 border rounded-lg space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <Input value={equipment.name} onChange={(e) => updateSelectedEquipment(templateId, { name: e.target.value })} className="font-medium h-8 px-2 -ml-2 border-transparent hover:border-input focus:border-input" />
+                                <p className="text-xs text-muted-foreground capitalize mt-1">{equipment.category.replace('-', ' ')}</p>
+                              </div>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 -mr-1 -mt-1" onClick={() => handleTemplateSelect({ id: templateId } as EquipmentTemplate)}><X className="h-3 w-3" /></Button>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs w-20">Type</Label>
+                                <Select value={equipment.availabilityType} onValueChange={(v: 'included' | 'rental') => updateSelectedEquipment(templateId, { availabilityType: v, sessionRate: v === 'included' ? 0 : equipment.sessionRate })}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent><SelectItem value="included">Included (Free)</SelectItem><SelectItem value="rental">Rental (Paid)</SelectItem></SelectContent>
+                                </Select>
+                              </div>
+                              {equipment.availabilityType === 'rental' && (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <Label className="text-xs w-20">Rate</Label>
+                                    <div className="relative flex-1">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                      <Input type="number" min="0" step="0.01" value={equipment.sessionRate} onChange={(e) => updateSelectedEquipment(templateId, { sessionRate: parseFloat(e.target.value) || 0 })} className="h-8 text-xs pl-5" />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Label className="text-xs w-20">Deposit</Label>
+                                    <div className="relative flex-1">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                      <Input type="number" min="0" step="0.01" value={equipment.damageDeposit} onChange={(e) => updateSelectedEquipment(templateId, { damageDeposit: parseFloat(e.target.value) || 0 })} className="h-8 text-xs pl-5" placeholder="0.00" />
+                                    </div>
+                                  </div>
+                                </>
+                              )}
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs w-20">Condition</Label>
+                                <Select value={equipment.condition} onValueChange={(v: EquipmentListing['condition']) => updateSelectedEquipment(templateId, { condition: v })}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent><SelectItem value="excellent">Excellent</SelectItem><SelectItem value="good">Good</SelectItem><SelectItem value="fair">Fair</SelectItem></SelectContent>
+                                </Select>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs w-20">Brand</Label>
+                                <Input value={equipment.brand} onChange={(e) => updateSelectedEquipment(templateId, { brand: e.target.value })} placeholder="Optional" className="h-8 text-xs" />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   )}
-                </div>
+                  {selectedEquipmentCount > 0 && (
+                    <Button className="w-full mt-4" onClick={saveSelectedEquipment} disabled={isSaving}>
+                      {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding...</> : <><Save className="h-4 w-4 mr-2" />Add {selectedEquipmentCount} Equipment</>}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
 
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="trainingRequired"
-                      checked={formData.trainingRequired || false}
-                      onCheckedChange={(checked) => setFormData({ ...formData, trainingRequired: checked as boolean })}
-                    />
-                    <Label htmlFor="trainingRequired" className="font-normal cursor-pointer">
-                      Training Required (renter must be trained before use)
-                    </Label>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="insuranceRequired"
-                      checked={formData.insuranceRequired || false}
-                      onCheckedChange={(checked) => setFormData({ ...formData, insuranceRequired: checked as boolean })}
-                    />
-                    <Label htmlFor="insuranceRequired" className="font-normal cursor-pointer">
-                      Insurance Required
-                    </Label>
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Usage Restrictions</Label>
-                  <div className="mt-2 space-y-2">
-                    {(formData.usageRestrictions || []).map((restriction, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input value={restriction} readOnly className="flex-1" />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeArrayItem('usageRestrictions', index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="e.g., No deep frying, Must use approved cleaning products"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addArrayItem('usageRestrictions', e.currentTarget.value);
-                            e.currentTarget.value = '';
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const input = document.querySelector('input[placeholder*="No deep frying"]') as HTMLInputElement;
-                          if (input?.value) {
-                            addArrayItem('usageRestrictions', input.value);
-                            input.value = '';
-                          }
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(3)}>
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                  </Button>
-                  <Button
-                    onClick={saveListing}
-                    disabled={isSaving}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        {editingListingId ? 'Update Listing' : 'Create Listing'}
-                      </>
-                    )}
-                  </Button>
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Edit Equipment</DialogTitle><DialogDescription>Update the details for this equipment listing</DialogDescription></DialogHeader>
+          {editingListing && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-2"><Label>Equipment Name</Label><Input value={editingListing.equipmentType} onChange={(e) => setEditingListing({ ...editingListing, equipmentType: e.target.value })} /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Brand</Label><Input value={editingListing.brand || ''} onChange={(e) => setEditingListing({ ...editingListing, brand: e.target.value })} placeholder="Optional" /></div>
+                <div className="space-y-2"><Label>Condition</Label>
+                  <Select value={editingListing.condition} onValueChange={(v: EquipmentListing['condition']) => setEditingListing({ ...editingListing, condition: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="excellent">Excellent</SelectItem><SelectItem value="good">Good</SelectItem><SelectItem value="fair">Fair</SelectItem><SelectItem value="needs-repair">Needs Repair</SelectItem></SelectContent>
+                  </Select>
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              <div className="space-y-2"><Label>Availability Type</Label>
+                <Select value={editingListing.availabilityType} onValueChange={(v: 'included' | 'rental') => setEditingListing({ ...editingListing, availabilityType: v, sessionRate: v === 'included' ? 0 : editingListing.sessionRate })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="included">Included (Free with kitchen)</SelectItem><SelectItem value="rental">Rental (Paid addon)</SelectItem></SelectContent>
+                </Select>
+              </div>
+              {editingListing.availabilityType === 'rental' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>Session Rate (CAD)</Label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span><Input type="number" min="0" step="0.01" value={editingListing.sessionRate || ''} onChange={(e) => setEditingListing({ ...editingListing, sessionRate: parseFloat(e.target.value) || 0 })} className="pl-7" /></div></div>
+                  <div className="space-y-2"><Label>Damage Deposit</Label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span><Input type="number" min="0" step="0.01" value={editingListing.damageDeposit || ''} onChange={(e) => setEditingListing({ ...editingListing, damageDeposit: parseFloat(e.target.value) || 0 })} className="pl-7" placeholder="0.00" /></div></div>
+                </div>
+              )}
+              <div className="space-y-2"><Label>Description</Label><Textarea value={editingListing.description || ''} onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })} placeholder="Optional description..." rows={3} /></div>
+              <div className="flex items-center gap-2">
+                <Switch id="training-required" checked={editingListing.trainingRequired || false} onCheckedChange={(checked) => setEditingListing({ ...editingListing, trainingRequired: checked })} />
+                <Label htmlFor="training-required" className="cursor-pointer">Training required before use</Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveEditedListing} disabled={isSaving}>{isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Changes'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Confirmation Dialog for Deactivation */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Delete Equipment Listing?</DialogTitle><DialogDescription>This action cannot be undone. The equipment listing will be permanently removed.</DialogDescription></DialogHeader>
+          <DialogFooter><Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button><Button variant="destructive" onClick={handleDelete}>Delete</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={toggleDialogOpen} onOpenChange={setToggleDialogOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Deactivate Equipment Listing?</DialogTitle>
-            <DialogDescription>
-              This equipment listing will no longer be available for booking. Chefs will not be able to see or rent this equipment.
-              <br /><br />
-              You can reactivate it at any time using the toggle switch.
-            </DialogDescription>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Deactivate Equipment Listing?</DialogTitle><DialogDescription>This equipment will no longer be available for booking. You can reactivate it at any time.</DialogDescription></DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setToggleDialogOpen(false);
-                setPendingToggle(null);
-              }}
-              disabled={isToggling}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmToggle}
-              disabled={isToggling}
-            >
-              {isToggling ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deactivating...
-                </>
-              ) : (
-                'Deactivate'
-              )}
+            <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>Cancel</Button>
+            <Button variant="destructive" onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)} disabled={isToggling}>
+              {isToggling ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deactivating...</> : 'Deactivate'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1130,4 +588,3 @@ function EquipmentListingContent({
     </div>
   );
 }
-

@@ -21,21 +21,22 @@ export async function getAuthenticatedUser(req: Request): Promise<{ id: number; 
 
 // Middleware to ensure user is a chef
 export async function requireChef(req: Request, res: Response, next: NextFunction) {
-    const user = await getAuthenticatedUser(req);
-
-    if (!user) {
+    // Check req.neonUser first (populated by optionalFirebaseAuth middleware)
+    if (!req.neonUser) {
         return res.status(401).json({ error: "Not authenticated" });
     }
 
-    // Get user role
-    const userRole = user.role;
-    const isChef = userRole === 'chef' || userRole === 'admin'; // Admins can access chef routes
+    // Check isChef flag first (most reliable), then role, then admin override
+    const hasChefAccess = 
+        req.neonUser.isChef === true ||  // isChef flag is true
+        req.neonUser.role === 'chef' ||   // role is 'chef'
+        req.neonUser.role === 'admin';    // Admins can access chef routes
 
-    if (!isChef) {
-        // Also check req.neonUser.isChef flag if available
-        if (req.neonUser && req.neonUser.isChef) {
-            return next();
-        }
+    if (!hasChefAccess) {
+        console.log(`[requireChef] Access denied for user ${req.neonUser.id}:`, {
+            role: req.neonUser.role,
+            isChef: req.neonUser.isChef
+        });
         return res.status(403).json({ error: "Access denied. Chef role required." });
     }
 

@@ -32,8 +32,22 @@ import Logo from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 
+// Type definition for navigation items
+interface NavItem {
+    id: string
+    label: string
+    icon: React.ComponentType<{ className?: string }>
+    path?: string
+    badge?: number
+}
+
+interface NavGroup {
+    title: string
+    items: NavItem[]
+}
+
 // Navigation structure for chef portal - organized by purpose
-const navGroups = [
+const navGroups: NavGroup[] = [
     {
         title: "Dashboard",
         items: [

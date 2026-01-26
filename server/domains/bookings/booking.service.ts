@@ -210,7 +210,8 @@ export class BookingService {
                 }
             } else {
                 // No override, use regular weekly schedule
-                const dayOfWeek = bookingDate.getDay();
+                // Use getUTCDay() since dates are passed as UTC noon to avoid timezone shifts
+                const dayOfWeek = bookingDate.getUTCDay();
                 const availability = await kitchenService.getKitchenAvailability(kitchenId);
 
                 const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
@@ -267,7 +268,8 @@ export class BookingService {
                 }
             } else {
                 // No override, use regular weekly schedule
-                const dayOfWeek = date.getDay();
+                // Use getUTCDay() since dates are passed as UTC noon to avoid timezone shifts
+                const dayOfWeek = date.getUTCDay();
                 const availability = await kitchenService.getKitchenAvailability(kitchenId);
 
                 const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
@@ -354,7 +356,8 @@ export class BookingService {
                     return [];
                 }
             } else {
-                const dayOfWeek = date.getDay();
+                // Use getUTCDay() since dates are passed as UTC noon to avoid timezone shifts
+                const dayOfWeek = date.getUTCDay();
                 const availability = await kitchenService.getKitchenAvailability(kitchenId);
                 const dayAvailability = availability.find(a => a.dayOfWeek === dayOfWeek);
 

@@ -725,8 +725,8 @@ export default function KitchenApplicationForm({
     );
   }
 
-  // If fully approved (tier 2 completed), show booking option
-  if (hasApplication && application && application.status === "approved" && application.tier2_completed_at) {
+  // If fully approved (Tier 3: current_tier >= 3), show booking option
+  if (hasApplication && application && application.status === "approved" && (application.current_tier ?? 1) >= 3) {
     const statusConfig = {
       approved: {
         icon: Check,

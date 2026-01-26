@@ -269,10 +269,11 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
 
       const data = await response.json();
       // Ensure the response has the expected structure
+      // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
       return {
         ...data,
         hasApplication: data.hasApplication ?? (!!data.id),
-        canBook: data.canBook ?? (data.status === 'approved'),
+        canBook: data.canBook ?? (data.status === 'approved' && (data.current_tier ?? 1) >= 3),
       };
     },
     enabled: !!locationId,
@@ -281,9 +282,10 @@ export function useChefKitchenApplicationForLocation(locationId: number | null) 
   });
 
   // Ensure we properly extract canBook from the response
+  // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
   const responseData = applicationsQuery.data;
   const hasApplication = responseData?.hasApplication ?? (!!responseData?.id);
-  const canBook = responseData?.canBook ?? (responseData?.status === 'approved');
+  const canBook = responseData?.canBook ?? (responseData?.status === 'approved' && ((responseData as any)?.current_tier ?? 1) >= 3);
 
   return {
     application: hasApplication ? responseData : null,
@@ -349,15 +351,21 @@ export function useChefApprovedKitchens() {
 /**
  * Summary hook for chef kitchen access status
  * Provides high-level status for dashboard display
+ * 
+ * Enterprise 3-Tier System:
+ * - Tier 1: Application submitted, pending review (current_tier = 1)
+ * - Tier 2: Step 1 approved, chef completing Step 2 (current_tier = 2)
+ * - Tier 3: Fully approved - ready to book (current_tier >= 3)
  */
 export function useChefKitchenApplicationsStatus() {
   const { applications, isLoading } = useChefKitchenApplications();
 
-  // Applications with approved status but not fully complete (tier2 not done)
+  // Applications with approved status (Tier 1, 2, or 3)
   const approvedCount = applications.filter(a => a.status === "approved").length;
-  // Fully approved = status approved AND tier2_completed_at is set (only Tier 1 and 2 are in use)
+  // Tier 3: Fully approved = status approved AND current_tier >= 3
   const fullyApprovedCount = applications.filter(a =>
-    a.status === "approved" && !!(a as any).tier2_completed_at
+    a.status === "approved" && 
+    ((a as any).current_tier ?? 1) >= 3
   ).length;
   const pendingCount = applications.filter(a => a.status === "inReview").length;
   const rejectedCount = applications.filter(a => a.status === "rejected").length;

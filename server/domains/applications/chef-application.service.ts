@@ -255,17 +255,19 @@ export class ChefApplicationService {
                 };
             }
 
-            const tier2Completed = !!application.tier2_completed_at;
+            // Enterprise 3-Tier System: canBook = Tier 3 (current_tier >= 3)
+            const currentTier = (application as any).current_tier ?? 1;
+            const isFullyApproved = currentTier >= 3;
 
             switch (application.status) {
                 case 'approved':
                     return {
                         hasApplication: true,
-                        status: tier2Completed ? 'approved' : 'inReview',
-                        canBook: tier2Completed,
-                        message: tier2Completed
+                        status: isFullyApproved ? 'approved' : 'inReview',
+                        canBook: isFullyApproved,
+                        message: isFullyApproved
                             ? 'Application completed. You can book kitchens at this location.'
-                            : 'Application approved but Tier 2 is not completed. Please complete Tier 2 to book.',
+                            : 'Application approved but not fully complete. Please complete all steps to book.',
                     };
                 case 'inReview':
                     return {

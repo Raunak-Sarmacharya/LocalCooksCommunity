@@ -200,8 +200,9 @@ router.post("/stripe-connect/sync", requireChef, async (req: Request, res: Respo
 // Routes will be appended here
 
 
-// Get equipment listings for a kitchen (chef view - only active/approved listings)
-// Distinguishes between 'included' (free with kitchen) and 'rental' (paid addon) equipment
+// Get equipment listings for a kitchen (chef view - only active listings)
+// NOTE: This endpoint is also defined in equipment.ts which takes precedence.
+// Keeping this as a fallback with consistent logic.
 router.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req: Request, res: Response) => {
     try {
         const kitchenId = parseInt(req.params.kitchenId);
@@ -212,10 +213,9 @@ router.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req: R
         // Get all equipment listings for this kitchen
         const allListings = await inventoryService.getEquipmentListingsByKitchen(kitchenId);
 
-        // Filter to only show approved/active listings to chefs
-        // Listings with status 'approved' or 'active' AND isActive=true are visible
+        // Filter to only show active listings to chefs
+        // Equipment is visible if isActive=true (status field is optional/legacy)
         const visibleListings = allListings.filter((listing: any) =>
-            (listing.status === 'approved' || listing.status === 'active') &&
             listing.isActive === true
         );
 
@@ -223,9 +223,9 @@ router.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req: R
         const includedEquipment = visibleListings.filter((l: any) => l.availabilityType === 'included');
         const rentalEquipment = visibleListings.filter((l: any) => l.availabilityType === 'rental');
 
-        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
+        console.log(`[API] /api/chef/kitchens/${kitchenId}/equipment-listings (chef.ts) - Returning ${visibleListings.length} visible listings (${includedEquipment.length} included, ${rentalEquipment.length} rental)`);
 
-        // Return both the full list and categorized lists for convenience
+        // Return categorized format expected by frontend
         res.json({
             all: visibleListings,
             included: includedEquipment,

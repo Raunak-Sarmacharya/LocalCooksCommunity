@@ -383,16 +383,20 @@ export default function ApplicantDashboard() {
   };
 
   // Helper to get kitchen applications status summary (tier-aware)
+  // Enterprise 3-Tier System:
+  // - Tier 1: Application submitted, pending review
+  // - Tier 2: Step 1 approved, chef completing Step 2 docs
+  // - Tier 3: Fully approved (current_tier >= 3), ready to book
   const getKitchenAccessSummary = () => {
     const total = kitchenApplications.length;
     if (total === 0) return { label: "No Applications", variant: "outline" as const };
     
-    // Count by tier status
+    // Count by tier status - use current_tier as source of truth
     const readyToBook = kitchenApplications.filter(a => 
-      a.status === 'approved' && (a.current_tier >= 3 || (a.current_tier >= 2 && a.tier2_completed_at))
+      a.status === 'approved' && (a.current_tier ?? 1) >= 3
     ).length;
     const inProgress = kitchenApplications.filter(a => 
-      a.status === 'approved' && a.current_tier === 2 && !a.tier2_completed_at
+      a.status === 'approved' && (a.current_tier ?? 1) < 3
     ).length;
     const pending = kitchenApplications.filter(a => a.status === 'inReview').length;
     
@@ -574,7 +578,10 @@ export default function ApplicantDashboard() {
             {kitchenApplications.length > 0 ? (
               <div className="space-y-3">
                 {kitchenApplications.slice(0, 2).map((app) => {
-                  // Determine proper status based on tier system (matching manager portal logic)
+                  // Determine proper status based on Enterprise 3-Tier System:
+                  // - Tier 1: Application submitted, pending review (status='inReview')
+                  // - Tier 2: Step 1 approved, chef completing Step 2 (status='approved', current_tier < 3)
+                  // - Tier 3: Fully approved, ready to book (status='approved', current_tier >= 3)
                   const getKitchenAppStatus = () => {
                     if (app.status === 'inReview') {
                       return { label: 'In Review', variant: 'secondary' as const, color: 'bg-amber-500' };
@@ -583,19 +590,20 @@ export default function ApplicantDashboard() {
                       return { label: 'Rejected', variant: 'destructive' as const, color: 'bg-red-500' };
                     }
                     if (app.status === 'approved') {
-                      // Tier 2 completed and approved = fully ready
-                      if (app.current_tier >= 3 || (app.current_tier >= 2 && app.tier2_completed_at)) {
+                      const tier = app.current_tier ?? 1;
+                      // Tier 3: Fully approved, ready to book
+                      if (tier >= 3) {
                         return { label: 'Ready to Book', variant: 'default' as const, color: 'bg-green-600' };
                       }
-                      // Tier 2 submitted, awaiting review
-                      if (app.current_tier === 2 && app.tier2_completed_at) {
+                      // Tier 2: Step 2 submitted, awaiting manager review
+                      if (tier === 2 && app.tier2_completed_at) {
                         return { label: 'Step 2 Review', variant: 'secondary' as const, color: 'bg-orange-500' };
                       }
-                      // Tier 1 approved, waiting for chef to submit tier 2
-                      if (app.current_tier === 2 && !app.tier2_completed_at) {
-                        return { label: 'Step 1 Done', variant: 'secondary' as const, color: 'bg-blue-500' };
+                      // Tier 2: Step 1 approved, chef needs to submit Step 2
+                      if (tier === 2 && !app.tier2_completed_at) {
+                        return { label: 'Step 2 Pending', variant: 'secondary' as const, color: 'bg-blue-500' };
                       }
-                      // Default approved state (step 1 approved)
+                      // Tier 1: Step 1 approved (default)
                       return { label: 'Step 1 Approved', variant: 'default' as const, color: 'bg-blue-600' };
                     }
                     return { label: 'Unknown', variant: 'outline' as const, color: 'bg-gray-500' };
@@ -1035,12 +1043,12 @@ export default function ApplicantDashboard() {
                     variant={app.status === 'approved' ? 'default' : 'secondary'}
                     className={cn(
                       "px-3 py-1 text-[10px] uppercase font-bold tracking-wider",
-                      app.status === 'approved' && app.tier2_completed_at ? 'bg-green-600 hover:bg-green-600' : 
+                      app.status === 'approved' && (app.current_tier ?? 1) >= 3 ? 'bg-green-600 hover:bg-green-600' : 
                       app.status === 'approved' ? 'bg-blue-600 hover:bg-blue-600' :
                       app.status === 'inReview' ? 'bg-amber-600 hover:bg-amber-600' : 'bg-red-600 hover:bg-red-600'
                     )}
                   >
-                    {app.status === 'approved' && app.tier2_completed_at
+                    {app.status === 'approved' && (app.current_tier ?? 1) >= 3
                       ? 'Ready to Book'
                       : app.status === 'approved'
                         ? 'In Progress'
@@ -1076,7 +1084,7 @@ export default function ApplicantDashboard() {
                   </Button>
                 )}
                 {app.status === 'approved' && (
-                  app.tier2_completed_at ? (
+                  (app.current_tier ?? 1) >= 3 ? (
                     <Button
                       size="sm"
                       className="flex-1 bg-green-600 hover:bg-green-700 rounded-lg h-9"
@@ -1118,19 +1126,8 @@ export default function ApplicantDashboard() {
   );
 
   const messagesTabContent = (
-    <div className="h-[calc(100vh-14rem)] flex flex-col space-y-4">
-       <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-            <MessageCircle className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Messages</h2>
-            <p className="text-muted-foreground mt-1">Communication with managers and support.</p>
-          </div>
-       </div>
-       <Card className="flex-1 overflow-hidden border-border/50 shadow-sm bg-background">
-          <UnifiedChatView userId={chefId} role="chef" />
-       </Card>
+    <div className="h-[calc(100vh-8rem)]">
+       <UnifiedChatView userId={chefId} role="chef" />
     </div>
   );
 

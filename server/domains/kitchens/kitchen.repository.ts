@@ -7,7 +7,7 @@
 
 import { db } from '../../db';
 import { kitchens, locations, kitchenDateOverrides, kitchenAvailability } from '@shared/schema';
-import { eq, and, desc, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
 import type { CreateKitchenDTO, UpdateKitchenDTO, KitchenDTO, KitchenWithLocationDTO, CreateKitchenOverrideDTO, UpdateKitchenOverrideDTO, KitchenOverrideDTO } from './kitchen.types';
 import { KitchenErrorCodes, DomainError } from '../../shared/errors/domain-error';
 
@@ -498,12 +498,7 @@ export class KitchenRepository {
 
   async findOverrideForDate(kitchenId: number, date: Date) {
     try {
-      // Convert date to string YYYY-MM-DD for comparison if needed, or use date object if driver supports it.
-      // Postgres DATE type usually compares well with JS Date (at 00:00).
-      // Or use sql to compare date part.
-      // storage-firebase used precise comparison?
-      // "sql`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`"
-
+      // specific_date is a timestamp, so we need to compare the DATE part only
       const dateStr = date.toISOString().split('T')[0];
 
       const [override] = await db
@@ -512,7 +507,7 @@ export class KitchenRepository {
         .where(
           and(
             eq(kitchenDateOverrides.kitchenId, kitchenId),
-            eq(kitchenDateOverrides.specificDate, dateStr as any) // Casting as any depending on driver, or just date
+            sql`DATE(${kitchenDateOverrides.specificDate}) = ${dateStr}::date`
           )
         )
         .limit(1);
@@ -520,7 +515,8 @@ export class KitchenRepository {
       return override ? this.mapOverrideToDTO(override) : null;
     } catch (error: any) {
       console.error(`[KitchenRepository] Error finding override for date:`, error);
-      throw new DomainError(KitchenErrorCodes.KITCHEN_NOT_FOUND, 'Failed to find override', 500);
+      // Return null instead of throwing - no override is a valid state
+      return null;
     }
   }
 }

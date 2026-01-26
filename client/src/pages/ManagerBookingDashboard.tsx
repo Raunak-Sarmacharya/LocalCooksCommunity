@@ -590,7 +590,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'equipment-listings' && (
-        <EquipmentListingManagement embedded={true} />
+        <EquipmentListingManagement />
       )}
 
       {activeView === 'revenue' && (
@@ -603,7 +603,9 @@ export default function ManagerBookingDashboard() {
 
       {activeView === 'messages' && (
         managerId ? (
-          <UnifiedChatView userId={managerId} role="manager" />
+          <div className="h-[calc(100vh-8rem)]">
+            <UnifiedChatView userId={managerId} role="manager" />
+          </div>
         ) : (
           <Card>
             <CardContent className="p-12 text-center">

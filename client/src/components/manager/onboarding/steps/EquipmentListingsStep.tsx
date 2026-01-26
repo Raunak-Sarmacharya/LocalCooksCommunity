@@ -1,16 +1,38 @@
+/**
+ * Equipment Listings Step - Onboarding
+ * 
+ * Streamlined equipment selection using pre-defined templates.
+ * Allows managers to quickly add common commercial kitchen equipment.
+ */
 
-import React, { useState } from "react";
-import { Info, Plus, CheckCircle, Loader2 } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
+import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
+import { EQUIPMENT_CATEGORIES, type EquipmentTemplate } from "@/lib/equipment-templates";
 
-import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter"; // [NEW]
+interface SelectedEquipment {
+  templateId: string;
+  name: string;
+  category: string;
+  condition: 'excellent' | 'good' | 'fair';
+  availabilityType: 'included' | 'rental';
+  sessionRate: number;
+}
 
 export default function EquipmentListingsStep() {
   const {
@@ -18,76 +40,127 @@ export default function EquipmentListingsStep() {
     selectedKitchenId,
     setSelectedKitchenId,
     equipmentForm: { listings, isLoading },
-    handleNext, // [NEW]
-    handleBack // [NEW] 
+    handleNext,
+    handleBack 
   } = useManagerOnboarding();
   const { toast } = useToast();
 
-  const [formData, setFormData] = useState({
-    name: '',
-    category: 'food-prep',
-    description: '',
-    condition: 'good',
-    availabilityType: 'included' as 'included' | 'rental',
-    sessionRate: 0,
-  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<string[]>(['cooking', 'food-prep']);
+  const [selectedEquipment, setSelectedEquipment] = useState<Record<string, SelectedEquipment>>({});
   const [isCreating, setIsCreating] = useState(false);
 
+  const selectedEquipmentCount = Object.keys(selectedEquipment).length;
+
+  // Filter templates based on search
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return EQUIPMENT_CATEGORIES;
+    
+    const query = searchQuery.toLowerCase();
+    return EQUIPMENT_CATEGORIES.map(cat => ({
+      ...cat,
+      items: cat.items.filter(item => 
+        item.name.toLowerCase().includes(query) ||
+        cat.name.toLowerCase().includes(query)
+      )
+    })).filter(cat => cat.items.length > 0);
+  }, [searchQuery]);
+
+  // Toggle category expansion
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories(prev => 
+      prev.includes(categoryId) 
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
+
+  // Handle equipment template selection
+  const handleTemplateSelect = (template: EquipmentTemplate) => {
+    setSelectedEquipment(prev => {
+      const newState = { ...prev };
+      if (newState[template.id]) {
+        delete newState[template.id];
+      } else {
+        newState[template.id] = {
+          templateId: template.id,
+          name: template.name,
+          category: template.category,
+          condition: template.defaultCondition,
+          availabilityType: template.suggestedSessionRate > 0 ? 'rental' : 'included',
+          sessionRate: template.suggestedSessionRate,
+        };
+      }
+      return newState;
+    });
+  };
+
+  // Update selected equipment details
+  const updateSelectedEquipment = (templateId: string, updates: Partial<SelectedEquipment>) => {
+    setSelectedEquipment(prev => {
+      if (!prev[templateId]) return prev;
+      return {
+        ...prev,
+        [templateId]: { ...prev[templateId], ...updates }
+      };
+    });
+  };
+
+  // Save all selected equipment
   const handleCreate = async () => {
-    if (!formData.name || !selectedKitchenId) return;
+    if (!selectedKitchenId || selectedEquipmentCount === 0) return;
 
     setIsCreating(true);
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      // Ensure sessionRate is sent as a string if the API expects it, or number. based on original file, it might be string. 
-      // The context type sees it as string | number. I'll send number.
-      // Wait, original file used `equipmentType` but new type has `category`. 
-      // I'll stick to what the API likely expects. 
-      // Looking at `ManagerOnboardingWizard.tsx`: `createEquipmentMutation` calls `/api/manager/equipment-listings`.
-      // It sends: kitchenId, name, equipmentType (which I mapped to category?), description, condition, availabilityType, hourlyRate/sessionRate, currency, isActive.
+    let successCount = 0;
+    let errorCount = 0;
 
-      const response = await fetch(`/api/manager/equipment-listings`, {
-        method: "POST",
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          kitchenId: selectedKitchenId,
-          name: formData.name,
-          equipmentType: formData.category, // Mapping category to equipmentType for API compatibility
-          description: formData.description || null,
-          condition: formData.condition,
-          availabilityType: formData.availabilityType,
-          hourlyRate: formData.availabilityType === 'rental' ? formData.sessionRate : 0,
-          currency: "CAD",
-          isActive: true,
-        }),
-      });
+    const equipmentList = Object.values(selectedEquipment);
+    
+    for (const equipment of equipmentList) {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch(`/api/manager/equipment-listings`, {
+          method: "POST",
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            kitchenId: selectedKitchenId,
+            name: equipment.name,
+            equipmentType: equipment.category,
+            condition: equipment.condition,
+            availabilityType: equipment.availabilityType,
+            hourlyRate: equipment.availabilityType === 'rental' ? equipment.sessionRate : 0,
+            currency: "CAD",
+            isActive: true,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error("Failed to create equipment listing");
+        if (!response.ok) {
+          throw new Error("Failed to create equipment listing");
+        }
+        successCount++;
+      } catch (error) {
+        console.error('Error creating equipment listing:', error);
+        errorCount++;
       }
+    }
 
-      toast({ title: "Equipment Listing Created" });
-      setFormData({
-        name: '',
-        category: 'food-prep',
-        description: '',
-        condition: 'good',
-        availabilityType: 'included',
-        sessionRate: 0,
+    setIsCreating(false);
+
+    if (successCount > 0) {
+      toast({
+        title: "Equipment Added",
+        description: `Successfully added ${successCount} equipment listing${successCount > 1 ? 's' : ''}.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
-      // Similarly, we accept that the list won't auto-update until we explicitly refresh or reload context.
-      // The user can add more.
-    } catch (error: any) {
+      setSelectedEquipment({});
+    } else {
       toast({
         title: "Error",
-        description: error.message,
+        description: "Failed to add equipment listings. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsCreating(false);
     }
   };
 
@@ -96,7 +169,7 @@ export default function EquipmentListingsStep() {
       <div>
         <h3 className="text-lg font-semibold mb-1">Equipment Listings (Optional)</h3>
         <p className="text-sm text-gray-600">
-          List the equipment available in your kitchen. You can mark items as included in the rental or available for an extra fee.
+          Select equipment available in your kitchen. You can mark items as included or available for an extra fee.
         </p>
       </div>
 
@@ -107,7 +180,7 @@ export default function EquipmentListingsStep() {
           </div>
           <div className="text-sm text-gray-700">
             <p className="font-bold mb-2 text-gray-900">Why list equipment?</p>
-            <p>Detailed equipment lists help chefs know if your kitchen is right for them. Specifying condition and availability ensures transparency.</p>
+            <p>Detailed equipment lists help chefs know if your kitchen is right for them. Select from common commercial kitchen equipment below.</p>
           </div>
         </div>
       </div>
@@ -133,96 +206,210 @@ export default function EquipmentListingsStep() {
 
           {selectedKitchenId && (
             <>
+              {/* Existing Equipment */}
               {isLoading ? (
                 <div className="flex justify-center p-4"><Loader2 className="animate-spin text-gray-400" /></div>
-              ) : listings.length > 0 ? (
+              ) : listings.length > 0 && (
                 <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="h-5 w-5 text-green-600" />
                     <h4 className="font-semibold text-gray-900">Existing Equipment ({listings.length})</h4>
                   </div>
-                  {listings.map(l => (
-                    <div key={l.id} className="bg-white rounded p-3 border border-green-200">
-                      <p className="font-medium">{l.name}</p>
-                      <p className="text-xs text-gray-600">{l.equipmentType || l.category} • {l.availabilityType === 'rental' ? `$${l.sessionRate}/session` : 'Included'}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="border rounded-lg p-4 bg-gray-50">
-                <div className="space-y-3">
-                  <div className="grid gap-2">
-                    <Label>Equipment Name *</Label>
-                    <Input value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Robot Coupe" />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-2">
-                      <Label>Category</Label>
-                      <Select value={formData.category} onValueChange={(v: any) => setFormData({ ...formData, category: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="food-prep">Food Prep</SelectItem>
-                          <SelectItem value="cooking">Cooking</SelectItem>
-                          <SelectItem value="refrigeration">Refrigeration</SelectItem>
-                          <SelectItem value="cleaning">Cleaning</SelectItem>
-                          <SelectItem value="specialty">Specialty</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Condition</Label>
-                      <Select value={formData.condition} onValueChange={(v: any) => setFormData({ ...formData, condition: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="excellent">Excellent</SelectItem>
-                          <SelectItem value="good">Good</SelectItem>
-                          <SelectItem value="fair">Fair</SelectItem>
-                          <SelectItem value="needs_repair">Needs Repair</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label>Description</Label>
-                    <Textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} rows={2} />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="grid gap-2">
-                      <Label>Availability</Label>
-                      <Select
-                        value={formData.availabilityType}
-                        onValueChange={(v: 'included' | 'rental') => setFormData({ ...formData, availabilityType: v, sessionRate: v === 'included' ? 0 : formData.sessionRate })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="included">Included in Rental</SelectItem>
-                          <SelectItem value="rental">Extra Fee (Rental)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {formData.availabilityType === 'rental' && (
-                      <div className="grid gap-2">
-                        <Label>Session Fee ($)</Label>
-                        <Input type="number" value={formData.sessionRate} onChange={e => setFormData({ ...formData, sessionRate: parseFloat(e.target.value) || 0 })} />
+                  <div className="grid grid-cols-2 gap-2">
+                    {listings.map(l => (
+                      <div key={l.id} className="bg-white rounded p-2 border border-green-200 text-sm">
+                        <p className="font-medium truncate">{l.name}</p>
+                        <p className="text-xs text-gray-600">
+                          {l.availabilityType === 'rental' ? `$${l.sessionRate}/session` : 'Included'}
+                        </p>
                       </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search equipment..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                {/* Equipment Selection */}
+                <div className="lg:col-span-3">
+                  <div className="border rounded-lg bg-gray-50">
+                    <ScrollArea className="h-[350px]">
+                      <div className="p-2 space-y-1">
+                        {filteredCategories.map((category) => (
+                          <Collapsible
+                            key={category.id}
+                            open={expandedCategories.includes(category.id)}
+                            onOpenChange={() => toggleCategory(category.id)}
+                          >
+                            <CollapsibleTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="w-full justify-between p-2 h-auto font-medium hover:bg-white"
+                              >
+                                <span className="flex items-center gap-2 text-sm">
+                                  <span>{category.icon}</span>
+                                  {category.name}
+                                  <Badge variant="secondary" className="text-xs">
+                                    {category.items.length}
+                                  </Badge>
+                                </span>
+                                {expandedCategories.includes(category.id) ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="grid grid-cols-2 gap-1.5 p-1.5 pl-6">
+                                {category.items.map((template) => {
+                                  const isSelected = !!selectedEquipment[template.id];
+                                  const isAlreadyListed = listings.some(
+                                    l => l.name?.toLowerCase() === template.name.toLowerCase()
+                                  );
+                                  
+                                  return (
+                                    <button
+                                      key={template.id}
+                                      onClick={() => !isAlreadyListed && handleTemplateSelect(template)}
+                                      disabled={isAlreadyListed}
+                                      className={cn(
+                                        "flex items-center gap-2 p-2 rounded-md border text-left transition-all text-xs",
+                                        isSelected && "border-primary bg-primary/5 ring-1 ring-primary",
+                                        isAlreadyListed && "opacity-50 cursor-not-allowed bg-gray-100",
+                                        !isSelected && !isAlreadyListed && "bg-white hover:border-primary/50"
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        "flex items-center justify-center w-4 h-4 rounded border flex-shrink-0",
+                                        isSelected ? "bg-primary border-primary" : "border-gray-300"
+                                      )}>
+                                        {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                                      </div>
+                                      <span className="truncate">{template.name}</span>
+                                      {isAlreadyListed && (
+                                        <Badge variant="secondary" className="text-[10px] ml-auto">Listed</Badge>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </div>
+
+                {/* Configuration Panel */}
+                <div className="lg:col-span-2">
+                  <div className="border rounded-lg p-3 bg-white sticky top-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        <DollarSign className="h-4 w-4" />
+                        Configure
+                      </h4>
+                      {selectedEquipmentCount > 0 && (
+                        <Badge variant="default" className="text-xs">{selectedEquipmentCount}</Badge>
+                      )}
+                    </div>
+
+                    {selectedEquipmentCount === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                        <p className="text-xs">Select equipment to configure</p>
+                      </div>
+                    ) : (
+                      <ScrollArea className="h-[250px]">
+                        <div className="space-y-2 pr-2">
+                          {Object.entries(selectedEquipment).map(([templateId, equipment]) => (
+                            <div key={templateId} className="p-2 border rounded-md space-y-2 bg-gray-50">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium truncate flex-1">{equipment.name}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5"
+                                  onClick={() => handleTemplateSelect({ id: templateId } as EquipmentTemplate)}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <div className="flex gap-2">
+                                <Select
+                                  value={equipment.availabilityType}
+                                  onValueChange={(v: 'included' | 'rental') => 
+                                    updateSelectedEquipment(templateId, { 
+                                      availabilityType: v,
+                                      sessionRate: v === 'included' ? 0 : equipment.sessionRate
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-7 text-xs flex-1">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="included">Included</SelectItem>
+                                    <SelectItem value="rental">Rental</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                {equipment.availabilityType === 'rental' && (
+                                  <div className="relative w-20">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={equipment.sessionRate}
+                                      onChange={(e) => updateSelectedEquipment(templateId, { 
+                                        sessionRate: parseFloat(e.target.value) || 0 
+                                      })}
+                                      className="h-7 text-xs pl-5"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+
+                    {selectedEquipmentCount > 0 && (
+                      <Button 
+                        className="w-full mt-3" 
+                        size="sm"
+                        onClick={handleCreate}
+                        disabled={isCreating}
+                      >
+                        {isCreating ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add {selectedEquipmentCount} Equipment
+                          </>
+                        )}
+                      </Button>
                     )}
                   </div>
-
-                  <Button onClick={handleCreate} disabled={!formData.name || isCreating} className="w-full">
-                    {isCreating ? <Loader2 className="animate-spin h-4 w-4" /> : <Plus className="h-4 w-4 mr-2" />}
-                    Add Equipment Listing
-                  </Button>
                 </div>
               </div>
             </>
           )}
         </div>
       )}
-
 
       <OnboardingNavigationFooter
         onNext={handleNext}
