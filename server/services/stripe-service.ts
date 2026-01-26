@@ -46,6 +46,18 @@ export interface PaymentIntentResult {
   amount: number;
 }
 
+export interface RefundEligibilityResult {
+  eligible: boolean;
+  maxRefundable: number;
+  totalAmount: number;
+  refundedAmount: number;
+  payoutStatus: string | null;
+  blockReason?: string;
+  paymentIntentStatus?: string;
+  chargeId?: string | null;
+  transferId?: string | null;
+}
+
 /**
  * Create a PaymentIntent with support for credit/debit cards (standard in Canada)
  * and ACSS debit payments.
@@ -261,6 +273,170 @@ export async function getPaymentIntent(paymentIntentId: string): Promise<Payment
 }
 
 /**
+ * Check whether a refund is allowed for a PaymentIntent
+ * - Only allow succeeded PaymentIntents
+ * - Block if payout is already in transit or paid on the connected account
+ */
+export async function getRefundEligibilityForPaymentIntent(
+  paymentIntentId: string,
+  managerConnectAccountId?: string
+): Promise<RefundEligibilityResult> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge'],
+    });
+
+    const paymentIntentStatus = paymentIntent.status;
+    const latestCharge = paymentIntent.latest_charge;
+    const charge = typeof latestCharge === 'string'
+      ? await stripe.charges.retrieve(latestCharge)
+      : latestCharge;
+
+    if (!charge) {
+      return {
+        eligible: false,
+        maxRefundable: 0,
+        totalAmount: paymentIntent.amount || 0,
+        refundedAmount: 0,
+        payoutStatus: null,
+        blockReason: 'Payment has no charge to refund',
+        paymentIntentStatus,
+        chargeId: null,
+        transferId: null,
+      };
+    }
+
+    const totalAmount = charge.amount || paymentIntent.amount || 0;
+    const refundedAmount = charge.amount_refunded || 0;
+    const maxRefundable = Math.max(0, totalAmount - refundedAmount);
+
+    if (paymentIntentStatus !== 'succeeded') {
+      return {
+        eligible: false,
+        maxRefundable,
+        totalAmount,
+        refundedAmount,
+        payoutStatus: null,
+        blockReason: `Payment is ${paymentIntentStatus}`,
+        paymentIntentStatus,
+        chargeId: charge.id,
+        transferId: (charge.transfer as string | null) || null,
+      };
+    }
+
+    if (maxRefundable <= 0) {
+      return {
+        eligible: false,
+        maxRefundable: 0,
+        totalAmount,
+        refundedAmount,
+        payoutStatus: null,
+        blockReason: 'Payment is already fully refunded',
+        paymentIntentStatus,
+        chargeId: charge.id,
+        transferId: (charge.transfer as string | null) || null,
+      };
+    }
+
+    if (!managerConnectAccountId) {
+      return {
+        eligible: false,
+        maxRefundable,
+        totalAmount,
+        refundedAmount,
+        payoutStatus: null,
+        blockReason: 'No connected Stripe account',
+        paymentIntentStatus,
+        chargeId: charge.id,
+        transferId: (charge.transfer as string | null) || null,
+      };
+    }
+
+    const transferId = (charge.transfer as string | null) || null;
+    let payoutStatus: string | null = null;
+
+    if (!transferId) {
+      return {
+        eligible: false,
+        maxRefundable,
+        totalAmount,
+        refundedAmount,
+        payoutStatus: null,
+        blockReason: 'Transfer not found for this payment',
+        paymentIntentStatus,
+        chargeId: charge.id,
+        transferId: null,
+      };
+    }
+
+    if (transferId) {
+      const balanceTransactions = await stripe.balanceTransactions.list(
+        {
+          limit: 1,
+          source: transferId,
+        },
+        {
+          stripeAccount: managerConnectAccountId,
+        }
+      );
+
+      const balanceTransaction = balanceTransactions.data[0];
+      const payoutId = balanceTransaction?.source;
+
+      if (payoutId) {
+        const payout = await stripe.payouts.retrieve(
+          payoutId as string,
+          { stripeAccount: managerConnectAccountId }
+        );
+        payoutStatus = payout?.status || null;
+      }
+    }
+
+    if (payoutStatus === 'in_transit' || payoutStatus === 'paid') {
+      return {
+        eligible: false,
+        maxRefundable,
+        totalAmount,
+        refundedAmount,
+        payoutStatus,
+        blockReason: 'Payout already in transit or paid',
+        paymentIntentStatus,
+        chargeId: charge.id,
+        transferId,
+      };
+    }
+
+    return {
+      eligible: true,
+      maxRefundable,
+      totalAmount,
+      refundedAmount,
+      payoutStatus,
+      paymentIntentStatus,
+      chargeId: charge.id,
+      transferId,
+    };
+  } catch (error: any) {
+    console.error('Error checking refund eligibility:', error);
+    return {
+      eligible: false,
+      maxRefundable: 0,
+      totalAmount: 0,
+      refundedAmount: 0,
+      payoutStatus: null,
+      blockReason: error.message || 'Failed to check refund eligibility',
+      paymentIntentStatus: 'error',
+      chargeId: null,
+      transferId: null,
+    };
+  }
+}
+
+/**
  * Get actual Stripe amounts from PaymentIntent and Charge
  * Returns the actual amounts charged by Stripe, including fees
  */
@@ -442,7 +618,11 @@ export async function cancelPaymentIntent(paymentIntentId: string): Promise<Paym
 export async function createRefund(
   paymentIntentId: string,
   amount?: number,
-  reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer'
+  reason: Stripe.RefundCreateParams.Reason = 'requested_by_customer',
+  options?: {
+    reverseTransfer?: boolean;
+    refundApplicationFee?: boolean;
+  }
 ): Promise<{ id: string; amount: number; status: string; charge: string }> {
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
@@ -450,7 +630,9 @@ export async function createRefund(
 
   try {
     // First, retrieve the payment intent to get the charge ID
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge'],
+    });
     
     if (!paymentIntent.latest_charge) {
       throw new Error('Payment intent has no charge to refund');
@@ -461,7 +643,7 @@ export async function createRefund(
       : paymentIntent.latest_charge.id;
 
     // Create refund parameters
-    const refundParams: any = {
+    const refundParams: Stripe.RefundCreateParams = {
       charge: chargeId,
       reason,
     };
@@ -469,6 +651,14 @@ export async function createRefund(
     // If amount is specified, create partial refund
     if (amount !== undefined && amount > 0) {
       refundParams.amount = amount;
+    }
+
+    if (options?.reverseTransfer !== undefined) {
+      refundParams.reverse_transfer = options.reverseTransfer;
+    }
+    const hasApplicationFee = !!paymentIntent.application_fee_amount;
+    if (options?.refundApplicationFee !== undefined && hasApplicationFee) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
     }
 
     const refund = await stripe.refunds.create(refundParams);

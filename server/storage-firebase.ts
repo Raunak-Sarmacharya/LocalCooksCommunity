@@ -2855,7 +2855,16 @@ export class FirebaseStorage {
 
   // ===== KITCHEN BOOKINGS MANAGEMENT =====
 
-  async createKitchenBooking(bookingData: { chefId: number; kitchenId: number; bookingDate: Date; startTime: string; endTime: string; specialNotes?: string }): Promise<any> {
+  async createKitchenBooking(bookingData: {
+    chefId: number;
+    kitchenId: number;
+    bookingDate: Date;
+    startTime: string;
+    endTime: string;
+    specialNotes?: string;
+    paymentIntentId?: string;
+    paymentStatus?: 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded' | 'processing' | 'canceled';
+  }): Promise<any> {
     try {
       console.log('Inserting kitchen booking into database:', bookingData);
 
@@ -2895,7 +2904,8 @@ export class FirebaseStorage {
         durationHours: pricing.durationHours.toString(),
         serviceFee: serviceFeeCents.toString(),
         currency: pricing.currency,
-        paymentStatus: 'pending',
+        paymentStatus: bookingData.paymentStatus || 'pending',
+        paymentIntentId: bookingData.paymentIntentId || null,
         storageItems: [],
         equipmentItems: [],
       };

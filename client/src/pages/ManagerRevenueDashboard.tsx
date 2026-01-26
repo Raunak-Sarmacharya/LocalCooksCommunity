@@ -7,7 +7,7 @@
  */
 
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import {
@@ -34,12 +34,23 @@ import {
   Info,
   AlertCircle,
   ExternalLink,
+  RotateCcw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -60,7 +71,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   Legend,
   ResponsiveContainer,
 } from "recharts";
@@ -77,6 +88,19 @@ interface ManagerRevenueDashboardProps {
 }
 
 type DateRange = 'today' | 'week' | 'month' | 'custom';
+
+interface RefundEligibility {
+  eligible: boolean;
+  maxRefundable: number;
+  totalAmount: number;
+  refundedAmount: number;
+  payoutStatus: string | null;
+  blockReason?: string;
+  paymentIntentStatus?: string;
+  bookingId?: number;
+  bookingType?: string;
+  currency?: string;
+}
 
 // Helper function to get auth headers
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -158,12 +182,19 @@ export default function ManagerRevenueDashboard({
   onNavigate,
 }: ManagerRevenueDashboardProps) {
   const { user: firebaseUser } = useFirebaseAuth();
+  const queryClient = useQueryClient();
   const [dateRange, setDateRange] = useState<DateRange>('month');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [selectedLocationFilter, setSelectedLocationFilter] = useState<number | 'all'>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<any | null>(null);
+  const [refundAmount, setRefundAmount] = useState<string>('');
+  const [refundReason, setRefundReason] = useState<string>('');
+  const [refundError, setRefundError] = useState<string | null>(null);
+  const [isRefundSubmitting, setIsRefundSubmitting] = useState(false);
 
   // Calculate date range based on selection
   const dateRangeParams = useMemo(() => {
@@ -378,6 +409,55 @@ export default function ManagerRevenueDashboard({
     enabled: !!firebaseUser,
   });
 
+  const refundEligibilityTargets = useMemo(() => {
+    if (!transactionsData?.transactions) return [];
+    return transactionsData.transactions
+      .filter((t: any) => t.paymentStatus === 'paid' && t.paymentIntentId)
+      .map((t: any) => ({
+        bookingId: t.id,
+        bookingType: t.bookingType || 'kitchen',
+      }));
+  }, [transactionsData]);
+
+  const refundEligibilityQueries = useQueries({
+    queries: refundEligibilityTargets.map((target: { bookingType: any; bookingId: any; }) => ({
+      queryKey: ['refund-eligibility', target.bookingType, target.bookingId],
+      queryFn: async () => {
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/manager/payments/refund-eligibility', {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({
+            bookingId: target.bookingId,
+            bookingType: target.bookingType,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error('Failed to check refund eligibility');
+        }
+        return response.json();
+      },
+      enabled: !!firebaseUser,
+      staleTime: 1000 * 60 * 2,
+      retry: false,
+    })),
+  });
+
+  const refundEligibilityStateMap = useMemo(() => {
+    const map = new Map<string, { data?: RefundEligibility; isLoading: boolean; isError: boolean }>();
+    refundEligibilityQueries.forEach((query, index) => {
+      const target = refundEligibilityTargets[index];
+      if (!target) return;
+      map.set(`${target.bookingType}:${target.bookingId}`, {
+        data: query.data as RefundEligibility | undefined,
+        isLoading: query.isLoading,
+        isError: query.isError,
+      });
+    });
+    return map;
+  }, [refundEligibilityQueries, refundEligibilityTargets]);
+
   // Filter transactions by search query
   const filteredTransactions = useMemo(() => {
     if (!transactionsData?.transactions) return [];
@@ -588,6 +668,87 @@ export default function ManagerRevenueDashboard({
     }
   };
 
+  const resetRefundState = () => {
+    setRefundDialogOpen(false);
+    setRefundTarget(null);
+    setRefundAmount('');
+    setRefundReason('');
+    setRefundError(null);
+    setIsRefundSubmitting(false);
+  };
+
+  const handleOpenRefundDialog = (transaction: any) => {
+    setRefundTarget(transaction);
+    setRefundError(null);
+    const bookingType = transaction.bookingType || 'kitchen';
+    const eligibilityState = refundEligibilityStateMap.get(`${bookingType}:${transaction.id}`);
+    const eligibility = eligibilityState?.data;
+    if (eligibility?.maxRefundable) {
+      setRefundAmount((eligibility.maxRefundable / 100).toFixed(2));
+    } else {
+      setRefundAmount('');
+    }
+    setRefundReason('');
+    setRefundDialogOpen(true);
+  };
+
+  const handleSubmitRefund = async () => {
+    if (!refundTarget) return;
+    setRefundError(null);
+
+    const bookingType = refundTarget.bookingType || 'kitchen';
+    const eligibilityState = refundEligibilityStateMap.get(`${bookingType}:${refundTarget.id}`);
+    const eligibility = eligibilityState?.data;
+
+    const amountNumber = Number.parseFloat(refundAmount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      setRefundError('Enter a valid refund amount.');
+      return;
+    }
+
+    const amountCents = Math.round(amountNumber * 100);
+    if (eligibility && amountCents > eligibility.maxRefundable) {
+      setRefundError('Refund amount exceeds the maximum refundable amount.');
+      return;
+    }
+
+    setIsRefundSubmitting(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/manager/payments/refund', {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({
+          bookingId: refundTarget.id,
+          bookingType,
+          amountCents,
+          reason: refundReason,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to issue refund');
+      }
+
+      resetRefundState();
+
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/overview'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/charts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/by-location'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['refund-eligibility', bookingType, refundTarget.id] });
+    } catch (error: any) {
+      console.error('Error issuing refund:', error);
+      setRefundError(error.message || 'Failed to issue refund');
+    } finally {
+      setIsRefundSubmitting(false);
+    }
+  };
+
   const getPayoutStatusBadge = (status: string) => {
     const colors: Record<string, { bg: string; text: string }> = {
       paid: { bg: 'bg-emerald-100', text: 'text-emerald-700' },
@@ -603,6 +764,22 @@ export default function ManagerRevenueDashboard({
       </Badge>
     );
   };
+
+  const selectedBookingType = refundTarget?.bookingType || 'kitchen';
+  const selectedEligibilityState = refundTarget
+    ? refundEligibilityStateMap.get(`${selectedBookingType}:${refundTarget.id}`)
+    : undefined;
+  const selectedEligibility = selectedEligibilityState?.data;
+  const maxRefundableCents = selectedEligibility?.maxRefundable;
+  const refundAmountNumber = Number.parseFloat(refundAmount);
+  const refundAmountCents = Number.isFinite(refundAmountNumber) ? Math.round(refundAmountNumber * 100) : 0;
+  const refundAmountExceedsMax = !!selectedEligibility && refundAmountCents > (selectedEligibility.maxRefundable || 0);
+  const refundActionDisabled =
+    !refundTarget ||
+    !selectedEligibility?.eligible ||
+    refundAmountCents <= 0 ||
+    refundAmountExceedsMax ||
+    isRefundSubmitting;
 
   return (
     <div className="space-y-6">
@@ -877,7 +1054,7 @@ export default function ManagerRevenueDashboard({
                       width={50}
                       tickFormatter={(value) => `$${value.toFixed(0)}`}
                     />
-                    <Tooltip 
+                    <RechartsTooltip 
                       contentStyle={{ 
                         borderRadius: '8px', 
                         border: 'none', 
@@ -956,7 +1133,7 @@ export default function ManagerRevenueDashboard({
                       width={50}
                       tickFormatter={(value) => `$${value.toFixed(0)}`}
                     />
-                    <Tooltip 
+                    <RechartsTooltip 
                       contentStyle={{ 
                         borderRadius: '8px', 
                         border: 'none', 
@@ -994,7 +1171,7 @@ export default function ManagerRevenueDashboard({
                               <Cell key={`cell-${index}`} fill={getPaymentStatusColor(entry.status)} />
                             ))}
                           </Pie>
-                          <Tooltip 
+                          <RechartsTooltip 
                             contentStyle={{ 
                               borderRadius: '8px', 
                               border: 'none', 
@@ -1038,7 +1215,7 @@ export default function ManagerRevenueDashboard({
                             <Cell key={`cell-${index}`} fill={getPaymentStatusColor(entry.status)} />
                           ))}
                         </Pie>
-                        <Tooltip 
+                        <RechartsTooltip 
                           contentStyle={{ 
                             borderRadius: '8px', 
                             border: 'none', 
@@ -1151,8 +1328,35 @@ export default function ManagerRevenueDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredTransactions.map((transaction: any) => (
-                    <tr key={transaction.id} className="hover:bg-gray-50 transition-colors">
+                  {filteredTransactions.map((transaction: any) => {
+                    const bookingType = transaction.bookingType || 'kitchen';
+                    const eligibilityState = refundEligibilityStateMap.get(`${bookingType}:${transaction.id}`);
+                    const eligibility = eligibilityState?.data;
+                    const refundDisabledBase = transaction.paymentStatus !== 'paid' || !transaction.paymentIntentId;
+                    const refundBlocked = !!eligibility && !eligibility.eligible;
+                    const refundDisabled = refundDisabledBase || refundBlocked;
+                    const refundTooltip = refundDisabledBase
+                      ? (!transaction.paymentIntentId
+                        ? 'No payment information available for this booking.'
+                        : transaction.paymentStatus === 'refunded'
+                          ? 'This booking has already been refunded.'
+                          : transaction.paymentStatus === 'partially_refunded'
+                            ? 'This booking has already been partially refunded.'
+                            : transaction.paymentStatus === 'failed'
+                              ? 'Payment failed and cannot be refunded.'
+                              : transaction.paymentStatus === 'processing'
+                                ? 'Payment is still processing.'
+                                : 'Refunds are only available after payment succeeds.')
+                      : refundBlocked
+                        ? (eligibility?.blockReason || 'Refund not available')
+                        : eligibilityState?.isLoading
+                          ? 'Checking refund eligibility...'
+                          : eligibilityState?.isError
+                            ? 'Unable to verify refund eligibility'
+                            : 'Issue refund';
+
+                    return (
+                      <tr key={transaction.id} className="hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-4 text-sm text-gray-900">
                         {formatDate(transaction.bookingDate)}
                       </td>
@@ -1172,17 +1376,42 @@ export default function ManagerRevenueDashboard({
                         {getPaymentStatusBadge(transaction.paymentStatus)}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDownloadInvoice(transaction.id)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <Download className="h-4 w-4 text-gray-600" />
-                        </Button>
+                        <TooltipProvider delayDuration={150}>
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownloadInvoice(transaction.id)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Download className="h-4 w-4 text-gray-600" />
+                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenRefundDialog(transaction)}
+                                    className="h-8 w-8 p-0"
+                                    disabled={refundDisabled}
+                                  >
+                                    <RotateCcw className="h-4 w-4 text-gray-600" />
+                                  </Button>
+                                </span>
+                              </TooltipTrigger>
+                              {refundTooltip && (
+                                <TooltipContent>
+                                  <p className="text-xs">{refundTooltip}</p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </div>
+                        </TooltipProvider>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
@@ -1381,6 +1610,155 @@ export default function ManagerRevenueDashboard({
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={refundDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetRefundState();
+          } else {
+            setRefundDialogOpen(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Issue Refund</DialogTitle>
+            <DialogDescription>
+              Refund a payment only if the payout has not started transferring to the bank.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!refundTarget ? (
+            <div className="text-sm text-gray-500">Select a booking to refund.</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+                <div className="font-semibold text-gray-900">
+                  Booking #{refundTarget.id}
+                </div>
+                <div className="text-gray-600">
+                  {refundTarget.kitchenName || refundTarget.locationName || 'Booking'}
+                </div>
+                {refundTarget.paymentIntentId && (
+                  <div className="mt-1 text-xs text-gray-500">
+                    PaymentIntent: {refundTarget.paymentIntentId}
+                  </div>
+                )}
+              </div>
+
+              {selectedEligibilityState?.isLoading && (
+                <div className="text-sm text-gray-500">Checking refund eligibility...</div>
+              )}
+
+              {selectedEligibility && (
+                <div className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Max refundable</span>
+                    <span className="font-semibold">
+                      {formatCurrency((selectedEligibility.maxRefundable || 0) / 100)}
+                    </span>
+                  </div>
+                  {selectedEligibility.refundedAmount > 0 && (
+                    <div className="mt-1 flex items-center justify-between text-gray-500">
+                      <span>Already refunded</span>
+                      <span>{formatCurrency(selectedEligibility.refundedAmount / 100)}</span>
+                    </div>
+                  )}
+                  {selectedEligibility.payoutStatus && (
+                    <div className="mt-1 flex items-center justify-between text-gray-500">
+                      <span>Payout status</span>
+                      <span className="capitalize">
+                        {selectedEligibility.payoutStatus.replace('_', ' ')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!selectedEligibility?.eligible && selectedEligibility?.blockReason && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertTitle className="text-amber-900 font-semibold">
+                    Refund not available
+                  </AlertTitle>
+                  <AlertDescription className="text-amber-800">
+                    {selectedEligibility.blockReason}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Refund amount (CAD)
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={refundAmount}
+                  onChange={(e) => setRefundAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+                {maxRefundableCents !== undefined && (
+                  <p className="text-xs text-gray-500">
+                    Max refundable: {formatCurrency(maxRefundableCents / 100)}
+                  </p>
+                )}
+                {refundAmountExceedsMax && (
+                  <p className="text-xs text-red-600">
+                    Amount exceeds the maximum refundable amount.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Refund note
+                </label>
+                <Textarea
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="Add a note for internal tracking"
+                  rows={3}
+                />
+              </div>
+
+              {refundError && (
+                <Alert className="border-red-200 bg-red-50">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertTitle className="text-red-900 font-semibold">
+                    Refund failed
+                  </AlertTitle>
+                  <AlertDescription className="text-red-800">
+                    {refundError}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="mt-2">
+            <Button variant="ghost" onClick={resetRefundState} disabled={isRefundSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitRefund}
+              disabled={refundActionDisabled}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              {isRefundSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processing
+                </span>
+              ) : (
+                'Issue Refund'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -4450,6 +4450,259 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper: fetch booking details for refund validation
+  const getRefundBooking = async (
+    bookingId: number,
+    bookingType: string,
+    managerId: number
+  ): Promise<{
+    bookingId: number;
+    bookingType: 'kitchen' | 'storage' | 'equipment';
+    paymentIntentId: string | null;
+    currency: string | null;
+    totalPrice: number | null;
+  } | null> => {
+    const normalizedType = bookingType === 'bundle' ? 'kitchen' : bookingType;
+
+    if (normalizedType === 'kitchen') {
+      const result = await pool.query(`
+        SELECT kb.id, kb.payment_intent_id, kb.currency, kb.total_price
+        FROM kitchen_bookings kb
+        JOIN kitchens k ON kb.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE kb.id = $1 AND l.manager_id = $2
+      `, [bookingId, managerId]);
+
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0];
+      return {
+        bookingId: row.id,
+        bookingType: 'kitchen',
+        paymentIntentId: row.payment_intent_id,
+        currency: row.currency || 'CAD',
+        totalPrice: row.total_price != null ? parseInt(String(row.total_price)) : null,
+      };
+    }
+
+    if (normalizedType === 'storage') {
+      const result = await pool.query(`
+        SELECT sb.id, sb.payment_intent_id, sb.currency, sb.total_price
+        FROM storage_bookings sb
+        JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+        JOIN kitchens k ON sl.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE sb.id = $1 AND l.manager_id = $2
+      `, [bookingId, managerId]);
+
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0];
+      return {
+        bookingId: row.id,
+        bookingType: 'storage',
+        paymentIntentId: row.payment_intent_id,
+        currency: row.currency || 'CAD',
+        totalPrice: row.total_price != null ? parseInt(String(row.total_price)) : null,
+      };
+    }
+
+    if (normalizedType === 'equipment') {
+      const result = await pool.query(`
+        SELECT eb.id, eb.payment_intent_id, eb.currency, eb.total_price
+        FROM equipment_bookings eb
+        JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+        JOIN kitchens k ON el.kitchen_id = k.id
+        JOIN locations l ON k.location_id = l.id
+        WHERE eb.id = $1 AND l.manager_id = $2
+      `, [bookingId, managerId]);
+
+      if (result.rows.length === 0) return null;
+      const row = result.rows[0];
+      return {
+        bookingId: row.id,
+        bookingType: 'equipment',
+        paymentIntentId: row.payment_intent_id,
+        currency: row.currency || 'CAD',
+        totalPrice: row.total_price != null ? parseInt(String(row.total_price)) : null,
+      };
+    }
+
+    return null;
+  };
+
+  // Check refund eligibility for a booking
+  app.post("/api/manager/payments/refund-eligibility", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.body.bookingId);
+      const bookingType = String(req.body.bookingType || '').trim();
+      const managerId = req.neonUser!.id;
+      const normalizedType = bookingType === 'bundle' ? 'kitchen' : bookingType;
+
+      if (!bookingId || !bookingType) {
+        return res.status(400).json({ error: "Missing bookingId or bookingType" });
+      }
+      if (!['kitchen', 'storage', 'equipment'].includes(normalizedType)) {
+        return res.status(400).json({ error: "Invalid bookingType" });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const booking = await getRefundBooking(bookingId, normalizedType, managerId);
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found or access denied" });
+      }
+
+      if (!booking.paymentIntentId) {
+        return res.status(400).json({ error: "Booking has no payment intent" });
+      }
+
+      const managerResult = await pool.query(`
+        SELECT stripe_connect_account_id
+        FROM users
+        WHERE id = $1
+      `, [managerId]);
+      const managerConnectAccountId = managerResult.rows[0]?.stripe_connect_account_id;
+
+      const { getRefundEligibilityForPaymentIntent } = await import('./services/stripe-service');
+      const eligibility = await getRefundEligibilityForPaymentIntent(
+        booking.paymentIntentId,
+        managerConnectAccountId
+      );
+
+      res.json({
+        ...eligibility,
+        bookingId: booking.bookingId,
+        bookingType: booking.bookingType,
+        currency: booking.currency || 'CAD',
+      });
+    } catch (error: any) {
+      console.error('Error checking refund eligibility:', error);
+      res.status(500).json({ error: error.message || 'Failed to check refund eligibility' });
+    }
+  });
+
+  // Refund a booking payment (manager dashboard only)
+  app.post("/api/manager/payments/refund", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+      const bookingId = parseInt(req.body.bookingId);
+      const bookingType = String(req.body.bookingType || '').trim();
+      const amountCentsRaw = Number(req.body.amountCents);
+      const refundReasonNote = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+      const managerId = req.neonUser!.id;
+      const normalizedType = bookingType === 'bundle' ? 'kitchen' : bookingType;
+
+      if (!bookingId || !bookingType) {
+        return res.status(400).json({ error: "Missing bookingId or bookingType" });
+      }
+      if (!['kitchen', 'storage', 'equipment'].includes(normalizedType)) {
+        return res.status(400).json({ error: "Invalid bookingType" });
+      }
+
+      if (!Number.isFinite(amountCentsRaw) || amountCentsRaw <= 0) {
+        return res.status(400).json({ error: "Refund amount must be greater than 0" });
+      }
+
+      if (!pool) {
+        return res.status(500).json({ error: "Database connection not available" });
+      }
+
+      const booking = await getRefundBooking(bookingId, normalizedType, managerId);
+      if (!booking) {
+        return res.status(404).json({ error: "Booking not found or access denied" });
+      }
+
+      if (!booking.paymentIntentId) {
+        return res.status(400).json({ error: "Booking has no payment intent" });
+      }
+
+      const managerResult = await pool.query(`
+        SELECT stripe_connect_account_id
+        FROM users
+        WHERE id = $1
+      `, [managerId]);
+      const managerConnectAccountId = managerResult.rows[0]?.stripe_connect_account_id;
+
+      const { getRefundEligibilityForPaymentIntent, createRefund } = await import('./services/stripe-service');
+      const eligibility = await getRefundEligibilityForPaymentIntent(
+        booking.paymentIntentId,
+        managerConnectAccountId
+      );
+
+      if (!eligibility.eligible) {
+        return res.status(400).json({ error: eligibility.blockReason || 'Refund is not allowed' });
+      }
+
+      const refundAmountCents = Math.round(amountCentsRaw);
+      if (refundAmountCents > eligibility.maxRefundable) {
+        return res.status(400).json({ error: "Refund amount exceeds the maximum refundable amount" });
+      }
+
+      const refund = await createRefund(
+        booking.paymentIntentId,
+        refundAmountCents,
+        'requested_by_customer',
+        {
+          reverseTransfer: true,
+          refundApplicationFee: true,
+        }
+      );
+
+      const updatedRefundedAmount = (eligibility.refundedAmount || 0) + refund.amount;
+      const totalAmount = eligibility.totalAmount || refund.amount;
+      const refundStatus = updatedRefundedAmount < totalAmount ? 'partially_refunded' : 'refunded';
+
+      // Update payment_transactions if present
+      try {
+        const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import('./services/payment-transactions-service');
+        const transaction = await findPaymentTransactionByIntentId(booking.paymentIntentId, pool);
+        if (transaction) {
+          await updatePaymentTransaction(transaction.id, {
+            status: refundStatus,
+            refundAmount: updatedRefundedAmount,
+            refundId: refund.id,
+            refundReason: refundReasonNote || undefined,
+            refundedAt: new Date(),
+          }, pool);
+        }
+      } catch (error) {
+        console.warn('[Refund] Failed to update payment_transactions:', error);
+      }
+
+      // Update booking payment status
+      if (booking.bookingType === 'kitchen') {
+        await pool.query(`
+          UPDATE kitchen_bookings
+          SET payment_status = $1, updated_at = NOW()
+          WHERE id = $2
+        `, [refundStatus, booking.bookingId]);
+      } else if (booking.bookingType === 'storage') {
+        await pool.query(`
+          UPDATE storage_bookings
+          SET payment_status = $1, updated_at = NOW()
+          WHERE id = $2
+        `, [refundStatus, booking.bookingId]);
+      } else if (booking.bookingType === 'equipment') {
+        await pool.query(`
+          UPDATE equipment_bookings
+          SET payment_status = $1, updated_at = NOW()
+          WHERE id = $2
+        `, [refundStatus, booking.bookingId]);
+      }
+
+      res.json({
+        success: true,
+        refundId: refund.id,
+        refundStatus,
+        refundedAmount: updatedRefundedAmount,
+        maxRefundable: Math.max(0, totalAmount - updatedRefundedAmount),
+      });
+    } catch (error: any) {
+      console.error('Error creating refund:', error);
+      res.status(500).json({ error: error.message || 'Failed to create refund' });
+    }
+  });
+
   // Get revenue chart data (daily breakdown)
   app.get("/api/manager/revenue/charts", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
@@ -4557,8 +4810,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Fetch booking details for display
           if (transactions.length > 0) {
-            const bookingIds = transactions.map(t => t.id);
-              const bookingDetails = await pool.query(`
+            const kitchenIds = transactions
+              .filter(t => t.bookingType === 'kitchen' || t.bookingType === 'bundle')
+              .map(t => t.id);
+            const storageIds = transactions
+              .filter(t => t.bookingType === 'storage')
+              .map(t => t.id);
+            const equipmentIds = transactions
+              .filter(t => t.bookingType === 'equipment')
+              .map(t => t.id);
+
+            const detailsMap = new Map<string, any>();
+
+            if (kitchenIds.length > 0) {
+              const kitchenDetails = await pool.query(`
                 SELECT 
                   kb.id,
                   kb.booking_date,
@@ -4573,33 +4838,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   u.username as chef_email
                 FROM kitchen_bookings kb
                 JOIN kitchens k ON kb.kitchen_id = k.id
-              JOIN locations l ON k.location_id = l.id
-              LEFT JOIN users u ON kb.chef_id = u.id
-              WHERE kb.id = ANY($1)
-            `, [bookingIds]);
+                JOIN locations l ON k.location_id = l.id
+                LEFT JOIN users u ON kb.chef_id = u.id
+                WHERE kb.id = ANY($1)
+              `, [kitchenIds]);
 
-              const detailsMap = new Map(bookingDetails.rows.map(b => [b.id, b]));
-              transactions = transactions.map(t => ({
-                ...t,
-                bookingDate: detailsMap.get(t.id)?.booking_date,
-                startTime: detailsMap.get(t.id)?.start_time,
-                endTime: detailsMap.get(t.id)?.end_time,
-                status: detailsMap.get(t.id)?.status,
-                kitchenName: detailsMap.get(t.id)?.kitchen_name,
-                locationId: detailsMap.get(t.id)?.location_id,
-                locationName: detailsMap.get(t.id)?.location_name,
-                chefName: detailsMap.get(t.id)?.chef_name || 'Guest',
-                chefEmail: detailsMap.get(t.id)?.chef_email,
-                taxRatePercent: (() => {
-                  const rawTaxRate = detailsMap.get(t.id)?.tax_rate_percent;
-                  if (rawTaxRate === null ) {
-                    return null;
-                  }
-                  const parsedTaxRate = Number(rawTaxRate);
-                  return Number.isNaN(parsedTaxRate) ? null : parsedTaxRate;
-                })(),
-              }));
+              kitchenDetails.rows.forEach((row: any) => {
+                detailsMap.set(`kitchen:${row.id}`, row);
+                detailsMap.set(`bundle:${row.id}`, row);
+              });
             }
+
+            if (storageIds.length > 0) {
+              const storageDetails = await pool.query(`
+                SELECT
+                  sb.id,
+                  sb.start_date,
+                  sb.end_date,
+                  sb.status,
+                  k.name as kitchen_name,
+                  k.tax_rate_percent::text as tax_rate_percent,
+                  l.id as location_id,
+                  l.name as location_name,
+                  u.username as chef_name,
+                  u.username as chef_email
+                FROM storage_bookings sb
+                JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+                JOIN kitchens k ON sl.kitchen_id = k.id
+                JOIN locations l ON k.location_id = l.id
+                LEFT JOIN users u ON sb.chef_id = u.id
+                WHERE sb.id = ANY($1)
+              `, [storageIds]);
+
+              storageDetails.rows.forEach((row: any) => {
+                detailsMap.set(`storage:${row.id}`, row);
+              });
+            }
+
+            if (equipmentIds.length > 0) {
+              const equipmentDetails = await pool.query(`
+                SELECT
+                  eb.id,
+                  eb.start_date,
+                  eb.end_date,
+                  eb.status,
+                  k.name as kitchen_name,
+                  k.tax_rate_percent::text as tax_rate_percent,
+                  l.id as location_id,
+                  l.name as location_name,
+                  u.username as chef_name,
+                  u.username as chef_email
+                FROM equipment_bookings eb
+                JOIN equipment_listings el ON eb.equipment_listing_id = el.id
+                JOIN kitchens k ON el.kitchen_id = k.id
+                JOIN locations l ON k.location_id = l.id
+                LEFT JOIN users u ON eb.chef_id = u.id
+                WHERE eb.id = ANY($1)
+              `, [equipmentIds]);
+
+              equipmentDetails.rows.forEach((row: any) => {
+                detailsMap.set(`equipment:${row.id}`, row);
+              });
+            }
+
+            transactions = transactions.map(t => {
+              const key = `${t.bookingType || 'kitchen'}:${t.id}`;
+              const details = detailsMap.get(key);
+              const rawTaxRate = details?.tax_rate_percent;
+              const parsedTaxRate = rawTaxRate === null || rawTaxRate === undefined ? null : Number(rawTaxRate);
+
+              return {
+                ...t,
+                bookingDate: details?.booking_date || details?.start_date,
+                startTime: details?.start_time,
+                endTime: details?.end_time,
+                status: details?.status,
+                kitchenName: details?.kitchen_name,
+                locationId: details?.location_id,
+                locationName: details?.location_name,
+                chefName: details?.chef_name || 'Guest',
+                chefEmail: details?.chef_email,
+                taxRatePercent: Number.isNaN(parsedTaxRate) ? null : parsedTaxRate,
+              };
+            });
+          }
 
           console.log(`[Revenue] Using payment_transactions for transaction history: ${transactions.length} transactions`);
         }
@@ -4640,6 +4962,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         transactions: transactions.map(t => ({
           ...t,
+          bookingType: t.bookingType || 'kitchen',
           totalPrice: t.totalPrice / 100,
           serviceFee: t.serviceFee / 100,
           managerRevenue: t.managerRevenue / 100,
