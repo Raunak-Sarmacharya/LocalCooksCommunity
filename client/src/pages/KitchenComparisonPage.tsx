@@ -342,8 +342,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
               rental: (equipmentData.rental || []).map((e: any) => ({
@@ -353,8 +353,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
             };
@@ -539,8 +539,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
               rental: (equipmentData.rental || []).map((e: any) => ({
@@ -550,8 +550,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
             };
@@ -619,12 +619,12 @@ export default function KitchenComparisonPage() {
             headers,
           });
 
-          let hourlyRate = kitchen.hourlyRate;
+          let hourlyRate = kitchen.hourlyRate ? kitchen.hourlyRate / 100 : undefined;
           let currency = kitchen.currency || "CAD";
 
           if (pricingResponse.ok) {
             const pricing = await pricingResponse.json();
-            hourlyRate = pricing.hourlyRate > 100 ? pricing.hourlyRate / 100 : pricing.hourlyRate;
+            hourlyRate = pricing.hourlyRate ? pricing.hourlyRate / 100 : undefined;
             currency = pricing.currency || "CAD";
           }
 
@@ -645,8 +645,8 @@ export default function KitchenComparisonPage() {
                   brand: e.brand,
                   model: e.model,
                   availabilityType: e.availabilityType,
-                  hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                  dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                  hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                  dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                   currency: e.currency || currency,
                 })),
                 rental: (equipmentData.rental || []).map((e: any) => ({
@@ -656,8 +656,8 @@ export default function KitchenComparisonPage() {
                   brand: e.brand,
                   model: e.model,
                   availabilityType: e.availabilityType,
-                  hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                  dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                  hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                  dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                   currency: e.currency || currency,
                 })),
               };

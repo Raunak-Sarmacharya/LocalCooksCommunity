@@ -773,8 +773,8 @@ export default function KitchenPreviewPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
               rental: (equipmentData.rental || []).map((e: any) => ({
@@ -784,8 +784,8 @@ export default function KitchenPreviewPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
             });

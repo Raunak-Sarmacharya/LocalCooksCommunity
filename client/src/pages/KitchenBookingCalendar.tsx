@@ -591,23 +591,20 @@ export default function KitchenBookingCalendar() {
         console.log('✅ Kitchen pricing fetched:', pricing);
         console.log('✅ Parsed hourlyRate:', pricing.hourlyRate, 'Type:', typeof pricing.hourlyRate);
 
-        // Convert to number if it's a string, and handle cents vs dollars
-        let hourlyRate = pricing.hourlyRate;
-        if (typeof hourlyRate === 'string') {
-          hourlyRate = parseFloat(hourlyRate);
+        // API returns cents - convert to dollars for UI state
+        let hourlyRateCents = pricing.hourlyRate;
+        if (typeof hourlyRateCents === 'string') {
+          hourlyRateCents = parseFloat(hourlyRateCents);
         }
-        // If hourlyRate is in cents (large number), convert to dollars
-        if (hourlyRate && hourlyRate > 100) {
-          console.warn('⚠️ Hourly rate appears to be in cents, converting to dollars:', hourlyRate);
-          hourlyRate = hourlyRate / 100;
-        }
+        // Convert cents to dollars for UI calculations
+        const hourlyRateDollars = hourlyRateCents ? hourlyRateCents / 100 : null;
 
         setKitchenPricing({
-          hourlyRate: hourlyRate || null,
+          hourlyRate: hourlyRateDollars,
           currency: pricing.currency || 'CAD',
           minimumBookingHours: pricing.minimumBookingHours || 1,
         });
-        console.log('✅ Set kitchenPricing state:', { hourlyRate, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
+        console.log('✅ Set kitchenPricing state:', { hourlyRate: hourlyRateDollars, currency: pricing.currency || 'CAD', minimumBookingHours: pricing.minimumBookingHours || 1 });
       } else if (response.status === 404) {
         // No pricing set yet - this is expected
         console.log('ℹ️ No pricing set for kitchen:', kitchen.id);
@@ -681,16 +678,9 @@ export default function KitchenBookingCalendar() {
     const durationHours = Math.max(selectedSlots.length, kitchenPricing.minimumBookingHours || 1);
 
     // Only calculate price if hourly rate is set
+    // hourlyRate is already in dollars (converted from cents when fetched from API)
     if (kitchenPricing.hourlyRate && kitchenPricing.hourlyRate > 0) {
-      // hourlyRate should already be in dollars from the API
-      // But handle case where it might still be in cents (defensive)
-      let hourlyRateDollars = kitchenPricing.hourlyRate;
-      if (hourlyRateDollars > 100) {
-        console.warn('⚠️ Hourly rate appears to be in cents, converting:', hourlyRateDollars);
-        hourlyRateDollars = hourlyRateDollars / 100;
-      }
-
-      const basePrice = hourlyRateDollars * durationHours;
+      const basePrice = kitchenPricing.hourlyRate * durationHours;
       const baseCents = Math.round(basePrice * 100);
       const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
       const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
@@ -1008,7 +998,7 @@ export default function KitchenBookingCalendar() {
                           )}
                           {kitchenPricing && kitchenPricing.hourlyRate && (
                             <p className="text-xs sm:text-sm font-semibold text-blue-900 mt-1.5 sm:mt-2">
-                              ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)} {kitchenPricing.currency}/hour
+                              ${kitchenPricing.hourlyRate.toFixed(2)} {kitchenPricing.currency}/hour
                             </p>
                           )}
                           {kitchenPricing && !kitchenPricing.hourlyRate && (
