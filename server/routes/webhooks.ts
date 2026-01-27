@@ -73,6 +73,12 @@ router.post("/stripe", async (req: Request, res: Response) => {
             case 'account.updated':
                 await handleAccountUpdated(event.data.object as Stripe.Account, webhookEventId);
                 break;
+            case 'payout.paid':
+                await handlePayoutPaid(event.data.object as Stripe.Payout, event.account, webhookEventId);
+                break;
+            case 'payout.failed':
+                await handlePayoutFailed(event.data.object as Stripe.Payout, event.account, webhookEventId);
+                break;
             default:
                 // Handle charge.partially_refunded and other charge events
                 if (event.type.startsWith('charge.')) {
@@ -574,6 +580,85 @@ async function handleChargeRefunded(charge: Stripe.Charge, webhookEventId: strin
         logger.info(`[Webhook] Updated booking payment status to '${refundStatus}' for PaymentIntent ${paymentIntentId}`);
     } catch (error: any) {
         logger.error(`[Webhook] Error updating refund status for charge ${charge.id}:`, error);
+    }
+}
+
+async function handlePayoutPaid(payout: Stripe.Payout, connectedAccountId: string | undefined, _webhookEventId: string) {
+    try {
+        if (!connectedAccountId) {
+            logger.warn(`[Webhook] payout.paid event received without connected account ID`);
+            return;
+        }
+
+        // Find the manager who owns this Connect account
+        const [manager] = await db
+            .select({ id: users.id, username: users.username })
+            .from(users)
+            .where(eq(users.stripeConnectAccountId, connectedAccountId))
+            .limit(1);
+
+        if (!manager) {
+            logger.warn(`[Webhook] payout.paid for unknown Connect account ${connectedAccountId}`);
+            return;
+        }
+
+        const payoutAmount = (payout.amount / 100).toFixed(2);
+        const arrivalDate = new Date(payout.arrival_date * 1000).toISOString().split('T')[0];
+
+        logger.info(`[Webhook] Payout successful for manager ${manager.id}:`, {
+            payoutId: payout.id,
+            amount: `$${payoutAmount} ${payout.currency.toUpperCase()}`,
+            arrivalDate,
+            method: payout.method,
+            status: payout.status,
+        });
+
+        // Optional: Send email notification to manager about successful payout
+        // This can be implemented later if needed
+        // await sendPayoutSuccessEmail(manager.username, payoutAmount, arrivalDate);
+
+    } catch (error: any) {
+        logger.error(`[Webhook] Error handling payout.paid:`, error);
+    }
+}
+
+async function handlePayoutFailed(payout: Stripe.Payout, connectedAccountId: string | undefined, _webhookEventId: string) {
+    try {
+        if (!connectedAccountId) {
+            logger.warn(`[Webhook] payout.failed event received without connected account ID`);
+            return;
+        }
+
+        // Find the manager who owns this Connect account
+        const [manager] = await db
+            .select({ id: users.id, username: users.username })
+            .from(users)
+            .where(eq(users.stripeConnectAccountId, connectedAccountId))
+            .limit(1);
+
+        if (!manager) {
+            logger.warn(`[Webhook] payout.failed for unknown Connect account ${connectedAccountId}`);
+            return;
+        }
+
+        const payoutAmount = (payout.amount / 100).toFixed(2);
+        const failureCode = payout.failure_code || 'unknown';
+        const failureMessage = payout.failure_message || 'Payout failed';
+
+        logger.error(`[Webhook] Payout FAILED for manager ${manager.id}:`, {
+            payoutId: payout.id,
+            amount: `$${payoutAmount} ${payout.currency.toUpperCase()}`,
+            failureCode,
+            failureMessage,
+            status: payout.status,
+        });
+
+        // Optional: Send email notification to manager about failed payout
+        // This is important for failed payouts so managers can take action
+        // await sendPayoutFailedEmail(manager.username, payoutAmount, failureMessage);
+
+    } catch (error: any) {
+        logger.error(`[Webhook] Error handling payout.failed:`, error);
     }
 }
 

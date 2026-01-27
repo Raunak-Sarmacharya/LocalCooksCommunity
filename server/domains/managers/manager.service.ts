@@ -60,8 +60,8 @@ export class ManagerService implements IManagerService {
                 bookingDate: row.bookingDate,
                 startTime: row.startTime,
                 endTime: row.endTime,
-                totalPrice: totalPriceCents / 100,
-                serviceFee: serviceFeeCents / 100,
+                totalPrice: totalPriceCents, // Keep in cents for consistency with other APIs
+                serviceFee: serviceFeeCents, // Keep in cents for consistency
                 paymentStatus: row.paymentStatus,
                 paymentIntentId: row.paymentIntentId,
                 currency: row.currency || 'CAD',
@@ -101,7 +101,7 @@ export class ManagerService implements IManagerService {
         return {
             payouts: payouts.map(p => ({
                 id: p.id,
-                amount: p.amount / 100, // Convert cents to dollars
+                amount: p.amount, // Keep in cents for consistency with formatCurrency
                 currency: p.currency,
                 status: p.status,
                 arrivalDate: new Date(p.arrival_date * 1000).toISOString(),
