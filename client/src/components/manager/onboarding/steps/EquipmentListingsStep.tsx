@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package } from "lucide-react";
+import { Info, Plus, CheckCircle, Loader2, Search, Check, ChevronDown, ChevronUp, X, DollarSign, Package, Flame, ChefHat, Snowflake, Sparkles, SprayCan, PlusCircle, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,16 @@ import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
-import { EQUIPMENT_CATEGORIES, type EquipmentTemplate } from "@/lib/equipment-templates";
+import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId } from "@/lib/equipment-templates";
+
+// Icon component mapping for categories (enterprise pattern - no emojis)
+const CategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
+  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
+    Flame, ChefHat, Snowflake, Sparkles, SprayCan
+  };
+  const Icon = icons[iconName] || Package;
+  return <Icon className={className} />;
+};
 
 interface SelectedEquipment {
   templateId: string;
@@ -49,6 +58,17 @@ export default function EquipmentListingsStep() {
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['cooking', 'food-prep']);
   const [selectedEquipment, setSelectedEquipment] = useState<Record<string, SelectedEquipment>>({});
   const [isCreating, setIsCreating] = useState(false);
+  
+  // Custom equipment state for intuitive "not found" flow
+  const [customEquipment, setCustomEquipment] = useState({
+    name: '',
+    category: 'cooking' as EquipmentCategoryId,
+    condition: 'good' as 'excellent' | 'good' | 'fair',
+    availabilityType: 'included' as 'included' | 'rental',
+    sessionRate: 0,
+    damageDeposit: 0,
+    brand: '',
+  });
 
   const selectedEquipmentCount = Object.keys(selectedEquipment).length;
 
@@ -65,6 +85,10 @@ export default function EquipmentListingsStep() {
       )
     })).filter(cat => cat.items.length > 0);
   }, [searchQuery]);
+
+  // Computed: total filtered items for intuitive custom equipment flow
+  const totalFilteredItems = filteredCategories.reduce((sum, cat) => sum + cat.items.length, 0);
+  const showNoResultsCustomOption = searchQuery.trim().length > 0 && totalFilteredItems === 0;
 
   // Toggle category expansion
   const toggleCategory = (categoryId: string) => {
@@ -164,6 +188,47 @@ export default function EquipmentListingsStep() {
     }
   };
 
+  // Save custom equipment (for intuitive "not found" flow)
+  const saveCustomEquipment = async () => {
+    // Use searchQuery as fallback if customEquipment.name is empty (intuitive flow)
+    const equipmentName = (customEquipment.name.trim() || searchQuery.trim());
+    if (!selectedKitchenId || !equipmentName) {
+      toast({ title: "Error", description: "Please enter an equipment name", variant: "destructive" });
+      return;
+    }
+    setIsCreating(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch(`/api/manager/equipment-listings`, {
+        method: "POST",
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          kitchenId: selectedKitchenId,
+          category: customEquipment.category,
+          equipmentType: equipmentName,
+          brand: customEquipment.brand || undefined,
+          condition: customEquipment.condition,
+          availabilityType: customEquipment.availabilityType,
+          sessionRate: customEquipment.availabilityType === 'rental' ? Math.round(customEquipment.sessionRate * 100) : 0,
+          damageDeposit: customEquipment.availabilityType === 'rental' ? Math.round(customEquipment.damageDeposit * 100) : 0,
+          currency: "CAD",
+          isActive: true,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to create equipment listing");
+      toast({ title: "Equipment Added", description: `Successfully added "${equipmentName}"` });
+      setCustomEquipment({ name: '', category: 'cooking', condition: 'good', availabilityType: 'included', sessionRate: 0, damageDeposit: 0, brand: '' });
+      setSearchQuery('');
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add equipment", variant: "destructive" });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
       <div>
@@ -258,7 +323,7 @@ export default function EquipmentListingsStep() {
                                 className="w-full justify-between p-2 h-auto font-medium hover:bg-white"
                               >
                                 <span className="flex items-center gap-2 text-sm">
-                                  <span>{category.icon}</span>
+                                  <CategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />
                                   {category.name}
                                   <Badge variant="secondary" className="text-xs">
                                     {category.items.length}
@@ -308,6 +373,85 @@ export default function EquipmentListingsStep() {
                             </CollapsibleContent>
                           </Collapsible>
                         ))}
+                        
+                        {/* Intuitive custom equipment option when search has no results */}
+                        {showNoResultsCustomOption && (
+                          <div className="border-2 border-dashed border-primary/50 bg-primary/5 rounded-lg p-4 text-center">
+                            <SearchX className="h-8 w-8 mx-auto mb-2 text-muted-foreground opacity-50" />
+                            <h4 className="font-medium text-sm mb-1">No matching equipment</h4>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              Can't find "{searchQuery}"? Add it as custom equipment.
+                            </p>
+                            <div className="space-y-2 text-left">
+                              <Input 
+                                value={customEquipment.name || searchQuery} 
+                                onChange={(e) => setCustomEquipment(prev => ({ ...prev, name: e.target.value }))}
+                                placeholder="Equipment name"
+                                className="h-8 text-xs"
+                              />
+                              <Input 
+                                value={customEquipment.brand} 
+                                onChange={(e) => setCustomEquipment(prev => ({ ...prev, brand: e.target.value }))}
+                                placeholder="Brand (optional)"
+                                className="h-8 text-xs"
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <Select value={customEquipment.category} onValueChange={(v: EquipmentCategoryId) => setCustomEquipment(prev => ({ ...prev, category: v }))}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="cooking">Cooking</SelectItem>
+                                    <SelectItem value="food-prep">Prep</SelectItem>
+                                    <SelectItem value="refrigeration">Refrigeration</SelectItem>
+                                    <SelectItem value="specialty">Specialty</SelectItem>
+                                    <SelectItem value="cleaning">Cleaning</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Select value={customEquipment.availabilityType} onValueChange={(v: 'included' | 'rental') => setCustomEquipment(prev => ({ ...prev, availabilityType: v, sessionRate: v === 'included' ? 0 : prev.sessionRate, damageDeposit: v === 'included' ? 0 : prev.damageDeposit }))}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="included">Included</SelectItem>
+                                    <SelectItem value="rental">Rental</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {customEquipment.availabilityType === 'rental' && (
+                                <>
+                                  <div className="relative">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                    <Input 
+                                      type="number" min="0" step="0.01"
+                                      value={customEquipment.sessionRate} 
+                                      onChange={(e) => setCustomEquipment(prev => ({ ...prev, sessionRate: parseFloat(e.target.value) || 0 }))}
+                                      className="h-8 text-xs pl-5"
+                                      placeholder="Rate per session"
+                                    />
+                                  </div>
+                                  <div className="relative">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                    <Input 
+                                      type="number" min="0" step="0.01"
+                                      value={customEquipment.damageDeposit} 
+                                      onChange={(e) => setCustomEquipment(prev => ({ ...prev, damageDeposit: parseFloat(e.target.value) || 0 }))}
+                                      className="h-8 text-xs pl-5"
+                                      placeholder="Damage deposit (optional)"
+                                    />
+                                  </div>
+                                </>
+                              )}
+                              <Button 
+                                size="sm"
+                                className="w-full h-8 text-xs" 
+                                onClick={() => {
+                                  if (!customEquipment.name) setCustomEquipment(prev => ({ ...prev, name: searchQuery }));
+                                  saveCustomEquipment();
+                                }}
+                                disabled={isCreating || (!customEquipment.name.trim() && !searchQuery.trim())}
+                              >
+                                {isCreating ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Adding...</> : <><PlusCircle className="h-3 w-3 mr-1" />Add Custom</>}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </ScrollArea>
                   </div>
