@@ -4,9 +4,7 @@ import { OnboardingStep } from '@onboardjs/core';
 export interface ChefOnboardingStep extends Omit<OnboardingStep, 'metadata'> {
     metadata?: {
         label: string;
-        isOptional: boolean;
-        canSkip: boolean;
-        path?: 'seller' | 'kitchen' | 'both'; // Which path this step belongs to
+        path?: 'localcooks' | 'kitchen' | 'both'; // Which path this step belongs to
     };
 }
 
@@ -17,14 +15,12 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Welcome',
-            isOptional: false,
-            canSkip: false,
             path: 'both'
         },
         payload: {
             componentKey: 'chef-welcome',
-            title: 'Welcome to LocalCooks',
-            description: 'Choose your path to get started',
+            title: 'Welcome to Local Cooks',
+            description: 'Get started with your chef journey',
         },
         nextStep: 'path-selection'
     },
@@ -33,8 +29,6 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Choose Path',
-            isOptional: false,
-            canSkip: false,
             path: 'both'
         },
         payload: {
@@ -42,38 +36,21 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
             title: 'What would you like to do?',
             description: 'Select one or both options',
         },
-        nextStep: 'profile-setup' // Dynamic based on selection
+        // nextStep is dynamically determined based on selected paths
+        nextStep: 'localcooks-application'
     },
+    // LocalCooks Seller Path Steps
     {
-        id: 'profile-setup',
+        id: 'localcooks-application',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Profile',
-            isOptional: false,
-            canSkip: false,
-            path: 'both'
+            label: 'Application',
+            path: 'localcooks'
         },
         payload: {
-            componentKey: 'chef-profile',
-            title: 'Complete Your Profile',
-            description: 'Tell us about yourself',
-        },
-        nextStep: 'seller-application' // or 'kitchen-discovery' based on path
-    },
-    // Seller Path Steps
-    {
-        id: 'seller-application',
-        type: 'CUSTOM_COMPONENT',
-        metadata: {
-            label: 'Seller Application',
-            isOptional: false,
-            canSkip: false,
-            path: 'seller'
-        },
-        payload: {
-            componentKey: 'chef-seller-application',
-            title: 'Apply to Sell on LocalCooks',
-            description: 'Submit your seller application',
+            componentKey: 'chef-localcooks-application',
+            title: 'Start Selling on Local Cooks',
+            description: 'Submit your application to become a Local Cooks chef',
         },
         nextStep: 'food-safety-training'
     },
@@ -82,63 +59,43 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Training',
-            isOptional: false,
-            canSkip: true,
-            path: 'seller'
+            path: 'localcooks'
         },
         payload: {
             componentKey: 'chef-training',
             title: 'Food Safety Training',
-            description: 'Complete required training modules',
+            description: 'Learn about food safety best practices',
         },
-        nextStep: 'document-verification'
+        // nextStep is dynamically determined: goes to kitchen-discovery if kitchen path selected, else summary
+        nextStep: 'summary'
     },
+    // Kitchen Access Path Step (combined browse + apply)
     {
-        id: 'document-verification',
+        id: 'browse-kitchens',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Documents',
-            isOptional: false,
-            canSkip: false,
-            path: 'seller'
-        },
-        payload: {
-            componentKey: 'chef-documents',
-            title: 'Document Verification',
-            description: 'Upload required certifications',
-        },
-        nextStep: 'kitchen-discovery' // If also doing kitchen path, else completion
-    },
-    // Kitchen Access Path Steps
-    {
-        id: 'kitchen-discovery',
-        type: 'CUSTOM_COMPONENT',
-        metadata: {
-            label: 'Find Kitchens',
-            isOptional: false,
-            canSkip: false,
+            label: 'Browse Kitchens',
             path: 'kitchen'
         },
         payload: {
-            componentKey: 'chef-kitchen-discovery',
-            title: 'Discover Commercial Kitchens',
-            description: 'Browse available kitchen spaces',
+            componentKey: 'chef-browse-kitchens',
+            title: 'Browse & Apply to Kitchens',
+            description: 'Find commercial kitchens and submit applications',
         },
-        nextStep: 'kitchen-application'
+        nextStep: 'summary'
     },
+    // Summary before completion
     {
-        id: 'kitchen-application',
+        id: 'summary',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Apply to Kitchen',
-            isOptional: false,
-            canSkip: true,
-            path: 'kitchen'
+            label: 'Summary',
+            path: 'both'
         },
         payload: {
-            componentKey: 'chef-kitchen-application',
-            title: 'Apply for Kitchen Access',
-            description: 'Submit application to your chosen kitchen',
+            componentKey: 'chef-summary',
+            title: 'Onboarding Summary',
+            description: 'Review your progress',
         },
         nextStep: 'completion'
     },
@@ -148,13 +105,11 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
         type: 'CUSTOM_COMPONENT',
         metadata: {
             label: 'Complete',
-            isOptional: false,
-            canSkip: false,
             path: 'both'
         },
         payload: {
             componentKey: 'chef-completion',
-            title: 'Setup Complete!',
+            title: 'Onboarding Complete!',
             description: 'You\'re ready to start your journey',
         },
         nextStep: null
@@ -162,7 +117,7 @@ export const chefOnboardingSteps: ChefOnboardingStep[] = [
 ];
 
 // Helper to get steps for a specific path
-export const getStepsForPath = (selectedPaths: ('seller' | 'kitchen')[]): ChefOnboardingStep[] => {
+export const getStepsForPath = (selectedPaths: ('localcooks' | 'kitchen')[]): ChefOnboardingStep[] => {
     return chefOnboardingSteps.filter(step => {
         if (step.metadata?.path === 'both') return true;
         if (!step.metadata?.path) return true;
@@ -174,11 +129,9 @@ export const getStepsForPath = (selectedPaths: ('seller' | 'kitchen')[]): ChefOn
 export const CHEF_STEP_IDS = {
     WELCOME: 'welcome',
     PATH_SELECTION: 'path-selection',
-    PROFILE_SETUP: 'profile-setup',
-    SELLER_APPLICATION: 'seller-application',
+    LOCALCOOKS_APPLICATION: 'localcooks-application',
     FOOD_SAFETY_TRAINING: 'food-safety-training',
-    DOCUMENT_VERIFICATION: 'document-verification',
-    KITCHEN_DISCOVERY: 'kitchen-discovery',
-    KITCHEN_APPLICATION: 'kitchen-application',
+    BROWSE_KITCHENS: 'browse-kitchens',
+    SUMMARY: 'summary',
     COMPLETION: 'completion',
 } as const;

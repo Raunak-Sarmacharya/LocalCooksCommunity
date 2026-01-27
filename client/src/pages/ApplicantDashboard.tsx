@@ -56,6 +56,7 @@ import { Link } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import ChefStripeConnectSetup from "@/components/chef/ChefStripeConnectSetup";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
+import KitchenDiscovery from "@/components/kitchen-application/KitchenDiscovery";
 
 // Type alias for application
 type AnyApplication = Application;
@@ -308,13 +309,15 @@ export default function ApplicantDashboard() {
 
   const getApplicationStatus = () => {
     const mostRecentApp = getMostRecentApplication();
-    if (!mostRecentApp) return user?.isChef ? null : "Select Role";
+    // This is the Chef Dashboard - user is always a chef, never show "Select Role"
+    if (!mostRecentApp) return null;
     return formatApplicationStatus(mostRecentApp.status);
   };
 
   const getDocumentStatus = () => {
     const mostRecentApp = getMostRecentApplication();
-    if (!mostRecentApp) return user?.isChef ? "No Documents Uploaded" : "Select Role";
+    // This is the Chef Dashboard - user is always a chef, never show "Select Role"
+    if (!mostRecentApp) return "No Documents Uploaded";
 
     const chefApp = mostRecentApp as Application;
     if (chefApp.status === "approved") {
@@ -655,7 +658,7 @@ export default function ApplicantDashboard() {
                 <Button 
                   variant="outline"
                   className="flex-1 group-hover:bg-blue-600 group-hover:text-white transition-colors"
-                  onClick={() => window.location.href = "/compare-kitchens"}
+                  onClick={() => setActiveTab("discover-kitchens")}
                 >
                   Discover More
                   <ArrowRight className="ml-2 h-4 w-4" />
@@ -664,7 +667,7 @@ export default function ApplicantDashboard() {
             ) : (
               <Button 
                 className="w-full bg-blue-600 hover:bg-blue-700"
-                onClick={() => window.location.href = "/compare-kitchens"}
+                onClick={() => setActiveTab("discover-kitchens")}
               >
                 Explore Kitchens
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -725,7 +728,7 @@ export default function ApplicantDashboard() {
               <Button 
                 variant="outline" 
                 className="h-auto py-4 px-4 justify-start gap-3 hover:bg-blue-50 hover:border-blue-200"
-                onClick={() => window.location.href = "/compare-kitchens"}
+                onClick={() => setActiveTab("discover-kitchens")}
               >
                 <Building className="h-5 w-5 text-blue-600" />
                 <div className="text-left">
@@ -1002,7 +1005,7 @@ export default function ApplicantDashboard() {
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Bookings</h2>
           <p className="text-muted-foreground mt-1">View and manage your upcoming kitchen sessions.</p>
         </div>
-        <Button onClick={() => window.location.href = "/compare-kitchens"}>
+        <Button onClick={() => setActiveTab("discover-kitchens")}>
           Book a Session
         </Button>
       </div>
@@ -1120,8 +1123,8 @@ export default function ApplicantDashboard() {
                <CardTitle className="text-xl">No kitchen access granted</CardTitle>
                <CardDescription>Explore commercial kitchens and apply for access.</CardDescription>
             </div>
-            <Button asChild className="px-8 rounded-xl">
-              <Link href="/compare-kitchens">Explore Kitchens</Link>
+            <Button className="px-8 rounded-xl" onClick={() => setActiveTab("discover-kitchens")}>
+              Explore Kitchens
             </Button>
           </CardContent>
         </Card>
@@ -1135,6 +1138,10 @@ export default function ApplicantDashboard() {
     </div>
   );
 
+  const discoverKitchensTabContent = (
+    <KitchenDiscovery />
+  );
+
   // Render content based on activeTab (sidebar-driven navigation)
   const renderContent = () => {
     switch (activeTab) {
@@ -1144,6 +1151,8 @@ export default function ApplicantDashboard() {
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{applicationsTabContent}</div>;
       case "kitchen-applications":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{kitchenApplicationsTabContent}</div>;
+      case "discover-kitchens":
+        return <div className="space-y-8 animate-in fade-in-50 duration-500">{discoverKitchensTabContent}</div>;
       case "bookings":
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{bookingsTabContent}</div>;
       case "training":
@@ -1216,8 +1225,8 @@ export default function ApplicantDashboard() {
                   Proceed to Vendor Storefront
                 </a>
               </Button>
-              <Button asChild variant="outline" className="w-full h-12 text-base rounded-xl" onClick={handleCloseVendorPopup}>
-                <Link href="/compare-kitchens">Explore Commercial Kitchens</Link>
+              <Button variant="outline" className="w-full h-12 text-base rounded-xl" onClick={() => { handleCloseVendorPopup(); setActiveTab("discover-kitchens"); }}>
+                Explore Commercial Kitchens
               </Button>
             </div>
 

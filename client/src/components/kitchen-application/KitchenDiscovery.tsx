@@ -13,6 +13,13 @@ import {
   Plus,
   Search,
   XCircle,
+  DollarSign,
+  Utensils,
+  AlertCircle,
+  Eye,
+  Snowflake,
+  Thermometer,
+  Package,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
@@ -22,14 +29,35 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-interface PublicLocation {
+interface StorageSummary {
+  hasDryStorage: boolean;
+  hasColdStorage: boolean;
+  hasFreezerStorage: boolean;
+  totalStorageUnits: number;
+}
+
+interface PublicKitchen {
   id: number;
   name: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  galleryImages?: string[];
+  equipment?: string[];
+  hourlyRate?: number | null;
+  currency?: string;
+  minimumBookingHours?: number | null;
+  locationId: number;
+  locationName: string;
   address: string;
-  city?: string;
-  logoUrl?: string | null;
-  brandImageUrl?: string | null;
+  canAcceptBookings: boolean;
+  isLocationApproved: boolean;
+  customOnboardingLink?: string | null;
+  storageSummary?: StorageSummary;
 }
 
 // Container animation for staggered children
@@ -75,38 +103,38 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
   const { approvedKitchens, isLoading: approvedLoading } = useChefApprovedKitchens();
 
-  // Fetch all public locations
-  const { data: publicLocations, isLoading: locationsLoading } = useQuery<PublicLocation[]>({
-    queryKey: ["/api/public/locations"],
+  // Fetch all public kitchens (individual kitchen listings)
+  const { data: publicKitchens, isLoading: kitchensLoading } = useQuery<PublicKitchen[]>({
+    queryKey: ["/api/public/kitchens"],
     queryFn: async () => {
-      const response = await fetch("/api/public/locations");
+      const response = await fetch("/api/public/kitchens");
       if (!response.ok) {
-        throw new Error("Failed to fetch locations");
+        throw new Error("Failed to fetch kitchens");
       }
       return response.json();
     },
     staleTime: 60000, // Cache for 1 minute
   });
 
-  const isLoading = applicationsLoading || locationsLoading;
+  const isLoading = applicationsLoading || kitchensLoading;
 
-  // Filter out locations the chef has active applications for (inReview or approved)
-  // Allow locations with rejected/cancelled applications to show up so chefs can re-apply
+  // Filter out kitchens at locations the chef has active applications for (inReview or approved)
+  // Allow kitchens at locations with rejected/cancelled applications to show up so chefs can re-apply
   const activeApplicationLocationIds = new Set(
     applications
       .filter((a) => a.status === "inReview" || a.status === "approved")
       .map((a) => a.locationId)
   );
 
-  const availableLocations = (publicLocations || []).filter(
-    (loc) => !activeApplicationLocationIds.has(loc.id)
+  const availableKitchens = (publicKitchens || []).filter(
+    (kitchen) => !activeApplicationLocationIds.has(kitchen.locationId)
   );
 
-  const filteredAvailableLocations = availableLocations.filter(
-    (loc) =>
-      loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (loc.city && loc.city.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredAvailableKitchens = availableKitchens.filter(
+    (kitchen) =>
+      kitchen.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      kitchen.locationName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      kitchen.address.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Get status config for badges
@@ -252,7 +280,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           <TabsList className="mb-4">
             <TabsTrigger value="discover">
               <Plus className="h-4 w-4 mr-2" />
-              Discover ({filteredAvailableLocations.length})
+              Discover ({filteredAvailableKitchens.length})
             </TabsTrigger>
             <TabsTrigger value="applications">
               <Clock className="h-4 w-4 mr-2" />
@@ -265,84 +293,243 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           </TabsList>
 
           {/* Discover Tab */}
-          <TabsContent value="discover" className="space-y-4">
+          <TabsContent value="discover" className="space-y-6">
             {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search kitchens by name or location..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
+                className="pl-10 h-11 bg-muted/30 border-border/50 focus:bg-background"
               />
             </div>
 
-            {filteredAvailableLocations.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-lg">
-                <ChefHat className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600 font-medium">
-                  {searchQuery
-                    ? "No kitchens match your search"
-                    : "You've applied to all available kitchens!"}
-                </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {searchQuery
-                    ? "Try a different search term"
-                    : "Check your applications tab for status updates"}
-                </p>
-              </div>
+            {filteredAvailableKitchens.length === 0 ? (
+              <Card className="border-dashed border-2 bg-muted/5">
+                <CardContent className="py-16 text-center">
+                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                    <ChefHat className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">
+                    {searchQuery ? "No kitchens match your search" : "You've applied to all available kitchens!"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                    {searchQuery
+                      ? "Try a different search term or browse all kitchens"
+                      : "Check your applications tab for status updates"}
+                  </p>
+                  {searchQuery && (
+                    <Button variant="outline" className="mt-4" onClick={() => setSearchQuery("")}>
+                      Clear Search
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
             ) : (
               <motion.div
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
-                className="grid gap-4 md:grid-cols-2"
+                className="space-y-4"
               >
-                {filteredAvailableLocations.map((location) => (
-                  <motion.div key={location.id} variants={itemVariants}>
-                    <Card className="hover:shadow-md transition-shadow group">
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          {location.brandImageUrl ? (
-                            <img
-                              src={location.brandImageUrl}
-                              alt={location.name}
-                              className="w-16 h-16 rounded-lg object-cover"
-                            />
-                          ) : (
-                            <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-                              <Building2 className="h-8 w-8 text-white" />
-                            </div>
-                          )}
+                {filteredAvailableKitchens.map((kitchen) => {
+                  const hasImage = !!kitchen.imageUrl;
+                  const equipment = kitchen.equipment || [];
+                  const displayEquipment = equipment.slice(0, 3);
+                  const remainingEquipment = equipment.length - 3;
 
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-lg truncate">
-                              {location.name}
-                            </h3>
-                            <div className="flex items-center text-sm text-gray-600 mt-1">
-                              <MapPin className="h-3.5 w-3.5 mr-1 flex-shrink-0" />
-                              <span className="truncate">{location.address}</span>
+                  // Format price (cents to dollars)
+                  const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
+                  const priceDisplay = kitchen.hourlyRate ? formatPrice(kitchen.hourlyRate) : null;
+
+                  // Determine application URL - use custom onboarding link if available
+                  const applicationUrl = kitchen.customOnboardingLink || `/kitchen-requirements/${kitchen.locationId}`;
+
+                  return (
+                    <motion.div key={kitchen.id} variants={itemVariants}>
+                      <Card className="overflow-hidden border-border/50 hover:shadow-lg hover:border-border transition-all duration-300 group">
+                        <div className="flex flex-col md:flex-row">
+                          {/* Image Section */}
+                          <div className="md:w-72 lg:w-80 flex-shrink-0">
+                            <AspectRatio ratio={16 / 10} className="md:h-full">
+                              {hasImage ? (
+                                <img
+                                  src={kitchen.imageUrl!}
+                                  alt={kitchen.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 flex items-center justify-center">
+                                  <Building2 className="h-16 w-16 text-white/80" />
+                                </div>
+                              )}
+                            </AspectRatio>
+                          </div>
+
+                          {/* Content Section */}
+                          <div className="flex-1 p-5 md:p-6 flex flex-col">
+                            {/* Header */}
+                            <div className="flex items-start justify-between gap-4 mb-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <h3 className="text-xl font-bold text-foreground truncate">
+                                    {kitchen.name}
+                                  </h3>
+                                  {kitchen.canAcceptBookings ? (
+                                    <Badge variant="default" className="bg-green-600 hover:bg-green-600 text-[10px] uppercase tracking-wider">
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Accepting Bookings
+                                    </Badge>
+                                  ) : (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
+                                            <Clock className="h-3 w-3 mr-1" />
+                                            Coming Soon
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>This kitchen is not yet accepting bookings</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                  <span className="font-medium text-foreground">{kitchen.locationName}</span>
+                                  <span className="text-muted-foreground/50">•</span>
+                                  <span className="flex items-center">
+                                    <MapPin className="h-3.5 w-3.5 mr-1 flex-shrink-0" />
+                                    {kitchen.address}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Price Badge */}
+                              {priceDisplay && (
+                                <div className="text-right flex-shrink-0">
+                                  <div className="flex items-center gap-1 text-lg font-bold text-foreground">
+                                    <DollarSign className="h-4 w-4 text-green-600" />
+                                    <span>{priceDisplay.replace('$', '')}</span>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider">per hour</p>
+                                </div>
+                              )}
                             </div>
 
-                            <div className="mt-3 flex gap-2">
-                              <Link href={`/kitchen-preview/${location.id}`}>
-                                <Button variant="outline" size="sm">
+                            {/* Description */}
+                            {kitchen.description && (
+                              <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                                {kitchen.description}
+                              </p>
+                            )}
+
+                            {/* Equipment & Storage - Minimal Display */}
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                              {/* Equipment badges */}
+                              {displayEquipment.length > 0 && (
+                                <>
+                                  {displayEquipment.map((item: string, idx: number) => (
+                                    <Badge
+                                      key={idx}
+                                      variant="outline"
+                                      className="text-xs font-normal bg-muted/30 border-border/50"
+                                    >
+                                      <Utensils className="h-3 w-3 mr-1 text-muted-foreground" />
+                                      {item}
+                                    </Badge>
+                                  ))}
+                                  {remainingEquipment > 0 && (
+                                    <Badge variant="outline" className="text-xs font-normal bg-muted/30 border-border/50">
+                                      +{remainingEquipment} more
+                                    </Badge>
+                                  )}
+                                </>
+                              )}
+
+                              {/* Storage indicators - compact icons */}
+                              {kitchen.storageSummary && kitchen.storageSummary.totalStorageUnits > 0 && (
+                                <div className="flex items-center gap-1 ml-1">
+                                  <span className="text-muted-foreground/50">|</span>
+                                  {kitchen.storageSummary.hasColdStorage && (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <div className="w-6 h-6 rounded bg-blue-100 flex items-center justify-center">
+                                            <Thermometer className="h-3.5 w-3.5 text-blue-600" />
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p>Cold Storage Available</p></TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                  {kitchen.storageSummary.hasFreezerStorage && (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <div className="w-6 h-6 rounded bg-cyan-100 flex items-center justify-center">
+                                            <Snowflake className="h-3.5 w-3.5 text-cyan-600" />
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p>Freezer Storage Available</p></TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                  {kitchen.storageSummary.hasDryStorage && (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center">
+                                            <Package className="h-3.5 w-3.5 text-amber-600" />
+                                          </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p>Dry Storage Available</p></TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-3 mt-auto pt-2">
+                              <Button variant="outline" size="sm" className="gap-2" asChild>
+                                <Link href={`/kitchen-preview/${kitchen.locationId}`}>
+                                  <Eye className="h-4 w-4" />
                                   View Details
+                                </Link>
+                              </Button>
+                              {kitchen.canAcceptBookings ? (
+                                <Button size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700" asChild>
+                                  <Link href={applicationUrl}>
+                                    Apply Now
+                                    <ArrowRight className="h-4 w-4" />
+                                  </Link>
                                 </Button>
-                              </Link>
-                              <Link href={`/kitchen-requirements/${location.id}`}>
-                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                                  Apply Now
-                                  <ArrowRight className="ml-2 h-4 w-4" />
-                                </Button>
-                              </Link>
+                              ) : (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button size="sm" variant="secondary" disabled className="gap-2 cursor-not-allowed">
+                                        <AlertCircle className="h-4 w-4" />
+                                        Not Available
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>This kitchen is not yet accepting applications</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
                             </div>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+                      </Card>
+                    </motion.div>
+                  );
+                })}
               </motion.div>
             )}
           </TabsContent>

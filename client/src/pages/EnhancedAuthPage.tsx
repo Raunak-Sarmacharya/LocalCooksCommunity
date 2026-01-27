@@ -27,6 +27,7 @@ export default function EnhancedAuthPage() {
 
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
+  const hasUserMetaRef = useRef(false); // Track if userMeta was successfully fetched (avoids stale closure)
 
   // Tab configuration
   const tabs = [
@@ -126,6 +127,7 @@ export default function EnhancedAuthPage() {
             });
             
             setUserMeta(userData);
+            hasUserMetaRef.current = true; // Mark that we successfully fetched userMeta
             
             // **CRITICAL WELCOME SCREEN LOGIC**
             // Show welcome screen if user is verified but hasn't seen welcome
@@ -157,9 +159,17 @@ export default function EnhancedAuthPage() {
             console.error('❌ Failed to fetch user data:', response.status);
             const errorText = await response.text();
             console.error('❌ Error response:', errorText);
+            // If profile doesn't exist yet (404), reset hasCheckedUser so we can retry
+            // This handles the case where Google sign-in completes before backend sync
+            if (response.status === 404) {
+              console.log('🔄 Profile not found (404) - resetting hasCheckedUser for retry');
+              hasCheckedUser.current = false;
+            }
           }
         } catch (error) {
           console.error('❌ Error fetching user meta:', error);
+          // Reset on error to allow retry
+          hasCheckedUser.current = false;
         } finally {
           setUserMetaLoading(false);
         }
@@ -169,6 +179,7 @@ export default function EnhancedAuthPage() {
     } else if (!user) {
       // Reset when user logs out
       hasCheckedUser.current = false;
+      hasUserMetaRef.current = false;
       setUserMeta(null);
     }
   }, [loading, user, hasAttemptedLogin, setLocation]);
@@ -313,7 +324,13 @@ export default function EnhancedAuthPage() {
   }, []);
 
   const handleSuccess = () => {
-    console.log('🎯 AUTH SUCCESS - Setting hasAttemptedLogin to true');
+    console.log('🎯 AUTH SUCCESS - Setting hasAttemptedLogin to true, hasUserMetaRef:', hasUserMetaRef.current);
+    // Only reset hasCheckedUser if userMeta was NOT successfully fetched
+    // Use ref instead of state to avoid stale closure issues
+    if (!hasUserMetaRef.current) {
+      console.log('🔄 Resetting hasCheckedUser for retry (userMeta not fetched yet)');
+      hasCheckedUser.current = false;
+    }
     setHasAttemptedLogin(true);
   };
 

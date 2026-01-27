@@ -33,9 +33,13 @@ function FormStep() {
   const { currentStep, goToPreviousStep } = useApplicationForm();
   const [, navigate] = useLocation();
 
-  // Ensure page always starts at the top
+  // Ensure page always starts at the top when step changes
   useEffect(() => {
-    window.scrollTo(0, 0);
+    // Use instant scroll behavior and scroll to top of page
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    // Also scroll the document element for better browser compatibility
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }, [currentStep]);
 
   return (
@@ -47,7 +51,7 @@ function FormStep() {
       <div className="container mx-auto px-4 sm:px-6">
         <FadeInSection>
           <div className="max-w-2xl mx-auto bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 md:p-8 mobile-safe-area card-hover">
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center px-2">Cook Application</h1>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-4 sm:mb-6 text-center px-2">Local Cooks Application</h1>
 
             {currentStep === 1 && (
               <div className="fade-in">

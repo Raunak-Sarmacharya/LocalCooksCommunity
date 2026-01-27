@@ -65,18 +65,14 @@ function ChefSetupContent() {
             togglePath={togglePath}
           />
         );
-      case "profile-setup":
-        return <ProfileSetupStep user={user} />;
-      case "seller-application":
-        return <SellerApplicationStep hasApplication={hasSellerApplication} />;
+      case "localcooks-application":
+        return <LocalCooksApplicationStep hasApplication={hasSellerApplication} />;
       case "food-safety-training":
         return <TrainingStep hasCompleted={hasCompletedTraining} />;
-      case "document-verification":
-        return <DocumentVerificationStep />;
-      case "kitchen-discovery":
-        return <KitchenDiscoveryStep />;
-      case "kitchen-application":
-        return <KitchenApplicationStep hasApplications={hasKitchenApplications} />;
+      case "summary":
+        return <SummaryStep />;
+      case "browse-kitchens":
+        return <BrowseKitchensStep hasApplications={hasKitchenApplications} />;
       case "completion":
         return <CompletionStep selectedPaths={selectedPaths} />;
       default:
@@ -102,9 +98,9 @@ function ChefSetupContent() {
                 <Logo variant="white" className="w-6 h-6" />
               </div>
               <div>
-                <span className="font-bold text-lg text-primary">LocalCooks</span>
+                <span className="font-lobster text-xl text-primary">LocalCooks</span>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  Chef Setup
+                  Chef Onboarding
                 </p>
               </div>
             </Link>
@@ -130,7 +126,7 @@ function ChefSetupContent() {
               <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
                 <Logo variant="white" className="w-5 h-5" />
               </div>
-              <span className="font-bold text-primary">LocalCooks</span>
+              <span className="font-lobster text-lg text-primary">LocalCooks</span>
             </Link>
             <span className="text-sm text-muted-foreground">
               Step {currentStepIndex + 1} of {visibleSteps.length}
@@ -181,10 +177,16 @@ function ChefSetupContent() {
                     Skip for now
                   </Button>
                 )}
-                <Button onClick={handleNext} className="gap-2">
-                  {isLastStep ? "Complete Setup" : "Continue"}
-                  {!isLastStep && <ArrowRight className="h-4 w-4" />}
-                </Button>
+                {isLastStep ? (
+                  <Button onClick={() => navigate('/dashboard')} className="gap-2">
+                    Complete Onboarding
+                  </Button>
+                ) : (
+                  <Button onClick={handleNext} className="gap-2">
+                    Continue
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </footer>
@@ -226,7 +228,7 @@ function PathSelectionStep({
   togglePath,
 }: {
   selectedPaths: string[];
-  togglePath: (path: 'seller' | 'kitchen') => void;
+  togglePath: (path: 'localcooks' | 'kitchen') => void;
 }) {
   return (
     <div className="space-y-6">
@@ -235,12 +237,12 @@ function PathSelectionStep({
       </p>
 
       <div className="grid gap-4">
-        {/* Sell on LocalCooks */}
+        {/* Start Selling on Local Cooks */}
         <button
-          onClick={() => togglePath('seller')}
+          onClick={() => togglePath('localcooks')}
           className={cn(
             "p-6 rounded-xl border-2 text-left transition-all",
-            selectedPaths.includes('seller')
+            selectedPaths.includes('localcooks')
               ? "border-primary bg-primary/5"
               : "border-border hover:border-primary/50 hover:bg-muted/50"
           )}
@@ -249,7 +251,7 @@ function PathSelectionStep({
             <div
               className={cn(
                 "w-12 h-12 rounded-xl flex items-center justify-center",
-                selectedPaths.includes('seller')
+                selectedPaths.includes('localcooks')
                   ? "bg-primary text-primary-foreground"
                   : "bg-primary/10 text-primary"
               )}
@@ -258,13 +260,13 @@ function PathSelectionStep({
             </div>
             <div className="flex-1">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-lg">Sell on LocalCooks</h3>
-                {selectedPaths.includes('seller') && (
+                <h3 className="font-bold text-lg">Start Selling on Local Cooks</h3>
+                {selectedPaths.includes('localcooks') && (
                   <Check className="h-5 w-5 text-primary" />
                 )}
               </div>
               <p className="text-sm text-muted-foreground mt-1">
-                Become a verified seller and sell your homemade food to customers. We handle delivery, payments, and customer support.
+                Apply to sell your homemade food to customers. We handle delivery, payments, and customer support.
               </p>
             </div>
           </div>
@@ -315,45 +317,12 @@ function PathSelectionStep({
   );
 }
 
-function ProfileSetupStep({ user }: { user: any }) {
+function LocalCooksApplicationStep({ hasApplication }: { hasApplication: boolean }) {
   return (
     <Card className="border-border/50">
       <CardHeader>
-        <CardTitle>Your Profile</CardTitle>
-        <CardDescription>Review your profile information</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg">
-          {user?.photoURL ? (
-            <img
-              src={user.photoURL}
-              alt={user.displayName || "Profile"}
-              className="w-16 h-16 rounded-full"
-            />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-              <ChefHat className="h-8 w-8 text-primary" />
-            </div>
-          )}
-          <div>
-            <p className="font-bold text-lg">{user?.displayName || "Chef"}</p>
-            <p className="text-sm text-muted-foreground">{user?.email}</p>
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Your profile is linked to your Google account. You can update your display name in your account settings.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function SellerApplicationStep({ hasApplication }: { hasApplication: boolean }) {
-  return (
-    <Card className="border-border/50">
-      <CardHeader>
-        <CardTitle>Seller Application</CardTitle>
-        <CardDescription>Apply to sell on LocalCooks</CardDescription>
+        <CardTitle>Start Selling on Local Cooks</CardTitle>
+        <CardDescription>Submit your application to start selling</CardDescription>
       </CardHeader>
       <CardContent>
         {hasApplication ? (
@@ -363,7 +332,7 @@ function SellerApplicationStep({ hasApplication }: { hasApplication: boolean }) 
               <div>
                 <p className="font-medium text-green-800">Application Submitted</p>
                 <p className="text-sm text-green-600">
-                  Your seller application is being reviewed.
+                  Your application is being reviewed. This includes your documents and certifications.
                 </p>
               </div>
             </div>
@@ -371,7 +340,7 @@ function SellerApplicationStep({ hasApplication }: { hasApplication: boolean }) 
         ) : (
           <div className="space-y-4">
             <p className="text-muted-foreground">
-              Submit your application to become a verified LocalCooks seller.
+              Submit your application to start selling on Local Cooks. The application includes your personal information, kitchen preferences, and required certifications.
             </p>
             <Button asChild className="w-full">
               <Link href="/apply">Start Application</Link>
@@ -388,7 +357,7 @@ function TrainingStep({ hasCompleted }: { hasCompleted: boolean }) {
     <Card className="border-border/50">
       <CardHeader>
         <CardTitle>Food Safety Training</CardTitle>
-        <CardDescription>Complete required training modules</CardDescription>
+        <CardDescription>Learn about food safety best practices</CardDescription>
       </CardHeader>
       <CardContent>
         {hasCompleted ? (
@@ -398,7 +367,7 @@ function TrainingStep({ hasCompleted }: { hasCompleted: boolean }) {
               <div>
                 <p className="font-medium text-green-800">Training Completed</p>
                 <p className="text-sm text-green-600">
-                  You've completed all required training modules.
+                  You've completed the food safety training modules.
                 </p>
               </div>
             </div>
@@ -406,7 +375,7 @@ function TrainingStep({ hasCompleted }: { hasCompleted: boolean }) {
         ) : (
           <div className="space-y-4">
             <p className="text-muted-foreground">
-              Complete our food safety training to ensure you meet all requirements.
+              Learn about food safety best practices. This training helps you understand important guidelines for preparing and handling food safely.
             </p>
             <Button asChild className="w-full">
               <Link href="/microlearning/overview">Start Training</Link>
@@ -418,71 +387,158 @@ function TrainingStep({ hasCompleted }: { hasCompleted: boolean }) {
   );
 }
 
-function DocumentVerificationStep() {
+function SummaryStep() {
+  const {
+    selectedPaths,
+    hasSellerApplication,
+    hasKitchenApplications,
+    hasCompletedTraining,
+    sellerApplicationStatus,
+  } = useChefOnboarding();
+
+  // Build summary items based on selected paths
+  // NOTE: This is an INFORMATIVE summary - no items are "required" to complete onboarding
+  const summaryItems = [];
+
+  if (selectedPaths.includes('localcooks')) {
+    summaryItems.push({
+      id: 'application',
+      label: 'Seller Application',
+      status: hasSellerApplication ? (sellerApplicationStatus === 'approved' ? 'done' : 'in_progress') : 'not_started',
+      description: hasSellerApplication 
+        ? `Status: ${sellerApplicationStatus === 'approved' ? 'Approved' : sellerApplicationStatus === 'rejected' ? 'Rejected' : 'Under Review'}` 
+        : 'You can submit your application anytime from the dashboard',
+      actionLabel: hasSellerApplication ? 'View Application' : 'Start Application',
+      actionHref: hasSellerApplication ? '/dashboard' : '/apply',
+    });
+
+    summaryItems.push({
+      id: 'training',
+      label: 'Food Safety Training',
+      status: hasCompletedTraining ? 'done' : 'not_started',
+      description: hasCompletedTraining 
+        ? 'Training completed' 
+        : 'Learn food safety best practices at your own pace',
+      actionLabel: hasCompletedTraining ? 'Review Training' : 'Start Training',
+      actionHref: '/microlearning/overview',
+    });
+  }
+
+  if (selectedPaths.includes('kitchen')) {
+    summaryItems.push({
+      id: 'kitchen-access',
+      label: 'Kitchen Access',
+      status: hasKitchenApplications ? 'done' : 'not_started',
+      description: hasKitchenApplications 
+        ? `${hasKitchenApplications} kitchen application(s) submitted` 
+        : 'Browse and apply to commercial kitchens anytime',
+      actionLabel: 'Browse Kitchens',
+      actionHref: '/compare-kitchens',
+    });
+  }
+
+  const completedCount = summaryItems.filter(item => item.status === 'done' || item.status === 'in_progress').length;
+  const totalCount = summaryItems.length;
+
   return (
-    <Card className="border-border/50">
-      <CardHeader>
-        <CardTitle>Document Verification</CardTitle>
-        <CardDescription>Upload required certifications</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-muted-foreground">
-          Upload your food safety license and any other required documents for verification.
-        </p>
-        <Button asChild className="w-full">
-          <Link href="/document-verification">Upload Documents</Link>
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      {/* Informative Header */}
+      <Card className="border-border/50 bg-gradient-to-br from-primary/5 to-transparent">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <ChefHat className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg mb-1">You're Ready to Go!</h3>
+              <p className="text-muted-foreground text-sm">
+                This onboarding is complete. You now have full access to your dashboard. 
+                The items below can be completed at any time from your dashboard.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Progress Summary */}
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Your Progress</CardTitle>
+          <CardDescription>
+            {completedCount === totalCount 
+              ? "Great job! You've completed all the steps."
+              : `${completedCount} of ${totalCount} items completed`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-0 divide-y">
+          {summaryItems.map((item) => (
+            <div key={item.id} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
+              <div className="flex items-center gap-3">
+                {item.status === 'done' && (
+                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                    <Check className="h-4 w-4 text-green-600" />
+                  </div>
+                )}
+                {item.status === 'in_progress' && (
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                    <Loader2 className="h-4 w-4 text-amber-600 animate-spin" />
+                  </div>
+                )}
+                {item.status === 'not_started' && (
+                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-muted-foreground/50" />
+                  </div>
+                )}
+                <div>
+                  <p className="font-medium">{item.label}</p>
+                  <p className="text-sm text-muted-foreground">{item.description}</p>
+                </div>
+              </div>
+              {item.actionHref && (
+                <Button variant="ghost" size="sm" asChild className="shrink-0">
+                  <Link href={item.actionHref}>{item.actionLabel}</Link>
+                </Button>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
-function KitchenDiscoveryStep() {
+function BrowseKitchensStep({ hasApplications }: { hasApplications: boolean }) {
   return (
     <Card className="border-border/50">
       <CardHeader>
-        <CardTitle>Discover Kitchens</CardTitle>
-        <CardDescription>Browse available commercial kitchens</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-muted-foreground">
-          Explore our network of commercial kitchens and find the perfect space for your needs.
-        </p>
-        <Button asChild className="w-full bg-blue-600 hover:bg-blue-700">
-          <Link href="/compare-kitchens">Browse Kitchens</Link>
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-function KitchenApplicationStep({ hasApplications }: { hasApplications: boolean }) {
-  return (
-    <Card className="border-border/50">
-      <CardHeader>
-        <CardTitle>Kitchen Applications</CardTitle>
-        <CardDescription>Apply to access commercial kitchens</CardDescription>
+        <CardTitle>Browse & Apply to Kitchens</CardTitle>
+        <CardDescription>Find commercial kitchens and submit applications</CardDescription>
       </CardHeader>
       <CardContent>
         {hasApplications ? (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Check className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="font-medium text-blue-800">Applications Submitted</p>
-                <p className="text-sm text-blue-600">
-                  You have pending kitchen access applications.
-                </p>
+          <div className="space-y-4">
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Check className="h-5 w-5 text-blue-600" />
+                <div>
+                  <p className="font-medium text-blue-800">Applications Submitted</p>
+                  <p className="text-sm text-blue-600">
+                    You have pending kitchen access applications.
+                  </p>
+                </div>
               </div>
             </div>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/compare-kitchens">Browse More Kitchens</Link>
+            </Button>
           </div>
         ) : (
           <div className="space-y-4">
             <p className="text-muted-foreground">
-              Browse kitchens and submit applications to gain access.
+              Explore our network of commercial kitchens and apply for access. Find the perfect space for your culinary needs.
             </p>
             <Button asChild className="w-full bg-blue-600 hover:bg-blue-700">
-              <Link href="/compare-kitchens">Find Kitchens</Link>
+              <Link href="/compare-kitchens">Browse Kitchens</Link>
             </Button>
           </div>
         )}
@@ -492,17 +548,43 @@ function KitchenApplicationStep({ hasApplications }: { hasApplications: boolean 
 }
 
 function CompletionStep({ selectedPaths }: { selectedPaths: string[] }) {
+  const { hasSellerApplication, hasKitchenApplications } = useChefOnboarding();
+
+  // Build personalized message based on what they've done
+  const getCompletionMessage = () => {
+    const messages: string[] = [];
+    
+    if (selectedPaths.includes('localcooks')) {
+      if (hasSellerApplication) {
+        messages.push("Your seller application is being reviewed.");
+      } else {
+        messages.push("You can submit your seller application anytime from the dashboard.");
+      }
+    }
+    
+    if (selectedPaths.includes('kitchen')) {
+      if (hasKitchenApplications) {
+        messages.push("Your kitchen applications are being processed.");
+      } else {
+        messages.push("Browse and apply to commercial kitchens whenever you're ready.");
+      }
+    }
+    
+    return messages.join(" ");
+  };
+
   return (
     <Card className="border-border/50">
       <CardContent className="p-8 text-center">
         <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
           <Check className="h-10 w-10 text-green-600" />
         </div>
-        <h2 className="text-2xl font-bold mb-4">Setup Complete!</h2>
-        <p className="text-muted-foreground max-w-md mx-auto mb-6">
-          You're all set to start your journey with LocalCooks.
-          {selectedPaths.includes('seller') && " Your seller application is being processed."}
-          {selectedPaths.includes('kitchen') && " Explore kitchens and book your first session."}
+        <h2 className="text-2xl font-bold mb-4">Onboarding Complete!</h2>
+        <p className="text-muted-foreground max-w-md mx-auto mb-2">
+          Welcome to Local Cooks! You now have full access to your dashboard.
+        </p>
+        <p className="text-muted-foreground max-w-md mx-auto mb-6 text-sm">
+          {getCompletionMessage()}
         </p>
         <Button asChild size="lg" className="px-8">
           <Link href="/dashboard">Go to Dashboard</Link>

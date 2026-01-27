@@ -93,4 +93,30 @@ router.post("/sync", requireFirebaseAuthWithUser, async (req: Request, res: Resp
   }
 });
 
+/**
+ * POST /api/user/chef-onboarding-complete
+ * Mark chef onboarding as complete
+ * This is an INFORMATIVE onboarding - no restrictions, just grants full dashboard access
+ */
+router.post("/chef-onboarding-complete", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const user = req.neonUser!;
+    const { selectedPaths } = req.body;
+    
+    console.log(`🎓 Marking chef onboarding complete for user ${user.id}, paths: ${JSON.stringify(selectedPaths)}`);
+    
+    // Update user to mark chef onboarding as complete
+    // Store selected paths for future reference
+    await userService.updateUser(user.id, { 
+      chefOnboardingCompleted: true,
+      chefOnboardingPaths: selectedPaths || []
+    });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error marking chef onboarding complete:", error);
+    res.status(500).json({ error: "Failed to mark onboarding complete" });
+  }
+});
+
 export default router;

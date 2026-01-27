@@ -10,20 +10,18 @@ import { chefOnboardingSteps, CHEF_STEP_IDS, getStepsForPath } from "@/config/ch
 const STEP_ID_MAP: Record<string, number> = {
   'welcome': 0,
   'path-selection': 1,
-  'profile-setup': 2,
-  'seller-application': 3,
-  'food-safety-training': 4,
-  'document-verification': 5,
-  'kitchen-discovery': 6,
-  'kitchen-application': 7,
-  'completion': 8
+  'localcooks-application': 2,
+  'food-safety-training': 3,
+  'browse-kitchens': 4,
+  'summary': 5,
+  'completion': 6
 };
 
 const NUMERIC_TO_STRING_MAP: Record<number, string> = Object.entries(STEP_ID_MAP)
   .reduce((acc, [str, num]) => ({ ...acc, [num]: str }), {});
 
 // Types for chef onboarding
-export type ChefPath = 'seller' | 'kitchen';
+export type ChefPath = 'localcooks' | 'kitchen';
 
 interface ChefOnboardingContextType {
   // OnboardJS State & Actions
@@ -226,20 +224,30 @@ function ChefOnboardingLogic({
     return !!(app?.foodSafetyLicenseUrl);
   }, [sellerApplications, hasSellerApplication]);
 
-  // Calculate completed steps based on actual data
-  const completedSteps = useMemo((): Record<string, boolean> => {
+  // Calculate step status based on actual data
+  // NOTE: Chef onboarding is INFORMATIVE, not restrictive. All steps are guidance.
+  // Users can complete onboarding regardless of whether they've done the actions.
+  // This tracks what they've actually done for display purposes only.
+  const stepStatus = useMemo((): Record<string, 'not_started' | 'in_progress' | 'done'> => {
     return {
-      [CHEF_STEP_IDS.WELCOME]: true, // Always completed once viewed
-      [CHEF_STEP_IDS.PATH_SELECTION]: selectedPaths.length > 0,
-      [CHEF_STEP_IDS.PROFILE_SETUP]: !!user?.displayName,
-      [CHEF_STEP_IDS.SELLER_APPLICATION]: hasSellerApplication,
-      [CHEF_STEP_IDS.FOOD_SAFETY_TRAINING]: hasCompletedTraining,
-      [CHEF_STEP_IDS.DOCUMENT_VERIFICATION]: hasUploadedDocuments,
-      [CHEF_STEP_IDS.KITCHEN_DISCOVERY]: true, // Discovery is always "complete" (it's just browsing)
-      [CHEF_STEP_IDS.KITCHEN_APPLICATION]: hasKitchenApplications,
-      [CHEF_STEP_IDS.COMPLETION]: false, // Set to true when all required steps are done
+      [CHEF_STEP_IDS.WELCOME]: 'done', // Always done once viewed
+      [CHEF_STEP_IDS.PATH_SELECTION]: selectedPaths.length > 0 ? 'done' : 'not_started',
+      [CHEF_STEP_IDS.LOCALCOOKS_APPLICATION]: hasSellerApplication ? 'done' : 'not_started',
+      [CHEF_STEP_IDS.FOOD_SAFETY_TRAINING]: hasCompletedTraining ? 'done' : 'not_started',
+      [CHEF_STEP_IDS.BROWSE_KITCHENS]: hasKitchenApplications ? 'done' : 'not_started',
+      [CHEF_STEP_IDS.SUMMARY]: 'not_started', // Summary is a review step
+      [CHEF_STEP_IDS.COMPLETION]: 'not_started',
     };
-  }, [selectedPaths, user, hasSellerApplication, hasCompletedTraining, hasUploadedDocuments, hasKitchenApplications]);
+  }, [selectedPaths, hasSellerApplication, hasCompletedTraining, hasKitchenApplications]);
+
+  // For backward compatibility, map to boolean completed steps
+  const completedSteps = useMemo((): Record<string, boolean> => {
+    const result: Record<string, boolean> = {};
+    for (const [key, status] of Object.entries(stepStatus)) {
+      result[key] = status === 'done';
+    }
+    return result;
+  }, [stepStatus]);
 
   // Get visible steps based on selected paths
   const visibleSteps = useMemo(() => {
@@ -263,10 +271,67 @@ function ChefOnboardingLogic({
 
   const currentStepData = currentStep?.payload || visibleSteps[0]?.payload;
 
-  // Navigation handlers
+  // Determine the next step dynamically based on current step and selected paths
+  const getNextStepId = useCallback((currentStepId: string): string | null => {
+    switch (currentStepId) {
+      case 'welcome':
+        return 'path-selection';
+      case 'path-selection':
+        // Go to first selected path's step
+        if (selectedPaths.includes('localcooks')) {
+          return 'localcooks-application';
+        } else if (selectedPaths.includes('kitchen')) {
+          return 'browse-kitchens';
+        }
+        return 'summary'; // Fallback if no path selected
+      case 'localcooks-application':
+        return 'food-safety-training';
+      case 'food-safety-training':
+        // After training, go to kitchen path if selected, otherwise summary
+        if (selectedPaths.includes('kitchen')) {
+          return 'browse-kitchens';
+        }
+        return 'summary';
+      case 'browse-kitchens':
+        return 'summary';
+      case 'summary':
+        return 'completion';
+      case 'completion':
+        return null;
+      default:
+        return null;
+    }
+  }, [selectedPaths]);
+
+  // Navigation handlers with dynamic path-aware navigation
   const handleNext = useCallback(async () => {
     try {
-      await next();
+      const currentStepId = currentStep?.id;
+      if (!currentStepId || !engine) {
+        await next();
+        return;
+      }
+
+      // Get the dynamically determined next step
+      const nextStepId = getNextStepId(String(currentStepId));
+      
+      if (nextStepId) {
+        // Check if the next step is in our visible steps
+        const isNextStepVisible = visibleSteps.some(s => s.id === nextStepId);
+        if (isNextStepVisible) {
+          await engine.goToStep(nextStepId as any);
+        } else {
+          // Skip to the next visible step after the target
+          const nextVisibleStep = getNextStepId(nextStepId);
+          if (nextVisibleStep) {
+            await engine.goToStep(nextVisibleStep as any);
+          } else {
+            await next();
+          }
+        }
+      } else {
+        await next();
+      }
     } catch (error) {
       console.error('Error advancing step:', error);
       toast({
@@ -275,7 +340,7 @@ function ChefOnboardingLogic({
         variant: "destructive",
       });
     }
-  }, [next, toast]);
+  }, [next, toast, currentStep, engine, getNextStepId, visibleSteps]);
 
   const handleBack = useCallback(() => {
     previous();
@@ -314,6 +379,40 @@ function ChefOnboardingLogic({
     }
   }, [isLoading, user]);
 
+  // Mark chef onboarding as complete when user reaches completion step
+  // This is a one-time action that grants full dashboard access
+  const markOnboardingComplete = useCallback(async () => {
+    try {
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) return;
+      
+      const token = await firebaseUser.getIdToken();
+      await fetch('/api/user/chef-onboarding-complete', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ selectedPaths }),
+      });
+      
+      // Invalidate user profile to refresh onboarding status
+      queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+      
+      console.log('[Chef Onboarding] Marked as complete');
+    } catch (error) {
+      console.error('[Chef Onboarding] Failed to mark complete:', error);
+    }
+  }, [selectedPaths, queryClient]);
+
+  // Auto-mark complete when reaching completion step
+  useEffect(() => {
+    const currentId = currentStep?.id;
+    if (currentId === 'completion' && user) {
+      markOnboardingComplete();
+    }
+  }, [currentStep?.id, user, markOnboardingComplete]);
+
   // [ENTERPRISE] Session Persistence & Auto-Resume Logic
   // Auto-skip to first incomplete required step when returning
   // This provides a seamless UX where users jump directly to what needs attention
@@ -339,28 +438,30 @@ function ChefOnboardingLogic({
     const isCurrentStepComplete = completedSteps[String(currentId)];
 
     // Only auto-skip from these steps when they're complete
-    const autoSkipFromSteps = ['welcome', 'path-selection', 'profile-setup', 'seller-application', 'food-safety-training', 'document-verification', 'kitchen-discovery', 'kitchen-application'];
+    const autoSkipFromSteps = ['welcome', 'path-selection', 'localcooks-application', 'food-safety-training', 'browse-kitchens'];
     if (!autoSkipFromSteps.includes(String(currentId))) return;
 
     // Only proceed if current step is complete
     if (!isCurrentStepComplete) return;
 
-    // Determine required steps based on selected paths
-    let requiredStepOrder: string[] = ['welcome', 'path-selection', 'profile-setup'];
+    // Determine step order based on selected paths
+    // NOTE: This is for auto-resume logic only. All steps are informative.
+    let stepOrder: string[] = ['welcome', 'path-selection'];
     
-    if (selectedPaths.includes('seller')) {
-      requiredStepOrder.push('seller-application', 'food-safety-training', 'document-verification');
+    if (selectedPaths.includes('localcooks')) {
+      stepOrder.push('localcooks-application', 'food-safety-training');
     }
     if (selectedPaths.includes('kitchen')) {
-      requiredStepOrder.push('kitchen-discovery', 'kitchen-application');
+      stepOrder.push('browse-kitchens');
     }
-    requiredStepOrder.push('completion');
+    stepOrder.push('summary', 'completion');
 
-    // Find first incomplete step in order
-    for (const stepId of requiredStepOrder) {
-      // If this step is incomplete, navigate to it
+    // Find first step that hasn't been visited in order
+    // For informative onboarding, we just advance to the next logical step
+    for (const stepId of stepOrder) {
+      // If this step is not done, navigate to it
       if (!completedSteps[stepId]) {
-        console.log(`[Chef Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
+        console.log(`[Chef Onboarding] Auto-resume: ${currentId} → ${stepId}`);
         hasPerformedInitialAutoSkip.current = true;
         engine.goToStep(stepId as any);
         return;
