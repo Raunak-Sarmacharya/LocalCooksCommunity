@@ -160,7 +160,7 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
             chef = chefData || null;
         }
 
-        // Get storage and equipment bookings
+        // Get storage and equipment bookings with listing details for invoice
         const storageRows = await db
             .select({
                 id: storageBookingsTable.id,
@@ -170,7 +170,9 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
                 endDate: storageBookingsTable.endDate,
                 status: storageBookingsTable.status,
                 totalPrice: storageBookingsTable.totalPrice,
-                storageName: storageListings.name
+                storageName: storageListings.name,
+                storageType: storageListings.storageType,
+                listingBasePrice: storageListings.basePrice // Daily rate in cents
             })
             .from(storageBookingsTable)
             .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))

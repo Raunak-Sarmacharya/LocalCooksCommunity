@@ -285,11 +285,13 @@ export default function KitchenBookingCalendar() {
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
   // Calculate combined subtotal (kitchen base + storage base + equipment base)
+  // All values must be in CENTS for consistency with formatCurrency
   const combinedSubtotal = useMemo(() => {
-    const kitchenBase = estimatedPrice?.basePrice || 0;
-    const storageBase = storagePricing.subtotal || 0; // Use subtotal (base price without service fee)
-    const equipmentBase = equipmentPricing.subtotal || 0;
-    return kitchenBase + storageBase + equipmentBase;
+    const kitchenBase = estimatedPrice?.basePrice || 0; // Already in cents
+    // Storage and equipment pricing hooks return dollars, convert to cents
+    const storageBaseCents = Math.round((storagePricing.subtotal || 0) * 100);
+    const equipmentBaseCents = Math.round((equipmentPricing.subtotal || 0) * 100);
+    return kitchenBase + storageBaseCents + equipmentBaseCents;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
   // Calculate tax on combined subtotal
@@ -468,13 +470,13 @@ export default function KitchenBookingCalendar() {
 
       if (storageRes.ok) {
         const storageData = await storageRes.json();
-        // Keep cents for internal logic (formatCurrency handles cents)
-        const storageDataCents = storageData.map((s: any) => ({
+        // Convert cents to dollars for UI display (consistent with manager side)
+        const storageDataDollars = storageData.map((s: any) => ({
           ...s,
-          basePrice: s.basePrice || 0,
-          pricePerCubicFoot: s.pricePerCubicFoot || 0,
+          basePrice: s.basePrice ? s.basePrice / 100 : 0,
+          pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
         }));
-        setStorageListings(storageDataCents);
+        setStorageListings(storageDataDollars);
         console.log(`✅ Loaded ${storageData.length} storage listings for kitchen ${kitchenId}`);
       } else {
         console.log(`ℹ️ No storage listings available (status: ${storageRes.status})`);

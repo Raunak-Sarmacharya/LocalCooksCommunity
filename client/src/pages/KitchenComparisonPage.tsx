@@ -372,13 +372,14 @@ export default function KitchenComparisonPage() {
           });
           if (storageResponse.ok) {
             const storageData = await storageResponse.json();
+            // Convert cents to dollars for UI display
             storage = (storageData || []).map((s: any) => ({
               id: s.id,
               storageType: s.storageType,
               name: s.name,
               description: s.description,
-              basePrice: s.basePrice,
-              pricePerCubicFoot: s.pricePerCubicFoot,
+              basePrice: s.basePrice ? s.basePrice / 100 : 0,
+              pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
               pricingModel: s.pricingModel,
               dimensionsLength: s.dimensionsLength,
               dimensionsWidth: s.dimensionsWidth,
@@ -569,13 +570,14 @@ export default function KitchenComparisonPage() {
           });
           if (storageResponse.ok) {
             const storageData = await storageResponse.json();
+            // Convert cents to dollars for UI display
             storage = (storageData || []).map((s: any) => ({
               id: s.id,
               storageType: s.storageType,
               name: s.name,
               description: s.description,
-              basePrice: s.basePrice,
-              pricePerCubicFoot: s.pricePerCubicFoot,
+              basePrice: s.basePrice ? s.basePrice / 100 : 0,
+              pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
               pricingModel: s.pricingModel,
               dimensionsLength: s.dimensionsLength,
               dimensionsWidth: s.dimensionsWidth,
@@ -675,13 +677,14 @@ export default function KitchenComparisonPage() {
             });
             if (storageResponse.ok) {
               const storageData = await storageResponse.json();
+              // Convert cents to dollars for UI display
               storage = (storageData || []).map((s: any) => ({
                 id: s.id,
                 storageType: s.storageType,
                 name: s.name,
                 description: s.description,
-                basePrice: s.basePrice,
-                pricePerCubicFoot: s.pricePerCubicFoot,
+                basePrice: s.basePrice ? s.basePrice / 100 : 0,
+                pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
                 pricingModel: s.pricingModel,
                 dimensionsLength: s.dimensionsLength,
                 dimensionsWidth: s.dimensionsWidth,

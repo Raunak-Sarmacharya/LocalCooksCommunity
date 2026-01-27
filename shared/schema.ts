@@ -1365,3 +1365,25 @@ export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
 export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
 export type UpdatePaymentTransaction = z.infer<typeof updatePaymentTransactionSchema>;
 export type PaymentHistory = typeof paymentHistory.$inferSelect;
+
+// ===== PENDING STORAGE EXTENSIONS TABLE =====
+// Tracks pending storage extension requests awaiting payment confirmation
+export const pendingStorageExtensions = pgTable("pending_storage_extensions", {
+  id: serial("id").primaryKey(),
+  storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
+  newEndDate: timestamp("new_end_date").notNull(),
+  extensionDays: integer("extension_days").notNull(),
+  extensionBasePriceCents: integer("extension_base_price_cents").notNull(),
+  extensionServiceFeeCents: integer("extension_service_fee_cents").notNull(),
+  extensionTotalPriceCents: integer("extension_total_price_cents").notNull(),
+  stripeSessionId: text("stripe_session_id").notNull(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  status: text("status").notNull().default("pending"), // pending, completed, failed, expired
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Type exports for pending storage extensions
+export type PendingStorageExtension = typeof pendingStorageExtensions.$inferSelect;
+export type InsertPendingStorageExtension = typeof pendingStorageExtensions.$inferInsert;

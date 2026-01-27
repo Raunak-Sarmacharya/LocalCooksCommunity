@@ -8,6 +8,7 @@ import { Building2, GraduationCap, LogOut, Menu, User, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { NotificationInbox } from "@/components/notifications/NotificationInbox";
 
 // Helper to check if an application is active (not cancelled, rejected)
 const isApplicationActive = (app: Application) => {
@@ -329,6 +330,9 @@ export default function Header() {
 
             {user && (
               <>
+                <li>
+                  <NotificationInbox />
+                </li>
                 <li>
                   <Link
                     href={getDashboardInfo().href}

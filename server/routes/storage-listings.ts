@@ -97,9 +97,13 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
             return res.status(400).json({ error: "Name, storage type, pricing model, and base price are required" });
         }
 
+        // Manager-created listings are auto-approved and active
+        // This enables immediate visibility to chefs without requiring separate admin approval
         const created = await inventoryService.createStorageListing({
             kitchenId: parseInt(kitchenId),
             ...listingData,
+            status: 'active', // Auto-activate manager-created listings
+            isActive: true,
         });
 
         console.log(`✅ Storage listing created by manager ${user.id}`);

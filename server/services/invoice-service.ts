@@ -147,50 +147,51 @@ export async function generateInvoicePDF(
 
   // Storage bookings
   if (storageBookings && storageBookings.length > 0) {
-      // ... (Same logic as before, essentially summing up amounts)
       for (const storage of storageBookings) {
           try {
-             // simplified extraction for brevity, assuming standard fields
              let amount = 0;
              let quantity = 0;
              let rate = 0;
              
-             // Try getting price from listing base price
-             // We need to fetch listing if not joined? 
-             // unique logic requires listing details. 
-             // Assume storageAmount is calculated correctly or passed.
-             // Relying on `total_price` if available on storage object?
+             // Get total price from storage booking (stored in cents)
              if (storage.total_price || storage.totalPrice) {
                  amount = parseFloat(String(storage.total_price || storage.totalPrice)) / 100;
              }
              
-             // Calculate days
-            if (storage.startDate && storage.endDate) {
+             // Calculate days from date range
+             if (storage.startDate && storage.endDate) {
                  const s = new Date(storage.startDate);
                  const e = new Date(storage.endDate);
-                 quantity = Math.ceil((e.getTime() - s.getTime()) / (1000 * 3600 * 24));
-            }
-            if (quantity > 0 && amount > 0) rate = amount / quantity;
+                 quantity = Math.max(1, Math.ceil((e.getTime() - s.getTime()) / (1000 * 3600 * 24)));
+             }
+             
+             // Get daily rate from listing basePrice (stored in cents) or calculate from total
+             if (storage.listingBasePrice) {
+                 rate = parseFloat(String(storage.listingBasePrice)) / 100; // Convert cents to dollars
+             } else if (quantity > 0 && amount > 0) {
+                 rate = amount / quantity;
+             }
             
             if (amount > 0) {
                 totalAmount += amount;
-                // Construct detailed description
+                
+                // Construct detailed description with storage name and type
                 let name = 'Storage Booking';
                 if (storage.storageName) {
                     name = storage.storageName;
                     if (storage.storageType) name += ` (${storage.storageType})`;
                 } else if (storage.storageType) {
-                     name = `Storage - ${storage.storageType}`;
+                    name = `Storage - ${storage.storageType}`;
                 }
 
                 items.push({
-                   description: name,
+                   description: `${name} - ${quantity} day${quantity !== 1 ? 's' : ''}`,
                    quantity: quantity || 1,
                    rate: rate || amount,
                    amount: amount
                 });
             }
-          } catch (e) { console.error(e); }
+          } catch (e) { console.error('[Invoice] Error processing storage booking:', e); }
       }
   }
 

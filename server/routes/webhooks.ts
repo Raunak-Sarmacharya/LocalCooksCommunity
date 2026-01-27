@@ -176,8 +176,67 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session, 
         } else {
             logger.warn(`[Webhook] Transaction not found for Checkout session ${session.id}`);
         }
+
+        // Check if this is a storage extension payment
+        const metadata = expandedSession.metadata || {};
+        if (metadata.type === 'storage_extension') {
+            await handleStorageExtensionPaymentCompleted(session.id, paymentIntentId, metadata);
+        }
     } catch (error: any) {
         logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
+    }
+}
+
+// Handle storage extension payment completion
+async function handleStorageExtensionPaymentCompleted(
+    sessionId: string, 
+    paymentIntentId: string | undefined,
+    metadata: Record<string, string>
+) {
+    try {
+        const { bookingService } = await import('../domains/bookings/booking.service');
+        
+        const storageBookingId = parseInt(metadata.storage_booking_id);
+        const newEndDate = new Date(metadata.new_end_date);
+        const extensionDays = parseInt(metadata.extension_days);
+
+        if (isNaN(storageBookingId) || isNaN(newEndDate.getTime()) || isNaN(extensionDays)) {
+            logger.error('[Webhook] Invalid storage extension metadata:', metadata);
+            return;
+        }
+
+        // Get the pending extension record
+        const pendingExtension = await bookingService.getPendingStorageExtension(storageBookingId, sessionId);
+        
+        if (!pendingExtension) {
+            logger.error(`[Webhook] Pending storage extension not found for session ${sessionId}`);
+            return;
+        }
+
+        if (pendingExtension.status === 'completed') {
+            logger.info(`[Webhook] Storage extension already completed for session ${sessionId}`);
+            return;
+        }
+
+        // Update the pending extension status
+        await bookingService.updatePendingStorageExtension(pendingExtension.id, {
+            status: 'completed',
+            stripePaymentIntentId: paymentIntentId,
+            completedAt: new Date(),
+        });
+
+        // Extend the actual storage booking
+        await bookingService.extendStorageBooking(storageBookingId, newEndDate);
+
+        logger.info(`[Webhook] Storage extension completed successfully:`, {
+            storageBookingId,
+            extensionDays,
+            newEndDate: newEndDate.toISOString(),
+            sessionId,
+            paymentIntentId,
+        });
+    } catch (error: any) {
+        logger.error(`[Webhook] Error processing storage extension payment:`, error);
     }
 }
 

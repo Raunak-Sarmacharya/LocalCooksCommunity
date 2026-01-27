@@ -198,8 +198,49 @@ router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: 
     }
 });
 
-// Extend storage booking
-router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request, res: Response) => {
+// Get expiring storage bookings for chef (for notifications)
+router.get("/chef/storage-bookings/expiring", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const daysAhead = parseInt(req.query.days as string) || 3; // Default: bookings expiring in next 3 days
+        
+        const storageBookings = await bookingService.getStorageBookingsByChef(chefId);
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const expiringBookings = storageBookings.filter((booking: any) => {
+            if (booking.status === 'cancelled') return false;
+            
+            const endDate = new Date(booking.endDate);
+            endDate.setHours(0, 0, 0, 0);
+            
+            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            // Include bookings expiring within daysAhead days (including already expired up to 7 days ago)
+            return daysUntilExpiry <= daysAhead && daysUntilExpiry >= -7;
+        }).map((booking: any) => {
+            const endDate = new Date(booking.endDate);
+            endDate.setHours(0, 0, 0, 0);
+            const daysUntilExpiry = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            
+            return {
+                ...booking,
+                daysUntilExpiry,
+                isExpired: daysUntilExpiry < 0,
+                isExpiringSoon: daysUntilExpiry >= 0 && daysUntilExpiry <= 2,
+            };
+        });
+        
+        res.json(expiringBookings);
+    } catch (error: any) {
+        console.error("Error fetching expiring storage bookings:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
+    }
+});
+
+// Calculate storage extension pricing (preview before checkout)
+router.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -221,28 +262,276 @@ router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request
             return res.status(403).json({ error: "You don't have permission to extend this booking" });
         }
 
-        // Validate booking is not cancelled
         if (booking.status === 'cancelled') {
             return res.status(400).json({ error: "Cannot extend a cancelled booking" });
         }
 
-        // Parse and validate new end date
         const newEndDateObj = new Date(newEndDate);
         if (isNaN(newEndDateObj.getTime())) {
             return res.status(400).json({ error: "Invalid date format for newEndDate" });
         }
 
+        const currentEndDate = new Date(booking.endDate);
+        if (newEndDateObj <= currentEndDate) {
+            return res.status(400).json({ error: "New end date must be after current end date" });
+        }
+
+        // Calculate extension pricing
+        const extensionDays = Math.ceil((newEndDateObj.getTime() - currentEndDate.getTime()) / (1000 * 60 * 60 * 24));
+        const minDays = booking.minimumBookingDuration || 1;
+
+        if (extensionDays < minDays) {
+            return res.status(400).json({ 
+                error: `Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}` 
+            });
+        }
+
+        // Get base price per day (stored in cents)
+        const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
+        const basePricePerDayDollars = basePricePerDayCents / 100;
+
+        const extensionBasePriceDollars = basePricePerDayDollars * extensionDays;
+        
+        // Get service fee rate
+        const { getServiceFeeRate } = await import('../services/pricing-service');
+        const serviceFeeRate = await getServiceFeeRate();
+        
+        const extensionServiceFeeDollars = extensionBasePriceDollars * serviceFeeRate;
+        const extensionTotalPriceDollars = extensionBasePriceDollars + extensionServiceFeeDollars;
+
+        res.json({
+            storageBookingId: id,
+            currentEndDate: currentEndDate.toISOString(),
+            newEndDate: newEndDateObj.toISOString(),
+            extensionDays,
+            basePricePerDay: basePricePerDayDollars,
+            extensionBasePrice: extensionBasePriceDollars,
+            serviceFeeRate,
+            extensionServiceFee: extensionServiceFeeDollars,
+            extensionTotalPrice: extensionTotalPriceDollars,
+            currency: 'CAD',
+        });
+    } catch (error: any) {
+        console.error("Error calculating extension preview:", error);
+        res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
+    }
+});
+
+// Create Stripe Checkout session for storage extension
+router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { newEndDate } = req.body;
+        if (!newEndDate) {
+            return res.status(400).json({ error: "newEndDate is required" });
+        }
+
+        // Verify the booking belongs to this chef
+        const booking = await bookingService.getStorageBookingById(id);
+        if (!booking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        if (booking.chefId !== req.neonUser!.id) {
+            return res.status(403).json({ error: "You don't have permission to extend this booking" });
+        }
+
+        if (booking.status === 'cancelled') {
+            return res.status(400).json({ error: "Cannot extend a cancelled booking" });
+        }
+
+        const newEndDateObj = new Date(newEndDate);
+        if (isNaN(newEndDateObj.getTime())) {
+            return res.status(400).json({ error: "Invalid date format for newEndDate" });
+        }
+
+        const currentEndDate = new Date(booking.endDate);
+        if (newEndDateObj <= currentEndDate) {
+            return res.status(400).json({ error: "New end date must be after current end date" });
+        }
+
+        // Calculate extension pricing
+        const extensionDays = Math.ceil((newEndDateObj.getTime() - currentEndDate.getTime()) / (1000 * 60 * 60 * 24));
+        const minDays = booking.minimumBookingDuration || 1;
+
+        if (extensionDays < minDays) {
+            return res.status(400).json({ 
+                error: `Extension must be at least ${minDays} day${minDays > 1 ? 's' : ''}` 
+            });
+        }
+
+        // Get base price per day (stored in cents)
+        const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
+        const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
+
+        // Get service fee rate and calculate fees
+        const { getServiceFeeRate } = await import('../services/pricing-service');
+        const serviceFeeRate = await getServiceFeeRate();
+        const extensionServiceFeeCents = Math.round(extensionBasePriceCents * serviceFeeRate);
+        const extensionTotalPriceCents = extensionBasePriceCents + extensionServiceFeeCents;
+
+        // Get manager's Stripe Connect account through storage listing -> kitchen -> location -> manager
+        const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
+        if (!storageListing) {
+            return res.status(404).json({ error: "Storage listing not found" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(storageListing.kitchenId);
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const location = await locationService.getLocationById(kitchen.locationId);
+        if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+        }
+
+        // Get manager's Stripe Connect account
+        const manager = await userService.getUser(location.managerId);
+        if (!manager) {
+            return res.status(404).json({ error: "Manager not found" });
+        }
+
+        const managerStripeAccountId = manager.stripeConnectAccountId;
+        if (!managerStripeAccountId) {
+            return res.status(400).json({ 
+                error: "Manager has not set up Stripe payments. Please contact the kitchen manager." 
+            });
+        }
+
+        // Get chef's email (username is used as email in this system)
+        const chef = await userService.getUser(req.neonUser!.id);
+        if (!chef || !chef.username) {
+            return res.status(400).json({ error: "Chef email not found" });
+        }
+        const chefEmail = chef.username; // Username is the email in this system
+
+        // Get base URL for success/cancel URLs
+        const protocol = req.get('x-forwarded-proto') || 'https';
+        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
+        const baseUrl = `${protocol}://${host}`;
+
+        // Create Stripe Checkout session
+        const { createCheckoutSession } = await import('../services/stripe-checkout-service');
+        
+        // For storage extension, platform fee goes to LocalCooks
+        const platformFeeCents = extensionServiceFeeCents > 0 ? extensionServiceFeeCents : 1; // Minimum 1 cent
+
+        const checkoutSession = await createCheckoutSession({
+            bookingPriceInCents: extensionBasePriceCents,
+            platformFeeInCents: platformFeeCents,
+            managerStripeAccountId,
+            customerEmail: chefEmail,
+            bookingId: id, // Using storage booking ID
+            currency: 'cad',
+            successUrl: `${baseUrl}/chef/bookings?storage_extended=true&storage_booking_id=${id}`,
+            cancelUrl: `${baseUrl}/chef/bookings?storage_extension_cancelled=true&storage_booking_id=${id}`,
+            metadata: {
+                type: 'storage_extension',
+                storage_booking_id: id.toString(),
+                extension_days: extensionDays.toString(),
+                new_end_date: newEndDateObj.toISOString(),
+                current_end_date: currentEndDate.toISOString(),
+                chef_id: req.neonUser!.id.toString(),
+                kitchen_id: kitchen.id.toString(),
+                location_id: location.id.toString(),
+            },
+        });
+
+        // Store pending extension in database for webhook to process
+        // We'll update the booking when payment succeeds via webhook
+        await bookingService.createPendingStorageExtension({
+            storageBookingId: id,
+            newEndDate: newEndDateObj,
+            extensionDays,
+            extensionBasePriceCents,
+            extensionServiceFeeCents,
+            extensionTotalPriceCents,
+            stripeSessionId: checkoutSession.sessionId,
+            status: 'pending',
+        });
+
+        res.json({
+            sessionUrl: checkoutSession.sessionUrl,
+            sessionId: checkoutSession.sessionId,
+            extension: {
+                storageBookingId: id,
+                extensionDays,
+                extensionBasePrice: extensionBasePriceCents / 100,
+                extensionServiceFee: extensionServiceFeeCents / 100,
+                extensionTotalPrice: extensionTotalPriceCents / 100,
+                newEndDate: newEndDateObj.toISOString(),
+            },
+        });
+    } catch (error: any) {
+        console.error("Error creating storage extension checkout:", error);
+        res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
+    }
+});
+
+// Legacy extend endpoint (kept for backward compatibility, but now requires payment)
+router.put("/chef/storage-bookings/:id/extend", requireChef, async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid storage booking ID" });
+        }
+
+        const { newEndDate, paymentConfirmed, stripeSessionId } = req.body;
+        if (!newEndDate) {
+            return res.status(400).json({ error: "newEndDate is required" });
+        }
+
+        // Verify the booking belongs to this chef
+        const booking = await bookingService.getStorageBookingById(id);
+        if (!booking) {
+            return res.status(404).json({ error: "Storage booking not found" });
+        }
+
+        if (booking.chefId !== req.neonUser!.id) {
+            return res.status(403).json({ error: "You don't have permission to extend this booking" });
+        }
+
+        if (booking.status === 'cancelled') {
+            return res.status(400).json({ error: "Cannot extend a cancelled booking" });
+        }
+
+        const newEndDateObj = new Date(newEndDate);
+        if (isNaN(newEndDateObj.getTime())) {
+            return res.status(400).json({ error: "Invalid date format for newEndDate" });
+        }
+
+        // If payment not confirmed, redirect to checkout flow
+        if (!paymentConfirmed) {
+            return res.status(402).json({ 
+                error: "Payment required",
+                message: "Please use the /extension-checkout endpoint to create a payment session",
+                checkoutEndpoint: `/api/chef/storage-bookings/${id}/extension-checkout`,
+            });
+        }
+
+        // Verify payment was successful (check pending extension record)
+        if (stripeSessionId) {
+            const pendingExtension = await bookingService.getPendingStorageExtension(id, stripeSessionId);
+            if (!pendingExtension || pendingExtension.status !== 'completed') {
+                return res.status(402).json({ 
+                    error: "Payment not completed",
+                    message: "Payment must be completed before extending the booking",
+                });
+            }
+        }
+
         // Extend the booking
         const extendedBooking = await bookingService.extendStorageBooking(id, newEndDateObj);
-
-        // TODO: Process payment for the extension
-        // For now, we'll just update the booking and return it
-        // Payment processing should be integrated with Stripe here
 
         res.json({
             success: true,
             booking: extendedBooking,
-            message: `Storage booking extended successfully. Additional cost: $${extendedBooking.extensionDetails.extensionTotalPrice.toFixed(2)} CAD`,
+            message: `Storage booking extended successfully to ${newEndDateObj.toLocaleDateString()}`,
         });
     } catch (error: any) {
         console.error("Error extending storage booking:", error);
