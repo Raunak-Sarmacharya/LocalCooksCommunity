@@ -749,22 +749,26 @@ export default function BookingControlPanel({
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           <p className="text-gray-500 mt-3 text-sm">Loading bookings...</p>
         </div>
-      ) : filteredBookings.length === 0 ? (
-        <div className="text-center py-12">
-          <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium mb-1">
-            {viewType === "upcoming"
-              ? "No upcoming bookings"
-              : viewType === "past"
-              ? "No past bookings"
-              : "No bookings found"}
-          </p>
-          <p className="text-sm text-gray-400">
-            {statusFilter !== "all" && `No ${statusFilter} bookings`}
-          </p>
-        </div>
       ) : (
         <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
+          {/* Empty State for Kitchen Bookings */}
+          {filteredBookings.length === 0 ? (
+            <div className="text-center py-8">
+              <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-medium mb-1">
+                {viewType === "upcoming"
+                  ? "No upcoming bookings"
+                  : viewType === "past"
+                  ? "No past bookings"
+                  : "No bookings found"}
+              </p>
+              <p className="text-sm text-gray-400">
+                {statusFilter !== "all" && `No ${statusFilter} bookings`}
+              </p>
+            </div>
+          ) : (
+          /* Kitchen Bookings */
+          <div className="space-y-4">
           {Object.entries(groupedBookings).map(([groupKey, groupBookings]) => {
             if (groupBookings.length === 0) return null;
             
@@ -1014,12 +1018,12 @@ export default function BookingControlPanel({
               </div>
             );
           })}
-        </div>
-      )}
+          </div>
+          )}
 
-      {/* Storage Bookings Section - Separate Group */}
-      {!isLoadingStorage && storageBookings.length > 0 && (
-        <div className="mt-6 pt-6 border-t-2 border-purple-200">
+          {/* Storage Bookings Section - Inside scrollable area */}
+          {!isLoadingStorage && storageBookings.length > 0 && (
+            <div className="mt-6 pt-6 border-t-2 border-purple-200 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-purple-900 flex items-center gap-2">
               <Package className="h-5 w-5 text-purple-600" />
@@ -1205,6 +1209,8 @@ export default function BookingControlPanel({
             setExtendDialogOpen(null);
           }}
         />
+      )}
+        </div>
       )}
     </div>
   );
