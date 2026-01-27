@@ -165,7 +165,13 @@ export default function BookingConfirmationPage() {
         if (storageRes.ok) {
           const storageData = await storageRes.json();
           if (!isCancelled) {
-            setStorageListings(storageData);
+            // Convert cents to dollars for UI display (consistent with other pages)
+            const storageDataDollars = (storageData || []).map((s: any) => ({
+              ...s,
+              basePrice: s.basePrice ? s.basePrice / 100 : 0,
+              pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
+            }));
+            setStorageListings(storageDataDollars);
           }
         } else {
           if (!isCancelled) {
@@ -244,11 +250,13 @@ export default function BookingConfirmationPage() {
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
   // Calculate combined subtotal (in CENTS)
+  // All values must be in CENTS for consistency with formatCurrency
   const combinedSubtotal = useMemo(() => {
-    const kitchenBase = estimatedPrice?.basePrice || 0;
-    const storageBase = storagePricing.subtotal || 0;
-    const equipmentBase = equipmentPricing.subtotal || 0;
-    return kitchenBase + storageBase + equipmentBase;
+    const kitchenBase = estimatedPrice?.basePrice || 0; // Already in cents
+    // Storage and equipment pricing hooks return dollars, convert to cents
+    const storageBaseCents = Math.round((storagePricing.subtotal || 0) * 100);
+    const equipmentBaseCents = Math.round((equipmentPricing.subtotal || 0) * 100);
+    return kitchenBase + storageBaseCents + equipmentBaseCents;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
   // Calculate tax on combined subtotal
@@ -734,13 +742,13 @@ export default function BookingConfirmationPage() {
                                         {item.name}
                                       </span>
                                     </div>
-                                    <span className="font-medium text-amber-700 flex-shrink-0">{formatCurrency(item.rate)}</span>
+                                    <span className="font-medium text-amber-700 flex-shrink-0">{formatCurrency(Math.round(item.rate * 100))}</span>
                                   </div>
                                 );
                               })}
                               <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
                                 <span className="font-semibold text-amber-800">Equipment Subtotal (base price only):</span>
-                                <span className="font-bold text-amber-900">{formatCurrency(equipmentPricing.subtotal)}</span>
+                                <span className="font-bold text-amber-900">{formatCurrency(Math.round(equipmentPricing.subtotal * 100))}</span>
                               </div>
                             </div>
                           </div>
@@ -788,7 +796,7 @@ export default function BookingConfirmationPage() {
                             ))}
                             <div className="pt-2 mt-2 border-t border-purple-200 flex justify-between">
                               <span className="font-semibold text-purple-800">Storage Subtotal (base price only):</span>
-                              <span className="font-bold text-purple-900">{formatCurrency(storagePricing.subtotal)}</span>
+                              <span className="font-bold text-purple-900">{formatCurrency(Math.round(storagePricing.subtotal * 100))}</span>
                             </div>
                           </div>
                         </div>

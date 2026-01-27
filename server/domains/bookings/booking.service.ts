@@ -202,7 +202,7 @@ export class BookingService {
                             damageDeposit: (listing.damageDeposit || '0').toString(), 
                             serviceFee: '0',
                             currency: pricing.currency,
-                            pricingModel: listing.pricingModel || 'daily'
+                            pricingModel: 'daily' // Equipment uses flat session rate
                         });
                         
                         // Add to equipment_items JSONB array for denormalized storage
@@ -637,6 +637,29 @@ export class BookingService {
                 newEndDate: newEndDate.toISOString()
             }
         };
+    }
+
+    // ===== PENDING STORAGE EXTENSIONS =====
+
+    async createPendingStorageExtension(data: {
+        storageBookingId: number;
+        newEndDate: Date;
+        extensionDays: number;
+        extensionBasePriceCents: number;
+        extensionServiceFeeCents: number;
+        extensionTotalPriceCents: number;
+        stripeSessionId: string;
+        status: string;
+    }) {
+        return this.repo.createPendingStorageExtension(data);
+    }
+
+    async getPendingStorageExtension(storageBookingId: number, stripeSessionId: string) {
+        return this.repo.getPendingStorageExtension(storageBookingId, stripeSessionId);
+    }
+
+    async updatePendingStorageExtension(id: number, updates: { status: string; stripePaymentIntentId?: string; completedAt?: Date }) {
+        return this.repo.updatePendingStorageExtension(id, updates);
     }
 
     async processOverstayerPenalties(maxDaysToCharge: number = 7) {

@@ -60,6 +60,7 @@ const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
+const ManagerNotifications = lazy(() => import("@/pages/ManagerNotifications"));
 const ManagerSetupPage = lazy(() => import("@/pages/ManagerSetupPage")); // [NEW]
 const ChefSetupPage = lazy(() => import("@/pages/ChefSetupPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
@@ -358,6 +359,13 @@ function Router() {
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
               <ManagerKitchenApplications />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
+        <Route path="/manager/notifications">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerNotifications />
             </ManagerProtectedRoute>
           ) : null}
         </Route>

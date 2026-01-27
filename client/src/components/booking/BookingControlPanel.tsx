@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
+import { ExpiringStorageNotification } from "./ExpiringStorageNotification";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
@@ -631,6 +632,9 @@ export default function BookingControlPanel({
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sticky top-4 h-fit max-h-[calc(100vh-2rem)] flex flex-col">
+      {/* Expiring Storage Notifications */}
+      <ExpiringStorageNotification />
+      
       {/* Header */}
       <div className="mb-6 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">

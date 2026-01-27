@@ -105,11 +105,12 @@ export function StorageExtensionDialog({
     };
   }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, serviceFeeRate]);
 
-  const extendMutation = useMutation({
+  // Create checkout session for storage extension payment
+  const checkoutMutation = useMutation({
     mutationFn: async (newEndDate: Date) => {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/chef/storage-bookings/${booking.id}/extend`, {
-        method: 'PUT',
+      const response = await fetch(`/api/chef/storage-bookings/${booking.id}/extension-checkout`, {
+        method: 'POST',
         headers,
         body: JSON.stringify({
           newEndDate: newEndDate.toISOString(),
@@ -118,28 +119,27 @@ export function StorageExtensionDialog({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to extend storage booking');
+        throw new Error(error.error || 'Failed to create checkout session');
       }
 
       return response.json();
     },
     onSuccess: (data) => {
-      toast({
-        title: "Storage Extended",
-        description: data.message || "Storage booking extended successfully",
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/chef/bookings'] });
-      onOpenChange(false);
-      setSelectedDate(undefined);
-      if (onSuccess) {
-        onSuccess();
+      // Redirect to Stripe Checkout
+      if (data.sessionUrl) {
+        window.location.href = data.sessionUrl;
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to get checkout URL",
+          variant: "destructive",
+        });
       }
     },
     onError: (error: any) => {
       toast({
         title: "Extension Failed",
-        description: error.message || "Failed to extend storage booking",
+        description: error.message || "Failed to create checkout session",
         variant: "destructive",
       });
     },
@@ -151,7 +151,7 @@ export function StorageExtensionDialog({
     }
 
     setIsProcessing(true);
-    extendMutation.mutate(selectedDate, {
+    checkoutMutation.mutate(selectedDate, {
       onSettled: () => {
         setIsProcessing(false);
       },

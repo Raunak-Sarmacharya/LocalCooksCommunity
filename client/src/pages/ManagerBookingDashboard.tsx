@@ -3,13 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, ChefHat, Settings,
   Check, Save, AlertCircle, FileText,
-  ChevronLeft, ChevronRight, Sliders, Info, Mail, User, Users, Upload, Image as ImageIcon, Globe, Phone, DollarSign, Package, Wrench, CheckCircle, Plus, Loader2, CreditCard, Menu, TrendingUp, HelpCircle, MessageCircle, Sparkles, Trash2
+  ChevronRight, Info, Mail, Upload, Image as ImageIcon, Globe, CheckCircle, Plus, Loader2, HelpCircle, Sparkles, Trash2
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
-import { Link, useLocation } from "wouter";
-import CalendarComponent from 'react-calendar';
+import { useLocation } from "wouter";
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useOnboardingStatus } from "@/hooks/use-onboarding-status";
@@ -18,7 +17,6 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import KitchenAvailabilityManagement from "./KitchenAvailabilityManagement";
 import ManagerBookingsPanel from "./ManagerBookingsPanel";
 import { ManagerKitchenApplicationsContent } from "./ManagerKitchenApplications";
@@ -31,7 +29,7 @@ import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
@@ -586,7 +584,7 @@ export default function ManagerBookingDashboard() {
       )}
 
       {activeView === 'storage-listings' && (
-        <StorageListingManagement embedded={true} />
+        <StorageListingManagement />
       )}
 
       {activeView === 'equipment-listings' && (
@@ -1117,8 +1115,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   const [customOnboardingLink, setCustomOnboardingLink] = useState(location.customOnboardingLink || '');
   // Timezone is locked to Newfoundland - always use DEFAULT_TIMEZONE
   const timezone = DEFAULT_TIMEZONE;
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
-  const [uploadingKitchenId, setUploadingKitchenId] = useState<number | null>(null);
   const [kitchenDescriptions, setKitchenDescriptions] = useState<Record<number, string>>({});
   const [updatingKitchenId, setUpdatingKitchenId] = useState<number | null>(null);
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
@@ -1344,126 +1340,6 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
       setUpdatingKitchenId(null);
     }
   };
-
-  // Handle kitchen image upload
-  const handleKitchenImageUpload = async (kitchenId: number, file: File) => {
-    setUploadingKitchenId(kitchenId);
-    try {
-      // Get Firebase token for authentication
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-
-      const token = await currentFirebaseUser.getIdToken();
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const uploadResponse = await fetch('/api/files/upload-file', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: 'include',
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || 'Failed to upload image');
-      }
-
-      const uploadResult = await uploadResponse.json();
-      const uploadedUrl = uploadResult.url;
-
-      // Update the kitchen with the new image URL
-      // Reuse existing token from above
-      const headers: HeadersInit = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      };
-
-      const updateResponse = await fetch(`/api/manager/kitchens/${kitchenId}/image`, {
-        method: 'PUT',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ imageUrl: uploadedUrl }),
-      });
-
-      if (!updateResponse.ok) {
-        const errorData = await updateResponse.json();
-        throw new Error(errorData.error || 'Failed to update kitchen image');
-      }
-
-      // Refresh the kitchens list
-      queryClient.invalidateQueries({ queryKey: ['managerKitchens', location.id] });
-
-      toast({
-        title: "Success",
-        description: "Kitchen image uploaded successfully",
-      });
-
-      return uploadedUrl;
-    } catch (error: any) {
-      console.error('Kitchen image upload error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to upload kitchen image",
-        variant: "destructive",
-      });
-      throw error;
-    } finally {
-      setUploadingKitchenId(null);
-    }
-  };
-
-  // Handle logo file upload with Firebase auth
-  const handleLogoUpload = async (file: File) => {
-    setIsUploadingLogo(true);
-    try {
-      // Get Firebase token for authentication
-      const currentFirebaseUser = auth.currentUser;
-      if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
-      }
-
-      const token = await currentFirebaseUser.getIdToken();
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('/api/files/upload-file', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: 'include',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload logo');
-      }
-
-      const result = await response.json();
-      const uploadedUrl = result.url;
-      setLogoUrl(uploadedUrl);
-
-      // Auto-save after upload with the uploaded URL
-      handleSave(uploadedUrl);
-
-      return uploadedUrl;
-    } catch (error: any) {
-      console.error('Logo upload error:', error);
-      throw error;
-    } finally {
-      setIsUploadingLogo(false);
-    }
-  };
-
-  // Handle storage listing photo update
 
   // Handle kitchen license upload
   const handleLicenseUpload = async (file: File, expiryDate: string) => {
