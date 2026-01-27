@@ -129,7 +129,7 @@ export function ExpiringStorageNotification() {
                           : `Expires ${format(new Date(booking.endDate), "MMM d, yyyy")}`}
                       </span>
                       <span>•</span>
-                      <span>${booking.basePrice.toFixed(2)}/day</span>
+                      <span>${((booking.basePrice || 0) / 100).toFixed(2)}/day</span>
                     </div>
                   </div>
                 </div>

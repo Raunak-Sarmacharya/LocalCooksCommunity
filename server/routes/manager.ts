@@ -126,6 +126,7 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
                 createdAt: kitchenBookings.createdAt,
                 updatedAt: kitchenBookings.updatedAt,
                 kitchenName: kitchens.name,
+                kitchenTaxRatePercent: kitchens.taxRatePercent,
                 locationName: locations.name,
                 managerId: locations.managerId
             })
@@ -197,11 +198,12 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
         const pdfBuffer = await generateInvoicePDF(
             booking,
             chef,
-            { name: booking.kitchenName },
+            { name: booking.kitchenName, taxRatePercent: booking.kitchenTaxRatePercent },
             { name: booking.locationName },
             storageRows,
             equipmentRows,
-            booking.paymentIntentId
+            booking.paymentIntentId,
+            { viewer: 'manager' }
         );
 
         res.setHeader('Content-Type', 'application/pdf');
@@ -311,8 +313,8 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
         const { createConnectAccount, createAccountLink, isAccountReady, createDashboardLoginLink } = await import('../services/stripe-connect-service');
 
         const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
 
         // Case 1: User already has a Stripe Connect account
         if (user.stripeConnectAccountId) {
@@ -367,8 +369,8 @@ router.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requi
 
         const { createAccountLink } = await import('../services/stripe-connect-service');
         const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
 
         const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
@@ -404,8 +406,8 @@ router.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requir
             return res.json({ url: link.url });
         } else {
             const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-            const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
-            const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
+            const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
+            const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
 
             const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
 
@@ -1410,18 +1412,128 @@ router.get("/bookings/:id", requireFirebaseAuthWithUser, requireManager, async (
     }
 });
 
-// Update booking status
+// Update booking status (Manager approves/rejects pending bookings)
 router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
+        const user = req.neonUser!;
         const id = parseInt(req.params.id);
         const { status } = req.body;
-        // Note: The method updateKitchenBookingStatus is not yet exposed nicely in BookingService for direct simple usage
-        // but we created updateBookingStatus.
+
+        if (!['confirmed', 'cancelled', 'pending'].includes(status)) {
+            return res.status(400).json({ error: "Invalid status. Must be 'confirmed', 'cancelled', or 'pending'" });
+        }
+
+        // Get booking details before update for email notifications
+        const booking = await bookingService.getBookingById(id);
+        if (!booking) {
+            return res.status(404).json({ error: "Booking not found" });
+        }
+
+        // Verify manager has access to this booking's kitchen
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const location = await locationService.getLocationById(kitchen.locationId);
+        if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied to this booking" });
+        }
+
+        // Update booking status
         await bookingService.updateBookingStatus(id, status);
-        // ... send emails ...
-        res.json({ success: true });
+
+        // Send email notifications based on status change
+        try {
+            // Get chef details
+            let chef = null;
+            if (booking.chefId) {
+                chef = await userService.getUser(booking.chefId);
+            }
+
+            const timezone = (location as any).timezone || 'America/Edmonton';
+            const locationName = location.name;
+
+            if (chef) {
+                if (status === 'confirmed') {
+                    // Send confirmation email to chef
+                    const chefConfirmationEmail = generateBookingConfirmationEmail({
+                        chefEmail: chef.username,
+                        chefName: chef.username,
+                        kitchenName: kitchen.name,
+                        bookingDate: booking.bookingDate,
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        timezone,
+                        locationName
+                    });
+                    await sendEmail(chefConfirmationEmail);
+
+                    // Send SMS to chef if phone available
+                    try {
+                        const chefPhone = await getChefPhone(booking.chefId);
+                        if (chefPhone) {
+                            const smsContent = generateChefBookingConfirmationSMS({
+                                kitchenName: kitchen.name,
+                                bookingDate: booking.bookingDate instanceof Date 
+                                    ? booking.bookingDate.toISOString() 
+                                    : String(booking.bookingDate),
+                                startTime: booking.startTime,
+                                endTime: booking.endTime
+                            });
+                            await sendSMS(chefPhone, smsContent);
+                        }
+                    } catch (smsError) {
+                        console.error("Error sending confirmation SMS to chef:", smsError);
+                    }
+
+                    logger.info(`[Manager] Booking ${id} confirmed by manager ${user.id}`);
+                } else if (status === 'cancelled') {
+                    // Send cancellation email to chef
+                    const chefCancellationEmail = generateBookingCancellationEmail({
+                        chefEmail: chef.username,
+                        chefName: chef.username,
+                        kitchenName: kitchen.name,
+                        bookingDate: booking.bookingDate instanceof Date 
+                            ? booking.bookingDate.toISOString() 
+                            : String(booking.bookingDate),
+                        startTime: booking.startTime,
+                        endTime: booking.endTime,
+                        cancellationReason: "Booking was declined by the kitchen manager"
+                    });
+                    await sendEmail(chefCancellationEmail);
+
+                    // Send SMS to chef if phone available
+                    try {
+                        const chefPhone = await getChefPhone(booking.chefId);
+                        if (chefPhone) {
+                            const smsContent = generateChefBookingCancellationSMS({
+                                kitchenName: kitchen.name,
+                                bookingDate: booking.bookingDate instanceof Date 
+                                    ? booking.bookingDate.toISOString() 
+                                    : String(booking.bookingDate),
+                                startTime: booking.startTime,
+                                endTime: booking.endTime,
+                                reason: "Booking was declined by the kitchen manager"
+                            });
+                            await sendSMS(chefPhone, smsContent);
+                        }
+                    } catch (smsError) {
+                        console.error("Error sending cancellation SMS to chef:", smsError);
+                    }
+
+                    logger.info(`[Manager] Booking ${id} cancelled/declined by manager ${user.id}`);
+                }
+            }
+        } catch (emailError) {
+            console.error("Error sending booking status change emails:", emailError);
+            // Don't fail the status update if email fails
+        }
+
+        res.json({ success: true, message: `Booking ${status === 'confirmed' ? 'approved' : status}` });
     } catch (e: any) {
-        res.status(500).json({ error: e.message });
+        console.error("Error updating booking status:", e);
+        res.status(500).json({ error: e.message || "Failed to update booking status" });
     }
 });
 

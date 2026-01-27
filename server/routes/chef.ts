@@ -51,8 +51,8 @@ router.post("/stripe-connect/create", requireChef, async (req: Request, res: Res
         const { createConnectAccount, createAccountLink, isAccountReady } = await import('../services/stripe-connect-service');
 
         const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
+        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
 
         // Case 1: User already has a Stripe Connect account
         if (user.stripeConnectAccountId) {
@@ -107,8 +107,8 @@ router.get("/stripe-connect/onboarding-link", requireChef, async (req: Request, 
 
         const { createAccountLink } = await import('../services/stripe-connect-service');
         const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
+        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
 
         const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });

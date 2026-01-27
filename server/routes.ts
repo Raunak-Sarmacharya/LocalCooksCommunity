@@ -455,9 +455,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Chef Routes
   app.use("/api/chef", (await import("./routes/chef")).default);
 
-  // SuprSend Routes
-  app.use("/api/suprsend", (await import("./routes/suprsend")).default);
-
   const httpServer = createServer(app);
   return httpServer;
 }

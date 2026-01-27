@@ -2761,13 +2761,13 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
     enabled: selectedManager !== 'all',
   });
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amountInCents: number) => {
     return new Intl.NumberFormat('en-CA', {
       style: 'currency',
       currency: 'CAD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    }).format(amountInCents / 100);
   };
 
   return (
@@ -3020,13 +3020,13 @@ function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () =
     },
   });
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amountInCents: number) => {
     return new Intl.NumberFormat('en-CA', {
       style: 'currency',
       currency: 'CAD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    }).format(amountInCents / 100);
   };
 
   return (

@@ -39,7 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ChatPanel from "@/components/chat/ChatPanel";
+import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { getConversationForApplication, createConversation } from "@/services/chat-service";
 
 
@@ -94,10 +94,8 @@ export function ManagerKitchenApplicationsContent({
   const [reviewFeedback, setReviewFeedback] = useState("");
 
   const [showChatDialog, setShowChatDialog] = useState(false);
-  const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
-  const [chatLocationName, setChatLocationName] = useState<string | null>(null);
 
   // Business Logic: Filter applications by location if selected
   // Memoize to prevent unnecessary re-renders and infinite loops
@@ -287,26 +285,7 @@ export function ManagerKitchenApplicationsContent({
       return;
     }
 
-    setChatApplication(application);
-
-    // Fetch location name if not available in application
-    let locationName = application.location?.name;
-    if (!locationName && application.locationId) {
-      try {
-        const locationResponse = await fetch(`/api/public/locations/${application.locationId}/details`, {
-          credentials: 'include',
-        });
-        if (locationResponse.ok) {
-          const locationData = await locationResponse.json();
-          locationName = locationData?.name || null;
-        }
-      } catch (error) {
-        console.error(`Error fetching location ${application.locationId}:`, error);
-      }
-    }
-    setChatLocationName(locationName || null);
-
-    // Get or create conversation [UPDATED LOGIC]
+    // Get or create conversation
     let conversationId = application.chat_conversation_id;
 
     // Check service if local state is missing it
@@ -1095,32 +1074,18 @@ export function ManagerKitchenApplicationsContent({
         </DialogContent>
       </Dialog>
 
-      {/* Chat Dialog */}
-      < Dialog open={showChatDialog} onOpenChange={setShowChatDialog} >
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
-          {chatApplication && chatConversationId && managerId && (
-            <ChatPanel
-              conversationId={chatConversationId}
-              applicationId={chatApplication.id}
-              chefId={chatApplication.chefId}
-              managerId={managerId}
-              locationId={chatApplication.locationId}
-              locationName={
-                chatApplication.location?.name ||
-                chatLocationName ||
-                (chatApplication.locationId ? `Location #${chatApplication.locationId}` : "Unknown Location")
-              }
-              onClose={() => {
-                setShowChatDialog(false);
-                setChatApplication(null);
-                setChatConversationId(null);
-                setChatLocationName(null);
-              }}
-              embedded={true}
+      {/* Chat Dialog - Enterprise Grade UnifiedChatView */}
+      <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
+        <DialogContent className="max-w-6xl h-[85vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+          {managerId && (
+            <UnifiedChatView
+              userId={managerId}
+              role="manager"
+              initialConversationId={chatConversationId}
             />
           )}
         </DialogContent>
-      </Dialog >
+      </Dialog>
     </>
   );
 

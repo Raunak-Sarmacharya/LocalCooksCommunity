@@ -256,6 +256,11 @@ export async function updatePaymentTransaction(
       updates.push(sql`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
 
+    // Store actual Stripe processing fee in dedicated column
+    if (params.stripeProcessingFee !== undefined) {
+      updates.push(sql`stripe_fee = ${params.stripeProcessingFee.toString()}`);
+    }
+
     // Update service_fee (platform fee) with actual Stripe platform fee
     // For Stripe Connect: platform fee = application_fee_amount (explicitly set)
     // Platform fee is what goes to the platform, not including Stripe processing fees

@@ -24,7 +24,6 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { LogOut, User as UserIcon, ChevronDown, Command } from "lucide-react";
 import { CommandMenu } from "@/components/command-menu";
 import { Button } from "@/components/ui/button";
-import { NotificationInbox } from "@/components/notifications/NotificationInbox";
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -95,7 +94,6 @@ export default function DashboardLayout({
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <NotificationInbox />
                         <Button
                             variant="outline"
                             className="hidden md:flex relative h-9 w-full justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"

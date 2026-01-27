@@ -260,7 +260,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -319,7 +319,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -395,7 +395,7 @@ export default function KitchenComparisonPage() {
 
         return {
           ...baseKitchen,
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -451,7 +451,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -503,7 +503,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate,
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -1360,9 +1360,9 @@ export default function KitchenComparisonPage() {
                                           <span className="font-medium">{storage.name || storage.storageType}</span>
                                           {storage.basePrice && (
                                             <span className="text-purple-600">
-                                              ${storage.basePrice.toFixed(2)}
+                                              ${(storage.basePrice || 0).toFixed(2)}
                                               {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
-                                                <span className="text-xs"> + ${storage.pricePerCubicFoot.toFixed(2)}/ft³</span>
+                                                <span className="text-xs"> + ${(storage.pricePerCubicFoot || 0).toFixed(2)}/ft³</span>
                                               )}
                                             </span>
                                           )}

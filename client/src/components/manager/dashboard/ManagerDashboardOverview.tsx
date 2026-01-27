@@ -9,7 +9,6 @@ import {
     MapPin,
     ChefHat,
     User,
-    AlertCircle
 } from "lucide-react";
 // We will stick to the existing calendar for now to minimize logic breakage, 
 // but encapsulate it better. 
@@ -23,8 +22,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards";
+import type { RevenueMetrics } from "@/components/manager/revenue/types";
 
 // Define strict types
 interface Booking {
@@ -51,8 +50,45 @@ interface ManagerDashboardOverviewProps {
     onNavigate: (view: 'bookings' | 'overview') => void;
 }
 
-export function ManagerDashboardOverview({ selectedLocation, onNavigate }: ManagerDashboardOverviewProps) {
+
+export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, onNavigate }: ManagerDashboardOverviewProps) {
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+    // Fetch revenue metrics for the overview
+    const { data: revenueMetrics, isLoading: isLoadingRevenue } = useQuery<RevenueMetrics>({
+        queryKey: ['managerRevenueOverview'],
+        queryFn: async () => {
+            const currentFirebaseUser = auth.currentUser;
+            if (!currentFirebaseUser) {
+                throw new Error("Firebase user not available");
+            }
+
+            const token = await currentFirebaseUser.getIdToken();
+            const headers: HeadersInit = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            };
+
+            // Get current month's revenue
+            const today = new Date();
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            const startDate = startOfMonth.toISOString().split('T')[0];
+            const endDate = endOfMonth.toISOString().split('T')[0];
+
+            const response = await fetch(`/api/manager/revenue/overview?startDate=${startDate}&endDate=${endDate}`, {
+                headers,
+                credentials: "include",
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch revenue metrics');
+            }
+
+            return await response.json();
+        },
+        staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    });
 
     // Use the same query as ManagerBookingsPanel for consistency and real-time updates
     const { data: bookings = [], isLoading: isLoadingBookings } = useQuery<Booking[]>({
@@ -184,7 +220,10 @@ export function ManagerDashboardOverview({ selectedLocation, onNavigate }: Manag
 
     return (
         <div className="space-y-6">
-            {/* Stats Cards */}
+            {/* Revenue Summary - This Month - Using standardized RevenueMetricCards */}
+            <RevenueMetricCards metrics={revenueMetrics ?? null} isLoading={isLoadingRevenue} />
+
+            {/* Booking Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="hover:shadow-lg transition-all duration-300 border-l-4 border-l-yellow-400">
                     <CardContent className="p-6">

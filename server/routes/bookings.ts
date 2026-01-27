@@ -1241,21 +1241,32 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             // Note: We should ideally recalculate price here to verify, but for now trusting the intent amount
         }
 
+        // Extract storage IDs from selectedStorage array (frontend sends objects with storageListingId)
+        // Also support legacy selectedStorageIds for backwards compatibility
+        const storageIds = selectedStorageIds && selectedStorageIds.length > 0
+            ? selectedStorageIds
+            : (selectedStorage && Array.isArray(selectedStorage) 
+                ? selectedStorage.map((s: any) => s.storageListingId).filter(Boolean)
+                : []);
+        
+        console.log(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
+
+        // Create booking with PENDING status - requires manager approval
         const booking = await bookingService.createKitchenBooking({
             kitchenId,
             chefId,
             bookingDate: bookingDateObj,
             startTime,
             endTime,
-            status: 'confirmed', // Auto-confirm bookings
+            status: 'pending', // Requires manager approval before confirmation
             paymentStatus: paymentIntentId ? 'paid' : 'pending',
             paymentIntentId,
             specialNotes,
-            selectedStorageIds: selectedStorageIds || [], // Handle legacy IDs
+            selectedStorageIds: storageIds,
             selectedEquipmentIds: selectedEquipmentIds || []
         });
 
-        // Send email notification to chef
+        // Send email notifications
         try {
             if (!pool) throw new Error("Database pool not available");
 
@@ -1266,21 +1277,24 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             const chef = await userService.getUser(chefId);
 
             if (chef && kitchen) {
-                // Send email to chef
-                const { sendEmail, generateBookingConfirmationEmail, generateBookingNotificationEmail } = await import('../email');
+                // Send booking request email to chef (pending approval)
+                const { sendEmail, generateBookingRequestEmail, generateBookingNotificationEmail } = await import('../email');
 
-                const chefEmail = generateBookingConfirmationEmail({
+                // Send "Booking Request Received" email to chef (not confirmation - that comes when manager approves)
+                const chefEmail = generateBookingRequestEmail({
                     chefEmail: chef.username,
-                    chefName: chef.username, // Or fullName if available
+                    chefName: chef.username,
                     kitchenName: kitchen.name,
                     bookingDate: bookingDateObj,
                     startTime,
                     endTime,
-                    // totalPrice: booking.totalPrice // In cents (removed as not supported by email template)
+                    specialNotes,
+                    timezone: (location as any)?.timezone || 'America/Edmonton',
+                    locationName: (location as any)?.name
                 });
                 await sendEmail(chefEmail);
 
-                // Notify manager
+                // Notify manager about pending booking that needs approval
                 if (location) {
                     const notificationEmail = (location as any).notificationEmail || (location as any).notification_email;
                     if (notificationEmail) {
@@ -1290,7 +1304,10 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
                             kitchenName: kitchen.name,
                             bookingDate: bookingDateObj,
                             startTime,
-                            endTime
+                            endTime,
+                            specialNotes,
+                            timezone: (location as any)?.timezone || 'America/Edmonton',
+                            locationName: (location as any)?.name
                         });
                         await sendEmail(managerEmail);
                     }

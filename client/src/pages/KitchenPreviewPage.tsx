@@ -589,12 +589,12 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                         <div className="text-right">
                           {eq.hourlyRate && (
                             <p className="text-sm font-semibold text-blue-700">
-                              ${eq.hourlyRate.toFixed(2)}/hr
+                              ${(eq.hourlyRate || 0).toFixed(2)}/hr
                             </p>
                           )}
                           {eq.dailyRate && !eq.hourlyRate && (
                             <p className="text-sm font-semibold text-blue-700">
-                              ${eq.dailyRate.toFixed(2)}/day
+                              ${(eq.dailyRate || 0).toFixed(2)}/day
                             </p>
                           )}
                           {eq.currency && eq.currency !== 'CAD' && (
@@ -653,10 +653,10 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                       {storage.basePrice && (
                         <div className="text-right ml-4">
                           <p className="text-sm sm:text-base font-semibold text-purple-700">
-                            ${storage.basePrice.toFixed(2)}
+                            ${(storage.basePrice || 0).toFixed(2)}
                             {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
                               <span className="text-xs ml-1">
-                                + ${storage.pricePerCubicFoot.toFixed(2)}/ft³
+                                + ${(storage.pricePerCubicFoot || 0).toFixed(2)}/ft³
                               </span>
                             )}
                           </p>

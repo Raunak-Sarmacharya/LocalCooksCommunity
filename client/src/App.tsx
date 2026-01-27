@@ -60,12 +60,12 @@ const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
-const ManagerNotifications = lazy(() => import("@/pages/ManagerNotifications"));
 const ManagerSetupPage = lazy(() => import("@/pages/ManagerSetupPage")); // [NEW]
 const ChefSetupPage = lazy(() => import("@/pages/ChefSetupPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
+const StripeConnectReturn = lazy(() => import("@/pages/StripeConnectReturn"));
 
 
 // Loading component
@@ -362,26 +362,17 @@ function Router() {
             </ManagerProtectedRoute>
           ) : null}
         </Route>
-        <Route path="/manager/notifications">
-          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
-            <ManagerProtectedRoute>
-              <ManagerNotifications />
-            </ManagerProtectedRoute>
-          ) : null}
-        </Route>
         <Route path="/manager/stripe-connect/return">
-          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
-            <ManagerProtectedRoute>
-              <ManagerBookingDashboard />
-            </ManagerProtectedRoute>
-          ) : null}
+          <StripeConnectReturn />
         </Route>
         <Route path="/manager/stripe-connect/refresh">
-          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
-            <ManagerProtectedRoute>
-              <ManagerBookingDashboard />
-            </ManagerProtectedRoute>
-          ) : null}
+          <StripeConnectReturn />
+        </Route>
+        <Route path="/chef/stripe-connect/return">
+          <StripeConnectReturn />
+        </Route>
+        <Route path="/chef/stripe-connect/refresh">
+          <StripeConnectReturn />
         </Route>
 
         {/* Kitchen Preview Page - Public, no auth required */}

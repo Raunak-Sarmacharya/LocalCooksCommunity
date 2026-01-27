@@ -1158,10 +1158,10 @@ export default function BookingControlPanel({
                             <div>
                               <p className="text-xs text-gray-500 mb-0.5">Total Cost</p>
                               <p className="text-gray-900">
-                                ${storageBooking.totalPrice.toFixed(2)} CAD
+                                ${(storageBooking.totalPrice || 0).toFixed(2)} CAD
                                 {storageBooking.serviceFee > 0 && (
                                   <span className="text-xs text-gray-500 ml-1">
-                                    (includes ${storageBooking.serviceFee.toFixed(2)} service fee)
+                                    (includes ${(storageBooking.serviceFee || 0).toFixed(2)} service fee)
                                   </span>
                                 )}
                               </p>

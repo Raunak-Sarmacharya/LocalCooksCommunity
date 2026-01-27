@@ -121,9 +121,11 @@ export function TransactionTable({
         return filteredData.reduce(
             (acc, t) => ({
                 totalPrice: acc.totalPrice + (t.totalPrice || 0),
-                managerRevenue: acc.managerRevenue + (t.managerRevenue || 0),
+                taxAmount: acc.taxAmount + (t.taxAmount || 0),
+                stripeFee: acc.stripeFee + (t.stripeFee || 0),
+                netRevenue: acc.netRevenue + (t.netRevenue || 0),
             }),
-            { totalPrice: 0, managerRevenue: 0 }
+            { totalPrice: 0, taxAmount: 0, stripeFee: 0, netRevenue: 0 }
         )
     }, [filteredData])
 
@@ -309,8 +311,14 @@ export function TransactionTable({
                                         <TableCell className="text-right">
                                             {formatCurrency(totals.totalPrice)}
                                         </TableCell>
+                                        <TableCell className="text-right text-amber-600">
+                                            {formatCurrency(totals.taxAmount)}
+                                        </TableCell>
+                                        <TableCell className="text-right text-violet-600">
+                                            {formatCurrency(totals.stripeFee)}
+                                        </TableCell>
                                         <TableCell className="text-right text-primary">
-                                            {formatCurrency(totals.managerRevenue)}
+                                            {formatCurrency(totals.netRevenue)}
                                         </TableCell>
                                         <TableCell colSpan={2} />
                                     </TableRow>

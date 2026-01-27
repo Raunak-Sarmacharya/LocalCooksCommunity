@@ -8086,6 +8086,348 @@ var init_files = __esm({
   }
 });
 
+// server/sms.ts
+var sms_exports = {};
+__export(sms_exports, {
+  formatPhoneNumber: () => formatPhoneNumber,
+  generateChefBookingCancellationSMS: () => generateChefBookingCancellationSMS,
+  generateChefBookingConfirmationSMS: () => generateChefBookingConfirmationSMS,
+  generateChefSelfCancellationSMS: () => generateChefSelfCancellationSMS,
+  generateManagerBookingCancellationSMS: () => generateManagerBookingCancellationSMS,
+  generateManagerBookingSMS: () => generateManagerBookingSMS,
+  generateManagerPortalBookingSMS: () => generateManagerPortalBookingSMS,
+  generatePortalUserBookingCancellationSMS: () => generatePortalUserBookingCancellationSMS,
+  generatePortalUserBookingConfirmationSMS: () => generatePortalUserBookingConfirmationSMS,
+  sendSMS: () => sendSMS,
+  testSMS: () => testSMS
+});
+import twilio from "twilio";
+var getSMSConfig, formatPhoneNumber, sendSMS, generateManagerBookingSMS, generateManagerPortalBookingSMS, generateChefBookingConfirmationSMS, generateChefBookingCancellationSMS, generatePortalUserBookingConfirmationSMS, generatePortalUserBookingCancellationSMS, generateManagerBookingCancellationSMS, generateChefSelfCancellationSMS, testSMS;
+var init_sms = __esm({
+  "server/sms.ts"() {
+    "use strict";
+    getSMSConfig = () => {
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+      if (!accountSid || !authToken || !fromNumber) {
+        const missing = [];
+        if (!accountSid) missing.push("TWILIO_ACCOUNT_SID");
+        if (!authToken) missing.push("TWILIO_AUTH_TOKEN");
+        if (!fromNumber) missing.push("TWILIO_PHONE_NUMBER");
+        console.warn("\u26A0\uFE0F Twilio configuration is missing. SMS functionality will be disabled.");
+        console.warn(`   Missing variables: ${missing.join(", ")}`);
+        console.warn("   Please set these environment variables to enable SMS functionality.");
+        return null;
+      }
+      if (!fromNumber.startsWith("+")) {
+        console.warn(`\u26A0\uFE0F TWILIO_PHONE_NUMBER should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US). Current value: ${fromNumber}`);
+      }
+      if (fromNumber.startsWith("+1") && fromNumber.length === 12) {
+        const areaCode = fromNumber.substring(2, 5);
+        const firstDigit = parseInt(areaCode[0]);
+        if (firstDigit >= 2 && firstDigit <= 9) {
+          console.log(`\u2705 Twilio phone number detected as North American (US/Canada): ${fromNumber}`);
+        }
+      }
+      return {
+        accountSid,
+        authToken,
+        fromNumber
+      };
+    };
+    formatPhoneNumber = (phone) => {
+      if (!phone) return null;
+      const trimmed = phone.trim();
+      if (!trimmed) return null;
+      const cleaned = trimmed.replace(/[^\d+]/g, "");
+      if (cleaned.startsWith("+")) {
+        const digitsAfterPlus = cleaned.substring(1);
+        if (digitsAfterPlus.length >= 1 && digitsAfterPlus.length <= 15 && /^\d+$/.test(digitsAfterPlus)) {
+          return cleaned;
+        }
+        console.warn(`\u26A0\uFE0F Invalid E.164 format (must be + followed by 1-15 digits): ${phone}`);
+        return null;
+      }
+      const digitsOnly = cleaned.replace(/\D/g, "");
+      if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
+        return `+${digitsOnly}`;
+      }
+      if (digitsOnly.length === 10) {
+        const areaCode = digitsOnly.substring(0, 3);
+        const exchangeCode = digitsOnly.substring(3, 6);
+        const firstDigit = parseInt(digitsOnly[0]);
+        const fourthDigit = parseInt(digitsOnly[3]);
+        if (firstDigit >= 2 && firstDigit <= 9 && fourthDigit >= 2 && fourthDigit <= 9) {
+          return `+1${digitsOnly}`;
+        } else {
+          console.warn(`\u26A0\uFE0F Invalid North American phone number format: ${phone}`);
+          console.warn("   Area code and exchange code must start with digits 2-9");
+          return null;
+        }
+      }
+      console.warn(`\u26A0\uFE0F Could not format phone number: ${phone} (digits only: ${digitsOnly}, length: ${digitsOnly.length})`);
+      console.warn("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
+      console.warn("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
+      return null;
+    };
+    sendSMS = async (to, message, options) => {
+      const startTime = Date.now();
+      try {
+        const config = getSMSConfig();
+        if (!config) {
+          console.warn("\u26A0\uFE0F SMS not sent - Twilio configuration missing");
+          return false;
+        }
+        const formattedPhone = formatPhoneNumber(to);
+        if (!formattedPhone) {
+          console.error(`\u274C SMS not sent - Invalid phone number: ${to}`);
+          console.error("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
+          console.error("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
+          return false;
+        }
+        if (message.length > 1600) {
+          console.warn(`\u26A0\uFE0F SMS message is ${message.length} characters (limit: 1600). Message will be split into multiple parts.`);
+        }
+        const client = twilio(config.accountSid, config.authToken);
+        const formattedFrom = formatPhoneNumber(config.fromNumber);
+        if (!formattedFrom) {
+          console.error(`\u274C SMS not sent - Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}`);
+          console.error("   TWILIO_PHONE_NUMBER must be in E.164 format (e.g., +1234567890)");
+          return false;
+        }
+        const messageResult = await client.messages.create({
+          body: message,
+          from: formattedFrom,
+          // Use formatted from number
+          to: formattedPhone
+        });
+        const duration = Date.now() - startTime;
+        console.log(`\u2705 SMS sent successfully:`, {
+          to: formattedPhone,
+          messageSid: messageResult.sid,
+          status: messageResult.status,
+          duration: `${duration}ms`,
+          trackingId: options?.trackingId || `auto_${Date.now()}`,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        });
+        return true;
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorDetails = {
+          to,
+          formattedTo: formatPhoneNumber(to),
+          error: errorMessage,
+          duration: `${duration}ms`,
+          trackingId: options?.trackingId || `auto_${Date.now()}`,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        if (error && typeof error === "object" && "code" in error) {
+          errorDetails.twilioCode = error.code;
+          errorDetails.twilioMessage = error.message;
+          errorDetails.twilioStatus = error.status;
+          errorDetails.twilioMoreInfo = error.moreInfo;
+        }
+        console.error(`\u274C SMS sending failed:`, errorDetails);
+        if (error && typeof error === "object" && "code" in error) {
+          const twilioCode = error.code;
+          switch (twilioCode) {
+            case 21211:
+              console.error("   \u2192 Invalid phone number format. Ensure phone numbers are in E.164 format (e.g., +1234567890)");
+              break;
+            case 21212:
+              console.error("   \u2192 Invalid phone number. The number provided is not a valid phone number.");
+              break;
+            case 21408:
+              console.error("   \u2192 Permission denied. Check your Twilio account permissions.");
+              break;
+            case 21608:
+              console.error("   \u2192 Unsubscribed recipient. The recipient has opted out of receiving messages.");
+              break;
+            case 21610:
+              console.error('   \u2192 Invalid "from" phone number. Check TWILIO_PHONE_NUMBER is correct and verified in Twilio.');
+              break;
+            case 21614:
+              console.error('   \u2192 "To" number is not a valid mobile number.');
+              break;
+            case 30003:
+              console.error("   \u2192 Unreachable destination. The phone number may be invalid or unreachable.");
+              break;
+            case 30004:
+              console.error("   \u2192 Message blocked. The message may be blocked by carrier or Twilio.");
+              break;
+            case 30005:
+              console.error("   \u2192 Unknown destination. The destination number is not recognized.");
+              break;
+            case 30006:
+              console.error("   \u2192 Landline or unreachable. The number may be a landline that cannot receive SMS.");
+              break;
+            default:
+              console.error(`   \u2192 Twilio error code: ${twilioCode}. Check Twilio documentation for details.`);
+          }
+        }
+        return false;
+      }
+    };
+    generateManagerBookingSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      return `New kitchen booking from ${data.chefName}:
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}
+
+Please check your dashboard to confirm or manage this booking.
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    generateManagerPortalBookingSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      return `New kitchen booking from portal user ${data.portalUserName}:
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}
+
+Please check your dashboard to confirm or manage this booking.
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    generateChefBookingConfirmationSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      return `Your kitchen booking has been confirmed!
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}
+
+See you there!
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    generateChefBookingCancellationSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      const reasonText = data.reason ? `
+Reason: ${data.reason}` : "";
+      return `Your kitchen booking has been cancelled.
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}${reasonText}
+
+Please contact the manager if you have questions.
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    generatePortalUserBookingConfirmationSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      return `Your kitchen booking has been confirmed!
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}
+
+See you there!
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    generatePortalUserBookingCancellationSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      const reasonText = data.reason ? `
+Reason: ${data.reason}` : "";
+      return `Your kitchen booking has been cancelled.
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}${reasonText}
+
+Please contact the manager if you have questions.
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    generateManagerBookingCancellationSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      return `Chef ${data.chefName} has cancelled their booking:
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}
+
+Please check your dashboard for details.
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    generateChefSelfCancellationSMS = (data) => {
+      const date2 = new Date(data.bookingDate).toLocaleDateString();
+      return `Your kitchen booking has been cancelled:
+
+Kitchen: ${data.kitchenName}
+Date: ${date2}
+Time: ${data.startTime} - ${data.endTime}
+
+If you need to book again, please visit the dashboard.
+
+We've also sent you an email. If not found, please check your spam folder.`;
+    };
+    testSMS = async (to) => {
+      try {
+        const config = getSMSConfig();
+        if (!config) {
+          return {
+            success: false,
+            message: "Twilio configuration is missing. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables."
+          };
+        }
+        const formattedPhone = formatPhoneNumber(to);
+        if (!formattedPhone) {
+          return {
+            success: false,
+            message: `Invalid phone number format: ${to}. Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US) or 10-digit North American numbers.`
+          };
+        }
+        const formattedFrom = formatPhoneNumber(config.fromNumber);
+        if (!formattedFrom) {
+          return {
+            success: false,
+            message: `Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}. Must be in E.164 format (e.g., +1234567890).`
+          };
+        }
+        const client = twilio(config.accountSid, config.authToken);
+        const testMessage = "Test SMS from Local Cooks Community. If you received this, SMS is working correctly!";
+        const messageResult = await client.messages.create({
+          body: testMessage,
+          from: formattedFrom,
+          to: formattedPhone
+        });
+        return {
+          success: true,
+          message: "SMS sent successfully!",
+          details: {
+            messageSid: messageResult.sid,
+            status: messageResult.status,
+            to: formattedPhone,
+            from: formattedFrom
+          }
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const details = { error: errorMessage };
+        if (error && typeof error === "object" && "code" in error) {
+          details.twilioCode = error.code;
+          details.twilioMessage = error.message;
+          details.twilioStatus = error.status;
+        }
+        return {
+          success: false,
+          message: `SMS test failed: ${errorMessage}`,
+          details
+        };
+      }
+    };
+  }
+});
+
 // shared/timezone-utils.ts
 import { TZDate } from "@date-fns/tz";
 import { format, isBefore, isAfter, isWithinInterval } from "date-fns";
@@ -8094,6 +8436,29 @@ var init_timezone_utils = __esm({
   "shared/timezone-utils.ts"() {
     "use strict";
     DEFAULT_TIMEZONE = "America/St_Johns";
+  }
+});
+
+// server/logger.ts
+var isProd, logger;
+var init_logger = __esm({
+  "server/logger.ts"() {
+    "use strict";
+    isProd = process.env.NODE_ENV === "production";
+    logger = {
+      info: (msg, data) => {
+        if (!isProd) console.log(`[INFO] ${msg}`, data || "");
+      },
+      warn: (msg, data) => {
+        console.warn(`[WARN] ${msg}`, data || "");
+      },
+      error: (msg, error) => {
+        console.error(`[ERROR] ${msg}`, error);
+      },
+      debug: (msg, data) => {
+        if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
+      }
+    };
   }
 });
 
@@ -8559,29 +8924,6 @@ var init_pricing_service = __esm({
   }
 });
 
-// server/logger.ts
-var isProd, logger;
-var init_logger = __esm({
-  "server/logger.ts"() {
-    "use strict";
-    isProd = process.env.NODE_ENV === "production";
-    logger = {
-      info: (msg, data) => {
-        if (!isProd) console.log(`[INFO] ${msg}`, data || "");
-      },
-      warn: (msg, data) => {
-        console.warn(`[WARN] ${msg}`, data || "");
-      },
-      error: (msg, error) => {
-        console.error(`[ERROR] ${msg}`, error);
-      },
-      debug: (msg, data) => {
-        if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
-      }
-    };
-  }
-});
-
 // server/domains/inventory/inventory.repository.ts
 import { eq as eq15 } from "drizzle-orm";
 var InventoryRepository;
@@ -8810,16 +9152,15 @@ var init_booking_service = __esm({
           paymentStatus: data.paymentStatus || "pending"
         });
         let storageTotalCents = 0;
+        const storageItemsForJson = [];
         if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
           try {
             const { inventoryService: inventoryService2 } = await Promise.resolve().then(() => (init_inventory_service(), inventory_service_exports));
-            const endDate = data.endTime ? new Date(data.endTime) : new Date(data.bookingDate);
             for (const storageId of data.selectedStorageIds) {
               const listing = await inventoryService2.getStorageListingById(storageId);
               if (listing) {
                 let priceCents = 0;
-                const basePriceCents = parseFloat(String(listing.basePrice || "0"));
-                const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || "0")) * 100);
+                const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || "0")));
                 if (listing.pricingModel === "hourly") {
                   const duration = calculateDurationHours(data.startTime, data.endTime);
                   const effectiveDuration = Math.max(1, Math.ceil(duration));
@@ -8827,7 +9168,7 @@ var init_booking_service = __esm({
                 } else {
                   priceCents = listingBasePriceCents;
                 }
-                await this.repo.createStorageBooking({
+                const storageBooking = await this.repo.createStorageBooking({
                   kitchenBookingId: booking.id,
                   storageListingId: listing.id,
                   chefId: data.chefId,
@@ -8841,6 +9182,15 @@ var init_booking_service = __esm({
                   // No service fee for customer
                   currency: pricing.currency
                 });
+                if (storageBooking) {
+                  storageItemsForJson.push({
+                    id: storageBooking.id,
+                    storageListingId: listing.id,
+                    name: listing.name || "Storage",
+                    storageType: listing.storageType || "other",
+                    totalPrice: priceCents
+                  });
+                }
                 storageTotalCents += priceCents;
               }
             }
@@ -8902,6 +9252,7 @@ var init_booking_service = __esm({
         await this.repo.updateKitchenBooking(booking.id, {
           totalPrice: grandTotalCents.toString(),
           serviceFee: newServiceFeeCents.toString(),
+          storageItems: storageItemsForJson,
           equipmentItems: equipmentItemsForJson
         });
         const updatedBooking = await this.repo.getKitchenBookingById(booking.id);
@@ -9741,7 +10092,11 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
-        COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value
+        COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
+        -- Actual Stripe fees from database (fetched from Stripe Balance Transaction API)
+        COALESCE(SUM(CASE WHEN pt.stripe_fee::numeric > 0 THEN pt.stripe_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
+        -- Tax amount from database
+        COALESCE(SUM(CASE WHEN pt.tax_amount::numeric > 0 THEN pt.tax_amount::numeric ELSE 0 END), 0)::bigint as actual_tax_amount
       FROM payment_transactions pt
       LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
@@ -9779,9 +10134,26 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     const averageBookingValue = row.avg_booking_value ? Math.round(parseFloat(String(row.avg_booking_value))) : 0;
     const totalRevenue = parseNumeric(row.total_revenue);
     const finalManagerRevenue = managerRevenue;
+    const actualStripeFee = parseNumeric(row.actual_stripe_fee);
+    const actualTaxAmount = parseNumeric(row.actual_tax_amount);
+    const stripeFee = actualStripeFee > 0 ? actualStripeFee : Math.round(completedPayments * 0.029 + paidBookingCount * 30);
+    const taxAmount = actualTaxAmount > 0 ? actualTaxAmount : platformFee;
+    const netRevenue = totalRevenue - taxAmount - stripeFee;
+    console.log("[Revenue Service V2] Fee breakdown:", {
+      actualStripeFee,
+      actualTaxAmount,
+      stripeFee,
+      taxAmount,
+      netRevenue,
+      usingActualStripeFee: actualStripeFee > 0,
+      usingActualTaxAmount: actualTaxAmount > 0
+    });
     const metrics = {
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
+      taxAmount: isNaN(taxAmount) ? 0 : taxAmount || 0,
+      stripeFee: isNaN(stripeFee) ? 0 : stripeFee || 0,
+      netRevenue: isNaN(netRevenue) ? 0 : netRevenue || 0,
       managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue,
       // Use database value from Stripe (includes processing)
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue,
@@ -10050,6 +10422,19 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
           )::numeric
         ), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
+        -- Calculate actual tax amount from kitchen tax_rate_percent
+        COALESCE(SUM(
+          ROUND(
+            COALESCE(
+              kb.total_price,
+              CASE 
+                WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                ELSE 0
+              END
+            )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+          )
+        ), 0)::bigint as calculated_tax_amount,
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COUNT(CASE WHEN kb.payment_status = 'processing' THEN 1 END)::int as processing_count,
@@ -10177,37 +10562,66 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     }
     if (result.rows.length === 0) {
       console.log("[Revenue Service] No bookings in date range, checking for payments outside date range...");
-      const pendingServiceFeeResult2 = await db2.execute(sql6`
+      const pendingFeeResult = await db2.execute(sql6`
         SELECT 
+          COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
           COALESCE(SUM(
-            COALESCE(kb.service_fee, 0)::numeric
-          ), 0)::bigint as pending_service_fee
+            ROUND(
+              COALESCE(
+                kb.total_price,
+                CASE 
+                  WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                  THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                  ELSE 0
+                END
+              )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+            )
+          ), 0)::bigint as pending_tax_amount
         FROM kitchen_bookings kb
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
       `);
-      const completedServiceFeeResult2 = await db2.execute(sql6`
+      const completedFeeResult = await db2.execute(sql6`
         SELECT 
+          COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
           COALESCE(SUM(
-            COALESCE(kb.service_fee, 0)::numeric
-          ), 0)::bigint as completed_service_fee
+            ROUND(
+              COALESCE(
+                kb.total_price,
+                CASE 
+                  WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                  THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                  ELSE 0
+                END
+              )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+            )
+          ), 0)::bigint as completed_tax_amount
         FROM kitchen_bookings kb
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
         ${completedWhereClause}
       `);
-      const pSFr2 = pendingServiceFeeResult2.rows[0] || {};
-      const pendingServiceFee2 = typeof pSFr2.pending_service_fee === "string" ? parseInt(pSFr2.pending_service_fee) || 0 : pSFr2.pending_service_fee ? parseInt(String(pSFr2.pending_service_fee)) : 0;
-      const cSFr2 = completedServiceFeeResult2.rows[0] || {};
-      const completedServiceFee2 = typeof cSFr2.completed_service_fee === "string" ? parseInt(cSFr2.completed_service_fee) || 0 : cSFr2.completed_service_fee ? parseInt(String(cSFr2.completed_service_fee)) : 0;
+      const pSFr = pendingFeeResult.rows[0] || {};
+      const pendingServiceFee = typeof pSFr.pending_service_fee === "string" ? parseInt(pSFr.pending_service_fee) || 0 : pSFr.pending_service_fee ? parseInt(String(pSFr.pending_service_fee)) : 0;
+      const pendingTaxAmount = typeof pSFr.pending_tax_amount === "string" ? parseInt(pSFr.pending_tax_amount) || 0 : pSFr.pending_tax_amount ? parseInt(String(pSFr.pending_tax_amount)) : 0;
+      const cSFr = completedFeeResult.rows[0] || {};
+      const completedServiceFee = typeof cSFr.completed_service_fee === "string" ? parseInt(cSFr.completed_service_fee) || 0 : cSFr.completed_service_fee ? parseInt(String(cSFr.completed_service_fee)) : 0;
+      const completedTaxAmount = typeof cSFr.completed_tax_amount === "string" ? parseInt(cSFr.completed_tax_amount) || 0 : cSFr.completed_tax_amount ? parseInt(String(cSFr.completed_tax_amount)) : 0;
       const totalRevenueWithAllPayments2 = allCompletedPayments + allPendingPayments;
-      const totalServiceFee2 = pendingServiceFee2 + completedServiceFee2;
+      const totalServiceFee2 = pendingServiceFee + completedServiceFee;
       const managerRevenue2 = totalRevenueWithAllPayments2 - totalServiceFee2;
-      const depositedManagerRevenue2 = allCompletedPayments - completedServiceFee2;
+      const depositedManagerRevenue2 = allCompletedPayments - completedServiceFee;
+      const paidCount = parseInt(completedRow.completed_count_all) || 0;
+      const estimatedStripeFee2 = Math.round(allCompletedPayments * 0.029 + paidCount * 30);
+      const taxAmount2 = pendingTaxAmount + completedTaxAmount;
+      const netRevenue2 = totalRevenueWithAllPayments2 - taxAmount2 - estimatedStripeFee2;
       return {
         totalRevenue: totalRevenueWithAllPayments2 || 0,
         platformFee: totalServiceFee2 || 0,
+        taxAmount: taxAmount2 || 0,
+        stripeFee: estimatedStripeFee2 || 0,
+        netRevenue: netRevenue2 || 0,
         managerRevenue: managerRevenue2 || 0,
         depositedManagerRevenue: depositedManagerRevenue2 || 0,
         pendingPayments: allPendingPayments,
@@ -10215,7 +10629,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         // Show ALL completed payments, not just in date range
         averageBookingValue: 0,
         bookingCount: 0,
-        paidBookingCount: parseInt(completedRow.completed_count_all) || 0,
+        paidBookingCount: paidCount,
         cancelledBookingCount: 0,
         refundedAmount: 0
       };
@@ -10232,36 +10646,65 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const totalRevenue = typeof row.total_revenue === "string" ? parseInt(row.total_revenue) : row.total_revenue ? parseInt(String(row.total_revenue)) : 0;
     const platformFee = typeof row.platform_fee === "string" ? parseInt(row.platform_fee) : row.platform_fee ? parseInt(String(row.platform_fee)) : 0;
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-    const pendingServiceFeeResult = await db2.execute(sql6`
+    const pendingFeeResult2 = await db2.execute(sql6`
       SELECT 
+        COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
         COALESCE(SUM(
-          COALESCE(kb.service_fee, 0)::numeric
-        ), 0)::bigint as pending_service_fee
+          ROUND(
+            COALESCE(
+              kb.total_price,
+              CASE 
+                WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                ELSE 0
+              END
+            )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+          )
+        ), 0)::bigint as pending_tax_amount
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
-    const completedServiceFeeResult = await db2.execute(sql6`
+    const completedFeeResult2 = await db2.execute(sql6`
       SELECT 
+        COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
         COALESCE(SUM(
-          COALESCE(kb.service_fee, 0)::numeric
-        ), 0)::bigint as completed_service_fee
+          ROUND(
+            COALESCE(
+              kb.total_price,
+              CASE 
+                WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                ELSE 0
+              END
+            )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+          )
+        ), 0)::bigint as completed_tax_amount
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${completedWhereClause}
     `);
-    const pSFr = pendingServiceFeeResult.rows[0] || {};
-    const pendingServiceFee = typeof pSFr.pending_service_fee === "string" ? parseInt(pSFr.pending_service_fee) || 0 : pSFr.pending_service_fee ? parseInt(String(pSFr.pending_service_fee)) : 0;
-    const cSFr = completedServiceFeeResult.rows[0] || {};
-    const completedServiceFee = typeof cSFr.completed_service_fee === "string" ? parseInt(cSFr.completed_service_fee) || 0 : cSFr.completed_service_fee ? parseInt(String(cSFr.completed_service_fee)) : 0;
-    const totalServiceFee = pendingServiceFee + completedServiceFee;
+    const pSFr2 = pendingFeeResult2.rows[0] || {};
+    const pendingServiceFee2 = typeof pSFr2.pending_service_fee === "string" ? parseInt(pSFr2.pending_service_fee) || 0 : pSFr2.pending_service_fee ? parseInt(String(pSFr2.pending_service_fee)) : 0;
+    const pendingTaxAmount2 = typeof pSFr2.pending_tax_amount === "string" ? parseInt(pSFr2.pending_tax_amount) || 0 : pSFr2.pending_tax_amount ? parseInt(String(pSFr2.pending_tax_amount)) : 0;
+    const cSFr2 = completedFeeResult2.rows[0] || {};
+    const completedServiceFee2 = typeof cSFr2.completed_service_fee === "string" ? parseInt(cSFr2.completed_service_fee) || 0 : cSFr2.completed_service_fee ? parseInt(String(cSFr2.completed_service_fee)) : 0;
+    const completedTaxAmount2 = typeof cSFr2.completed_tax_amount === "string" ? parseInt(cSFr2.completed_tax_amount) || 0 : cSFr2.completed_tax_amount ? parseInt(String(cSFr2.completed_tax_amount)) : 0;
+    const totalServiceFee = pendingServiceFee2 + completedServiceFee2;
     const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
-    const depositedManagerRevenue = allCompletedPayments - completedServiceFee;
+    const depositedManagerRevenue = allCompletedPayments - completedServiceFee2;
+    const paidBookingCountVal = isNaN(parseInt(completedRow.completed_count_all)) ? 0 : parseInt(completedRow.completed_count_all) || 0;
+    const estimatedStripeFee = Math.round(allCompletedPayments * 0.029 + paidBookingCountVal * 30);
+    const taxAmount = pendingTaxAmount2 + completedTaxAmount2;
+    const netRevenue = totalRevenueWithAllPayments - taxAmount - estimatedStripeFee;
     return {
       totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : totalRevenueWithAllPayments || 0,
       platformFee: isNaN(totalServiceFee) ? 0 : totalServiceFee || 0,
+      taxAmount: isNaN(taxAmount) ? 0 : taxAmount || 0,
+      stripeFee: isNaN(estimatedStripeFee) ? 0 : estimatedStripeFee || 0,
+      netRevenue: isNaN(netRevenue) ? 0 : netRevenue || 0,
       managerRevenue: isNaN(managerRevenue) ? 0 : managerRevenue || 0,
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue || 0,
       pendingPayments: allPendingPayments,
@@ -10270,8 +10713,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       // Use ALL completed payments, not just those in date range
       averageBookingValue: row.avg_booking_value ? isNaN(Math.round(parseFloat(String(row.avg_booking_value)))) ? 0 : Math.round(parseFloat(String(row.avg_booking_value))) : 0,
       bookingCount: isNaN(parseInt(row.booking_count)) ? 0 : parseInt(row.booking_count) || 0,
-      paidBookingCount: isNaN(parseInt(completedRow.completed_count_all)) ? 0 : parseInt(completedRow.completed_count_all) || 0,
-      // Use count from all completed payments query
+      paidBookingCount: paidBookingCountVal,
       cancelledBookingCount: isNaN(parseInt(row.cancelled_count)) ? 0 : parseInt(row.cancelled_count) || 0,
       refundedAmount: typeof row.refunded_amount === "string" ? isNaN(parseInt(row.refunded_amount)) ? 0 : parseInt(row.refunded_amount) || 0 : row.refunded_amount ? isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount)) : 0
     };
@@ -10436,8 +10878,9 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
             THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
             ELSE 0
           END
-        )::bigint as total_price,
+        )::bigint as kb_total_price,
         COALESCE(kb.service_fee, 0)::bigint as service_fee,
+        COALESCE(k.tax_rate_percent, 0)::numeric as tax_rate_percent,
         kb.payment_status,
         kb.payment_intent_id,
         kb.status,
@@ -10447,27 +10890,73 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         l.name as location_name,
         u.username as chef_name,
         u.username as chef_email,
-        kb.created_at
+        kb.created_at,
+        -- Actual amount from payment_transactions (what was actually charged to Stripe)
+        pt.amount as pt_amount,
+        -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
+        COALESCE(pt.stripe_fee, 0)::bigint as actual_stripe_fee,
+        -- Actual tax amount from payment_transactions
+        COALESCE(pt.tax_amount, 0)::bigint as actual_tax_amount,
+        -- Service fee from payment_transactions
+        COALESCE(pt.service_fee, 0)::bigint as pt_service_fee,
+        -- Manager revenue from payment_transactions (actual Stripe net amount)
+        pt.manager_revenue as pt_manager_revenue
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON kb.chef_id = u.id
+      LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       ${whereClause}
       ORDER BY kb.booking_date DESC, kb.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `);
     return result.rows.map((row) => {
-      const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
-      const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
-      const managerRevenue = totalPriceCents - serviceFeeCents;
+      const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
+      const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
+      const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
+      const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
+      const actualTaxAmount = row.actual_tax_amount != null ? parseInt(String(row.actual_tax_amount)) : 0;
+      const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
+      const kbServiceFee = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
+      const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
+      const hasPaymentTransaction = ptAmount > 0;
+      let totalPriceCents;
+      let taxCents;
+      let serviceFeeCents;
+      if (hasPaymentTransaction) {
+        totalPriceCents = ptAmount;
+        taxCents = actualTaxAmount;
+        serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
+      } else {
+        totalPriceCents = kbTotalPrice;
+        taxCents = Math.round(kbTotalPrice * taxRatePercent / 100);
+        serviceFeeCents = kbServiceFee;
+      }
+      const calculatedManagerRevenue = totalPriceCents - serviceFeeCents;
+      const managerRevenue = ptManagerRevenue > 0 ? ptManagerRevenue : calculatedManagerRevenue;
+      const estimatedStripeFee = Math.round(totalPriceCents * 0.029 + 30);
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      const netRevenue = totalPriceCents - taxCents - stripeFee;
       return {
         id: row.id,
+        bookingId: row.id,
+        // Add bookingId for invoice download
         bookingDate: row.booking_date,
         startTime: row.start_time,
         endTime: row.end_time,
         totalPrice: totalPriceCents,
         serviceFee: serviceFeeCents,
+        platformFee: serviceFeeCents,
+        // Alias for frontend compatibility - DEPRECATED
+        taxAmount: taxCents,
+        // Tax collected (from payment_transactions or calculated)
+        taxRatePercent,
+        // Tax rate percentage applied
+        stripeFee,
+        // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: managerRevenue || 0,
+        netRevenue,
+        // Net after tax and Stripe fees
         paymentStatus: row.payment_status,
         paymentIntentId: row.payment_intent_id,
         status: row.status,
@@ -10577,9 +11066,15 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
     const depositedManagerRevenue = completedPaymentsTotal - (completedPlatformFee + storageCompletedPlatformFee + equipmentCompletedPlatformFee);
     const totalBookingCount = kitchenMetrics.bookingCount + parseNumeric(storageRow.booking_count) + parseNumeric(equipmentRow.booking_count);
     const totalPaidCount = kitchenMetrics.paidBookingCount + parseNumeric(storageRow.paid_count) + parseNumeric(equipmentRow.paid_count);
+    const estimatedStripeFee = Math.round(completedPaymentsTotal * 0.029 + totalPaidCount * 30);
+    const taxAmount = kitchenMetrics.taxAmount || 0;
+    const netRevenue = totalRevenue - taxAmount - estimatedStripeFee;
     const finalMetrics = {
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
+      taxAmount: isNaN(taxAmount) ? 0 : taxAmount || 0,
+      stripeFee: isNaN(estimatedStripeFee) ? 0 : estimatedStripeFee || 0,
+      netRevenue: isNaN(netRevenue) ? 0 : netRevenue || 0,
       managerRevenue: isNaN(managerRevenue) ? 0 : managerRevenue || 0,
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue,
       pendingPayments: isNaN(pendingPaymentsTotal) ? 0 : pendingPaymentsTotal,
@@ -10956,7 +11451,6 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
   let stripeTotalAmount = 0;
   let stripeBaseAmount = 0;
   let stripeNetAmount = 0;
-  let stripeProcessingFeeCents = 0;
   const stripeStorageBaseAmounts = /* @__PURE__ */ new Map();
   const stripeEquipmentBaseAmounts = /* @__PURE__ */ new Map();
   if (paymentIntentId) {
@@ -10966,12 +11460,6 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
         stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0;
         stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0;
-        if (paymentTransaction.metadata) {
-          const meta = typeof paymentTransaction.metadata === "string" ? JSON.parse(paymentTransaction.metadata) : paymentTransaction.metadata;
-          if (meta?.stripeFees?.processingFee) {
-            stripeProcessingFeeCents = Math.round(Number(meta.stripeFees.processingFee));
-          }
-        }
         console.log(`[Invoice] Using Stripe-synced amounts: total=${stripeTotalAmount}, base=${stripeBaseAmount}, platformFee=${stripePlatformFee}`);
       }
     } catch (error) {
@@ -11107,9 +11595,6 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
   }
   let platformFee = 0;
   if (stripePlatformFee > 0) platformFee = stripePlatformFee / 100;
-  const stripeProcessingFee = 0.3;
-  const processingFee = stripeProcessingFeeCents > 0 ? stripeProcessingFeeCents / 100 : stripeProcessingFee;
-  const processingFeeCents = stripeProcessingFeeCents > 0 ? stripeProcessingFeeCents : Math.round(stripeProcessingFee * 100);
   let taxRatePercent = 0;
   if (kitchen && (kitchen.taxRatePercent || kitchen.tax_rate_percent)) {
     taxRatePercent = parseFloat(String(kitchen.taxRatePercent || kitchen.tax_rate_percent));
@@ -11122,7 +11607,7 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
   const subtotalWithTaxCents = subtotalCents + taxCents;
   const platformFeeCents = Math.round(platformFee * 100);
   const platformFeeForInvoice = invoiceViewer === "manager" ? platformFee : 0;
-  const totalForInvoice = invoiceViewer === "manager" ? (subtotalWithTaxCents - platformFeeCents - processingFeeCents) / 100 : subtotalWithTaxCents / 100;
+  const totalForInvoice = invoiceViewer === "manager" ? (subtotalWithTaxCents - platformFeeCents) / 100 : subtotalWithTaxCents / 100;
   const grandTotal = totalForInvoice;
   return new Promise((resolve, reject) => {
     try {
@@ -11242,9 +11727,6 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       }
       if (platformFeeForInvoice > 0) {
         addTotalRow("Platform Fee:", platformFeeForInvoice, invoiceViewer === "manager");
-      }
-      if (invoiceViewer === "manager" && processingFee > 0) {
-        addTotalRow("Stripe Processing Fee:", processingFee, true);
       }
       doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
       currentY += 10;
@@ -11486,8 +11968,10 @@ var init_manager = __esm({
     init_schema();
     init_user_service();
     init_email();
+    init_sms();
     init_phone_utils();
     init_timezone_utils();
+    init_logger();
     init_api_response();
     init_schema();
     init_booking_service();
@@ -11544,6 +12028,7 @@ var init_manager = __esm({
           createdAt: kitchenBookings.createdAt,
           updatedAt: kitchenBookings.updatedAt,
           kitchenName: kitchens.name,
+          kitchenTaxRatePercent: kitchens.taxRatePercent,
           locationName: locations.name,
           managerId: locations.managerId
         }).from(kitchenBookings).innerJoin(kitchens, eq22(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq22(kitchens.locationId, locations.id)).where(eq22(kitchenBookings.id, bookingId)).limit(1);
@@ -11587,11 +12072,12 @@ var init_manager = __esm({
         const pdfBuffer = await generateInvoicePDF2(
           booking,
           chef,
-          { name: booking.kitchenName },
+          { name: booking.kitchenName, taxRatePercent: booking.kitchenTaxRatePercent },
           { name: booking.locationName },
           storageRows,
           equipmentRows,
-          booking.paymentIntentId
+          booking.paymentIntentId,
+          { viewer: "manager" }
         );
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="invoice-${bookingId}.pdf"`);
@@ -11673,8 +12159,8 @@ var init_manager = __esm({
         };
         const { createConnectAccount: createConnectAccount2, createAccountLink: createAccountLink2, isAccountReady: isAccountReady2, createDashboardLoginLink: createDashboardLoginLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
         const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
         if (user.stripeConnectAccountId) {
           const isReady = await isAccountReady2(user.stripeConnectAccountId);
           if (isReady) {
@@ -11713,8 +12199,8 @@ var init_manager = __esm({
         }
         const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
         const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
         const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
       } catch (error) {
@@ -11742,8 +12228,8 @@ var init_manager = __esm({
           return res.json({ url: link.url });
         } else {
           const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh`;
-          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true`;
+          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
+          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
           const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
           return res.json({ url: link.url, requiresOnboarding: true });
         }
@@ -12444,12 +12930,96 @@ var init_manager = __esm({
     });
     router12.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
+        const user = req.neonUser;
         const id = parseInt(req.params.id);
         const { status } = req.body;
+        if (!["confirmed", "cancelled", "pending"].includes(status)) {
+          return res.status(400).json({ error: "Invalid status. Must be 'confirmed', 'cancelled', or 'pending'" });
+        }
+        const booking = await bookingService.getBookingById(id);
+        if (!booking) {
+          return res.status(404).json({ error: "Booking not found" });
+        }
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        if (!kitchen) {
+          return res.status(404).json({ error: "Kitchen not found" });
+        }
+        const location = await locationService.getLocationById(kitchen.locationId);
+        if (!location || location.managerId !== user.id) {
+          return res.status(403).json({ error: "Access denied to this booking" });
+        }
         await bookingService.updateBookingStatus(id, status);
-        res.json({ success: true });
+        try {
+          let chef = null;
+          if (booking.chefId) {
+            chef = await userService.getUser(booking.chefId);
+          }
+          const timezone = location.timezone || "America/Edmonton";
+          const locationName = location.name;
+          if (chef) {
+            if (status === "confirmed") {
+              const chefConfirmationEmail = generateBookingConfirmationEmail({
+                chefEmail: chef.username,
+                chefName: chef.username,
+                kitchenName: kitchen.name,
+                bookingDate: booking.bookingDate,
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+                timezone,
+                locationName
+              });
+              await sendEmail(chefConfirmationEmail);
+              try {
+                const chefPhone = await getChefPhone(booking.chefId);
+                if (chefPhone) {
+                  const smsContent = generateChefBookingConfirmationSMS({
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
+                    startTime: booking.startTime,
+                    endTime: booking.endTime
+                  });
+                  await sendSMS(chefPhone, smsContent);
+                }
+              } catch (smsError) {
+                console.error("Error sending confirmation SMS to chef:", smsError);
+              }
+              logger.info(`[Manager] Booking ${id} confirmed by manager ${user.id}`);
+            } else if (status === "cancelled") {
+              const chefCancellationEmail = generateBookingCancellationEmail({
+                chefEmail: chef.username,
+                chefName: chef.username,
+                kitchenName: kitchen.name,
+                bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
+                startTime: booking.startTime,
+                endTime: booking.endTime,
+                cancellationReason: "Booking was declined by the kitchen manager"
+              });
+              await sendEmail(chefCancellationEmail);
+              try {
+                const chefPhone = await getChefPhone(booking.chefId);
+                if (chefPhone) {
+                  const smsContent = generateChefBookingCancellationSMS({
+                    kitchenName: kitchen.name,
+                    bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString() : String(booking.bookingDate),
+                    startTime: booking.startTime,
+                    endTime: booking.endTime,
+                    reason: "Booking was declined by the kitchen manager"
+                  });
+                  await sendSMS(chefPhone, smsContent);
+                }
+              } catch (smsError) {
+                console.error("Error sending cancellation SMS to chef:", smsError);
+              }
+              logger.info(`[Manager] Booking ${id} cancelled/declined by manager ${user.id}`);
+            }
+          }
+        } catch (emailError) {
+          console.error("Error sending booking status change emails:", emailError);
+        }
+        res.json({ success: true, message: `Booking ${status === "confirmed" ? "approved" : status}` });
       } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error("Error updating booking status:", e);
+        res.status(500).json({ error: e.message || "Failed to update booking status" });
       }
     });
     router12.get("/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
@@ -13668,348 +14238,6 @@ var init_stripe_service = __esm({
   }
 });
 
-// server/sms.ts
-var sms_exports = {};
-__export(sms_exports, {
-  formatPhoneNumber: () => formatPhoneNumber,
-  generateChefBookingCancellationSMS: () => generateChefBookingCancellationSMS,
-  generateChefBookingConfirmationSMS: () => generateChefBookingConfirmationSMS,
-  generateChefSelfCancellationSMS: () => generateChefSelfCancellationSMS,
-  generateManagerBookingCancellationSMS: () => generateManagerBookingCancellationSMS,
-  generateManagerBookingSMS: () => generateManagerBookingSMS,
-  generateManagerPortalBookingSMS: () => generateManagerPortalBookingSMS,
-  generatePortalUserBookingCancellationSMS: () => generatePortalUserBookingCancellationSMS,
-  generatePortalUserBookingConfirmationSMS: () => generatePortalUserBookingConfirmationSMS,
-  sendSMS: () => sendSMS,
-  testSMS: () => testSMS
-});
-import twilio from "twilio";
-var getSMSConfig, formatPhoneNumber, sendSMS, generateManagerBookingSMS, generateManagerPortalBookingSMS, generateChefBookingConfirmationSMS, generateChefBookingCancellationSMS, generatePortalUserBookingConfirmationSMS, generatePortalUserBookingCancellationSMS, generateManagerBookingCancellationSMS, generateChefSelfCancellationSMS, testSMS;
-var init_sms = __esm({
-  "server/sms.ts"() {
-    "use strict";
-    getSMSConfig = () => {
-      const accountSid = process.env.TWILIO_ACCOUNT_SID;
-      const authToken = process.env.TWILIO_AUTH_TOKEN;
-      const fromNumber = process.env.TWILIO_PHONE_NUMBER;
-      if (!accountSid || !authToken || !fromNumber) {
-        const missing = [];
-        if (!accountSid) missing.push("TWILIO_ACCOUNT_SID");
-        if (!authToken) missing.push("TWILIO_AUTH_TOKEN");
-        if (!fromNumber) missing.push("TWILIO_PHONE_NUMBER");
-        console.warn("\u26A0\uFE0F Twilio configuration is missing. SMS functionality will be disabled.");
-        console.warn(`   Missing variables: ${missing.join(", ")}`);
-        console.warn("   Please set these environment variables to enable SMS functionality.");
-        return null;
-      }
-      if (!fromNumber.startsWith("+")) {
-        console.warn(`\u26A0\uFE0F TWILIO_PHONE_NUMBER should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US). Current value: ${fromNumber}`);
-      }
-      if (fromNumber.startsWith("+1") && fromNumber.length === 12) {
-        const areaCode = fromNumber.substring(2, 5);
-        const firstDigit = parseInt(areaCode[0]);
-        if (firstDigit >= 2 && firstDigit <= 9) {
-          console.log(`\u2705 Twilio phone number detected as North American (US/Canada): ${fromNumber}`);
-        }
-      }
-      return {
-        accountSid,
-        authToken,
-        fromNumber
-      };
-    };
-    formatPhoneNumber = (phone) => {
-      if (!phone) return null;
-      const trimmed = phone.trim();
-      if (!trimmed) return null;
-      const cleaned = trimmed.replace(/[^\d+]/g, "");
-      if (cleaned.startsWith("+")) {
-        const digitsAfterPlus = cleaned.substring(1);
-        if (digitsAfterPlus.length >= 1 && digitsAfterPlus.length <= 15 && /^\d+$/.test(digitsAfterPlus)) {
-          return cleaned;
-        }
-        console.warn(`\u26A0\uFE0F Invalid E.164 format (must be + followed by 1-15 digits): ${phone}`);
-        return null;
-      }
-      const digitsOnly = cleaned.replace(/\D/g, "");
-      if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
-        return `+${digitsOnly}`;
-      }
-      if (digitsOnly.length === 10) {
-        const areaCode = digitsOnly.substring(0, 3);
-        const exchangeCode = digitsOnly.substring(3, 6);
-        const firstDigit = parseInt(digitsOnly[0]);
-        const fourthDigit = parseInt(digitsOnly[3]);
-        if (firstDigit >= 2 && firstDigit <= 9 && fourthDigit >= 2 && fourthDigit <= 9) {
-          return `+1${digitsOnly}`;
-        } else {
-          console.warn(`\u26A0\uFE0F Invalid North American phone number format: ${phone}`);
-          console.warn("   Area code and exchange code must start with digits 2-9");
-          return null;
-        }
-      }
-      console.warn(`\u26A0\uFE0F Could not format phone number: ${phone} (digits only: ${digitsOnly}, length: ${digitsOnly.length})`);
-      console.warn("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
-      console.warn("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
-      return null;
-    };
-    sendSMS = async (to, message, options) => {
-      const startTime = Date.now();
-      try {
-        const config = getSMSConfig();
-        if (!config) {
-          console.warn("\u26A0\uFE0F SMS not sent - Twilio configuration missing");
-          return false;
-        }
-        const formattedPhone = formatPhoneNumber(to);
-        if (!formattedPhone) {
-          console.error(`\u274C SMS not sent - Invalid phone number: ${to}`);
-          console.error("   Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US)");
-          console.error("   Or 10-digit North American numbers (e.g., 4161234567 for Canada, 2125551234 for US)");
-          return false;
-        }
-        if (message.length > 1600) {
-          console.warn(`\u26A0\uFE0F SMS message is ${message.length} characters (limit: 1600). Message will be split into multiple parts.`);
-        }
-        const client = twilio(config.accountSid, config.authToken);
-        const formattedFrom = formatPhoneNumber(config.fromNumber);
-        if (!formattedFrom) {
-          console.error(`\u274C SMS not sent - Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}`);
-          console.error("   TWILIO_PHONE_NUMBER must be in E.164 format (e.g., +1234567890)");
-          return false;
-        }
-        const messageResult = await client.messages.create({
-          body: message,
-          from: formattedFrom,
-          // Use formatted from number
-          to: formattedPhone
-        });
-        const duration = Date.now() - startTime;
-        console.log(`\u2705 SMS sent successfully:`, {
-          to: formattedPhone,
-          messageSid: messageResult.sid,
-          status: messageResult.status,
-          duration: `${duration}ms`,
-          trackingId: options?.trackingId || `auto_${Date.now()}`,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString()
-        });
-        return true;
-      } catch (error) {
-        const duration = Date.now() - startTime;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorDetails = {
-          to,
-          formattedTo: formatPhoneNumber(to),
-          error: errorMessage,
-          duration: `${duration}ms`,
-          trackingId: options?.trackingId || `auto_${Date.now()}`,
-          timestamp: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        if (error && typeof error === "object" && "code" in error) {
-          errorDetails.twilioCode = error.code;
-          errorDetails.twilioMessage = error.message;
-          errorDetails.twilioStatus = error.status;
-          errorDetails.twilioMoreInfo = error.moreInfo;
-        }
-        console.error(`\u274C SMS sending failed:`, errorDetails);
-        if (error && typeof error === "object" && "code" in error) {
-          const twilioCode = error.code;
-          switch (twilioCode) {
-            case 21211:
-              console.error("   \u2192 Invalid phone number format. Ensure phone numbers are in E.164 format (e.g., +1234567890)");
-              break;
-            case 21212:
-              console.error("   \u2192 Invalid phone number. The number provided is not a valid phone number.");
-              break;
-            case 21408:
-              console.error("   \u2192 Permission denied. Check your Twilio account permissions.");
-              break;
-            case 21608:
-              console.error("   \u2192 Unsubscribed recipient. The recipient has opted out of receiving messages.");
-              break;
-            case 21610:
-              console.error('   \u2192 Invalid "from" phone number. Check TWILIO_PHONE_NUMBER is correct and verified in Twilio.');
-              break;
-            case 21614:
-              console.error('   \u2192 "To" number is not a valid mobile number.');
-              break;
-            case 30003:
-              console.error("   \u2192 Unreachable destination. The phone number may be invalid or unreachable.");
-              break;
-            case 30004:
-              console.error("   \u2192 Message blocked. The message may be blocked by carrier or Twilio.");
-              break;
-            case 30005:
-              console.error("   \u2192 Unknown destination. The destination number is not recognized.");
-              break;
-            case 30006:
-              console.error("   \u2192 Landline or unreachable. The number may be a landline that cannot receive SMS.");
-              break;
-            default:
-              console.error(`   \u2192 Twilio error code: ${twilioCode}. Check Twilio documentation for details.`);
-          }
-        }
-        return false;
-      }
-    };
-    generateManagerBookingSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      return `New kitchen booking from ${data.chefName}:
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}
-
-Please check your dashboard to confirm or manage this booking.
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    generateManagerPortalBookingSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      return `New kitchen booking from portal user ${data.portalUserName}:
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}
-
-Please check your dashboard to confirm or manage this booking.
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    generateChefBookingConfirmationSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      return `Your kitchen booking has been confirmed!
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}
-
-See you there!
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    generateChefBookingCancellationSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      const reasonText = data.reason ? `
-Reason: ${data.reason}` : "";
-      return `Your kitchen booking has been cancelled.
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}${reasonText}
-
-Please contact the manager if you have questions.
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    generatePortalUserBookingConfirmationSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      return `Your kitchen booking has been confirmed!
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}
-
-See you there!
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    generatePortalUserBookingCancellationSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      const reasonText = data.reason ? `
-Reason: ${data.reason}` : "";
-      return `Your kitchen booking has been cancelled.
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}${reasonText}
-
-Please contact the manager if you have questions.
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    generateManagerBookingCancellationSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      return `Chef ${data.chefName} has cancelled their booking:
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}
-
-Please check your dashboard for details.
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    generateChefSelfCancellationSMS = (data) => {
-      const date2 = new Date(data.bookingDate).toLocaleDateString();
-      return `Your kitchen booking has been cancelled:
-
-Kitchen: ${data.kitchenName}
-Date: ${date2}
-Time: ${data.startTime} - ${data.endTime}
-
-If you need to book again, please visit the dashboard.
-
-We've also sent you an email. If not found, please check your spam folder.`;
-    };
-    testSMS = async (to) => {
-      try {
-        const config = getSMSConfig();
-        if (!config) {
-          return {
-            success: false,
-            message: "Twilio configuration is missing. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables."
-          };
-        }
-        const formattedPhone = formatPhoneNumber(to);
-        if (!formattedPhone) {
-          return {
-            success: false,
-            message: `Invalid phone number format: ${to}. Phone numbers should be in E.164 format (e.g., +14161234567 for Canada, +12125551234 for US) or 10-digit North American numbers.`
-          };
-        }
-        const formattedFrom = formatPhoneNumber(config.fromNumber);
-        if (!formattedFrom) {
-          return {
-            success: false,
-            message: `Invalid TWILIO_PHONE_NUMBER format: ${config.fromNumber}. Must be in E.164 format (e.g., +1234567890).`
-          };
-        }
-        const client = twilio(config.accountSid, config.authToken);
-        const testMessage = "Test SMS from Local Cooks Community. If you received this, SMS is working correctly!";
-        const messageResult = await client.messages.create({
-          body: testMessage,
-          from: formattedFrom,
-          to: formattedPhone
-        });
-        return {
-          success: true,
-          message: "SMS sent successfully!",
-          details: {
-            messageSid: messageResult.sid,
-            status: messageResult.status,
-            to: formattedPhone,
-            from: formattedFrom
-          }
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const details = { error: errorMessage };
-        if (error && typeof error === "object" && "code" in error) {
-          details.twilioCode = error.code;
-          details.twilioMessage = error.message;
-          details.twilioStatus = error.status;
-        }
-        return {
-          success: false,
-          message: `SMS test failed: ${errorMessage}`,
-          details
-        };
-      }
-    };
-  }
-});
-
 // server/services/stripe-checkout-fee-service.ts
 var stripe_checkout_fee_service_exports = {};
 __export(stripe_checkout_fee_service_exports, {
@@ -14862,9 +15090,9 @@ var init_bookings = __esm({
                     }
                   }
                   const chefPhone = await getChefPhone(booking.chefId, pool);
-                  const { sendEmail: sendEmail2, generateBookingCancellationEmail: generateBookingCancellationEmail4, generateBookingCancellationNotificationEmail: generateBookingCancellationNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+                  const { sendEmail: sendEmail2, generateBookingCancellationEmail: generateBookingCancellationEmail3, generateBookingCancellationNotificationEmail: generateBookingCancellationNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
                   try {
-                    const chefEmail = generateBookingCancellationEmail4({
+                    const chefEmail = generateBookingCancellationEmail3({
                       chefEmail: chef.username || "",
                       chefName: chef.username || "Chef",
                       kitchenName: kitchen.name || "Kitchen",
@@ -15222,19 +15450,20 @@ var init_bookings = __esm({
             });
           }
         }
+        const storageIds = selectedStorageIds && selectedStorageIds.length > 0 ? selectedStorageIds : selectedStorage && Array.isArray(selectedStorage) ? selectedStorage.map((s) => s.storageListingId).filter(Boolean) : [];
+        console.log(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
         const booking = await bookingService.createKitchenBooking({
           kitchenId,
           chefId,
           bookingDate: bookingDateObj,
           startTime,
           endTime,
-          status: "confirmed",
-          // Auto-confirm bookings
+          status: "pending",
+          // Requires manager approval before confirmation
           paymentStatus: paymentIntentId ? "paid" : "pending",
           paymentIntentId,
           specialNotes,
-          selectedStorageIds: selectedStorageIds || [],
-          // Handle legacy IDs
+          selectedStorageIds: storageIds,
           selectedEquipmentIds: selectedEquipmentIds || []
         });
         try {
@@ -15242,16 +15471,17 @@ var init_bookings = __esm({
           const kitchen2 = await kitchenService.getKitchenById(kitchenId);
           const chef = await userService.getUser(chefId);
           if (chef && kitchen2) {
-            const { sendEmail: sendEmail2, generateBookingConfirmationEmail: generateBookingConfirmationEmail4, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
-            const chefEmail = generateBookingConfirmationEmail4({
+            const { sendEmail: sendEmail2, generateBookingRequestEmail: generateBookingRequestEmail3, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+            const chefEmail = generateBookingRequestEmail3({
               chefEmail: chef.username,
               chefName: chef.username,
-              // Or fullName if available
               kitchenName: kitchen2.name,
               bookingDate: bookingDateObj,
               startTime,
-              endTime
-              // totalPrice: booking.totalPrice // In cents (removed as not supported by email template)
+              endTime,
+              specialNotes,
+              timezone: location?.timezone || "America/Edmonton",
+              locationName: location?.name
             });
             await sendEmail2(chefEmail);
             if (location) {
@@ -15263,7 +15493,10 @@ var init_bookings = __esm({
                   kitchenName: kitchen2.name,
                   bookingDate: bookingDateObj,
                   startTime,
-                  endTime
+                  endTime,
+                  specialNotes,
+                  timezone: location?.timezone || "America/Edmonton",
+                  locationName: location?.name
                 });
                 await sendEmail2(managerEmail);
               }
@@ -17144,6 +17377,9 @@ async function updatePaymentTransaction(transactionId, params, db2) {
       updates.push(sql10`net_amount = ${params.stripeNetAmount.toString()}`);
       updates.push(sql10`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
+    if (params.stripeProcessingFee !== void 0) {
+      updates.push(sql10`stripe_fee = ${params.stripeProcessingFee.toString()}`);
+    }
     if (params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
       updates.push(sql10`service_fee = ${params.stripePlatformFee.toString()}`);
     } else if (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0) {
@@ -18678,7 +18914,7 @@ var init_portal = __esm({
         });
         try {
           const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
-          const { sendSMS: sendSMS2, generatePortalUserBookingConfirmationSMS: generatePortalUserBookingConfirmationSMS2, generateManagerPortalBookingSMS: generateManagerPortalBookingSMS2 } = await Promise.resolve().then(() => (init_sms(), sms_exports));
+          const { sendSMS: sendSMS2, generatePortalUserBookingConfirmationSMS: generatePortalUserBookingConfirmationSMS3, generateManagerPortalBookingSMS: generateManagerPortalBookingSMS2 } = await Promise.resolve().then(() => (init_sms(), sms_exports));
           const locationData = await locationService.getLocationById(userLocationId);
           const notificationEmail = locationData?.notificationEmail;
           if (notificationEmail) {
@@ -18750,8 +18986,8 @@ var init_chef = __esm({
         };
         const { createConnectAccount: createConnectAccount2, createAccountLink: createAccountLink2, isAccountReady: isAccountReady2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
         const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
+        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
         if (user.stripeConnectAccountId) {
           const isReady = await isAccountReady2(user.stripeConnectAccountId);
           if (isReady) {
@@ -18791,8 +19027,8 @@ var init_chef = __esm({
         }
         const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
         const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
-        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
+        const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
+        const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
         const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
       } catch (error) {
@@ -18900,111 +19136,6 @@ var init_chef = __esm({
       }
     });
     chef_default = router21;
-  }
-});
-
-// server/routes/suprsend.ts
-var suprsend_exports = {};
-__export(suprsend_exports, {
-  default: () => suprsend_default
-});
-import { Router as Router22 } from "express";
-import jwt from "jsonwebtoken";
-async function getSuprClient() {
-  if (suprClient) return suprClient;
-  const workspaceKey = process.env.VITE_SUPRSEND_WORKSPACE_KEY || process.env.SUPRSEND_WORKSPACE_KEY;
-  const workspaceSecret = process.env.SUPRSEND_WORKSPACE_SECRET;
-  if (!workspaceKey || !workspaceSecret) {
-    logger.error("[SuprSend] Missing keys for SDK initialization. Need VITE_SUPRSEND_WORKSPACE_KEY and SUPRSEND_WORKSPACE_SECRET.");
-    return null;
-  }
-  try {
-    const { Suprsend } = await import("@suprsend/node-sdk");
-    suprClient = new Suprsend(workspaceKey, workspaceSecret);
-    return suprClient;
-  } catch (err) {
-    logger.error("[SuprSend] Failed to import/init SDK:", err);
-    return null;
-  }
-}
-var router22, suprClient, suprsend_default;
-var init_suprsend = __esm({
-  "server/routes/suprsend.ts"() {
-    "use strict";
-    init_firebase_auth_middleware();
-    init_logger();
-    router22 = Router22();
-    router22.get("/verification", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const user = req.neonUser;
-        const distinctId = user.firebaseUid || user.id.toString();
-        const signingKey = process.env.SUPRSEND_INBOX_SIGNING_KEY;
-        const formattedKey = signingKey?.replace(/\\n/g, "\n").replace(/^"|"$/g, "").trim();
-        logger.info(`[SuprSend] Debug Env - Signing Key present: ${!!signingKey}, Formatted length: ${formattedKey?.length}`);
-        if (formattedKey) {
-          const lines = formattedKey.split("\n");
-          logger.info(`[SuprSend] Key Debug - Line count: ${lines.length}`);
-          logger.info(`[SuprSend] Key Debug - First Line: '${lines[0]}'`);
-          logger.info(`[SuprSend] Key Debug - Last Line: '${lines[lines.length - 1]}'`);
-          logger.info(`[SuprSend] Key Debug - Is PEM: ${formattedKey.includes("-----BEGIN PRIVATE KEY-----")}`);
-        }
-        if (!formattedKey || formattedKey.length < 100) {
-          logger.error(`[SuprSend] Invalid Key Format. Length: ${formattedKey?.length}. Should be a full PEM Private Key.`);
-          return res.status(500).json({
-            error: "Configuration Error",
-            details: "SUPRSEND_INBOX_SIGNING_KEY is missing or invalid. Ensure it's the FULL Private Key from SuprSend Dashboard."
-          });
-        }
-        if (!distinctId) {
-          return res.status(400).json({ error: "User identifier missing" });
-        }
-        logger.info(`[SuprSend] Generating JWT for entity_id: ${distinctId}`);
-        const payload = {
-          entity_type: "subscriber",
-          entity_id: distinctId
-        };
-        const userToken = jwt.sign(
-          payload,
-          formattedKey,
-          { algorithm: "ES256", expiresIn: "1y" }
-        );
-        res.json({
-          distinctId,
-          userToken
-        });
-      } catch (error) {
-        logger.error("[SuprSend] Error generating verification signature:", error);
-        res.status(500).json({ error: "Internal server error", details: error.message });
-      }
-    });
-    suprClient = null;
-    router22.post("/trigger-test", requireFirebaseAuthWithUser, async (req, res) => {
-      try {
-        const user = req.neonUser;
-        const distinctId = user.firebaseUid || user.id.toString();
-        const client = await getSuprClient();
-        if (!client) {
-          return res.status(500).json({ error: "SuprSend SDK not initialized (check server logs for missing keys)" });
-        }
-        const eventName = "TEST_NOTIFICATION";
-        const properties = {
-          title: "Test Notification",
-          message: "This is a test notification from your Local Cooks Dashboard!",
-          time: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        const response = await client.track(distinctId, eventName, properties);
-        if (response.success) {
-          res.json({ success: true, message: `Triggered event '${eventName}' for user ${distinctId}` });
-        } else {
-          logger.error("[SuprSend] Trigger failed:", response);
-          res.status(500).json({ error: "Failed to trigger notification", details: response });
-        }
-      } catch (error) {
-        logger.error("[SuprSend] Error triggering test:", error);
-        res.status(500).json({ error: "Internal server error" });
-      }
-    });
-    suprsend_default = router22;
   }
 });
 
@@ -21373,7 +21504,6 @@ async function registerRoutes(app2) {
   app2.use("/api", (await Promise.resolve().then(() => (init_portal_auth(), portal_auth_exports))).default);
   app2.use("/api/portal", (await Promise.resolve().then(() => (init_portal(), portal_exports))).default);
   app2.use("/api/chef", (await Promise.resolve().then(() => (init_chef(), chef_exports))).default);
-  app2.use("/api/suprsend", (await Promise.resolve().then(() => (init_suprsend(), suprsend_exports))).default);
   const httpServer = createServer(app2);
   return httpServer;
 }

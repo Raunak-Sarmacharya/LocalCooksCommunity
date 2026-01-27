@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 interface StorageListing {
   id: number;
   name: string;
-  basePrice: number; // Base price in dollars (interpretation depends on pricingModel)
+  basePrice: number; // Base price in cents (interpretation depends on pricingModel)
   pricingModel?: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
   minimumBookingDuration: number; // Minimum duration required
   bookingDurationUnit?: 'hourly' | 'daily' | 'monthly';

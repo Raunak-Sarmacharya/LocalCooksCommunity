@@ -62,7 +62,12 @@ export default function StripeConnectSetup() {
   });
 
   // Use Stripe API status (more accurate) instead of DB status
-  const hasStripeAccount = stripeStatus?.hasAccount || !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id;
+  // If Stripe API explicitly says no account exists, trust that over the database
+  // This handles the case where the account was deleted on Stripe's side
+  const stripeApiSaysNoAccount = stripeStatus && stripeStatus.hasAccount === false;
+  const hasStripeAccount = stripeApiSaysNoAccount 
+    ? false 
+    : (stripeStatus?.hasAccount || !!userProfile?.stripeConnectAccountId || !!userProfile?.stripe_connect_account_id);
   const isOnboardingComplete = stripeStatus?.status === 'complete' && stripeStatus?.chargesEnabled && stripeStatus?.payoutsEnabled;
 
   // Fetch service fee rate (public endpoint - no auth required)

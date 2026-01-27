@@ -202,7 +202,7 @@ export function StorageExtensionDialog({
               </div>
               <div>
                 <span className="text-gray-600">Daily Rate:</span>
-                <span className="ml-2 font-medium">${booking.basePrice.toFixed(2)}/day</span>
+                <span className="ml-2 font-medium">${((booking.basePrice || 0) / 100).toFixed(2)}/day</span>
               </div>
             </div>
           </div>
@@ -249,17 +249,17 @@ export function StorageExtensionDialog({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-700">
-                        {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${booking.basePrice.toFixed(2)}/day:
+                        {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${((booking.basePrice || 0) / 100).toFixed(2)}/day:
                       </span>
-                      <span className="font-medium">${(extensionDetails.extensionBasePrice ?? 0).toFixed(2)}</span>
+                      <span className="font-medium">${((extensionDetails.extensionBasePrice ?? 0) / 100).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-700">Service Fee ({(serviceFeeRate * 100).toFixed(1)}%):</span>
-                      <span className="font-medium">${(extensionDetails.extensionServiceFee ?? 0).toFixed(2)}</span>
+                      <span className="font-medium">${((extensionDetails.extensionServiceFee ?? 0) / 100).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-green-200 font-semibold text-green-900">
                       <span>Additional Cost:</span>
-                      <span>${(extensionDetails.extensionTotalPrice ?? 0).toFixed(2)} CAD</span>
+                      <span>${((extensionDetails.extensionTotalPrice ?? 0) / 100).toFixed(2)} CAD</span>
                     </div>
                   </div>
                 </div>
