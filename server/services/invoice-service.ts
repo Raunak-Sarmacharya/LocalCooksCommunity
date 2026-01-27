@@ -24,7 +24,7 @@ export async function generateInvoicePDF(
   let stripeTotalAmount = 0; // Total amount from Stripe (in cents)
   let stripeBaseAmount = 0; // Base amount from Stripe (in cents) - for kitchen booking
   let stripeNetAmount = 0; // Net amount after fees from Stripe (in cents)
-  let stripeProcessingFeeCents = 0; // Stripe processing fee (in cents)
+  // Note: Stripe processing fee is handled internally by Stripe, not tracked here
   const stripeStorageBaseAmounts: Map<number, number> = new Map(); // Storage booking ID -> base amount
   const stripeEquipmentBaseAmounts: Map<number, number> = new Map(); // Equipment booking ID -> base amount
 
@@ -41,15 +41,7 @@ export async function generateInvoicePDF(
         stripeTotalAmount = parseInt(String(paymentTransaction.amount)) || 0;
         stripePlatformFee = parseInt(String(paymentTransaction.serviceFee)) || 0; // Platform fee from Stripe
         stripeBaseAmount = parseInt(String(paymentTransaction.baseAmount)) || 0; // Base amount from Stripe
-        // Try to get net amount if available (might be in metadata or new column if added)
-        // For now, calculate or extract from metadata if possible.
-        // Assuming paymentTransaction might have metadata with fees.
-        if (paymentTransaction.metadata) {
-             const meta = typeof paymentTransaction.metadata === 'string' ? JSON.parse(paymentTransaction.metadata) : paymentTransaction.metadata;
-             if (meta?.stripeFees?.processingFee) {
-                 stripeProcessingFeeCents = Math.round(Number(meta.stripeFees.processingFee));
-             }
-         }
+        // Note: Stripe processing fee is handled internally by Stripe, not extracted from metadata
 
         // For bundle bookings, we need to get individual booking base amounts
         // The base_amount in payment_transactions is the total base for the bundle
@@ -235,9 +227,8 @@ export async function generateInvoicePDF(
   let platformFee = 0;
   if (stripePlatformFee > 0) platformFee = stripePlatformFee / 100;
 
-  const stripeProcessingFee = 0.30;
-  const processingFee = stripeProcessingFeeCents > 0 ? stripeProcessingFeeCents / 100 : stripeProcessingFee;
-  const processingFeeCents = stripeProcessingFeeCents > 0 ? stripeProcessingFeeCents : Math.round(stripeProcessingFee * 100);
+  // Note: Stripe processing fee is handled internally by Stripe and should not be shown on invoices
+  // The platform fee (service fee) is what we charge, Stripe's fees are separate
 
   // Tax calculation
   let taxRatePercent = 0;
@@ -270,7 +261,7 @@ export async function generateInvoicePDF(
   const platformFeeForInvoice = invoiceViewer === 'manager' ? platformFee : 0;
   
   const totalForInvoice = invoiceViewer === 'manager'
-    ? (subtotalWithTaxCents - platformFeeCents - processingFeeCents) / 100
+    ? (subtotalWithTaxCents - platformFeeCents) / 100
     : (subtotalWithTaxCents) / 100;
 
   const grandTotal = totalForInvoice;
@@ -439,9 +430,7 @@ export async function generateInvoicePDF(
       if (platformFeeForInvoice > 0) {
         addTotalRow('Platform Fee:', platformFeeForInvoice, invoiceViewer === 'manager');
       }
-      if (invoiceViewer === 'manager' && processingFee > 0) {
-        addTotalRow('Stripe Processing Fee:', processingFee, true);
-      }
+      // Note: Stripe processing fee is handled internally by Stripe and not shown on invoices
 
       // Total (bold and larger)
       doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();

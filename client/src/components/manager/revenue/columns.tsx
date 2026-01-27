@@ -186,22 +186,72 @@ export function getTransactionColumns({
             ),
         },
         {
-            accessorKey: "managerRevenue",
+            accessorKey: "taxAmount",
+            header: () => (
+                <div className="text-right">Tax</div>
+            ),
+            cell: ({ row }) => {
+                const taxAmount = row.original.taxAmount ?? 0;
+                const taxRate = row.original.taxRatePercent ?? 0;
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right text-amber-600 text-sm">
+                                    {formatCurrency(taxAmount)}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p className="text-sm">Tax rate: {taxRate}%</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            },
+        },
+        {
+            accessorKey: "stripeFee",
+            header: () => (
+                <div className="text-right">Stripe Fee</div>
+            ),
+            cell: ({ row }) => {
+                const stripeFee = row.original.stripeFee ?? 0;
+                return (
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="text-right text-violet-600 text-sm">
+                                    {formatCurrency(stripeFee)}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p className="text-sm">Stripe processing fee (from Stripe API)</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                );
+            },
+        },
+        {
+            accessorKey: "netRevenue",
             header: ({ column }) => (
                 <Button
                     variant="ghost"
                     onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                     className="justify-end w-full"
                 >
-                    Your Earnings
+                    Net Revenue
                     <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
             ),
-            cell: ({ row }) => (
-                <div className="text-right font-semibold text-primary">
-                    {formatCurrency(row.getValue("managerRevenue"))}
-                </div>
-            ),
+            cell: ({ row }) => {
+                const netRevenue = row.original.netRevenue ?? 0;
+                return (
+                    <div className="text-right font-semibold text-primary">
+                        {formatCurrency(netRevenue)}
+                    </div>
+                );
+            },
         },
         {
             accessorKey: "paymentStatus",

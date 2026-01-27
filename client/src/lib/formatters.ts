@@ -150,12 +150,15 @@ export function transactionsToCSV(
         kitchenName: string;
         locationName: string;
         totalPrice: number;
-        managerRevenue: number;
+        taxAmount?: number;
+        taxRatePercent?: number;
+        stripeFee?: number;
+        netRevenue?: number;
         paymentStatus: string;
     }>,
     includeHeaders: boolean = true
 ): string {
-    const headers = ['Date', 'Chef', 'Kitchen', 'Location', 'Total', 'Your Earnings', 'Status'];
+    const headers = ['Date', 'Chef', 'Kitchen', 'Location', 'Total', 'Tax', 'Tax Rate', 'Stripe Fee', 'Net Revenue', 'Status'];
 
     const rows = transactions.map(t => [
         formatDate(t.bookingDate),
@@ -163,7 +166,10 @@ export function transactionsToCSV(
         t.kitchenName,
         t.locationName,
         formatCurrency(t.totalPrice),
-        formatCurrency(t.managerRevenue),
+        formatCurrency(t.taxAmount ?? 0),
+        `${t.taxRatePercent ?? 0}%`,
+        formatCurrency(t.stripeFee ?? 0),
+        formatCurrency(t.netRevenue ?? 0),
         t.paymentStatus
     ]);
 

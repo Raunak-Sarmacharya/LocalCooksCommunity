@@ -34,9 +34,14 @@ export interface Transaction {
     kitchenName: string;
     locationId: number;
     locationName: string;
-    totalPrice: number;        // Amount in cents
-    managerRevenue: number;    // Amount in cents after platform fee
-    platformFee: number;       // Platform fee in cents
+    totalPrice: number;        // Amount in cents - gross amount charged
+    managerRevenue: number;    // Amount in cents after fees
+    platformFee: number;       // Platform fee in cents - DEPRECATED, use taxAmount
+    taxAmount: number;         // Tax collected in cents
+    taxRatePercent: number;    // Tax rate percentage applied
+    serviceFee: number;        // Service fee in cents (if any)
+    stripeFee: number;         // Actual Stripe processing fee in cents (from Stripe API)
+    netRevenue: number;        // Net revenue after tax and Stripe fees
     paymentStatus: PaymentStatus;
     paymentIntentId: string | null;
     createdAt: string;
@@ -70,9 +75,12 @@ export interface Payout {
 
 // Revenue metrics from API
 export interface RevenueMetrics {
-    totalRevenue: number;          // In cents
-    managerRevenue: number;        // In cents
-    platformFee: number;           // In cents
+    totalRevenue: number;          // In cents - gross amount charged to customer
+    managerRevenue: number;        // In cents - manager earnings after fees
+    platformFee: number;           // In cents - DEPRECATED, use taxAmount
+    taxAmount: number;             // In cents - tax collected based on kitchen tax_rate_percent
+    stripeFee: number;             // In cents - estimated Stripe processing fee (~2.9% + $0.30)
+    netRevenue: number;            // In cents - net revenue after tax and Stripe fees
     bookingCount: number;
     paidBookingCount: number;
     averageBookingValue: number;   // In cents

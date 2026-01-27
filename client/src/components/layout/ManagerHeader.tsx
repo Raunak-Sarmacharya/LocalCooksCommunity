@@ -3,14 +3,13 @@ import Logo from "@/components/ui/logo";
 import { useQuery } from "@tanstack/react-query";
 import {
   LogOut, HelpCircle, Menu, X, ChevronDown, User, Settings,
-  BookOpen, DollarSign, Building2, LayoutDashboard, Bell
+  BookOpen, DollarSign, Building2, LayoutDashboard
 } from "lucide-react";
 import { Link } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useState } from "react";
 import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
-import { NotificationInbox } from "@/components/notifications/NotificationInbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -194,9 +193,6 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
           <nav className="hidden md:flex items-center space-x-4 ml-auto">
             {user && (
               <>
-                {/* Notification Inbox */}
-                <NotificationInbox />
-
                 <Button
                   variant="outline"
                   size="sm"
@@ -275,12 +271,6 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                         </Link>
                       </DropdownMenuItem>
 
-                      <DropdownMenuItem asChild className="text-gray-700 hover:text-gray-900 hover:bg-gray-50 focus:bg-gray-50 focus:text-gray-900 cursor-pointer">
-                        <Link href="/manager/notifications" className="flex items-center w-full">
-                          <Bell className="mr-3 h-4 w-4" />
-                          <span>Notifications</span>
-                        </Link>
-                      </DropdownMenuItem>
                     </div>
 
                     <DropdownMenuSeparator className="bg-gray-200" />
@@ -345,12 +335,6 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             <nav className="space-y-3">
               {user && (
                 <>
-                  {/* Mobile Notification Inbox */}
-                  <div className="flex items-center justify-between px-2 py-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm font-medium text-gray-700">Notifications</span>
-                    <NotificationInbox />
-                  </div>
-
                   <Button
                     variant="outline"
                     size="sm"

@@ -120,30 +120,17 @@ export class BookingService {
 
         // 5. Create Storage Bookings
         let storageTotalCents = 0;
+        const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number}> = [];
         if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
             try {
                 const { inventoryService } = await import('../inventory/inventory.service');
-                const endDate = data.endTime ? new Date(data.endTime) : new Date(data.bookingDate); // Logic for storage end date? Usually same as booking?
-                // Actually storage might be daily/monthly. For hourly kitchen booking, assume hourly storage?
-                // bookings.ts used bookingDate + endTime for calculation?
-                // Let's use durationHours from pricing.
                 
                 for (const storageId of data.selectedStorageIds) {
                     const listing = await inventoryService.getStorageListingById(storageId);
                     if (listing) {
                         let priceCents = 0;
-                        const basePriceCents = parseFloat(String(listing.basePrice || '0')); // listing.basePrice is usually dollars string from some sources, but schema says numeric(10,2)? 
-                        // Actually in schema.ts: basePrice: numeric("base_price")
-                        // BookingRepository uses String(basePrice) then /100?
-                        // Let's assume numeric string in DB is CENTS or DOLLARS?
-                        // Schema usually stores money as CENTS or DOLLARS. standard in this codebase seems mixed.
-                        // pricing-service methods return cents.
-                        // bookings.ts lines 602: `basePriceCents = ...`.
-                        // Let's assume listing.basePrice is CENTS. (Need to verify, but for now safe bet for consistency if I follow surrounding code).
-                        // Wait, `bookings.ts` line 593: `const basePriceCents = Math.round(parseFloat(storageListing.basePrice) * 100);` 
-                        // So DB stores DOLLARS?
-                        
-                        const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || '0')) * 100);
+                        // DB stores basePrice in cents
+                        const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || '0')));
 
                         if (listing.pricingModel === 'hourly') {
                             const duration = calculateDurationHours(data.startTime, data.endTime);
@@ -155,7 +142,7 @@ export class BookingService {
                         }
 
                         // Create Storage Booking Record
-                        await this.repo.createStorageBooking({
+                        const storageBooking = await this.repo.createStorageBooking({
                             kitchenBookingId: booking.id,
                             storageListingId: listing.id,
                             chefId: data.chefId,
@@ -167,6 +154,18 @@ export class BookingService {
                             serviceFee: '0', // No service fee for customer
                             currency: pricing.currency
                         });
+                        
+                        // Add to storage_items JSONB array for denormalized storage
+                        if (storageBooking) {
+                            storageItemsForJson.push({
+                                id: storageBooking.id,
+                                storageListingId: listing.id,
+                                name: listing.name || 'Storage',
+                                storageType: listing.storageType || 'other',
+                                totalPrice: priceCents
+                            });
+                        }
+                        
                         storageTotalCents += priceCents;
                     }
                 }
@@ -239,12 +238,13 @@ export class BookingService {
         const grandTotalCents = pricing.totalPriceCents + storageTotalCents + equipmentTotalCents;
         const newServiceFeeCents = await calculatePlatformFeeDynamic(grandTotalCents);
 
-        // Update booking with total price, service fee, and equipment_items JSONB
+        // Update booking with total price, service fee, storage_items and equipment_items JSONB
         // Store total WITHOUT fee (Customer pays Base + Tax).
         // Store fee for reporting.
         await this.repo.updateKitchenBooking(booking.id, {
             totalPrice: grandTotalCents.toString(),
             serviceFee: newServiceFeeCents.toString(),
+            storageItems: storageItemsForJson,
             equipmentItems: equipmentItemsForJson
         });
 

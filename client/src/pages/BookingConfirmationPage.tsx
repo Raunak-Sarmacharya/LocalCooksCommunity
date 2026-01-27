@@ -165,13 +165,8 @@ export default function BookingConfirmationPage() {
         if (storageRes.ok) {
           const storageData = await storageRes.json();
           if (!isCancelled) {
-            // Convert cents to dollars for UI display (consistent with other pages)
-            const storageDataDollars = (storageData || []).map((s: any) => ({
-              ...s,
-              basePrice: s.basePrice ? s.basePrice / 100 : 0,
-              pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
-            }));
-            setStorageListings(storageDataDollars);
+            // Keep values in cents - formatCurrency and useStoragePricing expect cents
+            setStorageListings(storageData || []);
           }
         } else {
           if (!isCancelled) {
@@ -250,12 +245,12 @@ export default function BookingConfirmationPage() {
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
   // Calculate combined subtotal (in CENTS)
-  // All values must be in CENTS for consistency with formatCurrency
+  // All values are in CENTS for consistency with formatCurrency
   const combinedSubtotal = useMemo(() => {
     const kitchenBase = estimatedPrice?.basePrice || 0; // Already in cents
-    // Storage and equipment pricing hooks return dollars, convert to cents
-    const storageBaseCents = Math.round((storagePricing.subtotal || 0) * 100);
-    const equipmentBaseCents = Math.round((equipmentPricing.subtotal || 0) * 100);
+    // Storage and equipment pricing are already in cents from the API
+    const storageBaseCents = storagePricing.subtotal || 0;
+    const equipmentBaseCents = equipmentPricing.subtotal || 0;
     return kitchenBase + storageBaseCents + equipmentBaseCents;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
@@ -742,13 +737,13 @@ export default function BookingConfirmationPage() {
                                         {item.name}
                                       </span>
                                     </div>
-                                    <span className="font-medium text-amber-700 flex-shrink-0">{formatCurrency(Math.round(item.rate * 100))}</span>
+                                    <span className="font-medium text-amber-700 flex-shrink-0">{formatCurrency(item.rate)}</span>
                                   </div>
                                 );
                               })}
                               <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
                                 <span className="font-semibold text-amber-800">Equipment Subtotal (base price only):</span>
-                                <span className="font-bold text-amber-900">{formatCurrency(Math.round(equipmentPricing.subtotal * 100))}</span>
+                                <span className="font-bold text-amber-900">{formatCurrency(equipmentPricing.subtotal)}</span>
                               </div>
                             </div>
                           </div>
@@ -787,16 +782,16 @@ export default function BookingConfirmationPage() {
                                       {item.listing.name}
                                     </span>
                                   </div>
-                                  <span className="font-medium text-purple-700 flex-shrink-0">${item.basePrice.toFixed(2)}</span>
+                                  <span className="font-medium text-purple-700 flex-shrink-0">{formatCurrency(item.basePrice)}</span>
                                 </div>
                                 <div className="text-xs text-gray-600 ml-4">
-                                  {item.days} day{item.days > 1 ? 's' : ''} × ${item.listing.basePrice.toFixed(2)}/day
+                                  {item.days} day{item.days > 1 ? 's' : ''} × {formatCurrency(item.listing.basePrice)}/day
                                 </div>
                               </div>
                             ))}
                             <div className="pt-2 mt-2 border-t border-purple-200 flex justify-between">
                               <span className="font-semibold text-purple-800">Storage Subtotal (base price only):</span>
-                              <span className="font-bold text-purple-900">{formatCurrency(Math.round(storagePricing.subtotal * 100))}</span>
+                              <span className="font-bold text-purple-900">{formatCurrency(storagePricing.subtotal)}</span>
                             </div>
                           </div>
                         </div>

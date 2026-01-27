@@ -207,7 +207,11 @@ export async function getRevenueMetricsFromTransactions(
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
-        COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value
+        COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
+        -- Actual Stripe fees from database (fetched from Stripe Balance Transaction API)
+        COALESCE(SUM(CASE WHEN pt.stripe_fee::numeric > 0 THEN pt.stripe_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
+        -- Tax amount from database
+        COALESCE(SUM(CASE WHEN pt.tax_amount::numeric > 0 THEN pt.tax_amount::numeric ELSE 0 END), 0)::bigint as actual_tax_amount
       FROM payment_transactions pt
       LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       LEFT JOIN kitchens k ON kb.kitchen_id = k.id
@@ -259,10 +263,38 @@ export async function getRevenueMetricsFromTransactions(
     // Don't recalculate - the database value is accurate and comes from Stripe webhooks
     const finalManagerRevenue = managerRevenue;
 
+    // Get actual Stripe fees from database (fetched from Stripe Balance Transaction API)
+    const actualStripeFee = parseNumeric(row.actual_stripe_fee);
+    const actualTaxAmount = parseNumeric(row.actual_tax_amount);
+    
+    // Use actual Stripe fee if available, otherwise estimate (2.9% + $0.30 per transaction)
+    const stripeFee = actualStripeFee > 0 
+      ? actualStripeFee 
+      : Math.round((completedPayments * 0.029) + (paidBookingCount * 30));
+    
+    // Tax amount - use actual from database if available, otherwise use platform fee
+    const taxAmount = actualTaxAmount > 0 ? actualTaxAmount : platformFee;
+    
+    // Net revenue = total - tax - stripe fees
+    const netRevenue = totalRevenue - taxAmount - stripeFee;
+    
+    console.log('[Revenue Service V2] Fee breakdown:', {
+      actualStripeFee,
+      actualTaxAmount,
+      stripeFee,
+      taxAmount,
+      netRevenue,
+      usingActualStripeFee: actualStripeFee > 0,
+      usingActualTaxAmount: actualTaxAmount > 0,
+    });
+
     // Ensure all values are numbers (not NaN or undefined)
-    const metrics = {
+    const metrics: RevenueMetrics = {
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
+      taxAmount: isNaN(taxAmount) ? 0 : (taxAmount || 0),
+      stripeFee: isNaN(stripeFee) ? 0 : (stripeFee || 0),
+      netRevenue: isNaN(netRevenue) ? 0 : (netRevenue || 0),
       managerRevenue: isNaN(finalManagerRevenue) ? 0 : finalManagerRevenue, // Use database value from Stripe (includes processing)
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue, // Only succeeded transactions (what's in bank)
       pendingPayments: isNaN(pendingPayments) ? 0 : pendingPayments,

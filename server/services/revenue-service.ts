@@ -13,8 +13,11 @@
 import { sql } from "drizzle-orm";
 
 export interface RevenueMetrics {
-  totalRevenue: number;        // Total booking revenue (cents)
-  platformFee: number;         // Platform commission (cents)
+  totalRevenue: number;        // Total booking revenue (cents) - gross amount charged to customer
+  platformFee: number;         // Platform commission (cents) - DEPRECATED, use taxAmount instead
+  taxAmount: number;           // Tax collected (cents) - based on kitchen tax_rate_percent
+  stripeFee: number;           // Estimated Stripe processing fee (cents) - ~2.9% + $0.30 per transaction
+  netRevenue: number;          // Net revenue after tax and Stripe fees (cents)
   managerRevenue: number;      // Manager earnings (cents) = totalRevenue - platformFee (includes processing)
   depositedManagerRevenue: number; // Manager earnings from succeeded transactions only (cents) - what's actually in bank
   pendingPayments: number;     // Unpaid bookings (cents)
@@ -133,6 +136,7 @@ export async function getRevenueMetrics(
     // This ensures future bookings are included in all metrics
     // Calculate effective total_price: use total_price if available, otherwise calculate from hourly_rate * duration_hours
     // Also handle numeric type properly by casting to numeric first, then to bigint
+    // Tax is calculated from kitchen's tax_rate_percent applied to total_price
     const result = await db.execute(sql`
       SELECT 
         COALESCE(SUM(
@@ -146,6 +150,19 @@ export async function getRevenueMetrics(
           )::numeric
         ), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
+        -- Calculate actual tax amount from kitchen tax_rate_percent
+        COALESCE(SUM(
+          ROUND(
+            COALESCE(
+              kb.total_price,
+              CASE 
+                WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                ELSE 0
+              END
+            )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+          )
+        ), 0)::bigint as calculated_tax_amount,
         COUNT(*)::int as booking_count,
         COUNT(CASE WHEN kb.payment_status = 'paid' THEN 1 END)::int as paid_count,
         COUNT(CASE WHEN kb.payment_status = 'processing' THEN 1 END)::int as processing_count,
@@ -302,37 +319,65 @@ export async function getRevenueMetrics(
       // Even if no bookings in date range, check if there are pending or completed payments
       // Calculate revenue based on all payments (completed + pending)
       // We need to get the service fees for these payments too
-      const pendingServiceFeeResult = await db.execute(sql`
+      // Get service fees and calculate tax from kitchen tax_rate_percent for pending payments
+      const pendingFeeResult = await db.execute(sql`
         SELECT 
+          COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
           COALESCE(SUM(
-            COALESCE(kb.service_fee, 0)::numeric
-          ), 0)::bigint as pending_service_fee
+            ROUND(
+              COALESCE(
+                kb.total_price,
+                CASE 
+                  WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                  THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                  ELSE 0
+                END
+              )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+            )
+          ), 0)::bigint as pending_tax_amount
         FROM kitchen_bookings kb
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
       `);
 
-      const completedServiceFeeResult = await db.execute(sql`
+      // Get service fees and calculate tax from kitchen tax_rate_percent for completed payments
+      const completedFeeResult = await db.execute(sql`
         SELECT 
+          COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
           COALESCE(SUM(
-            COALESCE(kb.service_fee, 0)::numeric
-          ), 0)::bigint as completed_service_fee
+            ROUND(
+              COALESCE(
+                kb.total_price,
+                CASE 
+                  WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                  THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                  ELSE 0
+                END
+              )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+            )
+          ), 0)::bigint as completed_tax_amount
         FROM kitchen_bookings kb
         JOIN kitchens k ON kb.kitchen_id = k.id
         JOIN locations l ON k.location_id = l.id
         ${completedWhereClause}
       `);
 
-      const pSFr: any = pendingServiceFeeResult.rows[0] || {};
+      const pSFr: any = pendingFeeResult.rows[0] || {};
       const pendingServiceFee = typeof pSFr.pending_service_fee === 'string'
         ? parseInt(pSFr.pending_service_fee) || 0
         : (pSFr.pending_service_fee ? parseInt(String(pSFr.pending_service_fee)) : 0);
+      const pendingTaxAmount = typeof pSFr.pending_tax_amount === 'string'
+        ? parseInt(pSFr.pending_tax_amount) || 0
+        : (pSFr.pending_tax_amount ? parseInt(String(pSFr.pending_tax_amount)) : 0);
 
-      const cSFr: any = completedServiceFeeResult.rows[0] || {};
+      const cSFr: any = completedFeeResult.rows[0] || {};
       const completedServiceFee = typeof cSFr.completed_service_fee === 'string'
         ? parseInt(cSFr.completed_service_fee) || 0
         : (cSFr.completed_service_fee ? parseInt(String(cSFr.completed_service_fee)) : 0);
+      const completedTaxAmount = typeof cSFr.completed_tax_amount === 'string'
+        ? parseInt(cSFr.completed_tax_amount) || 0
+        : (cSFr.completed_tax_amount ? parseInt(String(cSFr.completed_tax_amount)) : 0);
 
       const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
       const totalServiceFee = pendingServiceFee + completedServiceFee;
@@ -341,16 +386,27 @@ export async function getRevenueMetrics(
       // Deposited manager revenue = only from paid bookings (succeeded transactions)
       const depositedManagerRevenue = allCompletedPayments - completedServiceFee;
 
+      // Calculate estimated Stripe fees (2.9% + $0.30 per transaction for CAD)
+      const paidCount = parseInt(completedRow.completed_count_all) || 0;
+      const estimatedStripeFee = Math.round((allCompletedPayments * 0.029) + (paidCount * 30));
+      // Tax amount calculated from kitchen tax_rate_percent (not service_fee)
+      const taxAmount = pendingTaxAmount + completedTaxAmount;
+      // Net revenue = total - tax - stripe fees
+      const netRevenue = totalRevenueWithAllPayments - taxAmount - estimatedStripeFee;
+
       return {
         totalRevenue: totalRevenueWithAllPayments || 0,
         platformFee: totalServiceFee || 0,
+        taxAmount: taxAmount || 0,
+        stripeFee: estimatedStripeFee || 0,
+        netRevenue: netRevenue || 0,
         managerRevenue: managerRevenue || 0,
         depositedManagerRevenue: depositedManagerRevenue || 0,
         pendingPayments: allPendingPayments,
         completedPayments: allCompletedPayments, // Show ALL completed payments, not just in date range
         averageBookingValue: 0,
         bookingCount: 0,
-        paidBookingCount: parseInt(completedRow.completed_count_all) || 0,
+        paidBookingCount: paidCount,
         cancelledBookingCount: 0,
         refundedAmount: 0,
       };
@@ -382,49 +438,86 @@ export async function getRevenueMetrics(
     // This gives managers complete visibility into all revenue (historical + future committed)
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
 
-    // Get service fees for all payments (pending + completed)
-    const pendingServiceFeeResult = await db.execute(sql`
+    // Get service fees and calculate tax from kitchen tax_rate_percent for all payments (pending + completed)
+    const pendingFeeResult2 = await db.execute(sql`
       SELECT 
+        COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
         COALESCE(SUM(
-          COALESCE(kb.service_fee, 0)::numeric
-        ), 0)::bigint as pending_service_fee
+          ROUND(
+            COALESCE(
+              kb.total_price,
+              CASE 
+                WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                ELSE 0
+              END
+            )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+          )
+        ), 0)::bigint as pending_tax_amount
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
 
-    const completedServiceFeeResult = await db.execute(sql`
+    const completedFeeResult2 = await db.execute(sql`
       SELECT 
+        COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
         COALESCE(SUM(
-          COALESCE(kb.service_fee, 0)::numeric
-        ), 0)::bigint as completed_service_fee
+          ROUND(
+            COALESCE(
+              kb.total_price,
+              CASE 
+                WHEN kb.hourly_rate IS NOT NULL AND kb.duration_hours IS NOT NULL 
+                THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
+                ELSE 0
+              END
+            )::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100
+          )
+        ), 0)::bigint as completed_tax_amount
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       ${completedWhereClause}
     `);
 
-    const pSFr: any = pendingServiceFeeResult.rows[0] || {};
-    const pendingServiceFee = typeof pSFr.pending_service_fee === 'string'
-      ? parseInt(pSFr.pending_service_fee) || 0
-      : (pSFr.pending_service_fee ? parseInt(String(pSFr.pending_service_fee)) : 0);
+    const pSFr2: any = pendingFeeResult2.rows[0] || {};
+    const pendingServiceFee2 = typeof pSFr2.pending_service_fee === 'string'
+      ? parseInt(pSFr2.pending_service_fee) || 0
+      : (pSFr2.pending_service_fee ? parseInt(String(pSFr2.pending_service_fee)) : 0);
+    const pendingTaxAmount2 = typeof pSFr2.pending_tax_amount === 'string'
+      ? parseInt(pSFr2.pending_tax_amount) || 0
+      : (pSFr2.pending_tax_amount ? parseInt(String(pSFr2.pending_tax_amount)) : 0);
 
-    const cSFr: any = completedServiceFeeResult.rows[0] || {};
-    const completedServiceFee = typeof cSFr.completed_service_fee === 'string'
-      ? parseInt(cSFr.completed_service_fee) || 0
-      : (cSFr.completed_service_fee ? parseInt(String(cSFr.completed_service_fee)) : 0);
+    const cSFr2: any = completedFeeResult2.rows[0] || {};
+    const completedServiceFee2 = typeof cSFr2.completed_service_fee === 'string'
+      ? parseInt(cSFr2.completed_service_fee) || 0
+      : (cSFr2.completed_service_fee ? parseInt(String(cSFr2.completed_service_fee)) : 0);
+    const completedTaxAmount2 = typeof cSFr2.completed_tax_amount === 'string'
+      ? parseInt(cSFr2.completed_tax_amount) || 0
+      : (cSFr2.completed_tax_amount ? parseInt(String(cSFr2.completed_tax_amount)) : 0);
 
-    const totalServiceFee = pendingServiceFee + completedServiceFee;
+    const totalServiceFee = pendingServiceFee2 + completedServiceFee2;
 
     // Manager revenue = total_price - service_fee (total_price already includes service_fee)
     const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
     // Deposited manager revenue = only from paid bookings (succeeded transactions)
-    const depositedManagerRevenue = allCompletedPayments - completedServiceFee;
+    const depositedManagerRevenue = allCompletedPayments - completedServiceFee2;
+
+    // Calculate estimated Stripe fees (2.9% + $0.30 per transaction for CAD)
+    const paidBookingCountVal = isNaN(parseInt(completedRow.completed_count_all)) ? 0 : (parseInt(completedRow.completed_count_all) || 0);
+    const estimatedStripeFee = Math.round((allCompletedPayments * 0.029) + (paidBookingCountVal * 30));
+    // Tax amount calculated from kitchen tax_rate_percent (not service_fee)
+    const taxAmount = pendingTaxAmount2 + completedTaxAmount2;
+    // Net revenue = total - tax - stripe fees
+    const netRevenue = totalRevenueWithAllPayments - taxAmount - estimatedStripeFee;
 
     return {
       totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : (totalRevenueWithAllPayments || 0),
       platformFee: isNaN(totalServiceFee) ? 0 : (totalServiceFee || 0),
+      taxAmount: isNaN(taxAmount) ? 0 : (taxAmount || 0),
+      stripeFee: isNaN(estimatedStripeFee) ? 0 : (estimatedStripeFee || 0),
+      netRevenue: isNaN(netRevenue) ? 0 : (netRevenue || 0),
       managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : (depositedManagerRevenue || 0),
       pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
@@ -433,7 +526,7 @@ export async function getRevenueMetrics(
         ? (isNaN(Math.round(parseFloat(String(row.avg_booking_value)))) ? 0 : Math.round(parseFloat(String(row.avg_booking_value))))
         : 0,
       bookingCount: isNaN(parseInt(row.booking_count)) ? 0 : (parseInt(row.booking_count) || 0),
-      paidBookingCount: isNaN(parseInt(completedRow.completed_count_all)) ? 0 : (parseInt(completedRow.completed_count_all) || 0), // Use count from all completed payments query
+      paidBookingCount: paidBookingCountVal,
       cancelledBookingCount: isNaN(parseInt(row.cancelled_count)) ? 0 : (parseInt(row.cancelled_count) || 0),
       refundedAmount: typeof row.refunded_amount === 'string'
         ? (isNaN(parseInt(row.refunded_amount)) ? 0 : (parseInt(row.refunded_amount) || 0))
@@ -687,7 +780,8 @@ export async function getTransactionHistory(
     const { getServiceFeeRate } = await import('./pricing-service.js');
     const serviceFeeRate = await getServiceFeeRate();
 
-    // Query transactions
+    // Query transactions - join with payment_transactions to get actual Stripe data
+    // Use payment_transactions.amount as the source of truth for totalPrice when available
     const result = await db.execute(sql`
       SELECT 
         kb.id,
@@ -701,8 +795,9 @@ export async function getTransactionHistory(
             THEN ROUND((kb.hourly_rate::numeric * kb.duration_hours::numeric)::numeric)
             ELSE 0
           END
-        )::bigint as total_price,
+        )::bigint as kb_total_price,
         COALESCE(kb.service_fee, 0)::bigint as service_fee,
+        COALESCE(k.tax_rate_percent, 0)::numeric as tax_rate_percent,
         kb.payment_status,
         kb.payment_intent_id,
         kb.status,
@@ -712,31 +807,90 @@ export async function getTransactionHistory(
         l.name as location_name,
         u.username as chef_name,
         u.username as chef_email,
-        kb.created_at
+        kb.created_at,
+        -- Actual amount from payment_transactions (what was actually charged to Stripe)
+        pt.amount as pt_amount,
+        -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
+        COALESCE(pt.stripe_fee, 0)::bigint as actual_stripe_fee,
+        -- Actual tax amount from payment_transactions
+        COALESCE(pt.tax_amount, 0)::bigint as actual_tax_amount,
+        -- Service fee from payment_transactions
+        COALESCE(pt.service_fee, 0)::bigint as pt_service_fee,
+        -- Manager revenue from payment_transactions (actual Stripe net amount)
+        pt.manager_revenue as pt_manager_revenue
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON kb.chef_id = u.id
+      LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
       ${whereClause}
       ORDER BY kb.booking_date DESC, kb.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `);
 
     return result.rows.map((row: any) => {
-      // Handle null/undefined total_price gracefully
-      const totalPriceCents = row.total_price != null ? parseInt(String(row.total_price)) : 0;
-      const serviceFeeCents = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
-      // Manager revenue = total_price - service_fee (total_price already includes service_fee)
-      const managerRevenue = totalPriceCents - serviceFeeCents;
+      // Get values from payment_transactions (source of truth when available)
+      const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
+      const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
+      const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
+      const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
+      const actualTaxAmount = row.actual_tax_amount != null ? parseInt(String(row.actual_tax_amount)) : 0;
+      
+      // Fallback values from kitchen_bookings
+      const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
+      const kbServiceFee = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
+      const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
+      
+      // Use payment_transactions.amount as source of truth for total price (what was actually charged)
+      // This ensures consistency with metric cards which also use payment_transactions
+      const hasPaymentTransaction = ptAmount > 0;
+      
+      // Total price - use pt.amount if available (actual Stripe charge), otherwise calculate from kb
+      let totalPriceCents: number;
+      let taxCents: number;
+      let serviceFeeCents: number;
+      
+      if (hasPaymentTransaction) {
+        // Use actual values from payment_transactions
+        // pt.amount is the total charged to Stripe (subtotal + tax)
+        totalPriceCents = ptAmount;
+        taxCents = actualTaxAmount;
+        serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
+      } else {
+        // Fallback: use kitchen_bookings values
+        // kb.total_price is the SUBTOTAL (before tax) - this matches what metric cards use
+        // For consistency with metric cards, we use total_price directly as the "gross revenue"
+        // Tax is calculated separately for display purposes
+        totalPriceCents = kbTotalPrice;
+        taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100);
+        serviceFeeCents = kbServiceFee;
+      }
+      
+      // Manager revenue - use actual from payment_transactions if available
+      const calculatedManagerRevenue = totalPriceCents - serviceFeeCents;
+      const managerRevenue = ptManagerRevenue > 0 ? ptManagerRevenue : calculatedManagerRevenue;
+      
+      // Stripe fee - use actual if available, otherwise estimate (2.9% + $0.30)
+      const estimatedStripeFee = Math.round((totalPriceCents * 0.029) + 30);
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      
+      // Net revenue = total - tax - stripe fees
+      const netRevenue = totalPriceCents - taxCents - stripeFee;
 
       return {
         id: row.id,
+        bookingId: row.id, // Add bookingId for invoice download
         bookingDate: row.booking_date,
         startTime: row.start_time,
         endTime: row.end_time,
         totalPrice: totalPriceCents,
         serviceFee: serviceFeeCents,
+        platformFee: serviceFeeCents, // Alias for frontend compatibility - DEPRECATED
+        taxAmount: taxCents, // Tax collected (from payment_transactions or calculated)
+        taxRatePercent: taxRatePercent, // Tax rate percentage applied
+        stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: managerRevenue || 0,
+        netRevenue: netRevenue, // Net after tax and Stripe fees
         paymentStatus: row.payment_status,
         paymentIntentId: row.payment_intent_id,
         status: row.status,
@@ -907,9 +1061,20 @@ export async function getCompleteRevenueMetrics(
       parseNumeric(storageRow.paid_count) +
       parseNumeric(equipmentRow.paid_count);
 
-    const finalMetrics = {
+    // Calculate estimated Stripe fees (2.9% + $0.30 per transaction for CAD)
+    const estimatedStripeFee = Math.round((completedPaymentsTotal * 0.029) + (totalPaidCount * 30));
+    // Tax amount - use the actual calculated tax from kitchen metrics (based on kitchen tax_rate_percent)
+    // Storage and equipment bookings don't have tax for now, so we only use kitchen tax
+    const taxAmount = kitchenMetrics.taxAmount || 0;
+    // Net revenue = total - tax - stripe fees
+    const netRevenue = totalRevenue - taxAmount - estimatedStripeFee;
+
+    const finalMetrics: RevenueMetrics = {
       totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
       platformFee: isNaN(platformFee) ? 0 : platformFee,
+      taxAmount: isNaN(taxAmount) ? 0 : (taxAmount || 0),
+      stripeFee: isNaN(estimatedStripeFee) ? 0 : (estimatedStripeFee || 0),
+      netRevenue: isNaN(netRevenue) ? 0 : (netRevenue || 0),
       managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue,
       pendingPayments: isNaN(pendingPaymentsTotal) ? 0 : pendingPaymentsTotal,

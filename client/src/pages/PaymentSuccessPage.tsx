@@ -208,9 +208,23 @@ export default function PaymentSuccessPage() {
                 </div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Confirmed!</h1>
                 <p className="text-lg text-gray-600">
-                  Your booking has been successfully created and payment has been processed.
+                  Your payment has been processed successfully. Your booking is now pending manager approval.
                 </p>
               </div>
+
+              {/* Pending Approval Notice */}
+              {booking.status === 'pending' && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+                    Awaiting Manager Approval
+                  </h3>
+                  <p className="text-sm text-yellow-800">
+                    Your booking request has been submitted and is pending approval from the kitchen manager. 
+                    You will receive an email confirmation once your booking is approved.
+                  </p>
+                </div>
+              )}
 
               {/* Booking Details */}
               <div className="bg-gray-50 rounded-lg p-6 mb-6">

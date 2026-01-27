@@ -210,7 +210,7 @@ export default function StorageListingsStep() {
                   {listings.map(l => (
                     <div key={l.id} className="bg-white rounded p-3 border border-green-200">
                       <p className="font-medium">{l.name}</p>
-                      <p className="text-xs text-gray-600">{l.storageType} • ${(Number(l.basePrice || 0) / 100).toFixed(2)}/day</p>
+                      <p className="text-xs text-gray-600">{l.storageType} • ${Number(l.basePrice || 0).toFixed(2)}/day</p>
                     </div>
                   ))}
                 </div>

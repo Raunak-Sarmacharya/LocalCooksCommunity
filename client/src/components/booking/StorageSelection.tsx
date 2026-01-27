@@ -22,7 +22,7 @@ interface StorageListing {
   name: string;
   storageType: 'dry' | 'cold' | 'freezer';
   description?: string;
-  basePrice: number; // Daily rate in dollars
+  basePrice: number; // Daily rate in cents
   minimumBookingDuration: number; // Minimum days required
   climateControl?: boolean;
   isActive?: boolean;
@@ -289,7 +289,7 @@ export function StorageSelection({
                   </div>
                   <div className="text-right ml-4 flex-shrink-0">
                     <p className="font-semibold text-purple-700">
-                      ${storage.basePrice.toFixed(2)}/day
+                      ${((storage.basePrice || 0) / 100).toFixed(2)}/day
                     </p>
                     <p className="text-xs text-gray-500">Min: {minDays} day{minDays > 1 ? 's' : ''}</p>
                   </div>
@@ -330,7 +330,7 @@ export function StorageSelection({
                           </p>
                           {pricePreview && (
                             <p className="text-xs text-green-700 mt-1">
-                              {pricePreview.days} day{pricePreview.days > 1 ? 's' : ''} × ${storage.basePrice.toFixed(2)}/day
+                              {pricePreview.days} day{pricePreview.days > 1 ? 's' : ''} × ${((storage.basePrice || 0) / 100).toFixed(2)}/day
                             </p>
                           )}
                         </div>
@@ -346,7 +346,7 @@ export function StorageSelection({
                         <div className="mt-2 pt-2 border-t border-green-200">
                           <div className="flex justify-between text-sm">
                             <span className="text-green-700">Price ({pricePreview.days} day{pricePreview.days > 1 ? 's' : ''}):</span>
-                            <span className="font-medium text-green-900">${pricePreview.basePrice.toFixed(2)}</span>
+                            <span className="font-medium text-green-900">${((pricePreview.basePrice || 0) / 100).toFixed(2)}</span>
                           </div>
                           <div className="text-xs text-green-600 mt-1">
                             Service fee will be calculated on the combined booking total
@@ -430,9 +430,9 @@ export function StorageSelection({
                           <div className="space-y-1 text-sm">
                             <div className="flex justify-between">
                               <span className="text-gray-600">
-                                {pricePreview.days} day{pricePreview.days > 1 ? 's' : ''} × ${storage.basePrice.toFixed(2)}/day
+                                {pricePreview.days} day{pricePreview.days > 1 ? 's' : ''} × ${((storage.basePrice || 0) / 100).toFixed(2)}/day
                               </span>
-                              <span className="font-medium">${pricePreview.basePrice.toFixed(2)}</span>
+                              <span className="font-medium">${((pricePreview.basePrice || 0) / 100).toFixed(2)}</span>
                             </div>
                             <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200">
                               Service fee will be calculated on the combined booking total at checkout

@@ -265,7 +265,7 @@ export default function KitchenBookingCalendar() {
         const eq = equipmentListings.rental.find((e: any) => e.id === eqId);
         if (!eq) return null;
 
-        // Use sessionRate (flat per-session fee) - API already returns in dollars
+        // Use sessionRate (flat per-session fee) - API returns in cents
         const rate = eq.sessionRate || 0;
 
         return {
@@ -285,12 +285,12 @@ export default function KitchenBookingCalendar() {
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
   // Calculate combined subtotal (kitchen base + storage base + equipment base)
-  // All values must be in CENTS for consistency with formatCurrency
+  // All values are in CENTS for consistency with formatCurrency
   const combinedSubtotal = useMemo(() => {
     const kitchenBase = estimatedPrice?.basePrice || 0; // Already in cents
-    // Storage and equipment pricing hooks return dollars, convert to cents
-    const storageBaseCents = Math.round((storagePricing.subtotal || 0) * 100);
-    const equipmentBaseCents = Math.round((equipmentPricing.subtotal || 0) * 100);
+    // Storage and equipment pricing are already in cents from the API
+    const storageBaseCents = storagePricing.subtotal || 0;
+    const equipmentBaseCents = equipmentPricing.subtotal || 0;
     return kitchenBase + storageBaseCents + equipmentBaseCents;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
@@ -470,13 +470,8 @@ export default function KitchenBookingCalendar() {
 
       if (storageRes.ok) {
         const storageData = await storageRes.json();
-        // Convert cents to dollars for UI display (consistent with manager side)
-        const storageDataDollars = storageData.map((s: any) => ({
-          ...s,
-          basePrice: s.basePrice ? s.basePrice / 100 : 0,
-          pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
-        }));
-        setStorageListings(storageDataDollars);
+        // Keep values in cents - formatCurrency and useStoragePricing expect cents
+        setStorageListings(storageData);
         console.log(`✅ Loaded ${storageData.length} storage listings for kitchen ${kitchenId}`);
       } else {
         console.log(`ℹ️ No storage listings available (status: ${storageRes.status})`);
