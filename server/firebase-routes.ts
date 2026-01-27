@@ -1,7 +1,7 @@
 import { Express } from 'express';
 // import { authRouter } from './routes/firebase/auth';
 // import { usersRouter } from './routes/firebase/users';
-// import { applicationsRouter } from './routes/firebase/applications';
+import { applicationsRouter } from './routes/firebase/applications';
 import { adminEmailRouter } from './routes/firebase/admin-email';
 import { dashboardRouter } from './routes/firebase/dashboard';
 import { mediaRouter } from './routes/firebase/media';
@@ -20,7 +20,7 @@ export function registerFirebaseRoutes(app: Express) {
   // Mount extracted routers
   // app.use(apiPrefix, authRouter); // Handled by portal-auth and firebase-auth-middleware
   // app.use(apiPrefix, usersRouter); // Handled by userService
-  // app.use(apiPrefix, applicationsRouter); // Handled by routes/applications
+  app.use(apiPrefix, applicationsRouter); // Chef applications to Local Cooks
   app.use(apiPrefix, adminEmailRouter);
   app.use(apiPrefix, dashboardRouter);
   app.use(apiPrefix, mediaRouter);

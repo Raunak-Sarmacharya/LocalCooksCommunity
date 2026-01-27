@@ -18,6 +18,7 @@ import {
     generateStatusChangeEmail,
     generateApplicationWithDocumentsEmail,
     generateApplicationWithoutDocumentsEmail,
+    generateFullVerificationEmail,
 } from "../email";
 import { normalizePhoneForStorage } from "../phone-utils";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
@@ -529,6 +530,23 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
             if (updatedApplication.userId) {
                 await userService.verifyUser(updatedApplication.userId, true);
                 console.log(`User ${updatedApplication.userId} has been fully verified`);
+
+                // Send full verification email with login credentials for localcook.shop
+                try {
+                    if (updatedApplication.email && updatedApplication.fullName && updatedApplication.phone) {
+                        const emailContent = generateFullVerificationEmail({
+                            fullName: updatedApplication.fullName,
+                            email: updatedApplication.email,
+                            phone: updatedApplication.phone
+                        });
+                        await sendEmail(emailContent, {
+                            trackingId: `full_verification_${updatedApplication.id}_${Date.now()}`
+                        });
+                        console.log(`✅ Full verification email with login credentials sent to ${updatedApplication.email}`);
+                    }
+                } catch (emailError) {
+                    console.error('❌ Error sending full verification email:', emailError);
+                }
             }
         }
 

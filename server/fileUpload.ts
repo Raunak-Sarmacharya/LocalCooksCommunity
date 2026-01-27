@@ -78,15 +78,22 @@ export const upload = multer({
 export const uploadToBlob = async (file: Express.Multer.File, userId: number, folder: string = 'documents'): Promise<string> => {
   try {
     // Use Cloudflare R2 if configured (production OR development with keys)
-    if (isR2Configured()) {
-      return await uploadToR2(file, userId, folder);
+    const r2Available = isR2Configured();
+    console.log(`📦 uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
+    
+    if (r2Available) {
+      console.log(`☁️ Uploading to Cloudflare R2...`);
+      const url = await uploadToR2(file, userId, folder);
+      console.log(`✅ R2 upload complete: ${url}`);
+      return url;
     } else {
-      // Development: return local file path
+      // Development fallback: return local file path
+      console.log(`📁 R2 not configured, using local storage`);
       const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
       return getFileUrl(filename);
     }
   } catch (error) {
-    console.error('Error uploading file:', error);
+    console.error('❌ Error uploading file:', error);
     throw new Error('Failed to upload file to cloud storage');
   }
 };

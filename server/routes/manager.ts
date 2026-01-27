@@ -235,21 +235,55 @@ router.get("/revenue/by-location", requireFirebaseAuthWithUser, requireManager, 
 });
 
 // Get revenue chart data for manager (daily breakdown)
+// Uses payment_transactions (Stripe data) as primary source, falls back to booking tables
 router.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
-        const { startDate, endDate, period, locationId } = req.query;
+        const { startDate, endDate, period } = req.query;
 
-        const { getRevenueByDate } = await import('../services/revenue-service');
-        const data = await getRevenueByDate(
-            managerId,
-            db,
-            startDate as string,
-            endDate as string
-        );
+        console.log('[Revenue Charts] Request params:', { managerId, startDate, endDate, period });
 
+        let data;
+        
+        // Try to use payment_transactions first (actual Stripe data)
+        try {
+            const { getRevenueByDateFromTransactions } = await import('../services/revenue-service-v2.js');
+            data = await getRevenueByDateFromTransactions(
+                managerId,
+                db,
+                startDate as string,
+                endDate as string
+            );
+            
+            // If payment_transactions returns empty, fallback to booking tables
+            if (!data || data.length === 0) {
+                console.log('[Revenue Charts] payment_transactions empty, falling back to booking tables');
+                const { getRevenueByDate } = await import('../services/revenue-service.js');
+                data = await getRevenueByDate(
+                    managerId,
+                    db,
+                    startDate as string,
+                    endDate as string
+                );
+            } else {
+                console.log('[Revenue Charts] Using payment_transactions data (Stripe source)');
+            }
+        } catch (v2Error) {
+            // Fallback to legacy method if payment_transactions fails
+            console.warn('[Revenue Charts] Falling back to booking tables:', v2Error);
+            const { getRevenueByDate } = await import('../services/revenue-service.js');
+            data = await getRevenueByDate(
+                managerId,
+                db,
+                startDate as string,
+                endDate as string
+            );
+        }
+
+        console.log('[Revenue Charts] Returning data:', { count: data?.length || 0, data });
         res.json({ data, period: period || 'daily' });
     } catch (error) {
+        console.error('[Revenue Charts] Error:', error);
         return errorResponse(res, error);
     }
 });
@@ -534,6 +568,42 @@ router.post("/stripe-connect/sync", requireFirebaseAuthWithUser, requireManager,
         });
     } catch (error) {
         // If error is from Stripe (e.g. account not found), we might want to handle it
+        return errorResponse(res, error);
+    }
+});
+
+// Backfill payment_transactions from existing bookings and sync with Stripe
+// This ensures all revenue data comes from Stripe as single source of truth
+router.post("/revenue/sync-stripe", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const { limit = 100, onlyUnsynced = true } = req.body;
+
+        console.log(`[Stripe Sync] Starting sync for manager ${managerId}...`);
+
+        // First, backfill payment_transactions from existing bookings that don't have records
+        const { backfillPaymentTransactionsFromBookings } = await import('../services/payment-transactions-backfill.js');
+        const backfillResult = await backfillPaymentTransactionsFromBookings(managerId, db, { limit });
+
+        console.log(`[Stripe Sync] Backfill complete:`, backfillResult);
+
+        // Then sync existing payment_transactions with Stripe amounts
+        const { syncExistingPaymentTransactionsFromStripe } = await import('../services/payment-transactions-service');
+        const syncResult = await syncExistingPaymentTransactionsFromStripe(managerId, db, { 
+            limit, 
+            onlyUnsynced 
+        });
+
+        console.log(`[Stripe Sync] Stripe sync complete:`, syncResult);
+
+        res.json({
+            success: true,
+            backfill: backfillResult,
+            stripeSync: syncResult,
+            message: `Backfilled ${backfillResult.created} transactions, synced ${syncResult.synced} with Stripe`
+        });
+    } catch (error) {
+        console.error('[Stripe Sync] Error:', error);
         return errorResponse(res, error);
     }
 });
