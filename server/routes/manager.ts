@@ -185,7 +185,6 @@ router.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireM
                 totalPrice: equipmentBookingsTable.totalPrice,
                 equipmentType: equipmentListings.equipmentType,
                 brand: equipmentListings.brand,
-                model: equipmentListings.model
             })
             .from(equipmentBookingsTable)
             .innerJoin(equipmentListings, eq(equipmentBookingsTable.equipmentListingId, equipmentListings.id))

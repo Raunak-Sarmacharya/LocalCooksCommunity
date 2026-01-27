@@ -88,10 +88,6 @@ export class InventoryRepository {
             // Convert numeric string fields to numbers for frontend compatibility
             sessionRate: row.sessionRate ? parseFloat(row.sessionRate) : 0,
             damageDeposit: row.damageDeposit ? parseFloat(row.damageDeposit) : 0,
-            hourlyRate: row.hourlyRate ? parseFloat(row.hourlyRate) : null,
-            dailyRate: row.dailyRate ? parseFloat(row.dailyRate) : null,
-            weeklyRate: row.weeklyRate ? parseFloat(row.weeklyRate) : null,
-            monthlyRate: row.monthlyRate ? parseFloat(row.monthlyRate) : null,
         };
     }
 
@@ -121,7 +117,7 @@ export class InventoryRepository {
 
     async updateEquipmentListing(id: number, updates: Partial<EquipmentListing>) {
         // Sanitize updates: remove readonly/auto-managed fields
-        const { id: _id, createdAt, updatedAt, approvedAt, ...safeUpdates } = updates as any;
+        const { id: _id, createdAt, updatedAt, ...safeUpdates } = updates as any;
 
         const [updated] = await db
             .update(equipmentListings)

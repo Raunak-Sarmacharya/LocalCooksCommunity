@@ -307,7 +307,6 @@ export class BookingRepository {
                 updatedAt: equipmentBookings.updatedAt,
                 equipmentType: equipmentListings.equipmentType,
                 brand: equipmentListings.brand,
-                model: equipmentListings.model,
                 availabilityType: equipmentListings.availabilityType,
                 kitchenId: equipmentListings.kitchenId,
                 kitchenName: kitchens.name,
@@ -363,7 +362,6 @@ export class BookingRepository {
                 // Joined fields
                 equipmentType: equipmentListings.equipmentType,
                 brand: equipmentListings.brand,
-                model: equipmentListings.model,
             })
             .from(equipmentBookings)
             .innerJoin(equipmentListings, eq(equipmentBookings.equipmentListingId, equipmentListings.id))
@@ -373,7 +371,6 @@ export class BookingRepository {
             ...this.mapEquipmentBookingToDTO(row),
             equipmentType: row.equipmentType,
             brand: row.brand,
-            model: row.model
         }));
     }
 

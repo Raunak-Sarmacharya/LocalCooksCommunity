@@ -11,7 +11,8 @@
 
 import { 
   Wrench, Save, Loader2, Plus, X, Check, Search, Pencil, Trash2, 
-  Package, Grid3X3, DollarSign, ChevronDown, ChevronUp
+  Package, Grid3X3, DollarSign, ChevronDown, ChevronUp,
+  Flame, ChefHat, Snowflake, Sparkles, SprayCan, PlusCircle, SearchX
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -43,7 +44,16 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
-import { EQUIPMENT_CATEGORIES, type EquipmentTemplate } from "@/lib/equipment-templates";
+import { EQUIPMENT_CATEGORIES, type EquipmentTemplate, type EquipmentCategoryId } from "@/lib/equipment-templates";
+
+// Icon component mapping for categories (enterprise pattern - no emojis)
+const CategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
+  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
+    Flame, ChefHat, Snowflake, Sparkles, SprayCan
+  };
+  const Icon = icons[iconName] || Package;
+  return <Icon className={className} />;
+};
 
 interface Kitchen {
   id: number;
@@ -65,7 +75,6 @@ interface EquipmentListing {
   sessionRate?: number;
   currency: string;
   damageDeposit?: number;
-  trainingRequired?: boolean;
   isActive?: boolean;
 }
 
@@ -79,7 +88,6 @@ interface SelectedEquipment {
   damageDeposit: number;
   description: string;
   brand: string;
-  trainingRequired: boolean;
 }
 
 export default function EquipmentListingManagement() {
@@ -138,6 +146,17 @@ function EquipmentListingContent({
   const [isSaving, setIsSaving] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
 
+  // Custom equipment state for intuitive "not found" flow
+  const [customEquipment, setCustomEquipment] = useState({
+    name: '',
+    category: 'cooking' as EquipmentCategoryId,
+    condition: 'good' as 'excellent' | 'good' | 'fair',
+    availabilityType: 'included' as 'included' | 'rental',
+    sessionRate: 0,
+    damageDeposit: 0,
+    brand: '',
+  });
+
   const selectedEquipmentCount = Object.keys(selectedEquipment).length;
 
   useEffect(() => {
@@ -189,6 +208,43 @@ function EquipmentListingContent({
     })).filter(cat => cat.items.length > 0);
   }, [searchQuery]);
 
+  const totalFilteredItems = filteredCategories.reduce((sum, cat) => sum + cat.items.length, 0);
+  const showNoResultsCustomOption = searchQuery.trim().length > 0 && totalFilteredItems === 0;
+
+  const saveCustomEquipment = async () => {
+    // Use searchQuery as fallback if customEquipment.name is empty (intuitive flow)
+    const equipmentName = (customEquipment.name.trim() || searchQuery.trim());
+    if (!selectedKitchenId || !equipmentName) {
+      toast({ title: "Error", description: "Please enter an equipment name", variant: "destructive" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await apiPost('/manager/equipment-listings', {
+        kitchenId: selectedKitchenId,
+        category: customEquipment.category,
+        equipmentType: equipmentName,
+        brand: customEquipment.brand || undefined,
+        condition: customEquipment.condition,
+        availabilityType: customEquipment.availabilityType,
+        sessionRate: customEquipment.availabilityType === 'rental' ? Math.round(customEquipment.sessionRate * 100) : 0,
+        damageDeposit: customEquipment.availabilityType === 'rental' ? Math.round(customEquipment.damageDeposit * 100) : 0,
+        currency: 'CAD',
+        isActive: true,
+      });
+      toast({ title: "Equipment Added", description: `Successfully added "${equipmentName}"` });
+      setCustomEquipment({ name: '', category: 'cooking', condition: 'good', availabilityType: 'included', sessionRate: 0, damageDeposit: 0, brand: '' });
+      setSearchQuery('');
+      setActiveTab('list');
+      loadListings();
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/equipment-listings`] });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to add equipment", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev => prev.includes(categoryId) ? prev.filter(id => id !== categoryId) : [...prev, categoryId]);
   };
@@ -209,7 +265,6 @@ function EquipmentListingContent({
           damageDeposit: 0,
           description: '',
           brand: '',
-          trainingRequired: false,
         };
       }
       return newState;
@@ -239,7 +294,6 @@ function EquipmentListingContent({
           availabilityType: equipment.availabilityType,
           sessionRate: equipment.availabilityType === 'rental' ? Math.round(equipment.sessionRate * 100) : 0,
           damageDeposit: equipment.availabilityType === 'rental' ? Math.round(equipment.damageDeposit * 100) : 0,
-          trainingRequired: equipment.trainingRequired,
           currency: 'CAD',
           isActive: true,
         });
@@ -419,7 +473,7 @@ function EquipmentListingContent({
                         <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
                           <CollapsibleTrigger asChild>
                             <Button variant="ghost" className="w-full justify-between p-3 h-auto font-medium hover:bg-muted/50">
-                              <span className="flex items-center gap-2"><span className="text-lg">{category.icon}</span>{category.name}<Badge variant="secondary" className="ml-2">{category.items.length}</Badge></span>
+                              <span className="flex items-center gap-2"><CategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />{category.name}<Badge variant="secondary" className="ml-2">{category.items.length}</Badge></span>
                               {expandedCategories.includes(category.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </Button>
                           </CollapsibleTrigger>
@@ -446,6 +500,107 @@ function EquipmentListingContent({
                           </CollapsibleContent>
                         </Collapsible>
                       ))}
+                      
+                      {/* Intuitive custom equipment option when search has no results */}
+                      {showNoResultsCustomOption && (
+                        <Card className="border-dashed border-primary/50 bg-primary/5">
+                          <CardContent className="p-6 text-center">
+                            <SearchX className="h-10 w-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                            <h4 className="font-medium mb-1">No matching equipment found</h4>
+                            <p className="text-sm text-muted-foreground mb-4">
+                              Can't find "{searchQuery}"? Add it as custom equipment.
+                            </p>
+                            <div className="space-y-3 text-left">
+                              <div>
+                                <Label className="text-xs">Equipment Name</Label>
+                                <Input 
+                                  value={customEquipment.name || searchQuery} 
+                                  onChange={(e) => setCustomEquipment(prev => ({ ...prev, name: e.target.value }))}
+                                  placeholder="Equipment name"
+                                  className="mt-1"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-xs">Category</Label>
+                                  <Select value={customEquipment.category} onValueChange={(v: EquipmentCategoryId) => setCustomEquipment(prev => ({ ...prev, category: v }))}>
+                                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="cooking">Cooking</SelectItem>
+                                      <SelectItem value="food-prep">Prep</SelectItem>
+                                      <SelectItem value="refrigeration">Refrigeration</SelectItem>
+                                      <SelectItem value="specialty">Specialty</SelectItem>
+                                      <SelectItem value="cleaning">Cleaning</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Condition</Label>
+                                  <Select value={customEquipment.condition} onValueChange={(v: 'excellent' | 'good' | 'fair') => setCustomEquipment(prev => ({ ...prev, condition: v }))}>
+                                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="excellent">Excellent</SelectItem>
+                                      <SelectItem value="good">Good</SelectItem>
+                                      <SelectItem value="fair">Fair</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-xs">Availability</Label>
+                                  <Select value={customEquipment.availabilityType} onValueChange={(v: 'included' | 'rental') => setCustomEquipment(prev => ({ ...prev, availabilityType: v, sessionRate: v === 'included' ? 0 : prev.sessionRate, damageDeposit: v === 'included' ? 0 : prev.damageDeposit }))}>
+                                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="included">Included</SelectItem>
+                                      <SelectItem value="rental">Rental</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {customEquipment.availabilityType === 'rental' && (
+                                  <div>
+                                    <Label className="text-xs">Rate (CAD)</Label>
+                                    <div className="relative mt-1">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                      <Input 
+                                        type="number" min="0" step="0.01"
+                                        value={customEquipment.sessionRate} 
+                                        onChange={(e) => setCustomEquipment(prev => ({ ...prev, sessionRate: parseFloat(e.target.value) || 0 }))}
+                                        className="pl-5"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              {customEquipment.availabilityType === 'rental' && (
+                                <div>
+                                  <Label className="text-xs">Damage Deposit (CAD)</Label>
+                                  <div className="relative mt-1">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                    <Input 
+                                      type="number" min="0" step="0.01"
+                                      value={customEquipment.damageDeposit} 
+                                      onChange={(e) => setCustomEquipment(prev => ({ ...prev, damageDeposit: parseFloat(e.target.value) || 0 }))}
+                                      className="pl-5"
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              <Button 
+                                className="w-full mt-2" 
+                                onClick={() => {
+                                  if (!customEquipment.name) setCustomEquipment(prev => ({ ...prev, name: searchQuery }));
+                                  saveCustomEquipment();
+                                }}
+                                disabled={isSaving || (!customEquipment.name.trim() && !searchQuery.trim())}
+                              >
+                                {isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding...</> : <><PlusCircle className="h-4 w-4 mr-2" />Add Custom Equipment</>}
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
                     </div>
                   </ScrollArea>
                 </CardContent>
@@ -561,10 +716,6 @@ function EquipmentListingContent({
                 </div>
               )}
               <div className="space-y-2"><Label>Description</Label><Textarea value={editingListing.description || ''} onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })} placeholder="Optional description..." rows={3} /></div>
-              <div className="flex items-center gap-2">
-                <Switch id="training-required" checked={editingListing.trainingRequired || false} onCheckedChange={(checked) => setEditingListing({ ...editingListing, trainingRequired: checked })} />
-                <Label htmlFor="training-required" className="cursor-pointer">Training required before use</Label>
-              </div>
             </div>
           )}
           <DialogFooter>

@@ -948,62 +948,22 @@ export const equipmentListings = pgTable("equipment_listings", {
   category: equipmentCategoryEnum("category").notNull(),
   equipmentType: text("equipment_type").notNull(), // 'mixer', 'oven', 'fryer', etc.
   brand: text("brand"),
-  model: text("model"),
-
-  // Specifications
   description: text("description"),
   condition: equipmentConditionEnum("condition").notNull(),
-  age: integer("age"), // years
-  serviceHistory: text("service_history"),
-  dimensions: jsonb("dimensions").default({}), // {width, depth, height, weight}
-  powerRequirements: text("power_requirements"), // '110V', '208V', '240V', '3-phase'
-
-  // Equipment-specific fields (JSONB for flexibility)
-  specifications: jsonb("specifications").default({}),
-  certifications: jsonb("certifications").default([]),
-  safetyFeatures: jsonb("safety_features").default([]),
 
   // Availability type: included (free with kitchen) or rental (paid addon)
   availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("rental").notNull(),
 
-  // Pricing - SIMPLIFIED to flat session rate (in cents)
-  // For rental equipment: charged once per kitchen booking session, regardless of duration
+  // Pricing - flat session rate (in cents)
   sessionRate: numeric("session_rate").default("0"), // Flat session rate in cents (e.g., 2500 = $25.00/session)
-  pricingModel: equipmentPricingModelEnum("pricing_model"), // Nullable for included equipment
-  // Legacy rate fields - kept for backwards compatibility but session_rate is primary
-  hourlyRate: numeric("hourly_rate"), // @deprecated - use sessionRate
-  dailyRate: numeric("daily_rate"), // @deprecated - use sessionRate
-  weeklyRate: numeric("weekly_rate"), // @deprecated - use sessionRate
-  monthlyRate: numeric("monthly_rate"), // @deprecated - use sessionRate
-  minimumRentalHours: integer("minimum_rental_hours"), // @deprecated
-  minimumRentalDays: integer("minimum_rental_days"), // @deprecated
   currency: text("currency").default("CAD").notNull(),
 
-  // Usage terms
-  usageRestrictions: jsonb("usage_restrictions").default([]),
-  trainingRequired: boolean("training_required").default(false),
-  cleaningResponsibility: text("cleaning_responsibility"), // 'renter', 'host', 'shared'
-
-  // Status & moderation (admin approval workflow)
-  status: listingStatusEnum("status").default("draft").notNull(), // Reuse same enum
-  approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
-  approvedAt: timestamp("approved_at"),
-  rejectionReason: text("rejection_reason"),
-
-  // Availability
-  isActive: boolean("is_active").default(true).notNull(),
-  availabilityCalendar: jsonb("availability_calendar").default({}),
-  prepTimeHours: integer("prep_time_hours").default(4), // Cleaning time between rentals
-
-  // Visuals & documentation
-  photos: jsonb("photos").default([]),
-  manuals: jsonb("manuals").default([]), // PDF URLs
-  maintenanceLog: jsonb("maintenance_log").default([]),
-
-  // Damage & liability (deposits in cents)
+  // Damage deposit (in cents)
   damageDeposit: numeric("damage_deposit").default("0"), // Refundable deposit (in cents)
-  insuranceRequired: boolean("insurance_required").default(false),
 
+  // Status
+  status: listingStatusEnum("status").default("draft").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1015,34 +975,12 @@ export const insertEquipmentListingSchema = createInsertSchema(equipmentListings
   equipmentType: z.string().min(1, "Equipment type is required"),
   condition: z.enum(["excellent", "good", "fair", "needs-repair"]),
   availabilityType: z.enum(["included", "rental"]),
-  pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]).optional(), // Optional for included equipment
-  hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
-  dailyRate: z.number().int().positive("Daily rate must be positive").optional(),
-  weeklyRate: z.number().int().positive("Weekly rate must be positive").optional(),
-  monthlyRate: z.number().int().positive("Monthly rate must be positive").optional(),
-  minimumRentalHours: z.number().int().min(1).optional(),
-  minimumRentalDays: z.number().int().min(1).optional(),
   damageDeposit: z.number().int().min(0).optional(),
-  age: z.number().int().min(0).optional(),
-  prepTimeHours: z.number().int().min(0).optional(),
-  dimensions: z.record(z.any()).optional(),
-  specifications: z.record(z.any()).optional(),
-  certifications: z.array(z.string()).optional(),
-  safetyFeatures: z.array(z.string()).optional(),
-  usageRestrictions: z.array(z.string()).optional(),
-  photos: z.array(z.string()).optional(),
-  manuals: z.array(z.string()).optional(),
-  maintenanceLog: z.array(z.any()).optional(),
-  availabilityCalendar: z.record(z.any()).optional(),
-  cleaningResponsibility: z.enum(["renter", "host", "shared"]).optional(),
 }).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
   status: true,
-  approvedBy: true,
-  approvedAt: true,
-  rejectionReason: true,
   currency: true, // Always CAD, not user-selectable
 });
 
@@ -1051,41 +989,17 @@ export const updateEquipmentListingSchema = z.object({
   category: z.enum(["food-prep", "cooking", "refrigeration", "cleaning", "specialty"]).optional(),
   equipmentType: z.string().min(1).optional(),
   brand: z.string().optional(),
-  model: z.string().optional(),
   description: z.string().optional(),
   condition: z.enum(["excellent", "good", "fair", "needs-repair"]).optional(),
-  age: z.number().int().min(0).optional(),
-  serviceHistory: z.string().optional(),
-  dimensions: z.record(z.any()).optional(),
-  powerRequirements: z.string().optional(),
-  specifications: z.record(z.any()).optional(),
   availabilityType: z.enum(["included", "rental"]).optional(),
-  pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]).optional(),
-  hourlyRate: z.number().int().positive().optional(),
-  dailyRate: z.number().int().positive().optional(),
-  weeklyRate: z.number().int().positive().optional(),
-  monthlyRate: z.number().int().positive().optional(),
-  minimumRentalHours: z.number().int().min(1).optional(),
-  minimumRentalDays: z.number().int().min(1).optional(),
-  usageRestrictions: z.array(z.string()).optional(),
-  trainingRequired: z.boolean().optional(),
-  cleaningResponsibility: z.enum(["renter", "host", "shared"]).optional(),
-  isActive: z.boolean().optional(),
-  prepTimeHours: z.number().int().min(0).optional(),
+  sessionRate: z.number().int().min(0).optional(),
   damageDeposit: z.number().int().min(0).optional(),
-  insuranceRequired: z.boolean().optional(),
-  certifications: z.array(z.string()).optional(),
-  safetyFeatures: z.array(z.string()).optional(),
-  photos: z.array(z.string()).optional(),
-  manuals: z.array(z.string()).optional(),
-  maintenanceLog: z.array(z.any()).optional(),
-  availabilityCalendar: z.record(z.any()).optional(),
+  isActive: z.boolean().optional(),
 });
 
 export const updateEquipmentListingStatusSchema = z.object({
   id: z.number(),
   status: z.enum(["draft", "pending", "approved", "rejected", "active", "inactive"]),
-  rejectionReason: z.string().optional(),
 });
 
 // Type exports for equipment listings

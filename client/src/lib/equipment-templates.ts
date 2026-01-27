@@ -3,29 +3,41 @@
  * 
  * Pre-defined equipment templates for commercial kitchens.
  * Managers can quickly select from these templates and customize as needed.
+ * 
+ * Enterprise-grade architecture with Lucide icon references (no emojis).
  */
+
+export type EquipmentCategoryId = 'cooking' | 'food-prep' | 'refrigeration' | 'cleaning' | 'specialty';
 
 export interface EquipmentTemplate {
   id: string;
   name: string;
-  category: 'cooking' | 'food-prep' | 'refrigeration' | 'cleaning' | 'specialty';
+  category: EquipmentCategoryId;
   defaultCondition: 'excellent' | 'good' | 'fair';
-  suggestedSessionRate: number; // Suggested rental rate per session
-  icon?: string;
+  suggestedSessionRate: number; // Suggested rental rate per session in dollars
 }
 
 export interface EquipmentCategory {
-  id: string;
+  id: EquipmentCategoryId;
   name: string;
-  icon: string;
+  iconName: string; // Lucide icon name for dynamic rendering
   items: EquipmentTemplate[];
 }
+
+// Category icon mapping for Lucide icons
+export const CATEGORY_ICONS: Record<EquipmentCategoryId, string> = {
+  'cooking': 'Flame',
+  'food-prep': 'ChefHat',
+  'refrigeration': 'Snowflake',
+  'specialty': 'Sparkles',
+  'cleaning': 'SprayCan',
+};
 
 export const EQUIPMENT_CATEGORIES: EquipmentCategory[] = [
   {
     id: 'cooking',
     name: 'Cooking Equipment',
-    icon: '🔥',
+    iconName: 'Flame',
     items: [
       { id: 'commercial-oven', name: 'Commercial Oven', category: 'cooking', defaultCondition: 'good', suggestedSessionRate: 25 },
       { id: 'range-stove', name: 'Range/Stove', category: 'cooking', defaultCondition: 'good', suggestedSessionRate: 20 },
@@ -46,7 +58,7 @@ export const EQUIPMENT_CATEGORIES: EquipmentCategory[] = [
   {
     id: 'food-prep',
     name: 'Prep Equipment',
-    icon: '🥄',
+    iconName: 'ChefHat',
     items: [
       { id: 'mixer-5qt', name: 'Planetary Mixer (5qt)', category: 'food-prep', defaultCondition: 'good', suggestedSessionRate: 10 },
       { id: 'mixer-20qt', name: 'Planetary Mixer (20qt)', category: 'food-prep', defaultCondition: 'good', suggestedSessionRate: 15 },
@@ -68,7 +80,7 @@ export const EQUIPMENT_CATEGORIES: EquipmentCategory[] = [
   {
     id: 'refrigeration',
     name: 'Refrigeration',
-    icon: '❄️',
+    iconName: 'Snowflake',
     items: [
       { id: 'walk-in-cooler', name: 'Walk-in Cooler', category: 'refrigeration', defaultCondition: 'good', suggestedSessionRate: 0 },
       { id: 'walk-in-freezer', name: 'Walk-in Freezer', category: 'refrigeration', defaultCondition: 'good', suggestedSessionRate: 0 },
@@ -82,7 +94,7 @@ export const EQUIPMENT_CATEGORIES: EquipmentCategory[] = [
   {
     id: 'specialty',
     name: 'Specialty Equipment',
-    icon: '⭐',
+    iconName: 'Sparkles',
     items: [
       { id: 'pasta-maker', name: 'Pasta Maker/Extruder', category: 'specialty', defaultCondition: 'good', suggestedSessionRate: 25 },
       { id: 'chocolate-tempering', name: 'Chocolate Tempering Machine', category: 'specialty', defaultCondition: 'good', suggestedSessionRate: 30 },
@@ -102,7 +114,7 @@ export const EQUIPMENT_CATEGORIES: EquipmentCategory[] = [
   {
     id: 'cleaning',
     name: 'Cleaning & Sanitation',
-    icon: '🧹',
+    iconName: 'SprayCan',
     items: [
       { id: 'dishwasher', name: 'Commercial Dishwasher', category: 'cleaning', defaultCondition: 'good', suggestedSessionRate: 0 },
       { id: 'glass-washer', name: 'Glass Washer', category: 'cleaning', defaultCondition: 'good', suggestedSessionRate: 0 },

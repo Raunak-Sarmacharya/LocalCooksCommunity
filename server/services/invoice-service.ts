@@ -206,11 +206,8 @@ export async function generateInvoicePDF(
               
               // Construct detailed description
               let name = 'Equipment Rental';
-              const details = [];
-              if (eqBooking.brand) details.push(eqBooking.brand);
-              if (eqBooking.model) details.push(eqBooking.model);
-              if (details.length > 0) {
-                  name = details.join(' ');
+              if (eqBooking.brand) {
+                  name = eqBooking.brand;
                   if (eqBooking.equipmentType) name += ` (${eqBooking.equipmentType})`;
               } else if (eqBooking.equipmentType) {
                   name = eqBooking.equipmentType;
