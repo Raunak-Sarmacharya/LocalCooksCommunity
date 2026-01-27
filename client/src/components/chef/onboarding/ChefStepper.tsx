@@ -16,10 +16,10 @@ export function ChefStepper() {
       {/* Path Indicators */}
       {selectedPaths.length > 0 && (
         <div className="flex gap-2 mb-4">
-          {selectedPaths.includes('seller') && (
+          {selectedPaths.includes('localcooks') && (
             <div className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 rounded-full text-xs font-medium text-primary">
               <Store className="h-3 w-3" />
-              Seller
+              Local Cooks
             </div>
           )}
           {selectedPaths.includes('kitchen') && (
@@ -45,21 +45,26 @@ export function ChefStepper() {
             const getStepColor = () => {
               if (isActive) return "bg-primary text-primary-foreground";
               if (isCompleted || isPast) return "bg-primary/20 text-primary";
-              if (stepPath === 'seller') return "bg-primary/5 text-primary/50";
+              if (stepPath === 'localcooks') return "bg-primary/5 text-primary/50";
               if (stepPath === 'kitchen') return "bg-blue-500/5 text-blue-500/50";
               return "bg-muted text-muted-foreground";
             };
+
+            // Active step should NEVER be muted - it's the current step
+            // Only future steps that aren't clickable should be muted
+            const isFutureStep = index > currentStepIndex;
+            const shouldBeMuted = !isActive && !isClickable && isFutureStep;
 
             return (
               <li key={step.id}>
                 <button
                   onClick={() => isClickable && goToStep(step.id)}
-                  disabled={!isClickable}
+                  disabled={!isClickable && !isActive}
                   className={cn(
                     "w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left",
                     isActive && "bg-primary/5 border border-primary/20",
                     !isActive && isClickable && "hover:bg-muted/50 cursor-pointer",
-                    !isClickable && "cursor-default opacity-60"
+                    shouldBeMuted && "cursor-default opacity-60"
                   )}
                 >
                   <div
@@ -78,21 +83,19 @@ export function ChefStepper() {
                     <p
                       className={cn(
                         "text-sm font-medium truncate",
-                        isActive && "text-foreground",
-                        !isActive && "text-muted-foreground"
+                        isActive && "text-foreground font-semibold",
+                        !isActive && !shouldBeMuted && "text-muted-foreground",
+                        shouldBeMuted && "text-muted-foreground/60"
                       )}
                     >
                       {step.metadata?.label || step.payload?.title || `Step ${index + 1}`}
                     </p>
-                    {step.metadata?.isOptional && (
-                      <p className="text-[10px] text-muted-foreground">Optional</p>
-                    )}
                   </div>
                   {stepPath && stepPath !== 'both' && (
                     <div
                       className={cn(
                         "w-1.5 h-1.5 rounded-full",
-                        stepPath === 'seller' ? "bg-primary" : "bg-blue-500"
+                        stepPath === 'localcooks' ? "bg-primary" : "bg-blue-500"
                       )}
                     />
                   )}

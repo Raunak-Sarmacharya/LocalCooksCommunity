@@ -95,15 +95,21 @@ export function useChefOnboardingStatus(): ChefOnboardingStatus {
   const hasSellerApplication = (applications?.length || 0) > 0;
   const hasKitchenApplications = (kitchenApplications?.length || 0) > 0;
   
+  // Check if chef onboarding was completed (from database)
+  // This is the AUTHORITATIVE source - if they completed onboarding, no banner should show
+  const chefOnboardingCompleted = userData?.chefOnboardingCompleted || false;
+  
   // Check if any application has uploaded documents
   const hasUploadedDocuments = applications?.some((app: any) => 
     app.foodHandlerCertUrl || app.businessLicenseUrl || app.governmentIdUrl
   ) || false;
 
-  // Calculate missing steps
+  // Calculate missing steps (only relevant if onboarding not completed)
   const missingSteps: string[] = [];
-  if (!hasCompletedTraining) missingSteps.push("Complete Food Safety Training");
-  if (!hasSellerApplication && !hasKitchenApplications) missingSteps.push("Submit an Application");
+  if (!chefOnboardingCompleted) {
+    if (!hasCompletedTraining) missingSteps.push("Complete Food Safety Training");
+    if (!hasSellerApplication && !hasKitchenApplications) missingSteps.push("Submit an Application");
+  }
   
   // Count completed steps (out of key milestones)
   let completedStepsCount = 0;
@@ -116,17 +122,20 @@ export function useChefOnboardingStatus(): ChefOnboardingStatus {
     completedStepsCount++;
   }
 
-  // Onboarding is complete when user has either:
-  // 1. A seller application submitted AND training completed, OR
-  // 2. A kitchen application approved (tier 3)
+  // Onboarding is complete when:
+  // 1. User explicitly completed the onboarding flow (chefOnboardingCompleted = true), OR
+  // 2. User has training + application (legacy check for users who completed before this field existed)
   const hasApprovedKitchenAccess = kitchenApplications?.some((app: any) => 
     app.status === 'approved' && (app.current_tier || 0) >= 3
   ) || false;
   
-  const isOnboardingComplete = hasCompletedTraining && (hasSellerApplication || hasApprovedKitchenAccess);
+  const isOnboardingComplete = chefOnboardingCompleted || (hasCompletedTraining && (hasSellerApplication || hasApprovedKitchenAccess));
   
-  // Show setup banner if onboarding is not complete
-  const showSetupBanner = hasSeenWelcome && !isOnboardingComplete;
+  // Show setup banner ONLY if:
+  // 1. User has seen welcome (started onboarding)
+  // 2. User has NOT completed onboarding flow
+  // 3. User has started an application (mid-onboarding exit scenario)
+  const showSetupBanner = hasSeenWelcome && !chefOnboardingCompleted && (hasSellerApplication || hasKitchenApplications);
 
   const isLoading = isLoadingUser || isLoadingApps || isLoadingKitchenApps || isLoadingTraining;
 

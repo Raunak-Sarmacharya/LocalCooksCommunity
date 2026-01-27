@@ -66,6 +66,9 @@ export const users = pgTable("users", {
   managerOnboardingCompleted: boolean("manager_onboarding_completed").default(false).notNull(), // Whether manager completed onboarding
   managerOnboardingSkipped: boolean("manager_onboarding_skipped").default(false).notNull(), // Whether manager skipped onboarding
   managerOnboardingStepsCompleted: jsonb("manager_onboarding_steps_completed").default({}).notNull(), // JSON object tracking completed onboarding steps
+  // Chef onboarding fields (informative onboarding - no restrictions)
+  chefOnboardingCompleted: boolean("chef_onboarding_completed").default(false).notNull(), // Whether chef completed informative onboarding
+  chefOnboardingPaths: jsonb("chef_onboarding_paths").default([]).notNull(), // Selected paths: ['localcooks', 'kitchen']
   // Manager profile data (bespoke fields)
   managerProfileData: jsonb("manager_profile_data").default({}).notNull(),
   // Stripe Connect fields for manager payments

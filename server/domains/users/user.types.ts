@@ -43,6 +43,9 @@ export interface UpdateUserDTO {
   managerOnboardingStepsCompleted?: Record<string, boolean>;
   stripeConnectAccountId?: string;
   stripeConnectOnboardingStatus?: string;
+  // Chef onboarding fields (informative onboarding - no restrictions)
+  chefOnboardingCompleted?: boolean;
+  chefOnboardingPaths?: string[];
 }
 
 /**

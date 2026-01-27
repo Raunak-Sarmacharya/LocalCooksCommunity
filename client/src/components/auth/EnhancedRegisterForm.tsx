@@ -123,7 +123,9 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
   };
 
   const handleGoogleSignIn = async () => {
-    setHasAttemptedLogin?.(true);
+    // NOTE: Don't call setHasAttemptedLogin here - only call it after successful registration
+    // via onSuccess() callback. Calling it here causes the useEffect in EnhancedAuthPage to
+    // run before the user profile exists, setting hasCheckedUser.current = true prematurely.
     setFormError(null);
     setAuthState('loading');
     setShowLoadingOverlay(true);
@@ -172,39 +174,37 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
       setAuthState('success');
       setShowLoadingOverlay(false);
       
-      // For managers, ensure we redirect to manager dashboard after registration
-      // Wait a bit longer to ensure auth state is fully updated
-      setTimeout(async () => {
-        try {
-          // Verify user is authenticated and get their role
-          const { auth } = await import('@/lib/firebase');
-          const currentUser = auth.currentUser;
-          if (currentUser) {
-            const token = await currentUser.getIdToken();
-            const response = await fetch('/api/user/profile', {
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-            
-            if (response.ok) {
-              const userData = await response.json();
-              // If manager, redirect directly to manager dashboard
-              if (userData.role === 'manager') {
-                console.log('🏢 Manager registered - redirecting to manager dashboard');
-                window.location.href = '/manager/dashboard';
-                return;
-              }
+      // Check if manager and redirect directly, otherwise call onSuccess immediately
+      // Don't delay - the parent component needs to re-render to show welcome screen
+      try {
+        const { auth } = await import('@/lib/firebase');
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          const token = await currentUser.getIdToken();
+          const response = await fetch('/api/user/profile', {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            // If manager, redirect directly to manager dashboard
+            if (userData.role === 'manager') {
+              console.log('🏢 Manager registered - redirecting to manager dashboard');
+              window.location.href = '/manager/dashboard';
+              return;
             }
           }
-        } catch (err) {
-          console.error('Error checking user role after registration:', err);
         }
-        
-        // Fallback to onSuccess callback
-        if (onSuccess) onSuccess();
-      }, 1000);
+      } catch (err) {
+        console.error('Error checking user role after registration:', err);
+      }
+      
+      // Call onSuccess immediately for non-managers to trigger welcome screen
+      console.log('🎯 Calling onSuccess to trigger welcome screen');
+      if (onSuccess) onSuccess();
 
     } catch (e: any) {
       setShowLoadingOverlay(false);

@@ -82,10 +82,9 @@ const navGroups: NavGroup[] = [
                 icon: Building2,
             },
             {
-                id: "discover",
+                id: "discover-kitchens",
                 label: "Discover Kitchens",
                 icon: Search,
-                path: "/compare-kitchens",
             },
             {
                 id: "bookings",
