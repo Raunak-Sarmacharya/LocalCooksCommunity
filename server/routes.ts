@@ -1,31 +1,5 @@
-import express, { type Express, type Request, type Response } from "express";
-import fs from "fs";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import path from "path";
-import { fromZodError } from "zod-validation-error";
-import Stripe from "stripe";
-import { eq, inArray, and, desc, count } from "drizzle-orm";
-
-import type { User } from "@shared/schema";
-import {
-  insertApplicationSchema,
-  updateApplicationStatusSchema,
-  updateDocumentVerificationSchema,
-  chefKitchenAccess,
-  chefLocationAccess,
-  chefLocationProfiles,
-  chefKitchenApplications,
-  users,
-  locations,
-  applications,
-  kitchens,
-  portalUserApplications,
-  portalUserLocationAccess
-} from "@shared/schema";
-import { DEFAULT_TIMEZONE, isBookingTimePast, getHoursUntilBooking } from "@shared/timezone-utils";
-import { getSubdomainFromHeaders, isRoleAllowedForSubdomain } from "@shared/subdomain-utils";
-
-import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "./alwaysFoodSafeAPI";
 import {
   generateApplicationWithDocumentsEmail,
   generateApplicationWithoutDocumentsEmail,
@@ -480,6 +454,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Chef Routes
   app.use("/api/chef", (await import("./routes/chef")).default);
+
+  // SuprSend Routes
+  app.use("/api/suprsend", (await import("./routes/suprsend")).default);
 
   const httpServer = createServer(app);
   return httpServer;

@@ -15,7 +15,8 @@ import {
     ChevronsUpDown,
     Sparkles,
     LifeBuoy,
-    Send
+    Send,
+    Bell
 } from "lucide-react"
 
 import {
@@ -65,6 +66,11 @@ const data = {
                     title: "Bookings",
                     url: "bookings",
                     icon: Calendar,
+                },
+                {
+                    title: "Notifications",
+                    url: "notifications",
+                    icon: Bell,
                 },
             ],
         },

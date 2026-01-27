@@ -21,8 +21,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useFirebaseAuth } from "@/hooks/use-auth"
-import { LogOut, User as UserIcon, ChevronDown, Command } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { LogOut, User as UserIcon, ChevronDown } from "lucide-react"
+import { NotificationInbox } from "@/components/notifications/NotificationInbox"
 
 interface ChefDashboardLayoutProps {
     children: React.ReactNode
@@ -112,6 +112,7 @@ export default function ChefDashboardLayout({
                     </div>
 
                     <div className="flex items-center gap-4">
+                        <NotificationInbox />
                         <DropdownMenu modal={false}>
                             <DropdownMenuTrigger asChild>
                                 <div className="flex items-center gap-2 cursor-pointer hover:bg-accent/50 p-1.5 rounded-lg transition-colors group">
