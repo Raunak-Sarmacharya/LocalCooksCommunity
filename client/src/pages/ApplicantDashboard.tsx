@@ -783,9 +783,9 @@ export default function ApplicantDashboard() {
         </Button>
       </div>
 
-      {/* Stripe Connect Payment Setup - Only visible after seller application is approved */}
+      {/* Stripe Connect Payment Setup - Only visible after chef is fully verified (both documents approved) */}
       <ChefStripeConnectSetup 
-        isApproved={userDisplayInfo.applications?.some((app: AnyApplication) => app.status === 'approved')} 
+        isApproved={chefInfo?.isVerified === true} 
       />
 
       {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (

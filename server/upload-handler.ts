@@ -37,7 +37,6 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
       return;
     }
 
-    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
     let fileUrl: string;
     let fileName: string;
 
@@ -46,12 +45,18 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
                    req.file.fieldname === 'image' ? 'images' : 
                    'documents';
 
-    if (isProduction && isR2Configured()) {
+    // Use Cloudflare R2 when configured (works in both production and development)
+    const r2Available = isR2Configured();
+    console.log(`📦 handleFileUpload: R2 configured = ${r2Available}`);
+
+    if (r2Available) {
       // Upload to Cloudflare R2
       try {
+        console.log(`☁️ Uploading to Cloudflare R2 (folder: ${folder})...`);
         fileUrl = await uploadToBlob(req.file, userId, folder);
         // Extract filename from URL for response
         fileName = fileUrl.split('/').pop() || req.file.originalname;
+        console.log(`✅ R2 upload complete: ${fileUrl}`);
       } catch (error) {
         console.error('❌ Error uploading to R2:', error);
         // Clean up uploaded file on error
@@ -69,7 +74,8 @@ export async function handleFileUpload(req: Request, res: Response): Promise<voi
         return;
       }
     } else {
-      // Development: Use local storage
+      // Fallback: Use local storage (only when R2 is not configured)
+      console.log(`📁 R2 not configured, using local storage`);
       fileUrl = getFileUrl(req.file.filename || `${userId}_${Date.now()}_${req.file.originalname}`);
       fileName = req.file.filename || req.file.originalname;
     }
@@ -131,9 +137,12 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
       return;
     }
 
-    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     const uploadedFiles: { [key: string]: string } = {};
+
+    // Use Cloudflare R2 when configured (works in both production and development)
+    const r2Available = isR2Configured();
+    console.log(`📦 handleMultipleFileUpload: R2 configured = ${r2Available}`);
 
     // Process each file
     for (const [fieldname, fileArray] of Object.entries(files)) {
@@ -144,8 +153,10 @@ export async function handleMultipleFileUpload(req: Request, res: Response): Pro
                        'documents';
 
         try {
-          if (isProduction && isR2Configured()) {
+          if (r2Available) {
+            console.log(`☁️ Uploading ${fieldname} to R2...`);
             uploadedFiles[fieldname] = await uploadToBlob(file, userId, folder);
+            console.log(`✅ ${fieldname} uploaded: ${uploadedFiles[fieldname]}`);
           } else {
             uploadedFiles[fieldname] = getFileUrl(file.filename || `${userId}_${Date.now()}_${file.originalname}`);
           }

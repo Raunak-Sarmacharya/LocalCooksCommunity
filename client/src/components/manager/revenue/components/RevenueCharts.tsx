@@ -1,8 +1,8 @@
 /**
  * Revenue Charts Component
  * 
- * Recharts-based visualization components for revenue data.
- * Uses shadcn chart patterns with ChartContainer.
+ * Enterprise-grade visualization components using shadcn/ui chart patterns.
+ * Uses ChartContainer, ChartTooltip, and ChartLegend for consistent styling.
  */
 
 import { useMemo } from "react"
@@ -17,15 +17,62 @@ import {
     XAxis,
     YAxis,
     CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
 } from "recharts"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { LineChart as LineChartIcon, BarChart3, PieChart as PieChartIcon } from "lucide-react"
-import { formatCurrency, formatChartDate, centsToDollars } from "@/lib/formatters"
+import {
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+    ChartLegend,
+    ChartLegendContent,
+    type ChartConfig,
+} from "@/components/ui/chart"
+import { TrendingUp, Building2, CircleDollarSign } from "lucide-react"
+import { formatChartDate, centsToDollars } from "@/lib/formatters"
 import type { RevenueByDate, RevenueByLocation, PaymentStatus } from "../types"
+
+// ═══════════════════════════════════════════════════════════════════════
+// CHART COLORS - Using website's coded colors
+// ═══════════════════════════════════════════════════════════════════════
+
+const CHART_COLORS = {
+    emerald: "#10b981",      // Emerald-500 - Primary success/revenue color
+    emeraldLight: "#34d399", // Emerald-400
+    emeraldDark: "#059669",  // Emerald-600
+    primary: "#e11d48",      // Rose-600 - Website primary (347 91% 51%)
+    blue: "#3b82f6",         // Blue-500 - Processing
+    amber: "#f59e0b",        // Amber-500 - Pending
+    red: "#ef4444",          // Red-500 - Failed
+    gray: "#6b7280",         // Gray-500 - Refunded/Canceled
+    violet: "#8b5cf6",       // Violet-500 - Platform fee
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CHART CONFIGS
+// ═══════════════════════════════════════════════════════════════════════
+
+const revenueTrendConfig = {
+    totalRevenue: {
+        label: "Total Revenue",
+        color: CHART_COLORS.emerald,
+    },
+    managerRevenue: {
+        label: "Your Earnings",
+        color: CHART_COLORS.emeraldDark,
+    },
+} satisfies ChartConfig
+
+const revenueByLocationConfig = {
+    managerRevenue: {
+        label: "Your Earnings",
+        color: CHART_COLORS.emerald,
+    },
+    platformFee: {
+        label: "Platform Fee",
+        color: CHART_COLORS.violet,
+    },
+} satisfies ChartConfig
 
 // ═══════════════════════════════════════════════════════════════════════
 // CHART LOADING SKELETON
@@ -34,17 +81,12 @@ import type { RevenueByDate, RevenueByLocation, PaymentStatus } from "../types"
 function ChartSkeleton() {
     return (
         <Card>
-            <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <div>
-                        <Skeleton className="h-5 w-32" />
-                        <Skeleton className="h-3 w-24 mt-1" />
-                    </div>
-                </div>
+            <CardHeader className="pb-2">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-48 mt-1" />
             </CardHeader>
             <CardContent>
-                <Skeleton className="h-[280px] w-full" />
+                <Skeleton className="h-[250px] w-full rounded-lg" />
             </CardContent>
         </Card>
     )
@@ -61,101 +103,98 @@ interface RevenueTrendChartProps {
 
 export function RevenueTrendChart({ data, isLoading }: RevenueTrendChartProps) {
     const chartData = useMemo(() => {
-        return data.map(item => ({
+        console.log('[RevenueTrendChart] Raw data:', data);
+        const mapped = data.map(item => ({
             date: formatChartDate(item.date),
             totalRevenue: centsToDollars(item.totalRevenue),
             managerRevenue: centsToDollars(item.managerRevenue),
-            platformFee: centsToDollars(item.platformFee),
-        }))
+        }));
+        console.log('[RevenueTrendChart] Mapped chartData:', mapped);
+        return mapped;
     }, [data])
 
     if (isLoading) {
         return <ChartSkeleton />
     }
 
+    if (chartData.length === 0) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                        Revenue Trend
+                    </CardTitle>
+                    <CardDescription>Daily revenue over time</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col items-center justify-center h-[250px] text-center">
+                        <TrendingUp className="h-12 w-12 text-muted-foreground/20 mb-4" />
+                        <p className="text-sm text-muted-foreground">No revenue data available</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">Revenue will appear here once you have bookings</p>
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
+
     return (
-        <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-blue-100 rounded-lg">
-                        <LineChartIcon className="h-4 w-4 text-blue-600" />
-                    </div>
-                    <div>
-                        <CardTitle className="text-base">Revenue Trend</CardTitle>
-                        <p className="text-xs text-muted-foreground">Daily revenue over time</p>
-                    </div>
-                </div>
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-emerald-600" />
+                    Revenue Trend
+                </CardTitle>
+                <CardDescription>Daily revenue over time</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="h-[280px]">
-                    {chartData.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center">
-                            <LineChartIcon className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                            <p className="text-sm text-muted-foreground">No revenue data</p>
-                            <p className="text-xs text-muted-foreground/70 mt-1">Revenue will appear here</p>
-                        </div>
-                    ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id="colorManagerRevenue" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                                    </linearGradient>
-                                    <linearGradient id="colorTotalRevenue" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-                                <XAxis
-                                    dataKey="date"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                                />
-                                <YAxis
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                                    width={50}
-                                    tickFormatter={(value) => `$${value.toFixed(0)}`}
-                                />
-                                <Tooltip
-                                    contentStyle={{
-                                        borderRadius: '8px',
-                                        border: '1px solid hsl(var(--border))',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                        padding: '8px 12px',
-                                        fontSize: '12px',
-                                        backgroundColor: 'hsl(var(--background))'
-                                    }}
-                                    formatter={(value: number) => [`$${value.toFixed(2)}`, '']}
-                                />
-                                <Legend
-                                    wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
-                                    iconType="circle"
-                                />
-                                <Area
-                                    type="monotone"
-                                    dataKey="totalRevenue"
-                                    stroke="#10b981"
-                                    fillOpacity={1}
-                                    fill="url(#colorTotalRevenue)"
-                                    name="Total Revenue"
-                                />
-                                <Area
-                                    type="monotone"
-                                    dataKey="managerRevenue"
-                                    stroke="hsl(var(--primary))"
-                                    fillOpacity={1}
-                                    fill="url(#colorManagerRevenue)"
-                                    name="Your Earnings"
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    )}
-                </div>
+                <ChartContainer config={revenueTrendConfig} className="h-[250px] w-full">
+                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                        <defs>
+                            <linearGradient id="fillTotalRevenue" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={CHART_COLORS.emerald} stopOpacity={0.8} />
+                                <stop offset="95%" stopColor={CHART_COLORS.emerald} stopOpacity={0.1} />
+                            </linearGradient>
+                            <linearGradient id="fillManagerRevenue" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={CHART_COLORS.emeraldDark} stopOpacity={0.8} />
+                                <stop offset="95%" stopColor={CHART_COLORS.emeraldDark} stopOpacity={0.1} />
+                            </linearGradient>
+                        </defs>
+                        <CartesianGrid vertical={false} />
+                        <XAxis
+                            dataKey="date"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tickFormatter={(value) => value.slice(0, 6)}
+                        />
+                        <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tickFormatter={(value) => `$${value}`}
+                        />
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent indicator="dot" />}
+                        />
+                        <Area
+                            dataKey="totalRevenue"
+                            type="natural"
+                            fill="url(#fillTotalRevenue)"
+                            stroke={CHART_COLORS.emerald}
+                            strokeWidth={2}
+                        />
+                        <Area
+                            dataKey="managerRevenue"
+                            type="natural"
+                            fill="url(#fillManagerRevenue)"
+                            stroke={CHART_COLORS.emeraldDark}
+                            strokeWidth={2}
+                        />
+                        <ChartLegend content={<ChartLegendContent />} />
+                    </AreaChart>
+                </ChartContainer>
             </CardContent>
         </Card>
     )
@@ -173,7 +212,7 @@ interface RevenueByLocationChartProps {
 export function RevenueByLocationChart({ data, isLoading }: RevenueByLocationChartProps) {
     const chartData = useMemo(() => {
         return data.map(loc => ({
-            name: loc.locationName.length > 15 ? loc.locationName.substring(0, 15) + '...' : loc.locationName,
+            name: loc.locationName.length > 12 ? loc.locationName.substring(0, 12) + '...' : loc.locationName,
             fullName: loc.locationName,
             managerRevenue: centsToDollars(loc.managerRevenue),
             platformFee: centsToDollars(loc.platformFee),
@@ -184,64 +223,60 @@ export function RevenueByLocationChart({ data, isLoading }: RevenueByLocationCha
         return <ChartSkeleton />
     }
 
+    if (chartData.length === 0) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Building2 className="h-5 w-5 text-muted-foreground" />
+                        Revenue by Location
+                    </CardTitle>
+                    <CardDescription>Breakdown by location</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col items-center justify-center h-[250px] text-center">
+                        <Building2 className="h-12 w-12 text-muted-foreground/20 mb-4" />
+                        <p className="text-sm text-muted-foreground">No location data available</p>
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
+
     return (
-        <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-violet-100 rounded-lg">
-                        <BarChart3 className="h-4 w-4 text-violet-600" />
-                    </div>
-                    <div>
-                        <CardTitle className="text-base">Revenue by Location</CardTitle>
-                        <p className="text-xs text-muted-foreground">Breakdown by location</p>
-                    </div>
-                </div>
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-violet-600" />
+                    Revenue by Location
+                </CardTitle>
+                <CardDescription>Breakdown by location</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="h-[280px]">
-                    {chartData.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center">
-                            <BarChart3 className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                            <p className="text-sm text-muted-foreground">No location data</p>
-                        </div>
-                    ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
-                                <XAxis
-                                    dataKey="name"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    height={60}
-                                />
-                                <YAxis
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
-                                    width={50}
-                                    tickFormatter={(value) => `$${value.toFixed(0)}`}
-                                />
-                                <Tooltip
-                                    contentStyle={{
-                                        borderRadius: '8px',
-                                        border: '1px solid hsl(var(--border))',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                        padding: '8px 12px',
-                                        fontSize: '12px',
-                                        backgroundColor: 'hsl(var(--background))'
-                                    }}
-                                    formatter={(value: number) => [`$${value.toFixed(2)}`, '']}
-                                    labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
-                                />
-                                <Bar dataKey="managerRevenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} name="Your Earnings" />
-                                <Bar dataKey="platformFee" fill="hsl(var(--muted-foreground))" radius={[4, 4, 0, 0]} name="Platform Fee" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    )}
-                </div>
+                <ChartContainer config={revenueByLocationConfig} className="h-[250px] w-full">
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                        <CartesianGrid vertical={false} />
+                        <XAxis
+                            dataKey="name"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                        />
+                        <YAxis
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tickFormatter={(value) => `$${value}`}
+                        />
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent indicator="dashed" />}
+                        />
+                        <Bar dataKey="managerRevenue" fill={CHART_COLORS.emerald} radius={4} />
+                        <Bar dataKey="platformFee" fill={CHART_COLORS.violet} radius={4} />
+                        <ChartLegend content={<ChartLegendContent />} />
+                    </BarChart>
+                </ChartContainer>
             </CardContent>
         </Card>
     )
@@ -257,13 +292,13 @@ interface PaymentStatusChartProps {
 }
 
 const statusColors: Record<PaymentStatus, string> = {
-    paid: '#10b981',
-    pending: '#f59e0b',
-    processing: '#3b82f6',
-    failed: '#ef4444',
-    refunded: '#6b7280',
-    partially_refunded: '#9ca3af',
-    canceled: '#9ca3af',
+    paid: CHART_COLORS.emerald,
+    pending: CHART_COLORS.amber,
+    processing: CHART_COLORS.blue,
+    failed: CHART_COLORS.red,
+    refunded: CHART_COLORS.gray,
+    partially_refunded: CHART_COLORS.gray,
+    canceled: CHART_COLORS.gray,
 }
 
 const statusLabels: Record<PaymentStatus, string> = {
@@ -285,78 +320,85 @@ export function PaymentStatusChart({ data, isLoading }: PaymentStatusChartProps)
                 value: centsToDollars(item.amount),
                 status: item.status,
                 count: item.count,
+                fill: statusColors[item.status] || 'hsl(var(--muted-foreground))',
             }))
             .sort((a, b) => b.value - a.value)
     }, [data])
+
+    // Build dynamic chart config from data
+    const paymentStatusConfig = useMemo(() => {
+        const config: ChartConfig = {}
+        chartData.forEach(item => {
+            config[item.name] = {
+                label: item.name,
+                color: item.fill,
+            }
+        })
+        return config
+    }, [chartData])
 
     if (isLoading) {
         return <ChartSkeleton />
     }
 
+    if (chartData.length === 0) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <CircleDollarSign className="h-5 w-5 text-muted-foreground" />
+                        Payment Status
+                    </CardTitle>
+                    <CardDescription>Distribution by status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col items-center justify-center h-[250px] text-center">
+                        <CircleDollarSign className="h-12 w-12 text-muted-foreground/20 mb-4" />
+                        <p className="text-sm text-muted-foreground">No payment data available</p>
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
+
+    const total = chartData.reduce((sum, item) => sum + item.value, 0)
+
     return (
-        <Card className="hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-amber-100 rounded-lg">
-                        <PieChartIcon className="h-4 w-4 text-amber-600" />
-                    </div>
-                    <div>
-                        <CardTitle className="text-base">Payment Status</CardTitle>
-                        <p className="text-xs text-muted-foreground">Distribution by status</p>
-                    </div>
-                </div>
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <CircleDollarSign className="h-5 w-5 text-amber-600" />
+                    Payment Status
+                </CardTitle>
+                <CardDescription>Distribution by status</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="h-[280px]">
-                    {chartData.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center">
-                            <PieChartIcon className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                            <p className="text-sm text-muted-foreground">No payment data</p>
-                        </div>
-                    ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={chartData}
-                                    cx="50%"
-                                    cy="50%"
-                                    labelLine={chartData.length > 1}
-                                    label={chartData.length > 1 ? ({ percent }) => `${(percent * 100).toFixed(0)}%` : undefined}
-                                    outerRadius={90}
-                                    innerRadius={chartData.length === 1 ? 60 : 30}
-                                    fill="#8884d8"
-                                    dataKey="value"
-                                >
-                                    {chartData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={statusColors[entry.status as PaymentStatus] || '#6b7280'} />
-                                    ))}
-                                </Pie>
-                                <Tooltip
-                                    contentStyle={{
-                                        borderRadius: '8px',
-                                        border: '1px solid hsl(var(--border))',
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                        padding: '8px 12px',
-                                        fontSize: '12px',
-                                        backgroundColor: 'hsl(var(--background))'
-                                    }}
-                                    formatter={(value: number, name: string, props: any) => {
-                                        const count = props.payload?.count || 0
-                                        return [`$${value.toFixed(2)} (${count} bookings)`, name]
-                                    }}
-                                />
-                                <Legend
-                                    wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
-                                    iconType="circle"
-                                    formatter={(value, entry: any) => {
-                                        const total = chartData.reduce((sum, item) => sum + item.value, 0)
-                                        const percent = total > 0 ? ((entry.payload.value / total) * 100).toFixed(1) : '0'
-                                        return `${value}: $${entry.payload.value.toFixed(2)} (${percent}%)`
-                                    }}
-                                />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    )}
+                <ChartContainer config={paymentStatusConfig} className="mx-auto aspect-square h-[250px]">
+                    <PieChart>
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent hideLabel />}
+                        />
+                        <Pie
+                            data={chartData}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={60}
+                            strokeWidth={5}
+                        >
+                            {chartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                        </Pie>
+                        <ChartLegend
+                            content={<ChartLegendContent nameKey="name" />}
+                            className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center"
+                        />
+                    </PieChart>
+                </ChartContainer>
+                <div className="mt-4 text-center">
+                    <p className="text-2xl font-bold">${total.toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">Total across all statuses</p>
                 </div>
             </CardContent>
         </Card>

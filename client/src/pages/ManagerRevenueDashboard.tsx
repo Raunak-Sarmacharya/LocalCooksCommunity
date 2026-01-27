@@ -123,6 +123,7 @@ export default function ManagerRevenueDashboard({
   const { data: stripeStatus } = useStripeConnectStatus(isEnabled)
 
   // Prepare payment status chart data
+  // Uses totalPrice for consistency with Revenue Trend chart's "Total Revenue"
   const paymentStatusData = useMemo(() => {
     if (!transactionsData?.transactions) return []
 
@@ -130,10 +131,8 @@ export default function ManagerRevenueDashboard({
 
     transactionsData.transactions.forEach((t) => {
       const status = t.paymentStatus || "pending"
-      const amount =
-        status === "paid" || status === "processing"
-          ? t.managerRevenue || 0
-          : t.totalPrice || 0
+      // Use totalPrice for all statuses to match Revenue Trend's Total Revenue
+      const amount = t.totalPrice || 0
 
       if (!statusAmounts[status]) {
         statusAmounts[status] = { amount: 0, count: 0 }
@@ -187,6 +186,7 @@ export default function ManagerRevenueDashboard({
       onNavigate("payments")
     }
   }, [onNavigate])
+
 
   // ═══════════════════════════════════════════════════════════════════════
   // RENDER

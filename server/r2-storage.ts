@@ -8,48 +8,59 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-// R2 Configuration from environment variables
-const R2_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
-const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
-const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
-const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME;
+// R2 Configuration - read lazily to ensure dotenv has loaded
+// DO NOT read process.env at module load time - it may not be populated yet
+function getR2Config() {
+  return {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    bucketName: process.env.CLOUDFLARE_R2_BUCKET_NAME,
+    publicUrl: process.env.CLOUDFLARE_R2_PUBLIC_URL,
+  };
+}
 
 // Get public URL - use custom domain if provided, otherwise construct default R2 URL
 function getR2PublicUrl(): string {
-  if (process.env.CLOUDFLARE_R2_PUBLIC_URL) {
-    return process.env.CLOUDFLARE_R2_PUBLIC_URL;
+  const config = getR2Config();
+  if (config.publicUrl) {
+    return config.publicUrl;
   }
   // Default R2 public URL format (requires public access to be enabled)
-  if (R2_ACCOUNT_ID && R2_BUCKET_NAME) {
-    return `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}`;
+  if (config.accountId && config.bucketName) {
+    return `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}`;
   }
   return '';
 }
 
-const R2_PUBLIC_URL = getR2PublicUrl();
-
 // R2 endpoint (Cloudflare R2 uses a custom endpoint)
-const R2_ENDPOINT = R2_ACCOUNT_ID ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : '';
+function getR2Endpoint(): string {
+  const config = getR2Config();
+  return config.accountId ? `https://${config.accountId}.r2.cloudflarestorage.com` : '';
+}
 
 // Initialize S3 client for R2
 let s3Client: S3Client | null = null;
 
 function getS3Client(): S3Client {
   if (!s3Client) {
-    if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME) {
+    const config = getR2Config();
+    const endpoint = getR2Endpoint();
+    
+    if (!config.accountId || !config.accessKeyId || !config.secretAccessKey || !config.bucketName) {
       throw new Error('Cloudflare R2 credentials not configured. Please set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_R2_ACCESS_KEY_ID, CLOUDFLARE_R2_SECRET_ACCESS_KEY, and CLOUDFLARE_R2_BUCKET_NAME environment variables.');
     }
 
-    if (!R2_ENDPOINT) {
+    if (!endpoint) {
       throw new Error('R2 endpoint could not be constructed. Please check CLOUDFLARE_ACCOUNT_ID is set.');
     }
 
     s3Client = new S3Client({
       region: 'auto', // R2 uses 'auto' as the region
-      endpoint: R2_ENDPOINT,
+      endpoint: endpoint,
       credentials: {
-        accessKeyId: R2_ACCESS_KEY_ID,
-        secretAccessKey: R2_SECRET_ACCESS_KEY,
+        accessKeyId: config.accessKeyId,
+        secretAccessKey: config.secretAccessKey,
       },
       // Force path style for R2 compatibility
       forcePathStyle: false,
@@ -98,8 +109,9 @@ export async function uploadToR2(
     }
 
     // Upload to R2
+    const config = getR2Config();
     const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME!,
+      Bucket: config.bucketName!,
       Key: key,
       Body: fileBuffer,
       ContentType: file.mimetype,
@@ -113,13 +125,14 @@ export async function uploadToR2(
     // Option 1: Use custom domain (recommended)
     // Option 2: Use R2 public URL if configured
     let publicUrl: string;
-    if (R2_PUBLIC_URL) {
-      publicUrl = R2_PUBLIC_URL.endsWith('/')
-        ? `${R2_PUBLIC_URL}${key}`
-        : `${R2_PUBLIC_URL}/${key}`;
+    const r2PublicUrl = getR2PublicUrl();
+    if (r2PublicUrl) {
+      publicUrl = r2PublicUrl.endsWith('/')
+        ? `${r2PublicUrl}${key}`
+        : `${r2PublicUrl}/${key}`;
     } else {
       // Fallback: construct URL from endpoint and bucket
-      publicUrl = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${R2_BUCKET_NAME}/${key}`;
+      publicUrl = `https://${config.accountId}.r2.cloudflarestorage.com/${config.bucketName}/${key}`;
     }
 
     console.log(`✅ File uploaded to R2: ${key} -> ${publicUrl}`);
@@ -164,7 +177,8 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
     const pathParts = pathname.split('/').filter(p => p);
 
     // Find the bucket name index
-    const bucketIndex = pathParts.indexOf(R2_BUCKET_NAME!);
+    const config = getR2Config();
+    const bucketIndex = pathParts.indexOf(config.bucketName!);
 
     let key: string;
     if (bucketIndex >= 0) {
@@ -199,14 +213,14 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
       originalUrl: fileUrl,
       actualFileUrl,
       extractedKey: key,
-      bucketName: R2_BUCKET_NAME,
+      bucketName: config.bucketName,
       pathname: urlObj.pathname,
       pathParts,
       bucketIndex
     });
 
     const command = new DeleteObjectCommand({
-      Bucket: R2_BUCKET_NAME!,
+      Bucket: config.bucketName!,
       Key: key,
     });
 
@@ -231,24 +245,25 @@ export async function deleteFromR2(fileUrl: string): Promise<boolean> {
 export async function fileExistsInR2(fileUrl: string): Promise<boolean> {
   try {
     const client = getS3Client();
+    const config = getR2Config();
 
     // Extract key from URL
     const urlObj = new URL(fileUrl);
     const key = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1) : urlObj.pathname;
     const keyParts = key.split('/');
-    const bucketIndex = keyParts.indexOf(R2_BUCKET_NAME!);
+    const bucketIndex = keyParts.indexOf(config.bucketName!);
     const actualKey = bucketIndex >= 0
       ? keyParts.slice(bucketIndex + 1).join('/')
       : key;
 
     const command = new HeadObjectCommand({
-      Bucket: R2_BUCKET_NAME!,
+      Bucket: config.bucketName!,
       Key: actualKey,
     });
 
     await client.send(command);
     return true;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 }
@@ -262,7 +277,7 @@ export async function fileExistsInR2(fileUrl: string): Promise<boolean> {
 export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600): Promise<string> {
   try {
     const client = getS3Client();
-
+    const config = getR2Config();
 
     // Extract key from URL using robust logic
     const urlObj = new URL(fileUrl);
@@ -270,7 +285,7 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
     const pathParts = pathname.split('/').filter(p => p);
 
     // Find the bucket name index
-    const bucketIndex = pathParts.indexOf(R2_BUCKET_NAME!);
+    const bucketIndex = pathParts.indexOf(config.bucketName!);
 
     let key: string;
     if (bucketIndex >= 0) {
@@ -306,10 +321,11 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
 
     // 1. Check original key
     try {
-      await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME!, Key: key }));
+      await client.send(new HeadObjectCommand({ Bucket: config.bucketName!, Key: key }));
       // If successful, key exists. Use it.
-    } catch (error: any) {
-      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+    } catch (headError: unknown) {
+      const err = headError as { name?: string; $metadata?: { httpStatusCode?: number }; message?: string };
+      if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
         // 2. Original key NOT found. Check remapped key if applicable.
         if (key.startsWith('documents/') &&
           (key.includes('foodSafetyLicenseFile') || key.includes('foodEstablishmentCert'))) {
@@ -318,23 +334,23 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
           console.log(`[R2 Storage] Key ${key} not found. Checking remapped: ${remappedKey}`);
 
           try {
-            await client.send(new HeadObjectCommand({ Bucket: R2_BUCKET_NAME!, Key: remappedKey }));
+            await client.send(new HeadObjectCommand({ Bucket: config.bucketName!, Key: remappedKey }));
             // Remapped key exists! Use it.
             key = remappedKey;
             console.log(`[R2 Storage] Using remapped key: ${key}`);
-          } catch (remapError) {
+          } catch (_remapError) {
             console.log(`[R2 Storage] Remapped key also not found: ${remappedKey}`);
             // Neither found. Fallback to original key (will likely 404 client-side, but nothing else we can do)
           }
         }
       } else {
         // Other error (auth, network), log it but proceed with original key
-        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, error.message);
+        console.warn(`[R2 Storage] Warning: HeadObject validation failed for ${key}:`, err.message);
       }
     }
 
     const command = new GetObjectCommand({
-      Bucket: R2_BUCKET_NAME!,
+      Bucket: config.bucketName!,
       Key: key,
     });
 
@@ -354,11 +370,12 @@ export async function getPresignedUrl(fileUrl: string, expiresIn: number = 3600)
  * Check if R2 is configured
  */
 export function isR2Configured(): boolean {
+  const config = getR2Config();
   return !!(
-    R2_ACCOUNT_ID &&
-    R2_ACCESS_KEY_ID &&
-    R2_SECRET_ACCESS_KEY &&
-    R2_BUCKET_NAME
+    config.accountId &&
+    config.accessKeyId &&
+    config.secretAccessKey &&
+    config.bucketName
   );
 }
 

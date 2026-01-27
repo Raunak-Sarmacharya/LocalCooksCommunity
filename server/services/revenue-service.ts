@@ -709,7 +709,8 @@ export async function getRevenueByDate(
       managerId,
       start,
       end,
-      resultCount: result.rows.length
+      resultCount: result.rows.length,
+      rows: result.rows
     });
 
     return result.rows.map((row: any) => {
