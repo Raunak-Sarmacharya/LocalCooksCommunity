@@ -339,18 +339,23 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             <nav className="space-y-3">
               {user && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowHelpCenter(true);
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full gap-2 justify-start text-base min-h-[44px]"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                    Help
-                  </Button>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowHelpCenter(true);
+                        setIsMenuOpen(false);
+                      }}
+                      className="flex-1 gap-2 justify-start text-base min-h-[44px]"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      Help
+                    </Button>
+                    
+                    {/* Mobile Notification Center */}
+                    <NotificationCenter />
+                  </div>
 
                   {/* Mobile Profile Section */}
                   <div className="pt-2 border-t border-gray-200">
