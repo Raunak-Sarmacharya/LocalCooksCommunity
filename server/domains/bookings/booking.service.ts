@@ -120,7 +120,7 @@ export class BookingService {
 
         // 5. Create Storage Bookings
         let storageTotalCents = 0;
-        const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number}> = [];
+        const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number, startDate: string, endDate: string}> = [];
         if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
             try {
                 const { inventoryService } = await import('../inventory/inventory.service');
@@ -162,7 +162,9 @@ export class BookingService {
                                 storageListingId: listing.id,
                                 name: listing.name || 'Storage',
                                 storageType: listing.storageType || 'other',
-                                totalPrice: priceCents
+                                totalPrice: priceCents,
+                                startDate: storageBooking.startDate?.toISOString?.() || data.bookingDate.toISOString(),
+                                endDate: storageBooking.endDate?.toISOString?.() || data.bookingDate.toISOString()
                             });
                         }
                         

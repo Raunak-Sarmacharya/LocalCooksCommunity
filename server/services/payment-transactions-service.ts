@@ -30,6 +30,7 @@ export interface CreatePaymentTransactionParams {
 export interface UpdatePaymentTransactionParams {
   status?: TransactionStatus;
   stripeStatus?: string;
+  paymentIntentId?: string;
   chargeId?: string;
   refundId?: string;
   refundAmount?: number;
@@ -258,7 +259,7 @@ export async function updatePaymentTransaction(
 
     // Store actual Stripe processing fee in dedicated column
     if (params.stripeProcessingFee !== undefined) {
-      updates.push(sql`stripe_fee = ${params.stripeProcessingFee.toString()}`);
+      updates.push(sql`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
     }
 
     // Update service_fee (platform fee) with actual Stripe platform fee
@@ -778,6 +779,24 @@ export async function findPaymentTransactionByBooking(
   const result = await db.execute(sql`
     SELECT * FROM payment_transactions
     WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+
+  return result.rows[0] as PaymentTransactionRecord | null;
+}
+
+/**
+ * Find payment transaction by metadata key-value pair
+ */
+export async function findPaymentTransactionByMetadata(
+  metadataKey: string,
+  metadataValue: string,
+  db: any
+): Promise<PaymentTransactionRecord | null> {
+  const result = await db.execute(sql`
+    SELECT * FROM payment_transactions
+    WHERE metadata->>${'checkout_session_id'} = ${metadataValue}
     ORDER BY created_at DESC
     LIMIT 1
   `);

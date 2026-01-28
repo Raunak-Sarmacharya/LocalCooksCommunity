@@ -76,9 +76,9 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
             return res.status(404).json({ error: "Booking not found" });
         }
 
-        // Calculate fees
-        const { calculateCheckoutFees } = await import('../services/stripe-checkout-fee-service');
-        const feeCalculation = calculateCheckoutFees(bookingPriceNum);
+        // Calculate fees using database-driven configuration (admin-configurable)
+        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
+        const feeCalculation = await calculateCheckoutFeesAsync(Math.round(bookingPriceNum * 100));
 
         // Get base URL for success/cancel URLs
         const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
@@ -102,7 +102,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
             },
         });
 
-        // Save transaction to database
+        // Save transaction to database (legacy table)
         const { createTransaction } = await import('../services/stripe-checkout-transactions-service');
         await createTransaction(
             {
@@ -114,7 +114,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
                 platformFeeFlatCents: feeCalculation.flatFeeInCents,
                 totalPlatformFeeCents: feeCalculation.totalPlatformFeeInCents,
                 totalCustomerChargedCents: feeCalculation.totalChargeInCents,
-                managerReceivesCents: feeCalculation.bookingPriceInCents, // Manager receives the booking amount
+                managerReceivesCents: feeCalculation.managerReceivesInCents, // Manager receives booking minus platform fee
                 metadata: {
                     booking_id: bookingId.toString(),
                     kitchen_id: (booking.kitchenId || '').toString(),
@@ -123,6 +123,48 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
             },
             db
         );
+
+        // Also create payment_transactions record for accurate revenue tracking
+        // This record will be updated with actual Stripe fees when payment succeeds
+        try {
+            const { createPaymentTransaction } = await import('../services/payment-transactions-service');
+            
+            // Get manager ID and chef ID from booking
+            const [bookingDetails] = await db
+                .select({
+                    chefId: kitchenBookings.chefId,
+                    managerId: locations.managerId,
+                })
+                .from(kitchenBookings)
+                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+                .innerJoin(locations, eq(kitchens.locationId, locations.id))
+                .where(eq(kitchenBookings.id, bookingId))
+                .limit(1);
+
+            if (bookingDetails) {
+                await createPaymentTransaction({
+                    bookingId,
+                    bookingType: 'kitchen',
+                    chefId: bookingDetails.chefId,
+                    managerId: bookingDetails.managerId,
+                    amount: feeCalculation.totalChargeInCents,
+                    baseAmount: feeCalculation.bookingPriceInCents,
+                    serviceFee: feeCalculation.totalPlatformFeeInCents,
+                    managerRevenue: feeCalculation.managerReceivesInCents,
+                    currency: 'CAD',
+                    paymentIntentId: undefined, // Will be set when checkout completes
+                    status: 'pending',
+                    metadata: {
+                        checkout_session_id: checkoutSession.sessionId,
+                        booking_id: bookingId.toString(),
+                    },
+                }, db);
+                console.log(`[Checkout] Created payment_transactions record for booking ${bookingId}`);
+            }
+        } catch (ptError) {
+            // Don't fail checkout if payment_transactions creation fails
+            console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
+        }
 
         // Return response
         res.json({
@@ -964,10 +1006,22 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
         const taxCents = Math.round((totalPriceCents * taxRatePercent) / 100);
         
         // Total amount is simply Subtotal + Tax
-        // We no longer add a platform service fee on top
         const totalWithTaxCents = totalPriceCents + taxCents;
 
-        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}`);
+        // Calculate platform fee (application fee) for Stripe Connect
+        // This covers Stripe processing fees + platform commission
+        // Fee is deducted from manager's payout, not charged to customer
+        // Uses database-driven configuration from platform_settings table
+        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
+        const feeCalculation = await calculateCheckoutFeesAsync(totalWithTaxCents);
+        
+        // If using Stripe Platform Pricing Tool, don't set application_fee_amount
+        // Stripe will automatically apply fees based on Dashboard configuration
+        const applicationFeeAmountCents = feeCalculation.useStripePlatformPricing 
+          ? undefined 
+          : feeCalculation.totalPlatformFeeInCents;
+
+        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, PlatformFee=${applicationFeeAmountCents ?? 'Stripe Platform Pricing'}, ManagerReceives=${feeCalculation.managerReceivesInCents}, UseStripePricing=${feeCalculation.useStripePlatformPricing}`);
 
         // Create Metadata
         const metadata = {
@@ -989,9 +1043,9 @@ router.post("/payments/create-intent", requireChef, async (req: Request, res: Re
             chefId,
             kitchenId,
             managerConnectAccountId: managerConnectAccountId,
-            // Platform fee is now 0 as we removed the service fee
-            // If we want to charge a commission later, we can add it here (deducted from manager payout)
-            applicationFeeAmount: undefined, 
+            // Platform fee covers Stripe processing fees + platform commission
+            // Deducted from manager's payout, not charged to customer
+            applicationFeeAmount: managerConnectAccountId ? applicationFeeAmountCents : undefined,
             enableACSS: false, // Disable ACSS - only use card payments with automatic capture
             enableCards: true, // Enable card payments only
             metadata: {

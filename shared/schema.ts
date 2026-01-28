@@ -1306,6 +1306,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   amount: numeric("amount").notNull(), // Total transaction amount (includes service fee)
   baseAmount: numeric("base_amount").notNull(), // Base amount before service fee
   serviceFee: numeric("service_fee").notNull().default("0"), // Platform service fee
+  stripeProcessingFee: numeric("stripe_processing_fee").default("0"), // Actual Stripe processing fee from BalanceTransaction (in cents)
   managerRevenue: numeric("manager_revenue").notNull(), // Manager earnings (base_amount - service_fee)
   refundAmount: numeric("refund_amount").default("0"), // Total refunded amount
   netAmount: numeric("net_amount").notNull(), // Final amount after refunds (amount - refund_amount)

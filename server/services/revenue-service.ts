@@ -504,19 +504,67 @@ export async function getRevenueMetrics(
     // Deposited manager revenue = only from paid bookings (succeeded transactions)
     const depositedManagerRevenue = allCompletedPayments - completedServiceFee2;
 
-    // Calculate estimated Stripe fees (2.9% + $0.30 per transaction for CAD)
+    // Get actual Stripe processing fees from payment_transactions table
+    // This uses real data from Stripe BalanceTransaction API stored during webhook processing
     const paidBookingCountVal = isNaN(parseInt(completedRow.completed_count_all)) ? 0 : (parseInt(completedRow.completed_count_all) || 0);
-    const estimatedStripeFee = Math.round((allCompletedPayments * 0.029) + (paidBookingCountVal * 30));
+    
+    let actualStripeFee = 0;
+    let stripeFeeSource = 'estimated';
+    
+    try {
+      // Query actual Stripe fees from payment_transactions for this manager's bookings
+      const stripeFeeConditions = [
+        sql`pt.manager_id = ${managerId}`,
+        sql`pt.status = 'succeeded'`,
+        sql`pt.stripe_processing_fee IS NOT NULL`,
+        sql`pt.stripe_processing_fee > 0`
+      ];
+      if (locationId) {
+        // Join with kitchen_bookings to filter by location
+        stripeFeeConditions.push(sql`EXISTS (
+          SELECT 1 FROM kitchen_bookings kb 
+          JOIN kitchens k ON kb.kitchen_id = k.id 
+          WHERE kb.id = pt.booking_id 
+          AND pt.booking_type = 'kitchen'
+          AND k.location_id = ${locationId}
+        )`);
+      }
+      
+      const stripeFeeResult = await db.execute(sql`
+        SELECT COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
+        FROM payment_transactions pt
+        WHERE ${sql.join(stripeFeeConditions, sql` AND `)}
+      `);
+      
+      const stripeFeeRow: any = stripeFeeResult.rows[0] || {};
+      const storedStripeFee = typeof stripeFeeRow.total_stripe_fee === 'string'
+        ? parseInt(stripeFeeRow.total_stripe_fee) || 0
+        : (stripeFeeRow.total_stripe_fee ? parseInt(String(stripeFeeRow.total_stripe_fee)) : 0);
+      
+      if (storedStripeFee > 0) {
+        actualStripeFee = storedStripeFee;
+        stripeFeeSource = 'stripe';
+        console.log(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
+      } else {
+        // Fallback to estimated fees if no stored Stripe fees available
+        actualStripeFee = Math.round((allCompletedPayments * 0.029) + (paidBookingCountVal * 30));
+        console.log(`[Revenue Service] No stored Stripe fees found, using estimate: ${actualStripeFee} cents`);
+      }
+    } catch (error) {
+      console.warn('[Revenue Service] Error fetching Stripe fees from payment_transactions, using estimate:', error);
+      actualStripeFee = Math.round((allCompletedPayments * 0.029) + (paidBookingCountVal * 30));
+    }
+    
     // Tax amount calculated from kitchen tax_rate_percent (not service_fee)
     const taxAmount = pendingTaxAmount2 + completedTaxAmount2;
     // Net revenue = total - tax - stripe fees
-    const netRevenue = totalRevenueWithAllPayments - taxAmount - estimatedStripeFee;
+    const netRevenue = totalRevenueWithAllPayments - taxAmount - actualStripeFee;
 
     return {
       totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : (totalRevenueWithAllPayments || 0),
       platformFee: isNaN(totalServiceFee) ? 0 : (totalServiceFee || 0),
       taxAmount: isNaN(taxAmount) ? 0 : (taxAmount || 0),
-      stripeFee: isNaN(estimatedStripeFee) ? 0 : (estimatedStripeFee || 0),
+      stripeFee: isNaN(actualStripeFee) ? 0 : (actualStripeFee || 0),
       netRevenue: isNaN(netRevenue) ? 0 : (netRevenue || 0),
       managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : (depositedManagerRevenue || 0),
@@ -812,7 +860,7 @@ export async function getTransactionHistory(
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
         pt.amount as pt_amount,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
-        COALESCE(pt.stripe_fee, 0)::bigint as actual_stripe_fee,
+        COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
         -- Actual tax amount from payment_transactions
         COALESCE(pt.tax_amount, 0)::bigint as actual_tax_amount,
         -- Service fee from payment_transactions

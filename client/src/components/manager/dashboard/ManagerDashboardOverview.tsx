@@ -9,6 +9,8 @@ import {
     MapPin,
     ChefHat,
     User,
+    Boxes,
+    Package,
 } from "lucide-react";
 // We will stick to the existing calendar for now to minimize logic breakage, 
 // but encapsulate it better. 
@@ -25,6 +27,22 @@ import { Badge } from "@/components/ui/badge";
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards";
 import type { RevenueMetrics } from "@/components/manager/revenue/types";
 
+// Storage/Equipment item types
+interface StorageItem {
+    id: number;
+    storageListingId: number;
+    name: string;
+    storageType: string;
+    totalPrice: number;
+}
+
+interface EquipmentItem {
+    id: number;
+    equipmentListingId: number;
+    name: string;
+    totalPrice: number;
+}
+
 // Define strict types
 interface Booking {
     id: number;
@@ -36,6 +54,8 @@ interface Booking {
     locationName?: string;
     chefName?: string;
     specialNotes?: string;
+    storageItems?: StorageItem[];
+    equipmentItems?: EquipmentItem[];
 }
 
 interface Location {
@@ -438,6 +458,27 @@ export function ManagerDashboardOverview({ selectedLocation: _selectedLocation, 
                                                         <User className="h-3 w-3" />
                                                         Chef: {booking.chefName}
                                                     </p>
+                                                )}
+                                                {/* Storage & Equipment Add-ons */}
+                                                {((booking.storageItems && booking.storageItems.length > 0) || 
+                                                  (booking.equipmentItems && booking.equipmentItems.length > 0)) && (
+                                                    <div className="mt-2 p-2 bg-background rounded border">
+                                                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Add-ons:</p>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {booking.storageItems?.map((item, idx) => (
+                                                                <Badge key={`s-${idx}`} variant="outline" className="text-xs gap-1">
+                                                                    <Boxes className="h-3 w-3" />
+                                                                    {item.name} ({item.storageType})
+                                                                </Badge>
+                                                            ))}
+                                                            {booking.equipmentItems?.map((item, idx) => (
+                                                                <Badge key={`e-${idx}`} variant="outline" className="text-xs gap-1">
+                                                                    <Package className="h-3 w-3" />
+                                                                    {item.name}
+                                                                </Badge>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 )}
                                                 {booking.specialNotes && (
                                                     <div className="mt-2 p-2 bg-background rounded border text-xs text-muted-foreground">

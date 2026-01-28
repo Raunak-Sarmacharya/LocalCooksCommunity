@@ -184,6 +184,26 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session, 
             logger.warn(`[Webhook] Transaction not found for Checkout session ${session.id}`);
         }
 
+        // Also update payment_transactions record with paymentIntentId
+        // This links the payment_transactions record to the Stripe payment for fee syncing
+        if (paymentIntentId) {
+            try {
+                const { findPaymentTransactionByMetadata, updatePaymentTransaction } = await import('../services/payment-transactions-service');
+                const ptRecord = await findPaymentTransactionByMetadata('checkout_session_id', session.id, db);
+                if (ptRecord) {
+                    await updatePaymentTransaction(ptRecord.id, {
+                        paymentIntentId,
+                        chargeId,
+                        status: 'processing',
+                        stripeStatus: 'processing',
+                    }, db);
+                    logger.info(`[Webhook] Updated payment_transactions with paymentIntentId for session ${session.id}`);
+                }
+            } catch (ptError) {
+                logger.warn(`[Webhook] Could not update payment_transactions:`, ptError);
+            }
+        }
+
         // Check if this is a storage extension payment
         const metadata = expandedSession.metadata || {};
         if (metadata.type === 'storage_extension') {

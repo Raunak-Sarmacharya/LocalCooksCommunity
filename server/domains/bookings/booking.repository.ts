@@ -125,15 +125,22 @@ export class BookingRepository {
             .where(eq(locations.managerId, managerId))
             .orderBy(desc(kitchenBookings.bookingDate));
 
-        return results.map(row => ({
-            ...this.mapKitchenBookingToDTO(row.booking),
-            kitchen: row.kitchen,
-            location: row.location,
-            chef: row.chef,
-            chefName: row.chef?.username,
-            kitchenName: row.kitchen.name,
-            locationName: row.location.name,
-        }));
+        return results.map(row => {
+            const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+            return {
+                ...mappedBooking,
+                kitchen: row.kitchen,
+                location: row.location,
+                chef: row.chef,
+                chefName: row.chef?.username,
+                kitchenName: row.kitchen.name,
+                locationName: row.location.name,
+                locationTimezone: row.location.timezone,
+                // Include storage and equipment items from JSONB fields
+                storageItems: row.booking.storageItems || [],
+                equipmentItems: row.booking.equipmentItems || [],
+            };
+        });
     }
 
     async getBookingsByKitchen(kitchenId: number) {

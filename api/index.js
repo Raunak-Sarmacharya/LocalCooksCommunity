@@ -1422,6 +1422,8 @@ var init_schema = __esm({
       // Base amount before service fee
       serviceFee: numeric("service_fee").notNull().default("0"),
       // Platform service fee
+      stripeProcessingFee: numeric("stripe_processing_fee").default("0"),
+      // Actual Stripe processing fee from BalanceTransaction (in cents)
       managerRevenue: numeric("manager_revenue").notNull(),
       // Manager earnings (base_amount - service_fee)
       refundAmount: numeric("refund_amount").default("0"),
@@ -2172,17 +2174,18 @@ var init_r2_storage = __esm({
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-var isProduction, uploadsDir, storage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
+var isProduction, useCloudStorage, uploadsDir, diskStorage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
 var init_fileUpload = __esm({
   "server/fileUpload.ts"() {
     "use strict";
     init_r2_storage();
     isProduction = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+    useCloudStorage = isR2Configured() || isProduction;
     uploadsDir = path.join(process.cwd(), "uploads", "documents");
-    if (!isProduction && !fs.existsSync(uploadsDir)) {
+    if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
-    storage = multer.diskStorage({
+    diskStorage = multer.diskStorage({
       destination: (req, file, cb) => {
         cb(null, uploadsDir);
       },
@@ -2211,8 +2214,9 @@ var init_fileUpload = __esm({
         cb(new Error("Invalid file type. Only PDF, JPG, JPEG, PNG, and WebP files are allowed."));
       }
     };
+    console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? "memory (R2)" : "disk (local)"} storage`);
     upload = multer({
-      storage: isProduction ? memoryStorage : storage,
+      storage: useCloudStorage ? memoryStorage : diskStorage,
       limits: {
         fileSize: 10 * 1024 * 1024
         // 10MB limit
@@ -5545,6 +5549,11 @@ var init_chat_service = __esm({
 });
 
 // server/domains/locations/location.service.ts
+var location_service_exports = {};
+__export(location_service_exports, {
+  LocationService: () => LocationService,
+  locationService: () => locationService
+});
 import { eq as eq10 } from "drizzle-orm";
 var LocationService, locationService;
 var init_location_service = __esm({
@@ -6693,6 +6702,341 @@ var init_kitchen_service = __esm({
   }
 });
 
+// server/logger.ts
+var isProd, logger;
+var init_logger = __esm({
+  "server/logger.ts"() {
+    "use strict";
+    isProd = process.env.NODE_ENV === "production";
+    logger = {
+      info: (msg, data) => {
+        if (!isProd) console.log(`[INFO] ${msg}`, data || "");
+      },
+      warn: (msg, data) => {
+        console.warn(`[WARN] ${msg}`, data || "");
+      },
+      error: (msg, error) => {
+        console.error(`[ERROR] ${msg}`, error);
+      },
+      debug: (msg, data) => {
+        if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
+      }
+    };
+  }
+});
+
+// server/services/notification.service.ts
+import { sql as sql3 } from "drizzle-orm";
+async function createNotification(params) {
+  const {
+    managerId,
+    locationId,
+    type,
+    priority = "normal",
+    title,
+    message,
+    metadata = {},
+    actionUrl,
+    actionLabel,
+    expiresAt
+  } = params;
+  try {
+    const result = await db.execute(sql3`
+      INSERT INTO manager_notifications 
+      (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
+      VALUES (
+        ${managerId}, 
+        ${locationId || null}, 
+        ${type}::notification_type, 
+        ${priority}::notification_priority, 
+        ${title}, 
+        ${message}, 
+        ${JSON.stringify(metadata)}::jsonb, 
+        ${actionUrl || null}, 
+        ${actionLabel || null}, 
+        ${expiresAt ? expiresAt.toISOString() : null}
+      )
+      RETURNING *
+    `);
+    logger.info(`[NotificationService] Created ${type} notification for manager ${managerId}`);
+    return result.rows[0];
+  } catch (error) {
+    logger.error(`[NotificationService] Failed to create notification:`, error);
+    throw error;
+  }
+}
+async function notifyNewBooking(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "booking_new",
+    priority: "high",
+    title: "New Booking Request",
+    message: `${data.chefName} requested to book ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime}. Awaiting your approval.`,
+    metadata: {
+      bookingId: data.bookingId,
+      chefName: data.chefName,
+      kitchenName: data.kitchenName,
+      bookingDate: data.bookingDate,
+      startTime: data.startTime,
+      endTime: data.endTime
+    },
+    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionLabel: "Review Booking"
+  });
+}
+async function notifyBookingConfirmed(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "booking_confirmed",
+    priority: "normal",
+    title: "Booking Confirmed",
+    message: `You confirmed ${data.chefName}'s booking at ${data.kitchenName} on ${data.bookingDate}.`,
+    metadata: {
+      bookingId: data.bookingId,
+      chefName: data.chefName,
+      kitchenName: data.kitchenName
+    },
+    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyBookingCancelled(data) {
+  const isByChef = data.cancelledBy === "chef";
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "booking_cancelled",
+    priority: "high",
+    title: isByChef ? "Booking Cancelled by Chef" : "Booking Cancelled",
+    message: isByChef ? `${data.chefName} cancelled their booking at ${data.kitchenName} on ${data.bookingDate}.` : `Booking at ${data.kitchenName} on ${data.bookingDate} was cancelled.`,
+    metadata: {
+      bookingId: data.bookingId,
+      chefName: data.chefName,
+      kitchenName: data.kitchenName,
+      cancelledBy: data.cancelledBy
+    },
+    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyPaymentReceived(data) {
+  const formattedAmount = (data.amount / 100).toFixed(2);
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "payment_received",
+    priority: "normal",
+    title: "Payment Received",
+    message: `Received $${formattedAmount} ${data.currency} from ${data.chefName} for booking at ${data.kitchenName}.`,
+    metadata: {
+      bookingId: data.bookingId,
+      amount: data.amount,
+      currency: data.currency,
+      chefName: data.chefName
+    },
+    actionUrl: `/manager/booking-dashboard?view=revenue`,
+    actionLabel: "View Revenue"
+  });
+}
+async function notifyPaymentFailed(data) {
+  const formattedAmount = (data.amount / 100).toFixed(2);
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "payment_failed",
+    priority: "urgent",
+    title: "Payment Failed",
+    message: `Payment of $${formattedAmount} ${data.currency} from ${data.chefName} failed.${data.reason ? ` Reason: ${data.reason}` : ""}`,
+    metadata: {
+      bookingId: data.bookingId,
+      amount: data.amount,
+      currency: data.currency,
+      chefName: data.chefName,
+      reason: data.reason
+    },
+    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyNewApplication(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "application_new",
+    priority: "high",
+    title: "New Chef Application",
+    message: `${data.chefName} (${data.chefEmail}) has applied to use your kitchen. Review their application to approve or reject.`,
+    metadata: {
+      applicationId: data.applicationId,
+      chefName: data.chefName,
+      chefEmail: data.chefEmail
+    },
+    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionLabel: "Review Application"
+  });
+}
+async function notifyApplicationApproved(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "application_approved",
+    priority: "normal",
+    title: "Application Approved",
+    message: `You approved ${data.chefName}'s application. They can now book your kitchen.`,
+    metadata: {
+      applicationId: data.applicationId,
+      chefName: data.chefName
+    },
+    actionUrl: `/manager/booking-dashboard?view=applications`,
+    actionLabel: "View Applications"
+  });
+}
+async function notifyStorageExpiring(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "storage_expiring",
+    priority: "high",
+    title: "Storage Booking Expiring",
+    message: `${data.chefName}'s storage booking for "${data.storageName}" expires in ${data.daysUntilExpiry} day${data.daysUntilExpiry !== 1 ? "s" : ""} (${data.expiryDate}).`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      chefName: data.chefName,
+      storageName: data.storageName,
+      expiryDate: data.expiryDate,
+      daysUntilExpiry: data.daysUntilExpiry
+    },
+    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionLabel: "View Storage"
+  });
+}
+async function notifyLicenseApproved(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "license_approved",
+    priority: "normal",
+    title: "Kitchen License Approved",
+    message: `Your kitchen license for ${data.locationName} has been approved by the admin.${data.expiryDate ? ` Valid until ${data.expiryDate}.` : ""}`,
+    metadata: {
+      locationName: data.locationName,
+      expiryDate: data.expiryDate
+    },
+    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionLabel: "View Settings"
+  });
+}
+async function notifyLicenseRejected(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "license_rejected",
+    priority: "urgent",
+    title: "Kitchen License Rejected",
+    message: `Your kitchen license for ${data.locationName} was rejected.${data.feedback ? ` Feedback: ${data.feedback}` : " Please upload a new license."}`,
+    metadata: {
+      locationName: data.locationName,
+      feedback: data.feedback
+    },
+    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionLabel: "Upload New License"
+  });
+}
+async function notifyLicenseExpiring(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "license_expiring",
+    priority: "high",
+    title: "Kitchen License Expiring Soon",
+    message: `Your kitchen license for ${data.locationName} expires in ${data.daysUntilExpiry} day${data.daysUntilExpiry !== 1 ? "s" : ""} (${data.expiryDate}). Please renew to avoid service interruption.`,
+    metadata: {
+      locationName: data.locationName,
+      expiryDate: data.expiryDate,
+      daysUntilExpiry: data.daysUntilExpiry
+    },
+    actionUrl: `/manager/booking-dashboard?view=settings`,
+    actionLabel: "Renew License"
+  });
+}
+async function notifyNewMessage(data) {
+  return createNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "message_received",
+    priority: "normal",
+    title: `Message from ${data.senderName}`,
+    message: data.messagePreview.length > 100 ? `${data.messagePreview.substring(0, 100)}...` : data.messagePreview,
+    metadata: {
+      senderName: data.senderName,
+      conversationId: data.conversationId
+    },
+    actionUrl: `/manager/booking-dashboard?view=messages`,
+    actionLabel: "View Message"
+  });
+}
+async function notifySystemAnnouncement(managerId, data) {
+  return createNotification({
+    managerId,
+    type: "system_announcement",
+    priority: data.priority || "normal",
+    title: data.title,
+    message: data.message,
+    metadata: { isSystemAnnouncement: true },
+    actionUrl: data.actionUrl,
+    actionLabel: data.actionLabel
+  });
+}
+async function broadcastSystemAnnouncement(data) {
+  try {
+    const result = await db.execute(sql3`
+      SELECT id FROM users WHERE is_manager = true
+    `);
+    const managerIds = result.rows.map((row) => row.id);
+    const notifications = await Promise.all(
+      managerIds.map((managerId) => notifySystemAnnouncement(managerId, data))
+    );
+    logger.info(`[NotificationService] Broadcasted system announcement to ${managerIds.length} managers`);
+    return notifications;
+  } catch (error) {
+    logger.error(`[NotificationService] Failed to broadcast announcement:`, error);
+    throw error;
+  }
+}
+var notificationService;
+var init_notification_service = __esm({
+  "server/services/notification.service.ts"() {
+    "use strict";
+    init_db();
+    init_logger();
+    notificationService = {
+      // Core
+      create: createNotification,
+      // Booking
+      notifyNewBooking,
+      notifyBookingConfirmed,
+      notifyBookingCancelled,
+      // Payment
+      notifyPaymentReceived,
+      notifyPaymentFailed,
+      // Application
+      notifyNewApplication,
+      notifyApplicationApproved,
+      // Storage & License
+      notifyStorageExpiring,
+      notifyLicenseApproved,
+      notifyLicenseRejected,
+      notifyLicenseExpiring,
+      // Message & System
+      notifyNewMessage,
+      notifySystemAnnouncement,
+      broadcastSystemAnnouncement
+    };
+  }
+});
+
 // server/domains/applications/tier-validation.ts
 var tier_validation_exports = {};
 __export(tier_validation_exports, {
@@ -6865,6 +7209,7 @@ var init_applications = __esm({
     init_email();
     init_phone_utils();
     init_firebase_auth_middleware();
+    init_notification_service();
     init_application_repository();
     init_application_service();
     init_user_repository();
@@ -7259,6 +7604,33 @@ var init_applications = __esm({
             }
           }
         }
+        try {
+          const { locationService: locationService4 } = await Promise.resolve().then(() => (init_location_service(), location_service_exports));
+          if (updatedApplication.locationId) {
+            const location = await locationService4.getLocationById(updatedApplication.locationId);
+            if (location && location.managerId) {
+              const isApproved = updatedApplication.foodSafetyLicenseStatus === "approved" || updatedApplication.foodEstablishmentCertStatus === "approved";
+              const isRejected = updatedApplication.foodSafetyLicenseStatus === "rejected" || updatedApplication.foodEstablishmentCertStatus === "rejected";
+              if (isApproved) {
+                await notificationService.notifyLicenseApproved({
+                  managerId: location.managerId,
+                  locationId: location.id,
+                  locationName: location.name,
+                  feedback: updatedApplication.documentsAdminFeedback || void 0
+                });
+              } else if (isRejected) {
+                await notificationService.notifyLicenseRejected({
+                  managerId: location.managerId,
+                  locationId: location.id,
+                  locationName: location.name,
+                  feedback: updatedApplication.documentsAdminFeedback || void 0
+                });
+              }
+            }
+          }
+        } catch (notifError) {
+          console.error("Error creating license notification:", notifError);
+        }
         return res.status(200).json(updatedApplication);
       } catch (error) {
         console.error("Error updating application document verification:", error);
@@ -7408,26 +7780,26 @@ var init_locations = __esm({
         const allKitchens = await kitchenService3.getAllActiveKitchens();
         const allLocations = await locationService3.getAllLocations();
         const locationMap = new Map(allLocations.map((loc) => [loc.id, loc]));
-        const { storageListings: storageListings4, equipmentListings: equipmentListings4 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { storageListings: storageListings3, equipmentListings: equipmentListings3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
         const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-        const { eq: eq31 } = await import("drizzle-orm");
+        const { eq: eq32 } = await import("drizzle-orm");
         const allStorageListings = await db2.select({
-          kitchenId: storageListings4.kitchenId,
-          storageType: storageListings4.storageType,
-          name: storageListings4.name,
-          isActive: storageListings4.isActive
-        }).from(storageListings4).where(eq31(storageListings4.isActive, true));
+          kitchenId: storageListings3.kitchenId,
+          storageType: storageListings3.storageType,
+          name: storageListings3.name,
+          isActive: storageListings3.isActive
+        }).from(storageListings3).where(eq32(storageListings3.isActive, true));
         const allEquipmentListings = await db2.select({
-          kitchenId: equipmentListings4.kitchenId,
-          equipmentType: equipmentListings4.equipmentType,
-          category: equipmentListings4.category
-        }).from(equipmentListings4).where(eq31(equipmentListings4.isActive, true));
+          kitchenId: equipmentListings3.kitchenId,
+          equipmentType: equipmentListings3.equipmentType,
+          category: equipmentListings3.category
+        }).from(equipmentListings3).where(eq32(equipmentListings3.isActive, true));
         const storageByKitchen = /* @__PURE__ */ new Map();
-        for (const storage2 of allStorageListings) {
-          if (!storage2.kitchenId) continue;
-          const existing = storageByKitchen.get(storage2.kitchenId) || [];
-          existing.push({ type: storage2.storageType || "other", name: storage2.name || "Storage" });
-          storageByKitchen.set(storage2.kitchenId, existing);
+        for (const storage of allStorageListings) {
+          if (!storage.kitchenId) continue;
+          const existing = storageByKitchen.get(storage.kitchenId) || [];
+          existing.push({ type: storage.storageType || "other", name: storage.name || "Storage" });
+          storageByKitchen.set(storage.kitchenId, existing);
         }
         const equipmentByKitchen = /* @__PURE__ */ new Map();
         for (const equip of allEquipmentListings) {
@@ -7984,16 +8356,8 @@ var init_files = __esm({
             return res.status(400).json({ error: "No file uploaded" });
           }
           const folder = req.body.folder || "documents";
-          const isProduction2 = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-          let fileUrl;
-          let fileName;
-          if (isProduction2) {
-            fileUrl = await uploadToBlob(req.file, userId, folder);
-            fileName = fileUrl.split("/").pop() || req.file.originalname;
-          } else {
-            fileUrl = getFileUrl(req.file.filename);
-            fileName = req.file.filename;
-          }
+          const fileUrl = await uploadToBlob(req.file, userId, folder);
+          const fileName = fileUrl.split("/").pop() || req.file.originalname;
           return res.status(200).json({
             success: true,
             url: fileUrl,
@@ -8182,13 +8546,13 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or3, like, sql: sql13 } = await import("drizzle-orm");
+            const { or: or4, like, sql: sql15 } = await import("drizzle-orm");
             const [kitchenMatch] = await db2.select({ id: kitchens3.id }).from(kitchens3).where(
-              or3(
+              or4(
                 like(kitchens3.imageUrl, searchPattern),
-                sql13`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
+                sql15`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
-                sql13`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
+                sql15`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
               )
             ).limit(1);
             if (kitchenMatch) {
@@ -8594,29 +8958,6 @@ var init_timezone_utils = __esm({
   }
 });
 
-// server/logger.ts
-var isProd, logger;
-var init_logger = __esm({
-  "server/logger.ts"() {
-    "use strict";
-    isProd = process.env.NODE_ENV === "production";
-    logger = {
-      info: (msg, data) => {
-        if (!isProd) console.log(`[INFO] ${msg}`, data || "");
-      },
-      warn: (msg, data) => {
-        console.warn(`[WARN] ${msg}`, data || "");
-      },
-      error: (msg, error) => {
-        console.error(`[ERROR] ${msg}`, error);
-      },
-      debug: (msg, data) => {
-        if (!isProd) console.log(`[DEBUG] ${msg}`, data || "");
-      }
-    };
-  }
-});
-
 // server/api-response.ts
 function errorResponse(res, error, statusCode = 500) {
   const message = process.env.NODE_ENV === "production" ? "An unexpected error occurred" : error?.message || "Unknown error";
@@ -8630,7 +8971,7 @@ var init_api_response = __esm({
 });
 
 // server/domains/bookings/booking.repository.ts
-import { eq as eq13, and as and9, desc as desc7, asc, lt, not, sql as sql3 } from "drizzle-orm";
+import { eq as eq13, and as and9, desc as desc7, asc, lt, not, sql as sql4 } from "drizzle-orm";
 function getKitchenBookingSelection() {
   return {
     id: kitchenBookings.id,
@@ -8746,15 +9087,22 @@ var init_booking_repository = __esm({
           location: locations,
           chef: users
         }).from(kitchenBookings).innerJoin(kitchens, eq13(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq13(kitchens.locationId, locations.id)).leftJoin(users, eq13(kitchenBookings.chefId, users.id)).where(eq13(locations.managerId, managerId)).orderBy(desc7(kitchenBookings.bookingDate));
-        return results.map((row) => ({
-          ...this.mapKitchenBookingToDTO(row.booking),
-          kitchen: row.kitchen,
-          location: row.location,
-          chef: row.chef,
-          chefName: row.chef?.username,
-          kitchenName: row.kitchen.name,
-          locationName: row.location.name
-        }));
+        return results.map((row) => {
+          const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+          return {
+            ...mappedBooking,
+            kitchen: row.kitchen,
+            location: row.location,
+            chef: row.chef,
+            chefName: row.chef?.username,
+            kitchenName: row.kitchen.name,
+            locationName: row.location.name,
+            locationTimezone: row.location.timezone,
+            // Include storage and equipment items from JSONB fields
+            storageItems: row.booking.storageItems || [],
+            equipmentItems: row.booking.equipmentItems || []
+          };
+        });
       }
       async getBookingsByKitchen(kitchenId) {
         return db.select({
@@ -8769,9 +9117,9 @@ var init_booking_repository = __esm({
         const conditions = [
           eq13(kitchenBookings.kitchenId, kitchenId),
           not(eq13(kitchenBookings.status, "cancelled")),
-          sql3`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
-          sql3`${kitchenBookings.startTime} < ${endTime}`,
-          sql3`${kitchenBookings.endTime} > ${startTime}`
+          sql4`DATE(${kitchenBookings.bookingDate}) = ${dateStr}::date`,
+          sql4`${kitchenBookings.startTime} < ${endTime}`,
+          sql4`${kitchenBookings.endTime} > ${startTime}`
         ];
         if (excludeBookingId) {
           conditions.push(not(eq13(kitchenBookings.id, excludeBookingId)));
@@ -9343,7 +9691,9 @@ var init_booking_service = __esm({
                     storageListingId: listing.id,
                     name: listing.name || "Storage",
                     storageType: listing.storageType || "other",
-                    totalPrice: priceCents
+                    totalPrice: priceCents,
+                    startDate: storageBooking.startDate?.toISOString?.() || data.bookingDate.toISOString(),
+                    endDate: storageBooking.endDate?.toISOString?.() || data.bookingDate.toISOString()
                   });
                 }
                 storageTotalCents += priceCents;
@@ -10013,7 +10363,7 @@ var init_chef_service = __esm({
 });
 
 // server/domains/managers/manager.repository.ts
-import { eq as eq19, and as and13, desc as desc10, sql as sql4, ne as ne3 } from "drizzle-orm";
+import { eq as eq19, and as and13, desc as desc10, sql as sql5, ne as ne3 } from "drizzle-orm";
 var ManagerRepository, managerRepository;
 var init_manager_repository = __esm({
   "server/domains/managers/manager.repository.ts"() {
@@ -10047,11 +10397,11 @@ var init_manager_repository = __esm({
         ];
         if (startDate) {
           const startStr = Array.isArray(startDate) ? startDate[0] : String(startDate);
-          conditions.push(sql4`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
+          conditions.push(sql5`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
         }
         if (endDate) {
           const endStr = Array.isArray(endDate) ? endDate[0] : String(endDate);
-          conditions.push(sql4`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
+          conditions.push(sql5`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
         }
         if (locationId) {
           conditions.push(eq19(locations.id, locationId));
@@ -10096,7 +10446,7 @@ __export(revenue_service_v2_exports, {
   getRevenueByLocationFromTransactions: () => getRevenueByLocationFromTransactions,
   getRevenueMetricsFromTransactions: () => getRevenueMetricsFromTransactions
 });
-import { sql as sql5 } from "drizzle-orm";
+import { sql as sql6 } from "drizzle-orm";
 async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endDate, locationId) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
@@ -10108,7 +10458,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       params.push(locationId);
     }
     console.log("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
-    const tableCheck = await db2.execute(sql5`
+    const tableCheck = await db2.execute(sql6`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -10120,8 +10470,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       console.log("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
       throw new Error("payment_transactions table does not exist");
     }
-    const managerIdParam = sql5`${managerId}`;
-    const countCheck = await db2.execute(sql5`
+    const managerIdParam = sql6`${managerId}`;
+    const countCheck = await db2.execute(sql6`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
       LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
@@ -10135,7 +10485,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     `);
     const transactionCount = parseInt(countCheck.rows[0]?.count || "0");
     console.log(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
-    const bookingCountCheck = await db2.execute(sql5`
+    const bookingCountCheck = await db2.execute(sql6`
       SELECT 
         COUNT(DISTINCT kb.id) as total_bookings,
         COUNT(DISTINCT CASE WHEN pt_kitchen.id IS NOT NULL OR pt_bundle.id IS NOT NULL THEN kb.id END) as bookings_with_transactions
@@ -10163,23 +10513,23 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       console.log(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
       throw new Error("Incomplete payment_transactions coverage");
     }
-    const whereConditions = [sql5`
+    const whereConditions = [sql6`
       (
         pt.manager_id = ${managerIdParam} 
         OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
       )
     `];
-    whereConditions.push(sql5`(pt.status = 'succeeded' OR pt.status = 'processing')`);
-    whereConditions.push(sql5`pt.booking_type IN ('kitchen', 'bundle')`);
+    whereConditions.push(sql6`(pt.status = 'succeeded' OR pt.status = 'processing')`);
+    whereConditions.push(sql6`pt.booking_type IN ('kitchen', 'bundle')`);
     if (locationId) {
-      whereConditions.push(sql5`l.id = ${locationId}`);
+      whereConditions.push(sql6`l.id = ${locationId}`);
     }
     if (startDate || endDate) {
       const start = startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : null;
       const end = endDate ? typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0] : null;
       console.log("[Revenue Service V2] Applying date filter:", { startDate: start, endDate: end, managerId });
       if (start && end) {
-        whereConditions.push(sql5`
+        whereConditions.push(sql6`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
@@ -10189,7 +10539,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (start) {
-        whereConditions.push(sql5`
+        whereConditions.push(sql6`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date)
@@ -10199,7 +10549,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (end) {
-        whereConditions.push(sql5`
+        whereConditions.push(sql6`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) <= ${end}::date)
@@ -10210,7 +10560,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         `);
       }
     }
-    whereConditions.push(sql5`
+    whereConditions.push(sql6`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -10224,8 +10574,8 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         )
       )
     `);
-    const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
-    const result = await db2.execute(sql5`
+    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
+    const result = await db2.execute(sql6`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
         -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
@@ -10330,7 +10680,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
 }
 async function getRevenueByLocationFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql5`
+    const tableCheck = await db2.execute(sql6`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -10340,10 +10690,10 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
     if (!tableCheck.rows[0]?.table_exists) {
       throw new Error("payment_transactions table does not exist");
     }
-    const whereConditions = [sql5`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql5`pt.booking_type IN ('kitchen', 'bundle')`);
-    whereConditions.push(sql5`(pt.status = 'succeeded' OR pt.status = 'processing')`);
-    whereConditions.push(sql5`
+    const whereConditions = [sql6`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql6`pt.booking_type IN ('kitchen', 'bundle')`);
+    whereConditions.push(sql6`(pt.status = 'succeeded' OR pt.status = 'processing')`);
+    whereConditions.push(sql6`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -10354,8 +10704,8 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
         )
       )
     `);
-    const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
-    const result = await db2.execute(sql5`
+    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
+    const result = await db2.execute(sql6`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -10421,7 +10771,7 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
 }
 async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql5`
+    const tableCheck = await db2.execute(sql6`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -10433,9 +10783,9 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
     }
     const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
     const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-    const whereConditions = [sql5`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql5`pt.booking_type IN ('kitchen', 'bundle')`);
-    whereConditions.push(sql5`
+    const whereConditions = [sql6`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql6`pt.booking_type IN ('kitchen', 'bundle')`);
+    whereConditions.push(sql6`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -10446,14 +10796,14 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
         )
       )
     `);
-    whereConditions.push(sql5`
+    whereConditions.push(sql6`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
         OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= ${start}::date AND DATE(pt.created_at) <= ${end}::date)
       )
     `);
-    const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
-    const result = await db2.execute(sql5`
+    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
+    const result = await db2.execute(sql6`
       SELECT 
         DATE(
           CASE 
@@ -10523,7 +10873,7 @@ __export(revenue_service_exports, {
   getRevenueMetrics: () => getRevenueMetrics,
   getTransactionHistory: () => getTransactionHistory
 });
-import { sql as sql6 } from "drizzle-orm";
+import { sql as sql7 } from "drizzle-orm";
 function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
   if (serviceFeeRate < 0 || serviceFeeRate > 1) {
     console.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
@@ -10534,14 +10884,14 @@ function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
 }
 async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId) {
   try {
-    const whereConditions = [sql6`l.manager_id = ${managerId}`, sql6`kb.status != 'cancelled'`];
+    const whereConditions = [sql7`l.manager_id = ${managerId}`, sql7`kb.status != 'cancelled'`];
     if (locationId) {
-      whereConditions.push(sql6`l.id = ${locationId}`);
+      whereConditions.push(sql7`l.id = ${locationId}`);
     }
-    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
+    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const debugQuery = await db2.execute(sql6`
+    const debugQuery = await db2.execute(sql7`
       SELECT 
         COUNT(*) as total_bookings,
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
@@ -10564,7 +10914,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       startDate,
       endDate
     });
-    const result = await db2.execute(sql6`
+    const result = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -10638,15 +10988,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       ${whereClause}
     `);
     const pendingWhereConditions = [
-      sql6`l.manager_id = ${managerId}`,
-      sql6`kb.status != 'cancelled'`,
-      sql6`kb.payment_status = 'processing'`
+      sql7`l.manager_id = ${managerId}`,
+      sql7`kb.status != 'cancelled'`,
+      sql7`kb.payment_status = 'processing'`
     ];
     if (locationId) {
-      pendingWhereConditions.push(sql6`l.id = ${locationId}`);
+      pendingWhereConditions.push(sql7`l.id = ${locationId}`);
     }
-    const pendingWhereClause = sql6`WHERE ${sql6.join(pendingWhereConditions, sql6` AND `)}`;
-    const pendingResult = await db2.execute(sql6`
+    const pendingWhereClause = sql7`WHERE ${sql7.join(pendingWhereConditions, sql7` AND `)}`;
+    const pendingResult = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -10671,15 +11021,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0
     });
     const completedWhereConditions = [
-      sql6`l.manager_id = ${managerId}`,
-      sql6`kb.status != 'cancelled'`,
-      sql6`kb.payment_status = 'paid'`
+      sql7`l.manager_id = ${managerId}`,
+      sql7`kb.status != 'cancelled'`,
+      sql7`kb.payment_status = 'paid'`
     ];
     if (locationId) {
-      completedWhereConditions.push(sql6`l.id = ${locationId}`);
+      completedWhereConditions.push(sql7`l.id = ${locationId}`);
     }
-    const completedWhereClause = sql6`WHERE ${sql6.join(completedWhereConditions, sql6` AND `)}`;
-    const completedResult = await db2.execute(sql6`
+    const completedWhereClause = sql7`WHERE ${sql7.join(completedWhereConditions, sql7` AND `)}`;
+    const completedResult = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -10717,7 +11067,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     }
     if (result.rows.length === 0) {
       console.log("[Revenue Service] No bookings in date range, checking for payments outside date range...");
-      const pendingFeeResult = await db2.execute(sql6`
+      const pendingFeeResult = await db2.execute(sql7`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
           COALESCE(SUM(
@@ -10737,7 +11087,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
       `);
-      const completedFeeResult = await db2.execute(sql6`
+      const completedFeeResult = await db2.execute(sql7`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
           COALESCE(SUM(
@@ -10768,14 +11118,14 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       const managerRevenue2 = totalRevenueWithAllPayments2 - totalServiceFee2;
       const depositedManagerRevenue2 = allCompletedPayments - completedServiceFee;
       const paidCount = parseInt(completedRow.completed_count_all) || 0;
-      const estimatedStripeFee2 = Math.round(allCompletedPayments * 0.029 + paidCount * 30);
+      const estimatedStripeFee = Math.round(allCompletedPayments * 0.029 + paidCount * 30);
       const taxAmount2 = pendingTaxAmount + completedTaxAmount;
-      const netRevenue2 = totalRevenueWithAllPayments2 - taxAmount2 - estimatedStripeFee2;
+      const netRevenue2 = totalRevenueWithAllPayments2 - taxAmount2 - estimatedStripeFee;
       return {
         totalRevenue: totalRevenueWithAllPayments2 || 0,
         platformFee: totalServiceFee2 || 0,
         taxAmount: taxAmount2 || 0,
-        stripeFee: estimatedStripeFee2 || 0,
+        stripeFee: estimatedStripeFee || 0,
         netRevenue: netRevenue2 || 0,
         managerRevenue: managerRevenue2 || 0,
         depositedManagerRevenue: depositedManagerRevenue2 || 0,
@@ -10801,7 +11151,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const totalRevenue = typeof row.total_revenue === "string" ? parseInt(row.total_revenue) : row.total_revenue ? parseInt(String(row.total_revenue)) : 0;
     const platformFee = typeof row.platform_fee === "string" ? parseInt(row.platform_fee) : row.platform_fee ? parseInt(String(row.platform_fee)) : 0;
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-    const pendingFeeResult2 = await db2.execute(sql6`
+    const pendingFeeResult2 = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
         COALESCE(SUM(
@@ -10821,7 +11171,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
-    const completedFeeResult2 = await db2.execute(sql6`
+    const completedFeeResult2 = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
         COALESCE(SUM(
@@ -10851,14 +11201,50 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const managerRevenue = totalRevenueWithAllPayments - totalServiceFee;
     const depositedManagerRevenue = allCompletedPayments - completedServiceFee2;
     const paidBookingCountVal = isNaN(parseInt(completedRow.completed_count_all)) ? 0 : parseInt(completedRow.completed_count_all) || 0;
-    const estimatedStripeFee = Math.round(allCompletedPayments * 0.029 + paidBookingCountVal * 30);
+    let actualStripeFee = 0;
+    let stripeFeeSource = "estimated";
+    try {
+      const stripeFeeConditions = [
+        sql7`pt.manager_id = ${managerId}`,
+        sql7`pt.status = 'succeeded'`,
+        sql7`pt.stripe_processing_fee IS NOT NULL`,
+        sql7`pt.stripe_processing_fee > 0`
+      ];
+      if (locationId) {
+        stripeFeeConditions.push(sql7`EXISTS (
+          SELECT 1 FROM kitchen_bookings kb 
+          JOIN kitchens k ON kb.kitchen_id = k.id 
+          WHERE kb.id = pt.booking_id 
+          AND pt.booking_type = 'kitchen'
+          AND k.location_id = ${locationId}
+        )`);
+      }
+      const stripeFeeResult = await db2.execute(sql7`
+        SELECT COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
+        FROM payment_transactions pt
+        WHERE ${sql7.join(stripeFeeConditions, sql7` AND `)}
+      `);
+      const stripeFeeRow = stripeFeeResult.rows[0] || {};
+      const storedStripeFee = typeof stripeFeeRow.total_stripe_fee === "string" ? parseInt(stripeFeeRow.total_stripe_fee) || 0 : stripeFeeRow.total_stripe_fee ? parseInt(String(stripeFeeRow.total_stripe_fee)) : 0;
+      if (storedStripeFee > 0) {
+        actualStripeFee = storedStripeFee;
+        stripeFeeSource = "stripe";
+        console.log(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
+      } else {
+        actualStripeFee = Math.round(allCompletedPayments * 0.029 + paidBookingCountVal * 30);
+        console.log(`[Revenue Service] No stored Stripe fees found, using estimate: ${actualStripeFee} cents`);
+      }
+    } catch (error) {
+      console.warn("[Revenue Service] Error fetching Stripe fees from payment_transactions, using estimate:", error);
+      actualStripeFee = Math.round(allCompletedPayments * 0.029 + paidBookingCountVal * 30);
+    }
     const taxAmount = pendingTaxAmount2 + completedTaxAmount2;
-    const netRevenue = totalRevenueWithAllPayments - taxAmount - estimatedStripeFee;
+    const netRevenue = totalRevenueWithAllPayments - taxAmount - actualStripeFee;
     return {
       totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : totalRevenueWithAllPayments || 0,
       platformFee: isNaN(totalServiceFee) ? 0 : totalServiceFee || 0,
       taxAmount: isNaN(taxAmount) ? 0 : taxAmount || 0,
-      stripeFee: isNaN(estimatedStripeFee) ? 0 : estimatedStripeFee || 0,
+      stripeFee: isNaN(actualStripeFee) ? 0 : actualStripeFee || 0,
       netRevenue: isNaN(netRevenue) ? 0 : netRevenue || 0,
       managerRevenue: isNaN(managerRevenue) ? 0 : managerRevenue || 0,
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : depositedManagerRevenue || 0,
@@ -10883,20 +11269,20 @@ async function getRevenueByLocation(managerId, db2, startDate, endDate) {
       console.error("[Revenue Service] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
-    const managerIdParam = sql6`${managerId}`;
-    const whereConditions = [sql6`l.manager_id = ${managerIdParam}`, sql6`kb.status != 'cancelled'`];
+    const managerIdParam = sql7`${managerId}`;
+    const whereConditions = [sql7`l.manager_id = ${managerIdParam}`, sql7`kb.status != 'cancelled'`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql6`DATE(kb.booking_date) >= ${start}::date`);
+      whereConditions.push(sql7`DATE(kb.booking_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql6`DATE(kb.booking_date) <= ${end}::date`);
+      whereConditions.push(sql7`DATE(kb.booking_date) <= ${end}::date`);
     }
-    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
+    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql6`
+    const result = await db2.execute(sql7`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -10947,15 +11333,15 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
     }
     const start = typeof startDate === "string" ? startDate : startDate ? startDate.toISOString().split("T")[0] : null;
     const end = typeof endDate === "string" ? endDate : endDate ? endDate.toISOString().split("T")[0] : null;
-    const managerIdParam = sql6`${managerId}`;
+    const managerIdParam = sql7`${managerId}`;
     if (!start || !end) {
       console.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
     }
-    const startParam = start ? sql6`${start}::date` : sql6`CURRENT_DATE - INTERVAL '30 days'`;
-    const endParam = end ? sql6`${end}::date` : sql6`CURRENT_DATE`;
+    const startParam = start ? sql7`${start}::date` : sql7`CURRENT_DATE - INTERVAL '30 days'`;
+    const endParam = end ? sql7`${end}::date` : sql7`CURRENT_DATE`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql6`
+    const result = await db2.execute(sql7`
       SELECT 
         DATE(kb.booking_date)::text as date,
         COALESCE(SUM(
@@ -11006,22 +11392,22 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
 }
 async function getTransactionHistory(managerId, db2, startDate, endDate, locationId, limit = 100, offset = 0) {
   try {
-    const whereConditions = [sql6`l.manager_id = ${managerId}`, sql6`kb.status != 'cancelled'`];
+    const whereConditions = [sql7`l.manager_id = ${managerId}`, sql7`kb.status != 'cancelled'`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql6`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
+      whereConditions.push(sql7`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql6`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
+      whereConditions.push(sql7`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
     if (locationId) {
-      whereConditions.push(sql6`l.id = ${locationId}`);
+      whereConditions.push(sql7`l.id = ${locationId}`);
     }
-    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
+    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql6`
+    const result = await db2.execute(sql7`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -11148,20 +11534,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
     }
     const kitchenMetrics = await getRevenueMetrics(managerId, db2, startDate, endDate, locationId);
     console.log("[Revenue Service] Kitchen metrics:", kitchenMetrics);
-    const whereConditions = [sql6`l.manager_id = ${managerId}`];
+    const whereConditions = [sql7`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql6`DATE(sb.start_date) >= ${start}::date`);
+      whereConditions.push(sql7`DATE(sb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql6`DATE(sb.start_date) <= ${end}::date`);
+      whereConditions.push(sql7`DATE(sb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      whereConditions.push(sql6`l.id = ${locationId}`);
+      whereConditions.push(sql7`l.id = ${locationId}`);
     }
-    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
-    const storageResult = await db2.execute(sql6`
+    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
+    const storageResult = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(COALESCE(sb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(sb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -11176,20 +11562,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
       ${whereClause}
         AND sb.status != 'cancelled'
     `);
-    const equipmentWhereConditions = [sql6`l.manager_id = ${managerId}`];
+    const equipmentWhereConditions = [sql7`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql6`DATE(eb.start_date) >= ${start}::date`);
+      equipmentWhereConditions.push(sql7`DATE(eb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql6`DATE(eb.start_date) <= ${end}::date`);
+      equipmentWhereConditions.push(sql7`DATE(eb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      equipmentWhereConditions.push(sql6`l.id = ${locationId}`);
+      equipmentWhereConditions.push(sql7`l.id = ${locationId}`);
     }
-    const equipmentWhereClause = sql6`WHERE ${sql6.join(equipmentWhereConditions, sql6` AND `)}`;
-    const equipmentResult = await db2.execute(sql6`
+    const equipmentWhereClause = sql7`WHERE ${sql7.join(equipmentWhereConditions, sql7` AND `)}`;
+    const equipmentResult = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(COALESCE(eb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(eb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -11596,6 +11982,356 @@ var init_manager_service = __esm({
   }
 });
 
+// server/services/stripe-service.ts
+var stripe_service_exports = {};
+__export(stripe_service_exports, {
+  cancelPaymentIntent: () => cancelPaymentIntent,
+  capturePaymentIntent: () => capturePaymentIntent,
+  confirmPaymentIntent: () => confirmPaymentIntent,
+  createPaymentIntent: () => createPaymentIntent,
+  createRefund: () => createRefund,
+  getPaymentIntent: () => getPaymentIntent,
+  getStripePaymentAmounts: () => getStripePaymentAmounts,
+  verifyPaymentIntentForBooking: () => verifyPaymentIntentForBooking
+});
+import Stripe2 from "stripe";
+async function createPaymentIntent(params) {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  const {
+    amount,
+    currency = "cad",
+    chefId,
+    kitchenId,
+    metadata = {},
+    statementDescriptor = "LOCALCOOKS",
+    managerConnectAccountId,
+    applicationFeeAmount,
+    enableACSS = true,
+    // Default to true for ACSS debit support
+    enableCards = true,
+    // Default to true for standard card payments
+    useAuthorizationHold = true,
+    // DEPRECATED: No longer used - always uses automatic capture
+    saveCardForFuture = true,
+    // Default to true to save cards for future use
+    customerId
+  } = params;
+  if (amount <= 0) {
+    throw new Error("Payment amount must be greater than 0");
+  }
+  const hasApplicationFee = applicationFeeAmount !== void 0 && applicationFeeAmount !== null;
+  if (hasApplicationFee && !managerConnectAccountId) {
+    throw new Error("managerConnectAccountId is required when applicationFeeAmount is provided");
+  }
+  if (managerConnectAccountId && !hasApplicationFee) {
+  }
+  if (hasApplicationFee && applicationFeeAmount < 0) {
+    throw new Error("Application fee must be 0 or a positive amount");
+  }
+  if (hasApplicationFee && applicationFeeAmount >= amount) {
+    throw new Error("Application fee must be less than total amount");
+  }
+  if (!enableACSS && !enableCards) {
+    throw new Error("At least one payment method must be enabled");
+  }
+  const cleanDescriptor = statementDescriptor.replace(/[<>'"]/g, "").substring(0, 15).toUpperCase();
+  try {
+    const paymentMethodTypes = [];
+    if (enableCards) {
+      paymentMethodTypes.push("card");
+    }
+    if (enableACSS) {
+      paymentMethodTypes.push("acss_debit");
+    }
+    const paymentIntentParams = {
+      amount,
+      currency,
+      payment_method_types: paymentMethodTypes,
+      // Don't auto-confirm - we'll confirm after collecting payment method
+      confirm: false,
+      // Use automatic capture: payments are immediately processed when confirmed
+      capture_method: "automatic",
+      metadata: {
+        booking_type: "kitchen",
+        kitchen_id: kitchenId.toString(),
+        chef_id: chefId.toString(),
+        expected_amount: amount.toString(),
+        // Store expected amount for verification
+        ...metadata
+      }
+    };
+    if (enableCards) {
+      paymentIntentParams.statement_descriptor_suffix = cleanDescriptor.substring(0, 22);
+    } else if (enableACSS) {
+      paymentIntentParams.statement_descriptor = cleanDescriptor;
+    }
+    paymentIntentParams.payment_method_options = {};
+    if (enableACSS) {
+      paymentIntentParams.payment_method_options.acss_debit = {
+        mandate_options: {
+          payment_schedule: "combined",
+          // Creates a mandate for future debits
+          transaction_type: "personal",
+          // Default to personal, can be made configurable
+          interval_description: "Payment for kitchen booking and future bookings as authorized"
+          // Required for 'combined' or 'interval' payment schedules
+        }
+      };
+    }
+    if (saveCardForFuture && enableCards) {
+      paymentIntentParams.setup_future_usage = "off_session";
+    }
+    if (customerId) {
+      paymentIntentParams.customer = customerId;
+    }
+    if (managerConnectAccountId) {
+      paymentIntentParams.transfer_data = {
+        destination: managerConnectAccountId
+      };
+      paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
+      if (hasApplicationFee) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+      }
+    }
+    const paymentIntent = await stripe2.paymentIntents.create(paymentIntentParams);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret,
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error creating PaymentIntent:", error);
+    throw new Error(`Failed to create payment intent: ${error.message}`);
+  }
+}
+async function confirmPaymentIntent(paymentIntentId, paymentMethodId) {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe2.paymentIntents.confirm(paymentIntentId, {
+      payment_method: paymentMethodId
+    });
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error confirming PaymentIntent:", error);
+    throw new Error(`Failed to confirm payment intent: ${error.message}`);
+  }
+}
+async function getPaymentIntent(paymentIntentId) {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    if (error.code === "resource_missing") {
+      return null;
+    }
+    console.error("Error retrieving PaymentIntent:", error);
+    throw new Error(`Failed to retrieve payment intent: ${error.message}`);
+  }
+}
+async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId) {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"]
+    });
+    if (!paymentIntent.latest_charge) {
+      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
+      return null;
+    }
+    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
+    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe2.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+    let balanceTransaction = null;
+    if (charge.balance_transaction) {
+      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
+      balanceTransaction = await stripe2.balanceTransactions.retrieve(balanceTransactionId);
+    }
+    const stripeAmount = paymentIntent.amount;
+    let stripeNetAmount = stripeAmount;
+    let stripeProcessingFee = 0;
+    let stripePlatformFee = 0;
+    if (balanceTransaction) {
+      stripeNetAmount = balanceTransaction.net;
+      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+        stripePlatformFee = paymentIntent.application_fee_amount;
+        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+      } else {
+        stripeProcessingFee = balanceTransaction.fee;
+        stripeNetAmount = stripeAmount - stripeProcessingFee;
+      }
+    } else {
+      stripeProcessingFee = Math.round(stripeAmount * 0.029 + 30);
+      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+        stripePlatformFee = paymentIntent.application_fee_amount;
+        stripeNetAmount = stripeAmount - stripePlatformFee - stripeProcessingFee;
+      } else {
+        stripeNetAmount = stripeAmount - stripeProcessingFee;
+      }
+    }
+    return {
+      stripeAmount,
+      stripeNetAmount,
+      stripeProcessingFee,
+      stripePlatformFee,
+      chargeId
+    };
+  } catch (error) {
+    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
+    return null;
+  }
+}
+async function capturePaymentIntent(paymentIntentId, amountToCapture) {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const captureParams = {};
+    if (amountToCapture !== void 0) {
+      captureParams.amount_to_capture = amountToCapture;
+    }
+    const paymentIntent = await stripe2.paymentIntents.capture(paymentIntentId, captureParams);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error capturing PaymentIntent:", error);
+    throw new Error(`Failed to capture payment intent: ${error.message}`);
+  }
+}
+async function cancelPaymentIntent(paymentIntentId) {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe2.paymentIntents.cancel(paymentIntentId);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error canceling PaymentIntent:", error);
+    throw new Error(`Failed to cancel payment intent: ${error.message}`);
+  }
+}
+async function createRefund(paymentIntentId, amount, reason = "requested_by_customer") {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent.latest_charge) {
+      throw new Error("Payment intent has no charge to refund");
+    }
+    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
+    const refundParams = {
+      charge: chargeId,
+      reason
+    };
+    if (amount !== void 0 && amount > 0) {
+      refundParams.amount = amount;
+    }
+    const refund = await stripe2.refunds.create(refundParams);
+    if (!refund.charge || typeof refund.charge !== "string") {
+      throw new Error("Refund created but charge ID is missing");
+    }
+    if (!refund.status || typeof refund.status !== "string") {
+      throw new Error("Refund created but status is missing");
+    }
+    const refundChargeId = refund.charge;
+    const refundStatus = refund.status;
+    return {
+      id: refund.id,
+      amount: refund.amount,
+      status: refundStatus,
+      charge: refundChargeId
+    };
+  } catch (error) {
+    console.error("Error creating refund:", error);
+    throw new Error(`Failed to create refund: ${error.message}`);
+  }
+}
+async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAmount) {
+  try {
+    if (!stripe2) {
+      return { valid: false, status: "error", error: "Stripe is not configured" };
+    }
+    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent) {
+      return { valid: false, status: "not_found", error: "Payment intent not found" };
+    }
+    if (paymentIntent.metadata?.chef_id !== chefId.toString()) {
+      return { valid: false, status: paymentIntent.status, error: "Payment intent does not belong to this chef" };
+    }
+    const storedExpectedAmount = paymentIntent.metadata?.expected_amount ? parseInt(paymentIntent.metadata.expected_amount) : null;
+    const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
+    const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
+    if (amountDifference > 5) {
+      console.error("Payment amount mismatch:", {
+        paymentIntentAmount: paymentIntent.amount,
+        expectedAmount: amountToCompare,
+        storedExpectedAmount,
+        calculatedExpectedAmount: expectedAmount,
+        difference: amountDifference,
+        differenceDollars: (amountDifference / 100).toFixed(2)
+      });
+      return { valid: false, status: paymentIntent.status, error: "Payment amount does not match booking amount" };
+    }
+    const validStatuses = ["succeeded", "processing"];
+    if (!validStatuses.includes(paymentIntent.status)) {
+      return {
+        valid: false,
+        status: paymentIntent.status,
+        error: `Payment is not in a valid state: ${paymentIntent.status}`
+      };
+    }
+    return { valid: true, status: paymentIntent.status };
+  } catch (error) {
+    console.error("Error verifying PaymentIntent:", error);
+    if (error.code === "resource_missing") {
+      return { valid: false, status: "not_found", error: "Payment intent not found" };
+    }
+    return { valid: false, status: "error", error: error.message };
+  }
+}
+var stripeSecretKey2, stripe2;
+var init_stripe_service = __esm({
+  "server/services/stripe-service.ts"() {
+    "use strict";
+    stripeSecretKey2 = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey2) {
+      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
+    }
+    stripe2 = stripeSecretKey2 ? new Stripe2(stripeSecretKey2, {
+      apiVersion: "2025-12-15.clover"
+    }) : null;
+  }
+});
+
 // server/services/invoice-service.ts
 var invoice_service_exports = {};
 __export(invoice_service_exports, {
@@ -11688,32 +12424,32 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
     }
   }
   if (storageBookings2 && storageBookings2.length > 0) {
-    for (const storage2 of storageBookings2) {
+    for (const storage of storageBookings2) {
       try {
         let amount = 0;
         let quantity = 0;
         let rate = 0;
-        if (storage2.total_price || storage2.totalPrice) {
-          amount = parseFloat(String(storage2.total_price || storage2.totalPrice)) / 100;
+        if (storage.total_price || storage.totalPrice) {
+          amount = parseFloat(String(storage.total_price || storage.totalPrice)) / 100;
         }
-        if (storage2.startDate && storage2.endDate) {
-          const s = new Date(storage2.startDate);
-          const e = new Date(storage2.endDate);
+        if (storage.startDate && storage.endDate) {
+          const s = new Date(storage.startDate);
+          const e = new Date(storage.endDate);
           quantity = Math.max(1, Math.ceil((e.getTime() - s.getTime()) / (1e3 * 3600 * 24)));
         }
-        if (storage2.listingBasePrice) {
-          rate = parseFloat(String(storage2.listingBasePrice)) / 100;
+        if (storage.listingBasePrice) {
+          rate = parseFloat(String(storage.listingBasePrice)) / 100;
         } else if (quantity > 0 && amount > 0) {
           rate = amount / quantity;
         }
         if (amount > 0) {
           totalAmount += amount;
           let name = "Storage Booking";
-          if (storage2.storageName) {
-            name = storage2.storageName;
-            if (storage2.storageType) name += ` (${storage2.storageType})`;
-          } else if (storage2.storageType) {
-            name = `Storage - ${storage2.storageType}`;
+          if (storage.storageName) {
+            name = storage.storageName;
+            if (storage.storageType) name += ` (${storage.storageType})`;
+          } else if (storage.storageType) {
+            name = `Storage - ${storage.storageType}`;
           }
           items.push({
             description: `${name} - ${quantity} day${quantity !== 1 ? "s" : ""}`,
@@ -11767,6 +12503,23 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
   const platformFeeForInvoice = invoiceViewer === "manager" ? platformFee : 0;
   const totalForInvoice = invoiceViewer === "manager" ? (subtotalWithTaxCents - platformFeeCents) / 100 : subtotalWithTaxCents / 100;
   const grandTotal = totalForInvoice;
+  let stripeDataForManager = null;
+  if (invoiceViewer === "manager" && paymentIntentId) {
+    try {
+      const stripeData = await getStripePaymentAmounts(paymentIntentId);
+      if (stripeData) {
+        stripeDataForManager = {
+          stripeProcessingFee: stripeData.stripeProcessingFee / 100,
+          stripeNetPayout: stripeData.stripeNetAmount / 100,
+          actualPlatformFee: stripeData.stripePlatformFee / 100,
+          dataSource: "stripe"
+        };
+        console.log(`[Invoice] Using Stripe BalanceTransaction data: processingFee=${stripeDataForManager.stripeProcessingFee}, netPayout=${stripeDataForManager.stripeNetPayout}, platformFee=${stripeDataForManager.actualPlatformFee}`);
+      }
+    } catch (error) {
+      console.warn("[Invoice] Could not fetch Stripe payment amounts, will use calculated values:", error);
+    }
+  }
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
@@ -11874,24 +12627,79 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
         const normalized = Math.abs(amount);
         return `${negative ? "-" : ""}$${normalized.toFixed(2)}`;
       };
-      const addTotalRow = (label, amount, negative = false) => {
+      const addTotalRow = (label, amount, negative = false, bold = false) => {
+        if (bold) {
+          doc.font("Helvetica-Bold");
+        } else {
+          doc.font("Helvetica");
+        }
         doc.text(label, 380, currentY, { width: 110, align: "right" });
         doc.text(formatAmount(amount, negative), 500, currentY, { align: "right", width: 50 });
         currentY += 20;
+        doc.font("Helvetica");
       };
-      addTotalRow("Subtotal:", totalAmount);
-      if (taxAmount > 0) {
-        addTotalRow("Tax:", taxAmount);
+      if (invoiceViewer === "manager") {
+        const grossRevenue = totalAmount + taxAmount;
+        let stripeProcessingFee;
+        let stripeNetPayout;
+        let actualPlatformFee;
+        let dataSource;
+        if (stripeDataForManager) {
+          stripeProcessingFee = stripeDataForManager.stripeProcessingFee;
+          stripeNetPayout = stripeDataForManager.stripeNetPayout;
+          actualPlatformFee = stripeDataForManager.actualPlatformFee;
+          dataSource = stripeDataForManager.dataSource;
+        } else {
+          actualPlatformFee = platformFee;
+          stripeProcessingFee = grossRevenue * 0.029 + 0.3;
+          stripeNetPayout = grossRevenue - actualPlatformFee - stripeProcessingFee;
+          dataSource = "calculated";
+        }
+        doc.fontSize(11).font("Helvetica-Bold").fillColor("#1f2937");
+        doc.text("EARNINGS BREAKDOWN", 60, currentY);
+        currentY += 25;
+        doc.fontSize(10).font("Helvetica").fillColor("#000000");
+        addTotalRow("Subtotal (Services):", totalAmount);
+        if (taxAmount > 0) {
+          addTotalRow("Tax Collected:", taxAmount);
+        }
+        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke("#e5e7eb");
+        currentY += 5;
+        addTotalRow("Gross Revenue:", grossRevenue, false, true);
+        currentY += 5;
+        doc.fontSize(10).fillColor("#6b7280");
+        doc.text("Deductions:", 60, currentY);
+        currentY += 18;
+        doc.fillColor("#000000");
+        if (actualPlatformFee > 0) {
+          addTotalRow("Platform Fee:", actualPlatformFee, true);
+        }
+        const stripeFeeLabel = dataSource === "stripe" ? "Stripe Processing Fee:" : "Est. Stripe Fee (~2.9% + $0.30):";
+        addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
+        doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
+        currentY += 10;
+        doc.fontSize(12).font("Helvetica-Bold").fillColor("#059669");
+        doc.text("Net Payout:", 380, currentY, { align: "right", width: 110 });
+        doc.text(`$${stripeNetPayout.toFixed(2)}`, 500, currentY, { align: "right", width: 50 });
+        doc.font("Helvetica").fontSize(10).fillColor("#000000");
+        if (dataSource === "stripe") {
+          currentY += 20;
+          doc.fontSize(8).fillColor("#6b7280");
+          doc.text("* Fees retrieved from Stripe payment records", 60, currentY);
+          doc.fillColor("#000000").fontSize(10);
+        }
+      } else {
+        addTotalRow("Subtotal:", totalAmount);
+        if (taxAmount > 0) {
+          addTotalRow("Tax:", taxAmount);
+        }
+        doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
+        currentY += 10;
+        doc.fontSize(12).font("Helvetica-Bold");
+        doc.text("Total:", 380, currentY, { align: "right", width: 110 });
+        doc.text(`$${grandTotal.toFixed(2)}`, 500, currentY, { align: "right", width: 50 });
+        doc.font("Helvetica").fontSize(10);
       }
-      if (platformFeeForInvoice > 0) {
-        addTotalRow("Platform Fee:", platformFeeForInvoice, invoiceViewer === "manager");
-      }
-      doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
-      currentY += 10;
-      doc.fontSize(12).font("Helvetica-Bold");
-      doc.text("Total:", 380, currentY, { align: "right", width: 110 });
-      doc.text(`$${grandTotal.toFixed(2)}`, 500, currentY, { align: "right", width: 50 });
-      doc.font("Helvetica").fontSize(10);
       currentY += 40;
       doc.rect(50, currentY, 500, 60).stroke("#e5e7eb");
       doc.rect(50, currentY, 500, 60).fill("#f9fafb");
@@ -11922,6 +12730,7 @@ var init_invoice_service = __esm({
     "use strict";
     init_db();
     init_schema();
+    init_stripe_service();
   }
 });
 
@@ -11938,7 +12747,7 @@ __export(payment_transactions_service_exports, {
   syncStripeAmountsToBookings: () => syncStripeAmountsToBookings,
   updatePaymentTransaction: () => updatePaymentTransaction
 });
-import { sql as sql7 } from "drizzle-orm";
+import { sql as sql8 } from "drizzle-orm";
 async function createPaymentTransaction(params, db2) {
   const {
     bookingId,
@@ -11957,7 +12766,7 @@ async function createPaymentTransaction(params, db2) {
     metadata = {}
   } = params;
   const netAmount = amount;
-  const result = await db2.execute(sql7`
+  const result = await db2.execute(sql8`
     INSERT INTO payment_transactions (
       booking_id,
       booking_type,
@@ -12011,7 +12820,7 @@ async function createPaymentTransaction(params, db2) {
   return record;
 }
 async function updatePaymentTransaction(transactionId, params, db2) {
-  const currentResult = await db2.execute(sql7`
+  const currentResult = await db2.execute(sql8`
     SELECT status, refund_amount, amount
     FROM payment_transactions
     WHERE id = ${transactionId}
@@ -12025,66 +12834,66 @@ async function updatePaymentTransaction(transactionId, params, db2) {
   const currentAmount = parseFloat(current.amount || "0");
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql7`status = ${params.status}`);
+    updates.push(sql8`status = ${params.status}`);
   }
   if (params.stripeStatus !== void 0) {
-    updates.push(sql7`stripe_status = ${params.stripeStatus}`);
+    updates.push(sql8`stripe_status = ${params.stripeStatus}`);
   }
   if (params.chargeId !== void 0) {
-    updates.push(sql7`charge_id = ${params.chargeId}`);
+    updates.push(sql8`charge_id = ${params.chargeId}`);
   }
   if (params.refundId !== void 0) {
-    updates.push(sql7`refund_id = ${params.refundId}`);
+    updates.push(sql8`refund_id = ${params.refundId}`);
   }
   if (params.refundAmount !== void 0) {
-    updates.push(sql7`refund_amount = ${params.refundAmount.toString()}`);
+    updates.push(sql8`refund_amount = ${params.refundAmount.toString()}`);
     const newRefundAmount = params.refundAmount;
     const netAmount = currentAmount - newRefundAmount;
-    updates.push(sql7`net_amount = ${netAmount.toString()}`);
+    updates.push(sql8`net_amount = ${netAmount.toString()}`);
   }
   if (params.refundReason !== void 0) {
-    updates.push(sql7`refund_reason = ${params.refundReason}`);
+    updates.push(sql8`refund_reason = ${params.refundReason}`);
   }
   if (params.failureReason !== void 0) {
-    updates.push(sql7`failure_reason = ${params.failureReason}`);
+    updates.push(sql8`failure_reason = ${params.failureReason}`);
   }
   if (params.paidAt !== void 0) {
-    updates.push(sql7`paid_at = ${params.paidAt}`);
+    updates.push(sql8`paid_at = ${params.paidAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql7`refunded_at = ${params.refundedAt}`);
+    updates.push(sql8`refunded_at = ${params.refundedAt}`);
   }
   if (params.lastSyncedAt !== void 0) {
-    updates.push(sql7`last_synced_at = ${params.lastSyncedAt}`);
+    updates.push(sql8`last_synced_at = ${params.lastSyncedAt}`);
   }
   if (params.webhookEventId !== void 0) {
-    updates.push(sql7`webhook_event_id = ${params.webhookEventId}`);
+    updates.push(sql8`webhook_event_id = ${params.webhookEventId}`);
   }
   if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
     if (params.stripeAmount !== void 0) {
-      updates.push(sql7`amount = ${params.stripeAmount.toString()}`);
+      updates.push(sql8`amount = ${params.stripeAmount.toString()}`);
     }
     if (params.stripeNetAmount !== void 0) {
-      updates.push(sql7`net_amount = ${params.stripeNetAmount.toString()}`);
-      updates.push(sql7`manager_revenue = ${params.stripeNetAmount.toString()}`);
+      updates.push(sql8`net_amount = ${params.stripeNetAmount.toString()}`);
+      updates.push(sql8`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
     if (params.stripeProcessingFee !== void 0) {
-      updates.push(sql7`stripe_fee = ${params.stripeProcessingFee.toString()}`);
+      updates.push(sql8`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
     }
     if (params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
-      updates.push(sql7`service_fee = ${params.stripePlatformFee.toString()}`);
+      updates.push(sql8`service_fee = ${params.stripePlatformFee.toString()}`);
     } else if (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0) {
       const totalFees = params.stripeAmount - params.stripeNetAmount;
       const processingFee = params.stripeProcessingFee || 0;
       const actualPlatformFee = Math.max(0, totalFees - processingFee);
-      updates.push(sql7`service_fee = ${actualPlatformFee.toString()}`);
+      updates.push(sql8`service_fee = ${actualPlatformFee.toString()}`);
     }
     if (params.stripeAmount !== void 0) {
       const platformFee = params.stripePlatformFee || (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0 ? Math.max(0, params.stripeAmount - params.stripeNetAmount - (params.stripeProcessingFee || 0)) : 0);
       const baseAmount = params.stripeAmount - platformFee;
-      updates.push(sql7`base_amount = ${baseAmount.toString()}`);
+      updates.push(sql8`base_amount = ${baseAmount.toString()}`);
     }
-    const currentMetadataResult = await db2.execute(sql7`
+    const currentMetadataResult = await db2.execute(sql8`
       SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
     `);
     const currentMetadata = currentMetadataResult.rows[0]?.metadata ? typeof currentMetadataResult.rows[0].metadata === "string" ? JSON.parse(currentMetadataResult.rows[0].metadata) : currentMetadataResult.rows[0].metadata : {};
@@ -12097,19 +12906,19 @@ async function updatePaymentTransaction(transactionId, params, db2) {
       ...currentMetadata,
       stripeFees
     };
-    updates.push(sql7`metadata = ${JSON.stringify(updatedMetadata)}`);
+    updates.push(sql8`metadata = ${JSON.stringify(updatedMetadata)}`);
   } else if (params.metadata !== void 0) {
-    updates.push(sql7`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql8`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
-    const result2 = await db2.execute(sql7`
+    const result2 = await db2.execute(sql8`
       SELECT * FROM payment_transactions WHERE id = ${transactionId}
     `);
     return result2.rows[0];
   }
-  const result = await db2.execute(sql7`
+  const result = await db2.execute(sql8`
     UPDATE payment_transactions
-    SET ${sql7.join(updates, sql7`, `)}, updated_at = NOW()
+    SET ${sql8.join(updates, sql8`, `)}, updated_at = NOW()
     WHERE id = ${transactionId}
     RETURNING *
   `);
@@ -12185,7 +12994,7 @@ async function updatePaymentTransaction(transactionId, params, db2) {
 }
 async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) {
   try {
-    const transactionResult = await db2.execute(sql7`
+    const transactionResult = await db2.execute(sql8`
       SELECT 
         pt.id,
         pt.booking_id,
@@ -12205,17 +13014,17 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
     const bookingId = transaction.booking_id;
     const bookingType = transaction.booking_type;
     if (bookingType === "bundle") {
-      const kitchenBooking = await db2.execute(sql7`
+      const kitchenBooking = await db2.execute(sql8`
         SELECT id, total_price, service_fee
         FROM kitchen_bookings
         WHERE id = ${bookingId}
       `);
-      const storageBookings2 = await db2.execute(sql7`
+      const storageBookings2 = await db2.execute(sql8`
         SELECT id, total_price, service_fee
         FROM storage_bookings
         WHERE kitchen_booking_id = ${bookingId}
       `);
-      const equipmentBookings2 = await db2.execute(sql7`
+      const equipmentBookings2 = await db2.execute(sql8`
         SELECT id, total_price, service_fee
         FROM equipment_bookings
         WHERE kitchen_booking_id = ${bookingId}
@@ -12233,7 +13042,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
         const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
         const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
         const kbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * kbProportion) : Math.round((kbStripeAmount - kbStripeNet) * 0.5);
-        await db2.execute(sql7`
+        await db2.execute(sql8`
           UPDATE kitchen_bookings
           SET 
             total_price = ${kbStripeAmount.toString()},
@@ -12249,7 +13058,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
           const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
           const sbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * sbProportion) : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
-          await db2.execute(sql7`
+          await db2.execute(sql8`
             UPDATE storage_bookings
             SET 
               total_price = ${sbStripeAmount.toString()},
@@ -12266,7 +13075,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
           const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
           const ebServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * ebProportion) : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
-          await db2.execute(sql7`
+          await db2.execute(sql8`
             UPDATE equipment_bookings
             SET 
               total_price = ${ebStripeAmount.toString()},
@@ -12279,7 +13088,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
     } else {
       const serviceFee = stripeAmounts.stripePlatformFee > 0 ? stripeAmounts.stripePlatformFee : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
       if (bookingType === "kitchen") {
-        await db2.execute(sql7`
+        await db2.execute(sql8`
           UPDATE kitchen_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -12288,7 +13097,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           WHERE id = ${bookingId}
         `);
       } else if (bookingType === "storage") {
-        await db2.execute(sql7`
+        await db2.execute(sql8`
           UPDATE storage_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -12297,7 +13106,7 @@ async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) 
           WHERE id = ${bookingId}
         `);
       } else if (bookingType === "equipment") {
-        await db2.execute(sql7`
+        await db2.execute(sql8`
           UPDATE equipment_bookings
           SET 
             total_price = ${stripeAmounts.stripeAmount.toString()},
@@ -12343,8 +13152,8 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
   const onlyUnsynced = options?.onlyUnsynced !== false;
   try {
     const params = [managerId];
-    const unsyncedFilter = onlyUnsynced ? sql7` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql7``;
-    const result = await db2.execute(sql7`
+    const unsyncedFilter = onlyUnsynced ? sql8` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql8``;
+    const result = await db2.execute(sql8`
       SELECT 
         pt.id,
         pt.payment_intent_id,
@@ -12382,7 +13191,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
       try {
         let managerConnectAccountId;
         try {
-          const managerResult = await db2.execute(sql7`
+          const managerResult = await db2.execute(sql8`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
@@ -12424,7 +13233,7 @@ async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options
   }
 }
 async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
-  const result = await db2.execute(sql7`
+  const result = await db2.execute(sql8`
     SELECT * FROM payment_transactions
     WHERE payment_intent_id = ${paymentIntentId}
     LIMIT 1
@@ -12432,7 +13241,7 @@ async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
   return result.rows[0];
 }
 async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
-  const result = await db2.execute(sql7`
+  const result = await db2.execute(sql8`
     SELECT * FROM payment_transactions
     WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
     ORDER BY created_at DESC
@@ -12441,7 +13250,7 @@ async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
   return result.rows[0];
 }
 async function addPaymentHistory(transactionId, history, db2) {
-  await db2.execute(sql7`
+  await db2.execute(sql8`
     INSERT INTO payment_history (
       transaction_id,
       previous_status,
@@ -12466,7 +13275,7 @@ async function addPaymentHistory(transactionId, history, db2) {
   `);
 }
 async function getPaymentHistory(transactionId, db2) {
-  const result = await db2.execute(sql7`
+  const result = await db2.execute(sql8`
     SELECT * FROM payment_history
     WHERE transaction_id = ${transactionId}
     ORDER BY created_at ASC
@@ -12474,12 +13283,12 @@ async function getPaymentHistory(transactionId, db2) {
   return result.rows;
 }
 async function getManagerPaymentTransactions(managerId, db2, filters) {
-  const whereConditions = [sql7`manager_id = ${managerId}`];
+  const whereConditions = [sql8`manager_id = ${managerId}`];
   if (filters?.status) {
-    whereConditions.push(sql7`status = ${filters.status}`);
+    whereConditions.push(sql8`status = ${filters.status}`);
   }
   if (filters?.startDate) {
-    whereConditions.push(sql7`
+    whereConditions.push(sql8`
       (
         (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
         OR (status != 'succeeded' AND created_at >= ${filters.startDate})
@@ -12487,21 +13296,21 @@ async function getManagerPaymentTransactions(managerId, db2, filters) {
     `);
   }
   if (filters?.endDate) {
-    whereConditions.push(sql7`
+    whereConditions.push(sql8`
       (
         (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
         OR (status != 'succeeded' AND created_at <= ${filters.endDate})
       )
     `);
   }
-  const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
-  const countResult = await db2.execute(sql7`
+  const whereClause = sql8`WHERE ${sql8.join(whereConditions, sql8` AND `)}`;
+  const countResult = await db2.execute(sql8`
     SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
   `);
   const total = parseInt(countResult.rows[0].total);
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  const result = await db2.execute(sql7`
+  const result = await db2.execute(sql8`
     SELECT * FROM payment_transactions
     ${whereClause}
     ORDER BY 
@@ -12528,7 +13337,7 @@ var payment_transactions_backfill_exports = {};
 __export(payment_transactions_backfill_exports, {
   backfillPaymentTransactionsFromBookings: () => backfillPaymentTransactionsFromBookings
 });
-import { sql as sql8 } from "drizzle-orm";
+import { sql as sql9 } from "drizzle-orm";
 async function backfillPaymentTransactionsFromBookings(managerId, db2, options) {
   const limit = options?.limit || 100;
   const result = {
@@ -12537,7 +13346,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
     errors: []
   };
   try {
-    const kitchenBookingsResult = await db2.execute(sql8`
+    const kitchenBookingsResult = await db2.execute(sql9`
       SELECT 
         kb.id,
         kb.chef_id,
@@ -12594,7 +13403,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         });
       }
     }
-    const storageBookingsResult = await db2.execute(sql8`
+    const storageBookingsResult = await db2.execute(sql9`
       SELECT 
         sb.id,
         sb.chef_id,
@@ -12650,7 +13459,7 @@ async function backfillPaymentTransactionsFromBookings(managerId, db2, options) 
         });
       }
     }
-    const equipmentBookingsResult = await db2.execute(sql8`
+    const equipmentBookingsResult = await db2.execute(sql9`
       SELECT 
         eb.id,
         eb.chef_id,
@@ -12911,7 +13720,7 @@ __export(manager_exports, {
   default: () => manager_default
 });
 import { Router as Router13 } from "express";
-import { eq as eq22, inArray as inArray4, and as and14, desc as desc11, sql as sql9 } from "drizzle-orm";
+import { eq as eq22, inArray as inArray4, and as and14, desc as desc11, sql as sql10 } from "drizzle-orm";
 var router13, manager_default;
 var init_manager = __esm({
   "server/routes/manager.ts"() {
@@ -12926,6 +13735,7 @@ var init_manager = __esm({
     init_timezone_utils();
     init_logger();
     init_api_response();
+    init_notification_service();
     init_schema();
     init_booking_service();
     init_kitchen_service();
@@ -13121,7 +13931,7 @@ var init_manager = __esm({
       console.log("[Stripe Connect] Create request received for manager:", req.neonUser?.id);
       try {
         const managerId = req.neonUser.id;
-        const userResult = await db.execute(sql9`
+        const userResult = await db.execute(sql10`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -13167,7 +13977,7 @@ var init_manager = __esm({
     router13.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
-        const userResult = await db.execute(sql9`
+        const userResult = await db.execute(sql10`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -13191,7 +14001,7 @@ var init_manager = __esm({
     router13.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
-        const userResult = await db.execute(sql9`
+        const userResult = await db.execute(sql10`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${managerId} 
@@ -13375,8 +14185,8 @@ var init_manager = __esm({
           and14(
             eq22(locations.managerId, managerId),
             eq22(kitchenBookings.paymentStatus, "paid"),
-            sql9`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-            sql9`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+            sql10`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+            sql10`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
           )
         ).orderBy(desc11(kitchenBookings.bookingDate));
         res.json({
@@ -13459,8 +14269,8 @@ var init_manager = __esm({
           and14(
             eq22(locations.managerId, managerId),
             eq22(kitchenBookings.paymentStatus, "paid"),
-            sql9`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
-            sql9`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
+            sql10`DATE(${kitchenBookings.bookingDate}) >= ${periodStart.toISOString().split("T")[0]}::date`,
+            sql10`DATE(${kitchenBookings.bookingDate}) <= ${payoutDate.toISOString().split("T")[0]}::date`
           )
         ).orderBy(desc11(kitchenBookings.bookingDate));
         const { getBalanceTransactions: getBalanceTransactions2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
@@ -13989,6 +14799,20 @@ var init_manager = __esm({
                 console.error("Error sending confirmation SMS to chef:", smsError);
               }
               logger.info(`[Manager] Booking ${id} confirmed by manager ${user.id}`);
+              try {
+                await notificationService.notifyBookingConfirmed({
+                  managerId: user.id,
+                  locationId: location.id,
+                  bookingId: id,
+                  chefName: chef.username || "Chef",
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString().split("T")[0] : String(booking.bookingDate).split("T")[0],
+                  startTime: booking.startTime,
+                  endTime: booking.endTime
+                });
+              } catch (notifError) {
+                console.error("Error creating confirmation notification:", notifError);
+              }
             } else if (status === "cancelled") {
               const chefCancellationEmail = generateBookingCancellationEmail({
                 chefEmail: chef.username,
@@ -14016,6 +14840,21 @@ var init_manager = __esm({
                 console.error("Error sending cancellation SMS to chef:", smsError);
               }
               logger.info(`[Manager] Booking ${id} cancelled/declined by manager ${user.id}`);
+              try {
+                await notificationService.notifyBookingCancelled({
+                  managerId: user.id,
+                  locationId: location.id,
+                  bookingId: id,
+                  chefName: chef.username || "Chef",
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.bookingDate instanceof Date ? booking.bookingDate.toISOString().split("T")[0] : String(booking.bookingDate).split("T")[0],
+                  startTime: booking.startTime,
+                  endTime: booking.endTime,
+                  cancelledBy: "manager"
+                });
+              } catch (notifError) {
+                console.error("Error creating cancellation notification:", notifError);
+              }
             }
           }
         } catch (emailError) {
@@ -14601,8 +15440,274 @@ var init_manager = __esm({
   }
 });
 
+// server/routes/notifications.ts
+var notifications_exports = {};
+__export(notifications_exports, {
+  archiveNotifications: () => archiveNotifications,
+  cleanupOldNotifications: () => cleanupOldNotifications,
+  createNotification: () => createNotification2,
+  default: () => notifications_default,
+  getNotifications: () => getNotifications,
+  getUnreadCount: () => getUnreadCount,
+  markAllAsRead: () => markAllAsRead,
+  markAsRead: () => markAsRead
+});
+import { Router as Router14 } from "express";
+import { sql as sql11 } from "drizzle-orm";
+async function createNotification2(params) {
+  const {
+    managerId,
+    locationId,
+    type,
+    priority = "normal",
+    title,
+    message,
+    metadata = {},
+    actionUrl,
+    actionLabel,
+    expiresAt
+  } = params;
+  const result = await db.execute(sql11`
+    INSERT INTO manager_notifications 
+    (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
+    VALUES (
+      ${managerId}, 
+      ${locationId || null}, 
+      ${type}::notification_type, 
+      ${priority}::notification_priority, 
+      ${title}, 
+      ${message}, 
+      ${JSON.stringify(metadata)}::jsonb, 
+      ${actionUrl || null}, 
+      ${actionLabel || null}, 
+      ${expiresAt ? expiresAt.toISOString() : null}
+    )
+    RETURNING *
+  `);
+  return result.rows[0];
+}
+async function getNotifications(managerId, options = {}) {
+  const {
+    page = 1,
+    limit = 20,
+    filter = "all",
+    type,
+    locationId
+  } = options;
+  const offset = (page - 1) * limit;
+  let filterCondition = "";
+  if (filter === "unread") {
+    filterCondition = "AND is_read = false AND is_archived = false";
+  } else if (filter === "read") {
+    filterCondition = "AND is_read = true AND is_archived = false";
+  } else if (filter === "archived") {
+    filterCondition = "AND is_archived = true";
+  } else {
+    filterCondition = "AND is_archived = false";
+  }
+  const typeCondition = type ? `AND type = '${type}'::notification_type` : "";
+  const locationCondition = locationId ? `AND location_id = ${locationId}` : "";
+  const notificationsResult = await db.execute(sql11.raw(`
+    SELECT 
+      id, manager_id, location_id, type, priority, title, message, 
+      metadata, is_read, read_at, is_archived, archived_at, 
+      action_url, action_label, created_at, expires_at
+    FROM manager_notifications
+    WHERE manager_id = ${managerId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+      ${locationCondition}
+    ORDER BY 
+      CASE WHEN priority = 'urgent' THEN 0
+           WHEN priority = 'high' THEN 1
+           WHEN priority = 'normal' THEN 2
+           ELSE 3 END,
+      created_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `));
+  const countResult = await db.execute(sql11.raw(`
+    SELECT COUNT(*) as total
+    FROM manager_notifications
+    WHERE manager_id = ${managerId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+      ${locationCondition}
+  `));
+  const total = parseInt(countResult.rows[0]?.total || "0", 10);
+  return {
+    notifications: notificationsResult.rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasMore: page * limit < total
+    }
+  };
+}
+async function getUnreadCount(managerId, locationId) {
+  const locationCondition = locationId ? `AND location_id = ${locationId}` : "";
+  const result = await db.execute(sql11.raw(`
+    SELECT COUNT(*) as count
+    FROM manager_notifications
+    WHERE manager_id = ${managerId}
+      AND is_read = false
+      AND is_archived = false
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${locationCondition}
+  `));
+  return parseInt(result.rows[0]?.count || "0", 10);
+}
+async function markAsRead(managerId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql11`
+    UPDATE manager_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE manager_id = ${managerId}
+      AND id = ANY(${notificationIds}::int[])
+      AND is_read = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function markAllAsRead(managerId, locationId) {
+  const locationCondition = locationId ? sql11`AND location_id = ${locationId}` : sql11``;
+  const result = await db.execute(sql11`
+    UPDATE manager_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE manager_id = ${managerId}
+      AND is_read = false
+      ${locationCondition}
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function archiveNotifications(managerId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql11`
+    UPDATE manager_notifications
+    SET is_archived = true, archived_at = NOW()
+    WHERE manager_id = ${managerId}
+      AND id = ANY(${notificationIds}::int[])
+      AND is_archived = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function cleanupOldNotifications(daysOld = 90) {
+  const result = await db.execute(sql11`
+    DELETE FROM manager_notifications
+    WHERE is_archived = true
+      AND archived_at < NOW() - INTERVAL '${sql11.raw(String(daysOld))} days'
+  `);
+  return { deleted: result.rowCount || 0 };
+}
+var router14, notifications_default;
+var init_notifications = __esm({
+  "server/routes/notifications.ts"() {
+    "use strict";
+    init_db();
+    init_firebase_auth_middleware();
+    init_logger();
+    init_api_response();
+    router14 = Router14();
+    router14.get("/", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { page, limit, filter, type, locationId } = req.query;
+        const result = await getNotifications(managerId, {
+          page: page ? parseInt(page) : void 0,
+          limit: limit ? parseInt(limit) : void 0,
+          filter,
+          type,
+          locationId: locationId ? parseInt(locationId) : void 0
+        });
+        res.json(result);
+      } catch (error) {
+        logger.error("Error fetching notifications:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.get("/unread-count", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { locationId } = req.query;
+        const count3 = await getUnreadCount(
+          managerId,
+          locationId ? parseInt(locationId) : void 0
+        );
+        res.json({ count: count3 });
+      } catch (error) {
+        logger.error("Error fetching unread count:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.post("/mark-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await markAsRead(managerId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking notifications as read:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.post("/mark-all-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { locationId } = req.body;
+        const result = await markAllAsRead(
+          managerId,
+          locationId ? parseInt(locationId) : void 0
+        );
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking all as read:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await archiveNotifications(managerId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error archiving notifications:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.delete("/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const notificationId = parseInt(req.params.id);
+        const result = await db.execute(sql11`
+      DELETE FROM manager_notifications
+      WHERE id = ${notificationId}
+        AND manager_id = ${managerId}
+    `);
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "Notification not found" });
+        }
+        res.json({ deleted: true });
+      } catch (error) {
+        logger.error("Error deleting notification:", error);
+        return errorResponse(res, error);
+      }
+    });
+    notifications_default = router14;
+  }
+});
+
 // server/routes/middleware.ts
-import { eq as eq23, desc as desc12 } from "drizzle-orm";
+import { eq as eq24, desc as desc13 } from "drizzle-orm";
 async function getAuthenticatedUser(req) {
   if (req.neonUser) {
     return {
@@ -14635,11 +15740,11 @@ async function requirePortalUser(req, res, next) {
     if (!user) {
       return res.status(401).json({ error: "Authentication required" });
     }
-    const accessRecords = await db.select().from(portalUserLocationAccess).where(eq23(portalUserLocationAccess.portalUserId, user.id)).limit(1);
+    const accessRecords = await db.select().from(portalUserLocationAccess).where(eq24(portalUserLocationAccess.portalUserId, user.id)).limit(1);
     if (accessRecords.length > 0) {
       return next();
     }
-    const applications4 = await db.select().from(portalUserApplications).where(eq23(portalUserApplications.userId, user.id)).orderBy(desc12(portalUserApplications.createdAt)).limit(1);
+    const applications4 = await db.select().from(portalUserApplications).where(eq24(portalUserApplications.userId, user.id)).orderBy(desc13(portalUserApplications.createdAt)).limit(1);
     if (applications4.length > 0) {
       const app2 = applications4[0];
       if (app2.status === "approved") {
@@ -14674,9 +15779,9 @@ var kitchens_exports = {};
 __export(kitchens_exports, {
   default: () => kitchens_default
 });
-import { Router as Router14 } from "express";
-import { eq as eq24, inArray as inArray5, desc as desc13, and as and15 } from "drizzle-orm";
-var router14, kitchens_default;
+import { Router as Router15 } from "express";
+import { eq as eq25, inArray as inArray5, desc as desc14, and as and16 } from "drizzle-orm";
+var router15, kitchens_default;
 var init_kitchens = __esm({
   "server/routes/kitchens.ts"() {
     "use strict";
@@ -14690,8 +15795,8 @@ var init_kitchens = __esm({
     init_chef_service();
     init_booking_service();
     init_user_service();
-    router14 = Router14();
-    router14.get("/chef/kitchens", requireChef, async (req, res) => {
+    router15 = Router15();
+    router15.get("/chef/kitchens", requireChef, async (req, res) => {
       try {
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
         const activeKitchens = allKitchens.filter((kitchen) => kitchen.isActive);
@@ -14727,7 +15832,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
       }
     });
-    router14.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
+    router15.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -14749,7 +15854,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
       }
     });
-    router14.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
+    router15.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -14771,7 +15876,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
       }
     });
-    router14.post("/chef/share-profile", requireChef, async (req, res) => {
+    router15.post("/chef/share-profile", requireChef, async (req, res) => {
       try {
         const { locationId } = req.body;
         const chefId = req.user.id;
@@ -14790,10 +15895,10 @@ var init_kitchens = __esm({
         if (!location) {
           return res.status(404).json({ error: "Location not found" });
         }
-        const chefApp = await db.select().from(applications).where(and15(
-          eq24(applications.userId, chefId),
-          eq24(applications.status, "approved")
-        )).orderBy(desc13(applications.createdAt)).limit(1);
+        const chefApp = await db.select().from(applications).where(and16(
+          eq25(applications.userId, chefId),
+          eq25(applications.status, "approved")
+        )).orderBy(desc14(applications.createdAt)).limit(1);
         const profile = await chefService.shareProfileWithLocation(chefId, locationId);
         if (profile && profile.status === "pending") {
           try {
@@ -14821,10 +15926,10 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to share profile" });
       }
     });
-    router14.get("/chef/profiles", requireChef, async (req, res) => {
+    router15.get("/chef/profiles", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq24(chefLocationAccess.chefId, chefId));
+        const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq25(chefLocationAccess.chefId, chefId));
         const locationIds = locationAccessRecords.map((access) => access.locationId);
         if (locationIds.length === 0) {
           return res.json([]);
@@ -14843,7 +15948,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get profiles" });
       }
     });
-    router14.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
+    router15.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { date: date2 } = req.query;
@@ -14865,7 +15970,7 @@ var init_kitchens = __esm({
         });
       }
     });
-    router14.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
+    router15.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { date: date2 } = req.query;
@@ -14889,385 +15994,196 @@ var init_kitchens = __esm({
         });
       }
     });
-    kitchens_default = router14;
-  }
-});
-
-// server/services/stripe-service.ts
-var stripe_service_exports = {};
-__export(stripe_service_exports, {
-  cancelPaymentIntent: () => cancelPaymentIntent,
-  capturePaymentIntent: () => capturePaymentIntent,
-  confirmPaymentIntent: () => confirmPaymentIntent,
-  createPaymentIntent: () => createPaymentIntent,
-  createRefund: () => createRefund,
-  getPaymentIntent: () => getPaymentIntent,
-  getStripePaymentAmounts: () => getStripePaymentAmounts,
-  verifyPaymentIntentForBooking: () => verifyPaymentIntentForBooking
-});
-import Stripe2 from "stripe";
-async function createPaymentIntent(params) {
-  if (!stripe2) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  const {
-    amount,
-    currency = "cad",
-    chefId,
-    kitchenId,
-    metadata = {},
-    statementDescriptor = "LOCALCOOKS",
-    managerConnectAccountId,
-    applicationFeeAmount,
-    enableACSS = true,
-    // Default to true for ACSS debit support
-    enableCards = true,
-    // Default to true for standard card payments
-    useAuthorizationHold = true,
-    // DEPRECATED: No longer used - always uses automatic capture
-    saveCardForFuture = true,
-    // Default to true to save cards for future use
-    customerId
-  } = params;
-  if (amount <= 0) {
-    throw new Error("Payment amount must be greater than 0");
-  }
-  const hasApplicationFee = applicationFeeAmount !== void 0 && applicationFeeAmount !== null;
-  if (hasApplicationFee && !managerConnectAccountId) {
-    throw new Error("managerConnectAccountId is required when applicationFeeAmount is provided");
-  }
-  if (managerConnectAccountId && !hasApplicationFee) {
-  }
-  if (hasApplicationFee && applicationFeeAmount < 0) {
-    throw new Error("Application fee must be 0 or a positive amount");
-  }
-  if (hasApplicationFee && applicationFeeAmount >= amount) {
-    throw new Error("Application fee must be less than total amount");
-  }
-  if (!enableACSS && !enableCards) {
-    throw new Error("At least one payment method must be enabled");
-  }
-  const cleanDescriptor = statementDescriptor.replace(/[<>'"]/g, "").substring(0, 15).toUpperCase();
-  try {
-    const paymentMethodTypes = [];
-    if (enableCards) {
-      paymentMethodTypes.push("card");
-    }
-    if (enableACSS) {
-      paymentMethodTypes.push("acss_debit");
-    }
-    const paymentIntentParams = {
-      amount,
-      currency,
-      payment_method_types: paymentMethodTypes,
-      // Don't auto-confirm - we'll confirm after collecting payment method
-      confirm: false,
-      // Use automatic capture: payments are immediately processed when confirmed
-      capture_method: "automatic",
-      metadata: {
-        booking_type: "kitchen",
-        kitchen_id: kitchenId.toString(),
-        chef_id: chefId.toString(),
-        expected_amount: amount.toString(),
-        // Store expected amount for verification
-        ...metadata
-      }
-    };
-    if (enableCards) {
-      paymentIntentParams.statement_descriptor_suffix = cleanDescriptor.substring(0, 22);
-    } else if (enableACSS) {
-      paymentIntentParams.statement_descriptor = cleanDescriptor;
-    }
-    paymentIntentParams.payment_method_options = {};
-    if (enableACSS) {
-      paymentIntentParams.payment_method_options.acss_debit = {
-        mandate_options: {
-          payment_schedule: "combined",
-          // Creates a mandate for future debits
-          transaction_type: "personal",
-          // Default to personal, can be made configurable
-          interval_description: "Payment for kitchen booking and future bookings as authorized"
-          // Required for 'combined' or 'interval' payment schedules
-        }
-      };
-    }
-    if (saveCardForFuture && enableCards) {
-      paymentIntentParams.setup_future_usage = "off_session";
-    }
-    if (customerId) {
-      paymentIntentParams.customer = customerId;
-    }
-    if (managerConnectAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerConnectAccountId
-      };
-      paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-      if (hasApplicationFee) {
-        paymentIntentParams.application_fee_amount = applicationFeeAmount;
-        paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
-      }
-    }
-    const paymentIntent = await stripe2.paymentIntents.create(paymentIntentParams);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret,
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error creating PaymentIntent:", error);
-    throw new Error(`Failed to create payment intent: ${error.message}`);
-  }
-}
-async function confirmPaymentIntent(paymentIntentId, paymentMethodId) {
-  if (!stripe2) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe2.paymentIntents.confirm(paymentIntentId, {
-      payment_method: paymentMethodId
-    });
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error confirming PaymentIntent:", error);
-    throw new Error(`Failed to confirm payment intent: ${error.message}`);
-  }
-}
-async function getPaymentIntent(paymentIntentId) {
-  if (!stripe2) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    if (error.code === "resource_missing") {
-      return null;
-    }
-    console.error("Error retrieving PaymentIntent:", error);
-    throw new Error(`Failed to retrieve payment intent: ${error.message}`);
-  }
-}
-async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId) {
-  if (!stripe2) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"]
-    });
-    if (!paymentIntent.latest_charge) {
-      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
-      return null;
-    }
-    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
-    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe2.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
-    let balanceTransaction = null;
-    if (charge.balance_transaction) {
-      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
-      balanceTransaction = await stripe2.balanceTransactions.retrieve(balanceTransactionId);
-    }
-    const stripeAmount = paymentIntent.amount;
-    let stripeNetAmount = stripeAmount;
-    let stripeProcessingFee = 0;
-    let stripePlatformFee = 0;
-    if (balanceTransaction) {
-      stripeNetAmount = balanceTransaction.net;
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
-      } else {
-        stripeProcessingFee = balanceTransaction.fee;
-        stripeNetAmount = stripeAmount - stripeProcessingFee;
-      }
-    } else {
-      stripeProcessingFee = Math.round(stripeAmount * 0.029 + 30);
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeNetAmount = stripeAmount - stripePlatformFee - stripeProcessingFee;
-      } else {
-        stripeNetAmount = stripeAmount - stripeProcessingFee;
-      }
-    }
-    return {
-      stripeAmount,
-      stripeNetAmount,
-      stripeProcessingFee,
-      stripePlatformFee,
-      chargeId
-    };
-  } catch (error) {
-    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
-    return null;
-  }
-}
-async function capturePaymentIntent(paymentIntentId, amountToCapture) {
-  if (!stripe2) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const captureParams = {};
-    if (amountToCapture !== void 0) {
-      captureParams.amount_to_capture = amountToCapture;
-    }
-    const paymentIntent = await stripe2.paymentIntents.capture(paymentIntentId, captureParams);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error capturing PaymentIntent:", error);
-    throw new Error(`Failed to capture payment intent: ${error.message}`);
-  }
-}
-async function cancelPaymentIntent(paymentIntentId) {
-  if (!stripe2) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe2.paymentIntents.cancel(paymentIntentId);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error canceling PaymentIntent:", error);
-    throw new Error(`Failed to cancel payment intent: ${error.message}`);
-  }
-}
-async function createRefund(paymentIntentId, amount, reason = "requested_by_customer") {
-  if (!stripe2) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId);
-    if (!paymentIntent.latest_charge) {
-      throw new Error("Payment intent has no charge to refund");
-    }
-    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
-    const refundParams = {
-      charge: chargeId,
-      reason
-    };
-    if (amount !== void 0 && amount > 0) {
-      refundParams.amount = amount;
-    }
-    const refund = await stripe2.refunds.create(refundParams);
-    if (!refund.charge || typeof refund.charge !== "string") {
-      throw new Error("Refund created but charge ID is missing");
-    }
-    if (!refund.status || typeof refund.status !== "string") {
-      throw new Error("Refund created but status is missing");
-    }
-    const refundChargeId = refund.charge;
-    const refundStatus = refund.status;
-    return {
-      id: refund.id,
-      amount: refund.amount,
-      status: refundStatus,
-      charge: refundChargeId
-    };
-  } catch (error) {
-    console.error("Error creating refund:", error);
-    throw new Error(`Failed to create refund: ${error.message}`);
-  }
-}
-async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAmount) {
-  try {
-    if (!stripe2) {
-      return { valid: false, status: "error", error: "Stripe is not configured" };
-    }
-    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId);
-    if (!paymentIntent) {
-      return { valid: false, status: "not_found", error: "Payment intent not found" };
-    }
-    if (paymentIntent.metadata?.chef_id !== chefId.toString()) {
-      return { valid: false, status: paymentIntent.status, error: "Payment intent does not belong to this chef" };
-    }
-    const storedExpectedAmount = paymentIntent.metadata?.expected_amount ? parseInt(paymentIntent.metadata.expected_amount) : null;
-    const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
-    const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
-    if (amountDifference > 5) {
-      console.error("Payment amount mismatch:", {
-        paymentIntentAmount: paymentIntent.amount,
-        expectedAmount: amountToCompare,
-        storedExpectedAmount,
-        calculatedExpectedAmount: expectedAmount,
-        difference: amountDifference,
-        differenceDollars: (amountDifference / 100).toFixed(2)
-      });
-      return { valid: false, status: paymentIntent.status, error: "Payment amount does not match booking amount" };
-    }
-    const validStatuses = ["succeeded", "processing"];
-    if (!validStatuses.includes(paymentIntent.status)) {
-      return {
-        valid: false,
-        status: paymentIntent.status,
-        error: `Payment is not in a valid state: ${paymentIntent.status}`
-      };
-    }
-    return { valid: true, status: paymentIntent.status };
-  } catch (error) {
-    console.error("Error verifying PaymentIntent:", error);
-    if (error.code === "resource_missing") {
-      return { valid: false, status: "not_found", error: "Payment intent not found" };
-    }
-    return { valid: false, status: "error", error: error.message };
-  }
-}
-var stripeSecretKey2, stripe2;
-var init_stripe_service = __esm({
-  "server/services/stripe-service.ts"() {
-    "use strict";
-    stripeSecretKey2 = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey2) {
-      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
-    }
-    stripe2 = stripeSecretKey2 ? new Stripe2(stripeSecretKey2, {
-      apiVersion: "2025-12-15.clover"
-    }) : null;
+    kitchens_default = router15;
   }
 });
 
 // server/services/stripe-checkout-fee-service.ts
 var stripe_checkout_fee_service_exports = {};
 __export(stripe_checkout_fee_service_exports, {
-  calculateCheckoutFees: () => calculateCheckoutFees
+  DEFAULT_FEE_CONFIG: () => DEFAULT_FEE_CONFIG,
+  FEE_CONFIG: () => FEE_CONFIG,
+  calculateCheckoutFees: () => calculateCheckoutFees,
+  calculateCheckoutFeesAsync: () => calculateCheckoutFeesAsync,
+  calculateCheckoutFeesWithRates: () => calculateCheckoutFeesWithRates,
+  clearFeeConfigCache: () => clearFeeConfigCache,
+  getFeeConfig: () => getFeeConfig
 });
-function calculateCheckoutFees(bookingPrice) {
+async function getFeeConfig() {
+  if (feeConfigCache && Date.now() - feeConfigCache.timestamp < CACHE_TTL_MS) {
+    return feeConfigCache.config;
+  }
+  try {
+    const allSettings = await db.select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings);
+    const settingsMap = new Map(allSettings.map((s) => [s.key, s.value]));
+    const parseFloatOrDefault = (value, defaultValue) => {
+      if (value === void 0 || value === "") return defaultValue;
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+    const parseIntOrDefault = (value, defaultValue) => {
+      if (value === void 0 || value === "") return defaultValue;
+      const parsed = parseInt(value, 10);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+    const config = {
+      stripePercentageFee: parseFloatOrDefault(settingsMap.get("stripe_percentage_fee"), DEFAULT_FEE_CONFIG.stripePercentageFee),
+      stripeFlatFeeCents: parseIntOrDefault(settingsMap.get("stripe_flat_fee_cents"), DEFAULT_FEE_CONFIG.stripeFlatFeeCents),
+      platformCommissionRate: parseFloatOrDefault(settingsMap.get("platform_commission_rate"), DEFAULT_FEE_CONFIG.platformCommissionRate),
+      minimumApplicationFeeCents: parseIntOrDefault(settingsMap.get("minimum_application_fee_cents"), DEFAULT_FEE_CONFIG.minimumApplicationFeeCents),
+      useStripePlatformPricing: settingsMap.get("use_stripe_platform_pricing") === "true"
+    };
+    if (config.stripePercentageFee < 0 || config.stripePercentageFee > 1) {
+      console.warn("Invalid stripe_percentage_fee, using default");
+      config.stripePercentageFee = DEFAULT_FEE_CONFIG.stripePercentageFee;
+    }
+    if (config.platformCommissionRate < 0 || config.platformCommissionRate > 1) {
+      console.warn("Invalid platform_commission_rate, using default");
+      config.platformCommissionRate = DEFAULT_FEE_CONFIG.platformCommissionRate;
+    }
+    feeConfigCache = { config, timestamp: Date.now() };
+    return config;
+  } catch (error) {
+    console.error("Error fetching fee config from database, using defaults:", error);
+    return DEFAULT_FEE_CONFIG;
+  }
+}
+function clearFeeConfigCache() {
+  feeConfigCache = null;
+}
+function calculateCheckoutFees(bookingPrice, options) {
+  if (bookingPrice <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  const platformCommissionRate = options?.platformCommissionRate ?? FEE_CONFIG.PLATFORM_COMMISSION_RATE;
+  const chargeFeesToCustomer = options?.chargeFeesToCustomer ?? false;
+  const bookingPriceInCents = Math.round(bookingPrice * 100);
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * FEE_CONFIG.STRIPE_PERCENTAGE_FEE + FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
+  );
+  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, FEE_CONFIG.MINIMUM_APPLICATION_FEE_CENTS);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error(
+      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+    );
+  }
+  const totalChargeInCents = chargeFeesToCustomer ? bookingPriceInCents + totalPlatformFeeInCents : bookingPriceInCents;
+  return {
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents,
+    managerReceivesInCents,
+    // Legacy fields for backward compatibility
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
+  };
+}
+function calculateCheckoutFeesWithRates(bookingPrice, stripePercentage, stripeFlatCents, platformCommissionRate, minimumFeeCents = 50) {
   if (bookingPrice <= 0) {
     throw new Error("Booking price must be greater than 0");
   }
   const bookingPriceInCents = Math.round(bookingPrice * 100);
-  const percentageFeeInCents = 0;
-  const flatFeeInCents = 0;
-  const totalPlatformFeeInCents = 0;
-  const totalChargeInCents = bookingPriceInCents;
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * stripePercentage + stripeFlatCents
+  );
+  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, minimumFeeCents);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error("Total fees exceed booking price");
+  }
   return {
     bookingPriceInCents,
-    percentageFeeInCents,
-    flatFeeInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
     totalPlatformFeeInCents,
-    totalChargeInCents
+    totalChargeInCents: bookingPriceInCents,
+    managerReceivesInCents,
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: stripeFlatCents
   };
 }
+async function calculateCheckoutFeesAsync(bookingPriceInCents) {
+  if (bookingPriceInCents <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  const config = await getFeeConfig();
+  if (config.useStripePlatformPricing) {
+    return {
+      bookingPriceInCents,
+      stripeProcessingFeeInCents: 0,
+      platformCommissionInCents: 0,
+      totalPlatformFeeInCents: 0,
+      totalChargeInCents: bookingPriceInCents,
+      managerReceivesInCents: bookingPriceInCents,
+      percentageFeeInCents: 0,
+      flatFeeInCents: 0,
+      useStripePlatformPricing: true
+    };
+  }
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * config.stripePercentageFee + config.stripeFlatFeeCents
+  );
+  const platformCommissionInCents = Math.round(
+    bookingPriceInCents * config.platformCommissionRate
+  );
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error(
+      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+    );
+  }
+  return {
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents: bookingPriceInCents,
+    managerReceivesInCents,
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: config.stripeFlatFeeCents,
+    useStripePlatformPricing: false
+  };
+}
+var DEFAULT_FEE_CONFIG, feeConfigCache, CACHE_TTL_MS, FEE_CONFIG;
 var init_stripe_checkout_fee_service = __esm({
   "server/services/stripe-checkout-fee-service.ts"() {
     "use strict";
+    init_db();
+    init_schema();
+    DEFAULT_FEE_CONFIG = {
+      stripePercentageFee: 0.029,
+      // 2.9% - Stripe Canada card processing fee
+      stripeFlatFeeCents: 30,
+      // $0.30 CAD - Stripe Canada flat fee per transaction
+      platformCommissionRate: 0,
+      // 0% platform commission for break-even
+      minimumApplicationFeeCents: 0,
+      // No minimum for break-even mode
+      useStripePlatformPricing: false
+    };
+    feeConfigCache = null;
+    CACHE_TTL_MS = 5 * 60 * 1e3;
+    FEE_CONFIG = {
+      // Stripe processing fees (Canada)
+      STRIPE_PERCENTAGE_FEE: DEFAULT_FEE_CONFIG.stripePercentageFee,
+      // 2.9%
+      STRIPE_FLAT_FEE_CENTS: DEFAULT_FEE_CONFIG.stripeFlatFeeCents,
+      // $0.30 CAD
+      // Platform commission (0% for break-even)
+      PLATFORM_COMMISSION_RATE: DEFAULT_FEE_CONFIG.platformCommissionRate,
+      // 0%
+      MINIMUM_APPLICATION_FEE_CENTS: DEFAULT_FEE_CONFIG.minimumApplicationFeeCents
+      // 0
+    };
   }
 });
 
@@ -15295,11 +16211,17 @@ async function createCheckoutSession(params) {
   if (bookingPriceInCents <= 0) {
     throw new Error("Booking price must be greater than 0");
   }
-  if (platformFeeInCents <= 0) {
-    throw new Error("Platform fee must be greater than 0");
+  if (platformFeeInCents < 0) {
+    throw new Error("Platform fee cannot be negative");
   }
-  if (platformFeeInCents >= bookingPriceInCents + platformFeeInCents) {
-    throw new Error("Platform fee must be less than total charge amount");
+  if (platformFeeInCents >= bookingPriceInCents) {
+    throw new Error("Platform fee must be less than booking price");
+  }
+  const estimatedStripeFee = Math.round(bookingPriceInCents * 0.029 + 30);
+  if (platformFeeInCents > 0 && platformFeeInCents < estimatedStripeFee) {
+    console.warn(
+      `[Stripe Checkout] Platform fee (${platformFeeInCents} cents) is less than estimated Stripe fee (${estimatedStripeFee} cents). Platform may lose money on this transaction.`
+    );
   }
   if (!managerStripeAccountId) {
     throw new Error("Manager Stripe account ID is required");
@@ -15309,41 +16231,47 @@ async function createCheckoutSession(params) {
   }
   const totalAmountInCents = bookingPriceInCents + platformFeeInCents;
   try {
+    const lineItems = [
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: "Kitchen Session Booking"
+          },
+          unit_amount: bookingPriceInCents
+        },
+        quantity: 1
+      }
+    ];
+    if (platformFeeInCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: "Platform Service Fee"
+          },
+          unit_amount: platformFeeInCents
+        },
+        quantity: 1
+      });
+    }
+    const paymentIntentData = {
+      transfer_data: {
+        destination: managerStripeAccountId
+      },
+      metadata: {
+        booking_id: bookingId.toString(),
+        ...metadata
+      }
+    };
+    if (platformFeeInCents > 0) {
+      paymentIntentData.application_fee_amount = platformFeeInCents;
+    }
     const session = await stripe3.checkout.sessions.create({
       mode: "payment",
       customer_email: customerEmail,
-      line_items: [
-        {
-          price_data: {
-            currency: currency.toLowerCase(),
-            product_data: {
-              name: "Kitchen Session Booking"
-            },
-            unit_amount: bookingPriceInCents
-          },
-          quantity: 1
-        },
-        {
-          price_data: {
-            currency: currency.toLowerCase(),
-            product_data: {
-              name: "Platform Service Fee"
-            },
-            unit_amount: platformFeeInCents
-          },
-          quantity: 1
-        }
-      ],
-      payment_intent_data: {
-        application_fee_amount: platformFeeInCents,
-        transfer_data: {
-          destination: managerStripeAccountId
-        },
-        metadata: {
-          booking_id: bookingId.toString(),
-          ...metadata
-        }
-      },
+      line_items: lineItems,
+      payment_intent_data: paymentIntentData,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {
@@ -15388,7 +16316,7 @@ __export(stripe_checkout_transactions_service_exports, {
   getTransactionBySessionId: () => getTransactionBySessionId,
   updateTransactionBySessionId: () => updateTransactionBySessionId
 });
-import { sql as sql10 } from "drizzle-orm";
+import { sql as sql12 } from "drizzle-orm";
 async function createTransaction(params, db2) {
   const {
     bookingId,
@@ -15402,7 +16330,7 @@ async function createTransaction(params, db2) {
     managerReceivesCents,
     metadata = {}
   } = params;
-  const result = await db2.execute(sql10`
+  const result = await db2.execute(sql12`
     INSERT INTO transactions (
       booking_id,
       stripe_session_id,
@@ -15438,29 +16366,29 @@ async function createTransaction(params, db2) {
 async function updateTransactionBySessionId(sessionId, params, db2) {
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql10`status = ${params.status}`);
+    updates.push(sql12`status = ${params.status}`);
   }
   if (params.stripePaymentIntentId !== void 0) {
-    updates.push(sql10`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
+    updates.push(sql12`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
   }
   if (params.stripeChargeId !== void 0) {
-    updates.push(sql10`stripe_charge_id = ${params.stripeChargeId}`);
+    updates.push(sql12`stripe_charge_id = ${params.stripeChargeId}`);
   }
   if (params.completedAt !== void 0) {
-    updates.push(sql10`completed_at = ${params.completedAt}`);
+    updates.push(sql12`completed_at = ${params.completedAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql10`refunded_at = ${params.refundedAt}`);
+    updates.push(sql12`refunded_at = ${params.refundedAt}`);
   }
   if (params.metadata !== void 0) {
-    updates.push(sql10`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql12`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
     return getTransactionBySessionId(sessionId, db2);
   }
-  const result = await db2.execute(sql10`
+  const result = await db2.execute(sql12`
     UPDATE transactions
-    SET ${sql10.join(updates, sql10`, `)}
+    SET ${sql12.join(updates, sql12`, `)}
     WHERE stripe_session_id = ${sessionId}
     RETURNING *
   `);
@@ -15470,7 +16398,7 @@ async function updateTransactionBySessionId(sessionId, params, db2) {
   return mapRowToTransaction(result.rows[0]);
 }
 async function getTransactionBySessionId(sessionId, db2) {
-  const result = await db2.execute(sql10`
+  const result = await db2.execute(sql12`
     SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
   `);
   if (result.rows.length === 0) {
@@ -15540,9 +16468,9 @@ var bookings_exports = {};
 __export(bookings_exports, {
   default: () => bookings_default
 });
-import { Router as Router15 } from "express";
-import { eq as eq25, and as and16 } from "drizzle-orm";
-var router15, bookings_default;
+import { Router as Router16 } from "express";
+import { eq as eq26, and as and17 } from "drizzle-orm";
+var router16, bookings_default;
 var init_bookings = __esm({
   "server/routes/bookings.ts"() {
     "use strict";
@@ -15560,8 +16488,9 @@ var init_bookings = __esm({
     init_chef_service();
     init_phone_utils();
     init_sms();
-    router15 = Router15();
-    router15.post("/bookings/checkout", async (req, res) => {
+    init_notification_service();
+    router16 = Router16();
+    router16.post("/bookings/checkout", async (req, res) => {
       try {
         const { bookingId, managerStripeAccountId, bookingPrice, customerEmail } = req.body;
         if (!bookingId || !managerStripeAccountId || !bookingPrice || !customerEmail) {
@@ -15584,12 +16513,12 @@ var init_bookings = __esm({
         if (!pool) {
           return res.status(500).json({ error: "Database connection not available" });
         }
-        const [booking] = await db.select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId }).from(kitchenBookings).where(eq25(kitchenBookings.id, bookingId)).limit(1);
+        const [booking] = await db.select({ id: kitchenBookings.id, kitchenId: kitchenBookings.kitchenId }).from(kitchenBookings).where(eq26(kitchenBookings.id, bookingId)).limit(1);
         if (!booking) {
           return res.status(404).json({ error: "Booking not found" });
         }
-        const { calculateCheckoutFees: calculateCheckoutFees2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
-        const feeCalculation = calculateCheckoutFees2(bookingPriceNum);
+        const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+        const feeCalculation = await calculateCheckoutFeesAsync2(Math.round(bookingPriceNum * 100));
         const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
         const host = req.get("x-forwarded-host") || req.get("host") || "localhost:3000";
         const baseUrl = `${protocol}://${host}`;
@@ -15619,8 +16548,8 @@ var init_bookings = __esm({
             platformFeeFlatCents: feeCalculation.flatFeeInCents,
             totalPlatformFeeCents: feeCalculation.totalPlatformFeeInCents,
             totalCustomerChargedCents: feeCalculation.totalChargeInCents,
-            managerReceivesCents: feeCalculation.bookingPriceInCents,
-            // Manager receives the booking amount
+            managerReceivesCents: feeCalculation.managerReceivesInCents,
+            // Manager receives booking minus platform fee
             metadata: {
               booking_id: bookingId.toString(),
               kitchen_id: (booking.kitchenId || "").toString(),
@@ -15645,7 +16574,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router15.get("/chef/storage-bookings", requireChef, async (req, res) => {
+    router16.get("/chef/storage-bookings", requireChef, async (req, res) => {
       try {
         const storageBookings2 = await bookingService.getStorageBookingsByChef(req.neonUser.id);
         res.json(storageBookings2);
@@ -15654,7 +16583,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch storage bookings" });
       }
     });
-    router15.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
+    router16.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -15673,7 +16602,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
       }
     });
-    router15.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
+    router16.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
       try {
         const { maxDaysToCharge } = req.body;
         const processed = await bookingService.processOverstayerPenalties(maxDaysToCharge || 7);
@@ -15688,7 +16617,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
       }
     });
-    router15.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
+    router16.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const daysAhead = parseInt(req.query.days) || 3;
@@ -15718,7 +16647,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
       }
     });
-    router15.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req, res) => {
+    router16.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -15777,7 +16706,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
       }
     });
-    router15.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req, res) => {
+    router16.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -15898,7 +16827,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
       }
     });
-    router15.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
+    router16.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -15949,7 +16878,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to extend storage booking" });
       }
     });
-    router15.get("/chef/bookings/:id", requireChef, async (req, res) => {
+    router16.get("/chef/bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -15976,7 +16905,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
-    router15.get("/bookings/:id/invoice", requireChef, async (req, res) => {
+    router16.get("/bookings/:id/invoice", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -15996,7 +16925,7 @@ var init_bookings = __esm({
         let location = null;
         if (kitchen && kitchen.locationId) {
           const locationId = kitchen.locationId || kitchen.location_id;
-          const [locationData] = await db.select({ id: locations.id, name: locations.name, address: locations.address }).from(locations).where(eq25(locations.id, locationId)).limit(1);
+          const [locationData] = await db.select({ id: locations.id, name: locations.name, address: locations.address }).from(locations).where(eq26(locations.id, locationId)).limit(1);
           if (locationData) {
             location = locationData;
           }
@@ -16022,7 +16951,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to generate invoice" });
       }
     });
-    router15.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
+    router16.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (!pool) {
@@ -16039,10 +16968,10 @@ var init_bookings = __esm({
           paymentStatus: kitchenBookings.paymentStatus,
           cancellationPolicyHours: locations.cancellationPolicyHours,
           cancellationPolicyMessage: locations.cancellationPolicyMessage
-        }).from(kitchenBookings).innerJoin(kitchens, eq25(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq25(kitchens.locationId, locations.id)).where(
-          and16(
-            eq25(kitchenBookings.id, id),
-            eq25(kitchenBookings.chefId, req.neonUser.id)
+        }).from(kitchenBookings).innerJoin(kitchens, eq26(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).where(
+          and17(
+            eq26(kitchenBookings.id, id),
+            eq26(kitchenBookings.chefId, req.neonUser.id)
           )
         ).limit(1);
         if (rows.length === 0) {
@@ -16060,7 +16989,7 @@ var init_bookings = __esm({
             if (paymentIntent && (paymentIntent.status === "succeeded" || paymentIntent.status === "processing")) {
               const refund = await createRefund2(booking.paymentIntentId, void 0, "requested_by_customer");
               logger.info(`[Cancel Booking] Created refund for booking ${id} (PaymentIntent: ${booking.paymentIntentId}, Refund: ${refund.id})`);
-              await db.update(kitchenBookings).set({ paymentStatus: "refunded" }).where(eq25(kitchenBookings.id, id));
+              await db.update(kitchenBookings).set({ paymentStatus: "refunded" }).where(eq26(kitchenBookings.id, id));
             }
           } catch (error) {
             console.error(`[Cancel Booking] Error creating refund for booking ${id}:`, error);
@@ -16078,7 +17007,7 @@ var init_bookings = __esm({
             } else if (!pool) {
               console.warn(`\u26A0\uFE0F Database pool not available for email notification`);
             } else {
-              const [location] = await db.select({ id: locations.id, name: locations.name, managerId: locations.managerId, notificationEmail: locations.notificationEmail }).from(locations).where(eq25(locations.id, kitchenLocationId));
+              const [location] = await db.select({ id: locations.id, name: locations.name, managerId: locations.managerId, notificationEmail: locations.notificationEmail }).from(locations).where(eq26(locations.id, kitchenLocationId));
               if (!location) {
                 logger.warn(`\u26A0\uFE0F Location ${kitchenLocationId} not found for email notification`);
               } else {
@@ -16089,7 +17018,7 @@ var init_bookings = __esm({
                   const managerId = location.managerId;
                   let manager = null;
                   if (managerId) {
-                    const [managerResult] = await db.select({ id: users.id, username: users.username }).from(users).where(eq25(users.id, managerId));
+                    const [managerResult] = await db.select({ id: users.id, username: users.username }).from(users).where(eq26(users.id, managerId));
                     if (managerResult) {
                       manager = managerResult;
                     }
@@ -16175,7 +17104,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
       }
     });
-    router15.post("/payments/create-intent", requireChef, async (req, res) => {
+    router16.post("/payments/create-intent", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
         const chefId = req.neonUser.id;
@@ -16185,14 +17114,14 @@ var init_bookings = __esm({
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
         let totalPriceCents = kitchenPricing.totalPriceCents;
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0 && pool) {
-          for (const storage2 of selectedStorage) {
+          for (const storage of selectedStorage) {
             try {
-              const storageListing = await inventoryService.getStorageListingById(storage2.storageListingId);
+              const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
               if (storageListing) {
                 const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
                 const minDays = storageListing.minimumBookingDuration || 1;
-                const startDate = new Date(storage2.startDate);
-                const endDate = new Date(storage2.endDate);
+                const startDate = new Date(storage.startDate);
+                const endDate = new Date(storage.endDate);
                 const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24));
                 const effectiveDays = Math.max(days, minDays);
                 let storagePrice = basePriceCents * effectiveDays;
@@ -16232,7 +17161,7 @@ var init_bookings = __esm({
           const rows = await db.select({
             stripeConnectAccountId: users.stripeConnectAccountId,
             taxRatePercent: kitchens.taxRatePercent
-          }).from(kitchens).leftJoin(locations, eq25(kitchens.locationId, locations.id)).leftJoin(users, eq25(locations.managerId, users.id)).where(eq25(kitchens.id, kitchenId)).limit(1);
+          }).from(kitchens).leftJoin(locations, eq26(kitchens.locationId, locations.id)).leftJoin(users, eq26(locations.managerId, users.id)).where(eq26(kitchens.id, kitchenId)).limit(1);
           if (rows.length > 0) {
             if (rows[0].stripeConnectAccountId) {
               managerConnectAccountId = rows[0].stripeConnectAccountId;
@@ -16246,7 +17175,10 @@ var init_bookings = __esm({
         }
         const taxCents = Math.round(totalPriceCents * taxRatePercent / 100);
         const totalWithTaxCents = totalPriceCents + taxCents;
-        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}`);
+        const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+        const feeCalculation = await calculateCheckoutFeesAsync2(totalWithTaxCents);
+        const applicationFeeAmountCents = feeCalculation.useStripePlatformPricing ? void 0 : feeCalculation.totalPlatformFeeInCents;
+        console.log(`[Payment] Creating intent: Subtotal=${totalPriceCents}, Tax=${taxCents} (${taxRatePercent}%), Total=${totalWithTaxCents}, Expected=${expectedAmountCents}, PlatformFee=${applicationFeeAmountCents ?? "Stripe Platform Pricing"}, ManagerReceives=${feeCalculation.managerReceivesInCents}, UseStripePricing=${feeCalculation.useStripePlatformPricing}`);
         const metadata = {
           kitchenId: String(kitchenId),
           chefId: String(chefId),
@@ -16264,9 +17196,9 @@ var init_bookings = __esm({
           chefId,
           kitchenId,
           managerConnectAccountId,
-          // Platform fee is now 0 as we removed the service fee
-          // If we want to charge a commission later, we can add it here (deducted from manager payout)
-          applicationFeeAmount: void 0,
+          // Platform fee covers Stripe processing fees + platform commission
+          // Deducted from manager's payout, not charged to customer
+          applicationFeeAmount: managerConnectAccountId ? applicationFeeAmountCents : void 0,
           enableACSS: false,
           // Disable ACSS - only use card payments with automatic capture
           enableCards: true,
@@ -16302,7 +17234,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create payment intent" });
       }
     });
-    router15.post("/payments/confirm", requireChef, async (req, res) => {
+    router16.post("/payments/confirm", requireChef, async (req, res) => {
       try {
         const { paymentIntentId, paymentMethodId } = req.body;
         const chefId = req.neonUser.id;
@@ -16327,7 +17259,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router15.get("/payments/intent/:id/status", requireChef, async (req, res) => {
+    router16.get("/payments/intent/:id/status", requireChef, async (req, res) => {
       try {
         const { id } = req.params;
         const chefId = req.neonUser.id;
@@ -16348,13 +17280,13 @@ var init_bookings = __esm({
         });
       }
     });
-    router15.post("/payments/capture", requireChef, async (req, res) => {
+    router16.post("/payments/capture", requireChef, async (req, res) => {
       res.status(410).json({
         error: "This endpoint is deprecated. Payments are now automatically captured when confirmed.",
         message: "With automatic capture enabled, payments are processed immediately. No manual capture is needed."
       });
     });
-    router15.post("/payments/cancel", requireChef, async (req, res) => {
+    router16.post("/payments/cancel", requireChef, async (req, res) => {
       try {
         const { paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
@@ -16387,7 +17319,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router15.post("/chef/bookings", requireChef, async (req, res) => {
+    router16.post("/chef/bookings", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
@@ -16506,6 +17438,23 @@ var init_bookings = __esm({
                 await sendEmail2(managerEmail);
               }
             }
+            try {
+              const managerId = location?.managerId || location?.manager_id;
+              if (managerId && kitchen2) {
+                await notificationService.notifyNewBooking({
+                  managerId,
+                  locationId: kitchen2.locationId,
+                  bookingId: booking.id,
+                  chefName: chef.username || "Chef",
+                  kitchenName: kitchen2.name,
+                  bookingDate: bookingDateObj.toISOString().split("T")[0],
+                  startTime,
+                  endTime
+                });
+              }
+            } catch (notifError) {
+              console.error("Error creating booking notification:", notifError);
+            }
           }
         } catch (emailError) {
           console.error("Error sending booking emails:", emailError);
@@ -16516,7 +17465,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
-    router15.get("/chef/bookings", requireChef, async (req, res) => {
+    router16.get("/chef/bookings", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
@@ -16527,7 +17476,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch bookings" });
       }
     });
-    bookings_default = router15;
+    bookings_default = router16;
   }
 });
 
@@ -16536,8 +17485,8 @@ var equipment_exports = {};
 __export(equipment_exports, {
   default: () => equipment_default
 });
-import { Router as Router16 } from "express";
-var router16, equipment_default;
+import { Router as Router17 } from "express";
+var router17, equipment_default;
 var init_equipment = __esm({
   "server/routes/equipment.ts"() {
     "use strict";
@@ -16546,8 +17495,8 @@ var init_equipment = __esm({
     init_inventory_service();
     init_kitchen_service();
     init_location_service();
-    router16 = Router16();
-    router16.get("/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router17 = Router17();
+    router17.get("/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16570,7 +17519,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    router16.get("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router17.get("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -16596,7 +17545,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listing" });
       }
     });
-    router16.post("/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router17.post("/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { kitchenId, ...listingData } = req.body;
@@ -16634,7 +17583,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to create equipment listing" });
       }
     });
-    router16.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router17.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -16662,7 +17611,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to update equipment listing" });
       }
     });
-    router16.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router17.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -16690,7 +17639,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
       }
     });
-    router16.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
+    router17.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -16713,7 +17662,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    equipment_default = router16;
+    equipment_default = router17;
   }
 });
 
@@ -16722,8 +17671,8 @@ var storage_listings_exports = {};
 __export(storage_listings_exports, {
   default: () => storage_listings_default
 });
-import { Router as Router17 } from "express";
-var router17, storage_listings_default;
+import { Router as Router18 } from "express";
+var router18, storage_listings_default;
 var init_storage_listings = __esm({
   "server/routes/storage-listings.ts"() {
     "use strict";
@@ -16732,8 +17681,8 @@ var init_storage_listings = __esm({
     init_inventory_service();
     init_kitchen_service();
     init_location_service();
-    router17 = Router17();
-    router17.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18 = Router18();
+    router18.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16756,7 +17705,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
-    router17.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -16782,7 +17731,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listing" });
       }
     });
-    router17.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { kitchenId, ...listingData } = req.body;
@@ -16815,7 +17764,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to create storage listing" });
       }
     });
-    router17.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -16843,7 +17792,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to update storage listing" });
       }
     });
-    router17.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -16871,7 +17820,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to delete storage listing" });
       }
     });
-    router17.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
+    router18.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -16888,7 +17837,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
-    storage_listings_default = router17;
+    storage_listings_default = router18;
   }
 });
 
@@ -16897,8 +17846,8 @@ var admin_exports = {};
 __export(admin_exports, {
   default: () => admin_default
 });
-import { Router as Router18 } from "express";
-import { eq as eq26, sql as sql11 } from "drizzle-orm";
+import { Router as Router19 } from "express";
+import { eq as eq27, sql as sql13 } from "drizzle-orm";
 async function getAuthenticatedUser2(req) {
   if (req.neonUser) {
     return {
@@ -16909,7 +17858,7 @@ async function getAuthenticatedUser2(req) {
   }
   return null;
 }
-var router18, admin_default;
+var router19, admin_default;
 var init_admin = __esm({
   "server/routes/admin.ts"() {
     "use strict";
@@ -16924,8 +17873,10 @@ var init_admin = __esm({
     init_kitchen_service();
     init_chef_service();
     init_booking_service();
-    router18 = Router18();
-    router18.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    init_schema();
+    init_stripe_checkout_fee_service();
+    router19 = Router19();
+    router19.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
@@ -16933,16 +17884,16 @@ var init_admin = __esm({
         const { startDate, endDate } = req.query;
         const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
         const serviceFeeRate = await getServiceFeeRate2();
-        const conditions = [sql11`kb.status != 'cancelled'`];
+        const conditions = [sql13`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql11`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql13`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql11`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql13`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql11.join(conditions, sql11` AND `);
+        const bookingFilters = sql13.join(conditions, sql13` AND `);
         const managerRole = "manager";
-        const result = await db.execute(sql11`
+        const result = await db.execute(sql13`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -17021,23 +17972,23 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get all managers revenue" });
       }
     });
-    router18.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
         }
         const { startDate, endDate } = req.query;
-        const managerCountResult = await db.select({ count: sql11`count(*)::int` }).from(users).where(eq26(users.role, "manager"));
+        const managerCountResult = await db.select({ count: sql13`count(*)::int` }).from(users).where(eq27(users.role, "manager"));
         const totalManagers = managerCountResult[0]?.count || 0;
-        const conditions = [sql11`kb.status != 'cancelled'`];
+        const conditions = [sql13`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql11`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql13`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql11`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql13`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql11.join(conditions, sql11` AND `);
-        const bookingResult = await db.execute(sql11`
+        const bookingFilters = sql13.join(conditions, sql13` AND `);
+        const bookingResult = await db.execute(sql13`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -17068,7 +18019,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get platform overview" });
       }
     });
-    router18.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
@@ -17092,7 +18043,7 @@ var init_admin = __esm({
           startDate ? new Date(startDate) : void 0,
           endDate ? new Date(endDate) : void 0
         );
-        const [managerRecord] = await db.select({ id: users.id, username: users.username }).from(users).where(eq26(users.id, managerId)).limit(1);
+        const [managerRecord] = await db.select({ id: users.id, username: users.username }).from(users).where(eq27(users.id, managerId)).limit(1);
         res.json({
           manager: managerRecord || null,
           metrics: {
@@ -17117,7 +18068,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get manager revenue details" });
       }
     });
-    router18.post("/chef-location-access", async (req, res) => {
+    router19.post("/chef-location-access", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17166,7 +18117,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to grant access" });
       }
     });
-    router18.delete("/chef-location-access", async (req, res) => {
+    router19.delete("/chef-location-access", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17188,7 +18139,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to revoke access" });
       }
     });
-    router18.get("/chef-location-access", async (req, res) => {
+    router19.get("/chef-location-access", async (req, res) => {
       try {
         console.log("[Admin Chef Access] GET request received");
         const sessionUser = await getAuthenticatedUser2(req);
@@ -17266,7 +18217,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get access" });
       }
     });
-    router18.post("/managers", async (req, res) => {
+    router19.post("/managers", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17318,7 +18269,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create manager" });
       }
     });
-    router18.get("/managers", async (req, res) => {
+    router19.get("/managers", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17329,7 +18280,7 @@ var init_admin = __esm({
         if (user.role !== "admin") {
           return res.status(403).json({ error: "Admin access required" });
         }
-        const result = await db.execute(sql11.raw(`
+        const result = await db.execute(sql13.raw(`
             SELECT 
               u.id, 
               u.username, 
@@ -17404,7 +18355,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch managers" });
       }
     });
-    router18.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { status } = req.query;
         const query = db.select({
@@ -17420,9 +18371,9 @@ var init_admin = __esm({
           managerName: users.username,
           managerEmail: users.username
           // simplified for now
-        }).from(locations).leftJoin(users, eq26(locations.managerId, users.id));
+        }).from(locations).leftJoin(users, eq27(locations.managerId, users.id));
         if (status) {
-          query.where(eq26(locations.kitchenLicenseStatus, status));
+          query.where(eq27(locations.kitchenLicenseStatus, status));
         }
         const results = await query;
         const licenses = results.map((loc) => ({
@@ -17443,7 +18394,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location licenses" });
       }
     });
-    router18.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const pendingLicenses = await db.select({
           id: locations.id,
@@ -17455,7 +18406,7 @@ var init_admin = __esm({
           kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
           kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
           managerName: users.username
-        }).from(locations).leftJoin(users, eq26(locations.managerId, users.id)).where(eq26(locations.kitchenLicenseStatus, "pending"));
+        }).from(locations).leftJoin(users, eq27(locations.managerId, users.id)).where(eq27(locations.kitchenLicenseStatus, "pending"));
         const formatted = pendingLicenses.map((loc) => ({
           id: loc.id,
           name: loc.name,
@@ -17473,16 +18424,16 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
       }
     });
-    router18.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const result = await db.select({ count: sql11`count(*)::int` }).from(locations).where(eq26(locations.kitchenLicenseStatus, "pending"));
-        const count2 = result[0]?.count || 0;
-        res.json({ count: count2 });
+        const result = await db.select({ count: sql13`count(*)::int` }).from(locations).where(eq27(locations.kitchenLicenseStatus, "pending"));
+        const count3 = result[0]?.count || 0;
+        res.json({ count: count3 });
       } catch (error) {
         res.status(500).json({ error: "Failed to get count" });
       }
     });
-    router18.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const locationId = parseInt(req.params.id);
         const { status, feedback } = req.body;
@@ -17501,14 +18452,14 @@ var init_admin = __esm({
         } else {
           updateData.kitchenLicenseApprovedAt = null;
         }
-        await db.update(locations).set(updateData).where(eq26(locations.id, locationId));
+        await db.update(locations).set(updateData).where(eq27(locations.id, locationId));
         res.json({ message: "License status updated successfully" });
       } catch (error) {
         console.error("Error updating license status:", error);
         res.status(500).json({ error: error.message || "Failed to update license status" });
       }
     });
-    router18.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         const locations5 = await locationService.getAllLocations();
@@ -17528,7 +18479,7 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    router18.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         const { name, address, managerId } = req.body;
@@ -17580,7 +18531,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create location" });
       }
     });
-    router18.get("/kitchens/:locationId", async (req, res) => {
+    router19.get("/kitchens/:locationId", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17602,7 +18553,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
-    router18.post("/kitchens", async (req, res) => {
+    router19.post("/kitchens", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17644,7 +18595,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create kitchen" });
       }
     });
-    router18.put("/locations/:id", async (req, res) => {
+    router19.put("/locations/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17714,7 +18665,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update location" });
       }
     });
-    router18.delete("/locations/:id", async (req, res) => {
+    router19.delete("/locations/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17736,7 +18687,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete location" });
       }
     });
-    router18.put("/kitchens/:id", async (req, res) => {
+    router19.put("/kitchens/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17853,7 +18804,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update kitchen" });
       }
     });
-    router18.delete("/kitchens/:id", async (req, res) => {
+    router19.delete("/kitchens/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17875,7 +18826,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete kitchen" });
       }
     });
-    router18.put("/managers/:id", async (req, res) => {
+    router19.put("/managers/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17915,7 +18866,7 @@ var init_admin = __esm({
         if (locationNotificationEmails && Array.isArray(locationNotificationEmails)) {
           const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
           const { locations: locations6 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-          const { eq: eq32 } = await import("drizzle-orm");
+          const { eq: eq33 } = await import("drizzle-orm");
           for (const emailUpdate of locationNotificationEmails) {
             if (emailUpdate.locationId && emailUpdate.notificationEmail !== void 0) {
               const locationId = parseInt(emailUpdate.locationId.toString());
@@ -17927,14 +18878,14 @@ var init_admin = __esm({
                 await db2.update(locations6).set({
                   notificationEmail: email || null,
                   updatedAt: /* @__PURE__ */ new Date()
-                }).where(eq32(locations6.id, locationId));
+                }).where(eq33(locations6.id, locationId));
               }
             }
           }
         }
         const { locations: locations5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
-        const { eq: eq31 } = await import("drizzle-orm");
-        const managedLocations = await db.select().from(locations5).where(eq31(locations5.managerId, managerId));
+        const { eq: eq32 } = await import("drizzle-orm");
+        const managedLocations = await db.select().from(locations5).where(eq32(locations5.managerId, managerId));
         const notificationEmails = managedLocations.map((loc) => loc.notificationEmail || loc.notification_email).filter((email) => email && email.trim() !== "");
         const response = {
           ...updated,
@@ -17952,7 +18903,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update manager" });
       }
     });
-    router18.delete("/managers/:id", async (req, res) => {
+    router19.delete("/managers/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -17984,7 +18935,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete manager" });
       }
     });
-    router18.post("/test-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.post("/test-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         console.log(`POST /api/admin/test-email - User ID: ${user.id}`);
@@ -18117,7 +19068,7 @@ var init_admin = __esm({
         });
       }
     });
-    router18.post("/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router19.post("/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         console.log(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
@@ -18235,7 +19186,214 @@ var init_admin = __esm({
         });
       }
     });
-    admin_default = router18;
+    router19.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const config = await getFeeConfig();
+        const settings = await db.select().from(platformSettings).where(sql13`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+        const settingsMap = Object.fromEntries(settings.map((s) => [s.key, {
+          value: s.value,
+          description: s.description,
+          updatedAt: s.updatedAt,
+          updatedBy: s.updatedBy
+        }]));
+        res.json({
+          success: true,
+          config: {
+            stripePercentageFee: config.stripePercentageFee,
+            stripePercentageFeeDisplay: `${(config.stripePercentageFee * 100).toFixed(1)}%`,
+            stripeFlatFeeCents: config.stripeFlatFeeCents,
+            stripeFlatFeeDisplay: `$${(config.stripeFlatFeeCents / 100).toFixed(2)}`,
+            platformCommissionRate: config.platformCommissionRate,
+            platformCommissionRateDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`,
+            minimumApplicationFeeCents: config.minimumApplicationFeeCents,
+            minimumApplicationFeeDisplay: `$${(config.minimumApplicationFeeCents / 100).toFixed(2)}`,
+            useStripePlatformPricing: config.useStripePlatformPricing
+          },
+          rawSettings: settingsMap,
+          documentation: {
+            stripePercentageFee: "Stripe's processing fee percentage (e.g., 0.029 for 2.9%)",
+            stripeFlatFeeCents: "Stripe's flat fee per transaction in cents (e.g., 30 for $0.30)",
+            platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%)",
+            minimumApplicationFeeCents: "Minimum application fee in cents to ensure profitability",
+            useStripePlatformPricing: "If true, use Stripe Platform Pricing Tool instead of code-based fees"
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching fee config:", error);
+        res.status(500).json({
+          error: "Failed to fetch fee configuration",
+          message: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
+    router19.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const user = await getAuthenticatedUser2(req);
+        if (!user) {
+          return res.status(401).json({ error: "Unauthorized" });
+        }
+        const {
+          stripePercentageFee,
+          stripeFlatFeeCents,
+          platformCommissionRate,
+          minimumApplicationFeeCents,
+          useStripePlatformPricing
+        } = req.body;
+        const updates = [];
+        if (stripePercentageFee !== void 0) {
+          const fee = parseFloat(stripePercentageFee);
+          if (isNaN(fee) || fee < 0 || fee > 0.5) {
+            return res.status(400).json({ error: "stripePercentageFee must be between 0 and 0.5 (50%)" });
+          }
+          updates.push({
+            key: "stripe_percentage_fee",
+            value: fee.toString(),
+            description: "Stripe processing fee percentage (e.g., 0.029 for 2.9%)"
+          });
+        }
+        if (stripeFlatFeeCents !== void 0) {
+          const cents = parseInt(stripeFlatFeeCents, 10);
+          if (isNaN(cents) || cents < 0 || cents > 500) {
+            return res.status(400).json({ error: "stripeFlatFeeCents must be between 0 and 500 ($5.00)" });
+          }
+          updates.push({
+            key: "stripe_flat_fee_cents",
+            value: cents.toString(),
+            description: "Stripe flat fee in cents (e.g., 30 for $0.30)"
+          });
+        }
+        if (platformCommissionRate !== void 0) {
+          const rate = parseFloat(platformCommissionRate);
+          if (isNaN(rate) || rate < 0 || rate > 0.5) {
+            return res.status(400).json({ error: "platformCommissionRate must be between 0 and 0.5 (50%)" });
+          }
+          updates.push({
+            key: "platform_commission_rate",
+            value: rate.toString(),
+            description: "Platform commission rate as decimal (e.g., 0.05 for 5%)"
+          });
+        }
+        if (minimumApplicationFeeCents !== void 0) {
+          const cents = parseInt(minimumApplicationFeeCents, 10);
+          if (isNaN(cents) || cents < 0 || cents > 1e3) {
+            return res.status(400).json({ error: "minimumApplicationFeeCents must be between 0 and 1000 ($10.00)" });
+          }
+          updates.push({
+            key: "minimum_application_fee_cents",
+            value: cents.toString(),
+            description: "Minimum application fee in cents (e.g., 50 for $0.50)"
+          });
+        }
+        if (useStripePlatformPricing !== void 0) {
+          updates.push({
+            key: "use_stripe_platform_pricing",
+            value: useStripePlatformPricing ? "true" : "false",
+            description: "If true, do not set application_fee_amount in code - let Stripe Platform Pricing Tool handle it"
+          });
+        }
+        if (updates.length === 0) {
+          return res.status(400).json({ error: "No valid updates provided" });
+        }
+        for (const update of updates) {
+          await db.insert(platformSettings).values({
+            key: update.key,
+            value: update.value,
+            description: update.description,
+            updatedBy: user.id,
+            updatedAt: /* @__PURE__ */ new Date()
+          }).onConflictDoUpdate({
+            target: platformSettings.key,
+            set: {
+              value: update.value,
+              description: update.description,
+              updatedBy: user.id,
+              updatedAt: /* @__PURE__ */ new Date()
+            }
+          });
+        }
+        clearFeeConfigCache();
+        console.log(`[AUDIT] Fee config updated by admin ${user.id} (${user.username}):`, updates);
+        const newConfig = await getFeeConfig();
+        res.json({
+          success: true,
+          message: "Fee configuration updated successfully",
+          updatedFields: updates.map((u) => u.key),
+          newConfig: {
+            stripePercentageFee: newConfig.stripePercentageFee,
+            stripeFlatFeeCents: newConfig.stripeFlatFeeCents,
+            platformCommissionRate: newConfig.platformCommissionRate,
+            minimumApplicationFeeCents: newConfig.minimumApplicationFeeCents,
+            useStripePlatformPricing: newConfig.useStripePlatformPricing
+          }
+        });
+      } catch (error) {
+        console.error("Error updating fee config:", error);
+        res.status(500).json({
+          error: "Failed to update fee configuration",
+          message: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
+    router19.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { bookingAmountCents, customConfig } = req.body;
+        if (!bookingAmountCents || bookingAmountCents <= 0) {
+          return res.status(400).json({ error: "bookingAmountCents must be a positive number" });
+        }
+        const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2, calculateCheckoutFeesWithRates: calculateCheckoutFeesWithRates2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+        const currentResult = await calculateCheckoutFeesAsync2(bookingAmountCents);
+        let customResult = null;
+        if (customConfig) {
+          const {
+            stripePercentageFee = 0.029,
+            stripeFlatFeeCents = 30,
+            platformCommissionRate = 0.05,
+            minimumFeeCents = 50
+          } = customConfig;
+          customResult = calculateCheckoutFeesWithRates2(
+            bookingAmountCents / 100,
+            // Convert to dollars
+            stripePercentageFee,
+            stripeFlatFeeCents,
+            platformCommissionRate,
+            minimumFeeCents
+          );
+        }
+        res.json({
+          success: true,
+          bookingAmount: {
+            cents: bookingAmountCents,
+            dollars: `$${(bookingAmountCents / 100).toFixed(2)}`
+          },
+          currentConfig: {
+            result: {
+              stripeProcessingFee: `$${(currentResult.stripeProcessingFeeInCents / 100).toFixed(2)}`,
+              platformCommission: `$${(currentResult.platformCommissionInCents / 100).toFixed(2)}`,
+              totalApplicationFee: `$${(currentResult.totalPlatformFeeInCents / 100).toFixed(2)}`,
+              managerReceives: `$${(currentResult.managerReceivesInCents / 100).toFixed(2)}`,
+              useStripePlatformPricing: currentResult.useStripePlatformPricing
+            },
+            raw: currentResult
+          },
+          customConfig: customResult ? {
+            result: {
+              stripeProcessingFee: `$${(customResult.stripeProcessingFeeInCents / 100).toFixed(2)}`,
+              platformCommission: `$${(customResult.platformCommissionInCents / 100).toFixed(2)}`,
+              totalApplicationFee: `$${(customResult.totalPlatformFeeInCents / 100).toFixed(2)}`,
+              managerReceives: `$${(customResult.managerReceivesInCents / 100).toFixed(2)}`
+            },
+            raw: customResult
+          } : null
+        });
+      } catch (error) {
+        console.error("Error simulating fees:", error);
+        res.status(500).json({
+          error: "Failed to simulate fees",
+          message: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
+    admin_default = router19;
   }
 });
 
@@ -18244,9 +19402,9 @@ var webhooks_exports = {};
 __export(webhooks_exports, {
   default: () => webhooks_default
 });
-import { Router as Router19 } from "express";
+import { Router as Router20 } from "express";
 import Stripe4 from "stripe";
-import { eq as eq27, and as and17, ne as ne6, notInArray } from "drizzle-orm";
+import { eq as eq28, and as and18, ne as ne6, notInArray } from "drizzle-orm";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
   if (!pool) {
     logger.error("Database pool not available for webhook");
@@ -18370,8 +19528,8 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       let managerConnectAccountId;
       try {
         const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(
-          and17(
-            eq27(users.id, transaction.manager_id),
+          and18(
+            eq28(users.id, transaction.manager_id),
             ne6(users.stripeConnectAccountId, "")
           )
         ).limit(1);
@@ -18416,8 +19574,8 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paymentStatus: "paid",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(kitchenBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(kitchenBookings.paymentIntentId, paymentIntent.id),
           ne6(kitchenBookings.paymentStatus, "paid")
         )
       );
@@ -18425,8 +19583,8 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paymentStatus: "paid",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(storageBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(storageBookings.paymentIntentId, paymentIntent.id),
           ne6(storageBookings.paymentStatus, "paid")
         )
       );
@@ -18434,13 +19592,41 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         paymentStatus: "paid",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(equipmentBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(equipmentBookings.paymentIntentId, paymentIntent.id),
           ne6(equipmentBookings.paymentStatus, "paid")
         )
       );
     });
     logger.info(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`);
+    try {
+      const [booking] = await db.select({
+        id: kitchenBookings.id,
+        kitchenId: kitchenBookings.kitchenId,
+        chefId: kitchenBookings.chefId,
+        totalPrice: kitchenBookings.totalPrice
+      }).from(kitchenBookings).where(eq28(kitchenBookings.paymentIntentId, paymentIntent.id)).limit(1);
+      if (booking) {
+        const [kitchen] = await db.select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq28(kitchens.id, booking.kitchenId)).limit(1);
+        if (kitchen) {
+          const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq28(locations.id, kitchen.locationId)).limit(1);
+          if (location && location.managerId) {
+            const [chef] = await db.select({ username: users.username }).from(users).where(eq28(users.id, booking.chefId)).limit(1);
+            await notificationService.notifyPaymentReceived({
+              managerId: location.managerId,
+              locationId: location.id,
+              bookingId: booking.id,
+              amount: paymentIntent.amount,
+              currency: paymentIntent.currency.toUpperCase(),
+              chefName: chef?.username || "Chef",
+              kitchenName: kitchen.name
+            });
+          }
+        }
+      }
+    } catch (notifError) {
+      logger.error(`[Webhook] Error creating payment notification:`, notifError);
+    }
   } catch (error) {
     logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
   }
@@ -18469,8 +19655,8 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(kitchenBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(kitchenBookings.paymentIntentId, paymentIntent.id),
           notInArray(kitchenBookings.paymentStatus, excludedStatuses)
         )
       );
@@ -18478,8 +19664,8 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(storageBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(storageBookings.paymentIntentId, paymentIntent.id),
           notInArray(storageBookings.paymentStatus, excludedStatuses)
         )
       );
@@ -18487,13 +19673,42 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(equipmentBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(equipmentBookings.paymentIntentId, paymentIntent.id),
           notInArray(equipmentBookings.paymentStatus, excludedStatuses)
         )
       );
     });
     logger.info(`[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`);
+    try {
+      const [booking] = await db.select({
+        id: kitchenBookings.id,
+        kitchenId: kitchenBookings.kitchenId,
+        chefId: kitchenBookings.chefId,
+        totalPrice: kitchenBookings.totalPrice
+      }).from(kitchenBookings).where(eq28(kitchenBookings.paymentIntentId, paymentIntent.id)).limit(1);
+      if (booking) {
+        const [kitchen] = await db.select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq28(kitchens.id, booking.kitchenId)).limit(1);
+        if (kitchen) {
+          const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq28(locations.id, kitchen.locationId)).limit(1);
+          if (location && location.managerId) {
+            const [chef] = await db.select({ username: users.username }).from(users).where(eq28(users.id, booking.chefId)).limit(1);
+            await notificationService.notifyPaymentFailed({
+              managerId: location.managerId,
+              locationId: location.id,
+              bookingId: booking.id,
+              amount: paymentIntent.amount,
+              currency: paymentIntent.currency.toUpperCase(),
+              chefName: chef?.username || "Chef",
+              kitchenName: kitchen.name,
+              reason: paymentIntent.last_payment_error?.message
+            });
+          }
+        }
+      }
+    } catch (notifError) {
+      logger.error(`[Webhook] Error creating payment failed notification:`, notifError);
+    }
   } catch (error) {
     logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
   }
@@ -18522,8 +19737,8 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
         // Map cancel to failed for backward compatibility
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(kitchenBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(kitchenBookings.paymentIntentId, paymentIntent.id),
           notInArray(kitchenBookings.paymentStatus, excludedStatuses)
         )
       );
@@ -18531,8 +19746,8 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(storageBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(storageBookings.paymentIntentId, paymentIntent.id),
           notInArray(storageBookings.paymentStatus, excludedStatuses)
         )
       );
@@ -18540,8 +19755,8 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
         paymentStatus: "failed",
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(equipmentBookings.paymentIntentId, paymentIntent.id),
+        and18(
+          eq28(equipmentBookings.paymentIntentId, paymentIntent.id),
           notInArray(equipmentBookings.paymentStatus, excludedStatuses)
         )
       );
@@ -18583,27 +19798,27 @@ async function handleChargeRefunded(charge, webhookEventId) {
         paymentStatus: refundStatus,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(kitchenBookings.paymentIntentId, paymentIntentId),
-          eq27(kitchenBookings.paymentStatus, "paid")
+        and18(
+          eq28(kitchenBookings.paymentIntentId, paymentIntentId),
+          eq28(kitchenBookings.paymentStatus, "paid")
         )
       );
       await tx.update(storageBookings).set({
         paymentStatus: refundStatus,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(storageBookings.paymentIntentId, paymentIntentId),
-          eq27(storageBookings.paymentStatus, "paid")
+        and18(
+          eq28(storageBookings.paymentIntentId, paymentIntentId),
+          eq28(storageBookings.paymentStatus, "paid")
         )
       );
       await tx.update(equipmentBookings).set({
         paymentStatus: refundStatus,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(
-        and17(
-          eq27(equipmentBookings.paymentIntentId, paymentIntentId),
-          eq27(equipmentBookings.paymentStatus, "paid")
+        and18(
+          eq28(equipmentBookings.paymentIntentId, paymentIntentId),
+          eq28(equipmentBookings.paymentStatus, "paid")
         )
       );
     });
@@ -18618,7 +19833,7 @@ async function handlePayoutPaid(payout, connectedAccountId, _webhookEventId) {
       logger.warn(`[Webhook] payout.paid event received without connected account ID`);
       return;
     }
-    const [manager] = await db.select({ id: users.id, username: users.username }).from(users).where(eq27(users.stripeConnectAccountId, connectedAccountId)).limit(1);
+    const [manager] = await db.select({ id: users.id, username: users.username }).from(users).where(eq28(users.stripeConnectAccountId, connectedAccountId)).limit(1);
     if (!manager) {
       logger.warn(`[Webhook] payout.paid for unknown Connect account ${connectedAccountId}`);
       return;
@@ -18642,7 +19857,7 @@ async function handlePayoutFailed(payout, connectedAccountId, _webhookEventId) {
       logger.warn(`[Webhook] payout.failed event received without connected account ID`);
       return;
     }
-    const [manager] = await db.select({ id: users.id, username: users.username }).from(users).where(eq27(users.stripeConnectAccountId, connectedAccountId)).limit(1);
+    const [manager] = await db.select({ id: users.id, username: users.username }).from(users).where(eq28(users.stripeConnectAccountId, connectedAccountId)).limit(1);
     if (!manager) {
       logger.warn(`[Webhook] payout.failed for unknown Connect account ${connectedAccountId}`);
       return;
@@ -18672,12 +19887,12 @@ async function handleAccountUpdated(account, webhookEventId) {
     const payoutsEnabled = account.payouts_enabled;
     const detailsSubmitted = account.details_submitted;
     const onboardingStatus = detailsSubmitted ? "complete" : "in_progress";
-    const [manager] = await db.select({ id: users.id }).from(users).where(eq27(users.stripeConnectAccountId, account.id)).limit(1);
+    const [manager] = await db.select({ id: users.id }).from(users).where(eq28(users.stripeConnectAccountId, account.id)).limit(1);
     if (manager) {
       await db.update(users).set({
         stripeConnectOnboardingStatus: onboardingStatus,
         updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq27(users.id, manager.id));
+      }).where(eq28(users.id, manager.id));
       logger.info(`[Webhook] Updated onboarding status to '${onboardingStatus}' for manager ${manager.id} (Account: ${account.id})`);
     } else {
       logger.warn(`[Webhook] Received account.updated for unknown account ${account.id}`);
@@ -18686,7 +19901,7 @@ async function handleAccountUpdated(account, webhookEventId) {
     logger.error(`[Webhook] Error handling account.updated for ${account.id}:`, error);
   }
 }
-var router19, webhooks_default;
+var router20, webhooks_default;
 var init_webhooks = __esm({
   "server/routes/webhooks.ts"() {
     "use strict";
@@ -18694,8 +19909,9 @@ var init_webhooks = __esm({
     init_schema();
     init_logger();
     init_api_response();
-    router19 = Router19();
-    router19.post("/stripe", async (req, res) => {
+    init_notification_service();
+    router20 = Router20();
+    router20.post("/stripe", async (req, res) => {
       try {
         const sig = req.headers["stripe-signature"];
         const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -18763,7 +19979,7 @@ var init_webhooks = __esm({
         return errorResponse(res, err);
       }
     });
-    webhooks_default = router19;
+    webhooks_default = router20;
   }
 });
 
@@ -18858,10 +20074,10 @@ var portal_auth_exports = {};
 __export(portal_auth_exports, {
   default: () => portal_auth_default
 });
-import { Router as Router20 } from "express";
-import { eq as eq28, and as and18 } from "drizzle-orm";
+import { Router as Router21 } from "express";
+import { eq as eq29, and as and19 } from "drizzle-orm";
 import * as admin from "firebase-admin";
-var router20, portal_auth_default;
+var router21, portal_auth_default;
 var init_portal_auth = __esm({
   "server/routes/portal-auth.ts"() {
     "use strict";
@@ -18872,8 +20088,8 @@ var init_portal_auth = __esm({
     init_passwordUtils();
     init_phone_utils();
     init_subdomain_utils();
-    router20 = Router20();
-    router20.post("/portal-login", async (req, res) => {
+    router21 = Router21();
+    router21.post("/portal-login", async (req, res) => {
       try {
         const { username, password } = req.body;
         if (!username || !password) {
@@ -18914,7 +20130,7 @@ var init_portal_auth = __esm({
           });
           const getPortalUserLocation = async () => {
             try {
-              const accessRecords = await db.select().from(portalUserLocationAccess).where(eq28(portalUserLocationAccess.portalUserId, portalUser.id));
+              const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, portalUser.id));
               if (accessRecords.length > 0) {
                 return accessRecords[0].locationId;
               }
@@ -18944,7 +20160,7 @@ var init_portal_auth = __esm({
         res.status(500).json({ error: error.message || "Portal login failed" });
       }
     });
-    router20.post("/portal-register", async (req, res) => {
+    router21.post("/portal-register", async (req, res) => {
       console.log("[Routes] /api/portal-register called");
       try {
         const { username, password, locationId, fullName, email, phone, company } = req.body;
@@ -18979,9 +20195,9 @@ var init_portal_auth = __esm({
         let existingApplications = [];
         try {
           existingApplications = await db.select().from(portalUserApplications).where(
-            and18(
-              eq28(portalUserApplications.userId, user.id),
-              eq28(portalUserApplications.locationId, parseInt(locationId))
+            and19(
+              eq29(portalUserApplications.userId, user.id),
+              eq29(portalUserApplications.locationId, parseInt(locationId))
             )
           );
         } catch (dbError) {
@@ -19096,7 +20312,7 @@ Please log in to your manager dashboard to review and approve this application.`
         res.status(500).json({ error: error.message || "Portal registration failed" });
       }
     });
-    portal_auth_default = router20;
+    portal_auth_default = router21;
   }
 });
 
@@ -19105,9 +20321,9 @@ var portal_exports = {};
 __export(portal_exports, {
   default: () => portal_default
 });
-import { Router as Router21 } from "express";
-import { eq as eq29, desc as desc14 } from "drizzle-orm";
-var router21, portal_default;
+import { Router as Router22 } from "express";
+import { eq as eq30, desc as desc15 } from "drizzle-orm";
+var router22, portal_default;
 var init_portal = __esm({
   "server/routes/portal.ts"() {
     "use strict";
@@ -19117,21 +20333,21 @@ var init_portal = __esm({
     init_booking_service();
     init_kitchen_service();
     init_location_service();
-    router21 = Router21();
-    router21.get("/application-status", async (req, res) => {
+    router22 = Router22();
+    router22.get("/application-status", async (req, res) => {
       try {
         const user = await getAuthenticatedUser(req);
         if (!user) {
           return res.status(401).json({ error: "Authentication required" });
         }
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, user.id)).limit(1);
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, user.id)).limit(1);
         if (accessRecords.length > 0) {
           return res.json({
             hasAccess: true,
             status: "approved"
           });
         }
-        const applications4 = await db.select().from(portalUserApplications).where(eq29(portalUserApplications.userId, user.id)).orderBy(desc14(portalUserApplications.createdAt)).limit(1);
+        const applications4 = await db.select().from(portalUserApplications).where(eq30(portalUserApplications.userId, user.id)).orderBy(desc15(portalUserApplications.createdAt)).limit(1);
         if (applications4.length > 0) {
           const app2 = applications4[0];
           return res.json({
@@ -19152,15 +20368,15 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to get application status" });
       }
     });
-    router21.get("/my-location", requirePortalUser, async (req, res) => {
+    router22.get("/my-location", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, userId)).limit(1);
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
         if (accessRecords.length === 0) {
           return res.status(404).json({ error: "No location assigned to this portal user" });
         }
         const locationId = accessRecords[0].locationId;
-        const locationRecords = await db.select().from(locations).where(eq29(locations.id, locationId)).limit(1);
+        const locationRecords = await db.select().from(locations).where(eq30(locations.id, locationId)).limit(1);
         if (locationRecords.length === 0) {
           return res.status(404).json({ error: "Location not found" });
         }
@@ -19178,15 +20394,15 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router21.get("/locations", requirePortalUser, async (req, res) => {
+    router22.get("/locations", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, userId)).limit(1);
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
         if (accessRecords.length === 0) {
           return res.status(404).json({ error: "No location assigned to this portal user" });
         }
         const locationId = accessRecords[0].locationId;
-        const locationRecords = await db.select().from(locations).where(eq29(locations.id, locationId)).limit(1);
+        const locationRecords = await db.select().from(locations).where(eq30(locations.id, locationId)).limit(1);
         if (locationRecords.length === 0) {
           return res.status(404).json({ error: "Location not found" });
         }
@@ -19204,16 +20420,16 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router21.get("/locations/:locationSlug", requirePortalUser, async (req, res) => {
+    router22.get("/locations/:locationSlug", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const locationSlug = req.params.locationSlug;
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, userId)).limit(1);
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
         if (accessRecords.length === 0) {
           return res.status(404).json({ error: "No location assigned to this portal user" });
         }
         const userLocationId = accessRecords[0].locationId;
-        const locationRecords = await db.select().from(locations).where(eq29(locations.id, userLocationId)).limit(1);
+        const locationRecords = await db.select().from(locations).where(eq30(locations.id, userLocationId)).limit(1);
         if (locationRecords.length === 0) {
           return res.status(404).json({ error: "Location not found" });
         }
@@ -19233,16 +20449,16 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router21.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req, res) => {
+    router22.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const locationSlug = req.params.locationSlug;
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, userId)).limit(1);
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
         if (accessRecords.length === 0) {
           return res.status(404).json({ error: "No location assigned to this portal user" });
         }
         const userLocationId = accessRecords[0].locationId;
-        const locationRecords = await db.select().from(locations).where(eq29(locations.id, userLocationId)).limit(1);
+        const locationRecords = await db.select().from(locations).where(eq30(locations.id, userLocationId)).limit(1);
         if (locationRecords.length === 0) {
           return res.status(404).json({ error: "Location not found" });
         }
@@ -19264,7 +20480,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
-    router21.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
+    router22.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -19275,12 +20491,12 @@ var init_portal = __esm({
         if (!date2) {
           return res.status(400).json({ error: "Date parameter is required" });
         }
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, userId)).limit(1);
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
         if (accessRecords.length === 0) {
           return res.status(404).json({ error: "No location assigned to this portal user" });
         }
         const userLocationId = accessRecords[0].locationId;
-        const kitchenRecords = await db.select().from(kitchens).where(eq29(kitchens.id, kitchenId)).limit(1);
+        const kitchenRecords = await db.select().from(kitchens).where(eq30(kitchens.id, kitchenId)).limit(1);
         if (kitchenRecords.length === 0) {
           return res.status(404).json({ error: "Kitchen not found" });
         }
@@ -19296,7 +20512,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch availability" });
       }
     });
-    router21.post("/bookings", requirePortalUser, async (req, res) => {
+    router22.post("/bookings", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const {
@@ -19314,7 +20530,7 @@ var init_portal = __esm({
         if (!locationId || !kitchenId || !bookingDate || !startTime || !endTime || !bookingName || !bookingEmail) {
           return res.status(400).json({ error: "Missing required fields" });
         }
-        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq29(portalUserLocationAccess.portalUserId, userId)).limit(1);
+        const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
         if (accessRecords.length === 0) {
           return res.status(404).json({ error: "No location assigned to this portal user" });
         }
@@ -19322,7 +20538,7 @@ var init_portal = __esm({
         if (parseInt(locationId) !== userLocationId) {
           return res.status(403).json({ error: "Access denied. You can only book kitchens at your assigned location." });
         }
-        const kitchenRecords = await db.select().from(kitchens).where(eq29(kitchens.id, parseInt(kitchenId))).limit(1);
+        const kitchenRecords = await db.select().from(kitchens).where(eq30(kitchens.id, parseInt(kitchenId))).limit(1);
         if (kitchenRecords.length === 0) {
           return res.status(404).json({ error: "Kitchen not found" });
         }
@@ -19401,7 +20617,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
-    portal_default = router21;
+    portal_default = router22;
   }
 });
 
@@ -19410,10 +20626,10 @@ var chef_exports = {};
 __export(chef_exports, {
   default: () => chef_default
 });
-import { Router as Router22 } from "express";
-import { sql as sql12 } from "drizzle-orm";
-import { eq as eq30 } from "drizzle-orm";
-var router22, chef_default;
+import { Router as Router23 } from "express";
+import { sql as sql14 } from "drizzle-orm";
+import { eq as eq31 } from "drizzle-orm";
+var router23, chef_default;
 var init_chef = __esm({
   "server/routes/chef.ts"() {
     "use strict";
@@ -19425,12 +20641,12 @@ var init_chef = __esm({
     init_db();
     init_schema();
     init_api_response();
-    router22 = Router22();
-    router22.post("/stripe-connect/create", requireChef, async (req, res) => {
+    router23 = Router23();
+    router23.post("/stripe-connect/create", requireChef, async (req, res) => {
       console.log("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql12`
+        const userResult = await db.execute(sql14`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -19474,10 +20690,10 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router22.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
+    router23.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql12`
+        const userResult = await db.execute(sql14`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -19498,10 +20714,10 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router22.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
+    router23.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql12`
+        const userResult = await db.execute(sql14`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -19528,10 +20744,10 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router22.post("/stripe-connect/sync", requireChef, async (req, res) => {
+    router23.post("/stripe-connect/sync", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const [chef] = await db.select().from(users).where(eq30(users.id, chefId)).limit(1);
+        const [chef] = await db.select().from(users).where(eq31(users.id, chefId)).limit(1);
         if (!chef?.stripeConnectAccountId) {
           return res.status(400).json({ error: "No Stripe account connected" });
         }
@@ -19540,7 +20756,7 @@ var init_chef = __esm({
         const onboardingStatus = status.detailsSubmitted ? "complete" : "in_progress";
         await db.update(users).set({
           stripeConnectOnboardingStatus: onboardingStatus
-        }).where(eq30(users.id, chefId));
+        }).where(eq31(users.id, chefId));
         res.json({
           connected: true,
           accountId: chef.stripeConnectAccountId,
@@ -19551,7 +20767,7 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router22.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
+    router23.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -19574,7 +20790,7 @@ var init_chef = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    router22.get("/locations", requireChef, async (req, res) => {
+    router23.get("/locations", requireChef, async (req, res) => {
       try {
         const allLocations = await locationService.getAllLocations();
         const activeKitchens = await kitchenService.getAllActiveKitchens();
@@ -19597,7 +20813,7 @@ var init_chef = __esm({
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    chef_default = router22;
+    chef_default = router23;
   }
 });
 
@@ -21206,6 +22422,7 @@ init_kitchen_service();
 init_application_repository();
 init_application_service();
 init_chat_service();
+init_notification_service();
 import { and as and8, eq as eq12 } from "drizzle-orm";
 var router7 = Router7();
 var locationRepository = new LocationRepository();
@@ -21602,6 +22819,19 @@ router7.post(
       };
       const application = await chefApplicationService.createApplication(applicationData);
       console.log(`\u2705 Kitchen application created/updated: Chef ${req.neonUser.id} \u2192 Location ${parsedData.data.locationId}, ID: ${application.id}`);
+      try {
+        if (location.managerId) {
+          await notificationService.notifyNewApplication({
+            managerId: location.managerId,
+            locationId: location.id,
+            applicationId: application.id,
+            chefName: formData.fullName || "Chef",
+            chefEmail: formData.email || ""
+          });
+        }
+      } catch (notifError) {
+        console.error("Error creating application notification:", notifError);
+      }
       res.status(201).json({
         success: true,
         application,
@@ -21818,6 +23048,19 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
       ) || updatedApplication;
     }
     console.log(`\u2705 Application ${applicationId} ${status} by Manager ${user.id}`);
+    if (status === "approved" && updatedApplication) {
+      try {
+        await notificationService.notifyApplicationApproved({
+          managerId: user.id,
+          locationId: application.locationId,
+          applicationId: application.id,
+          chefName: application.fullName || "Chef",
+          chefEmail: application.email || ""
+        });
+      } catch (notifError) {
+        console.error("Error creating application approval notification:", notifError);
+      }
+    }
     if (status === "approved" && updatedApplication) {
       const currentTier = updatedApplication.current_tier ?? 1;
       const previousTier = application.current_tier ?? 1;
@@ -22240,6 +23483,7 @@ async function registerRoutes(app2) {
     }
   });
   app2.use("/api/manager", (await Promise.resolve().then(() => (init_manager(), manager_exports))).default);
+  app2.use("/api/manager/notifications", (await Promise.resolve().then(() => (init_notifications(), notifications_exports))).default);
   app2.use("/api", (await Promise.resolve().then(() => (init_kitchens(), kitchens_exports))).default);
   app2.use("/api", (await Promise.resolve().then(() => (init_bookings(), bookings_exports))).default);
   app2.use("/api", (await Promise.resolve().then(() => (init_equipment(), equipment_exports))).default);

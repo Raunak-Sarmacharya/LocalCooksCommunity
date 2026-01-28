@@ -1,8 +1,9 @@
 // @ts-ignore - pdfkit doesn't have type definitions
 import PDFDocument from 'pdfkit';
 import { db } from "../db";
-import { storageListings, equipmentListings, paymentTransactions } from "@shared/schema";
+import { paymentTransactions } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { getStripePaymentAmounts } from "./stripe-service";
 
 /**
  * Generate invoice PDF for a booking
@@ -266,6 +267,32 @@ export async function generateInvoicePDF(
 
   const grandTotal = totalForInvoice;
 
+  // For manager invoices: Fetch actual Stripe fees before PDF generation
+  let stripeDataForManager: {
+    stripeProcessingFee: number;
+    stripeNetPayout: number;
+    actualPlatformFee: number;
+    dataSource: 'stripe' | 'calculated';
+  } | null = null;
+
+  if (invoiceViewer === 'manager' && paymentIntentId) {
+    try {
+      const stripeData = await getStripePaymentAmounts(paymentIntentId);
+      if (stripeData) {
+        // Use actual Stripe data - all values in cents, convert to dollars
+        stripeDataForManager = {
+          stripeProcessingFee: stripeData.stripeProcessingFee / 100,
+          stripeNetPayout: stripeData.stripeNetAmount / 100,
+          actualPlatformFee: stripeData.stripePlatformFee / 100,
+          dataSource: 'stripe'
+        };
+        console.log(`[Invoice] Using Stripe BalanceTransaction data: processingFee=${stripeDataForManager.stripeProcessingFee}, netPayout=${stripeDataForManager.stripeNetPayout}, platformFee=${stripeDataForManager.actualPlatformFee}`);
+      }
+    } catch (error) {
+      console.warn('[Invoice] Could not fetch Stripe payment amounts, will use calculated values:', error);
+    }
+  }
+
   // Now generate PDF
   return new Promise((resolve, reject) => {
     try {
@@ -412,33 +439,102 @@ export async function generateInvoicePDF(
         return `${negative ? '-' : ''}$${normalized.toFixed(2)}`;
       };
       
-      const addTotalRow = (label: string, amount: number, negative = false) => {
+      const addTotalRow = (label: string, amount: number, negative = false, bold = false) => {
+        if (bold) {
+          doc.font('Helvetica-Bold');
+        } else {
+          doc.font('Helvetica');
+        }
         doc.text(label, 380, currentY, { width: 110, align: 'right' });
         doc.text(formatAmount(amount, negative), 500, currentY, { align: 'right', width: 50 });
         currentY += 20;
+        doc.font('Helvetica');
       };
 
-      addTotalRow('Subtotal:', totalAmount);
-      if (taxAmount > 0) {
-        addTotalRow('Tax:', taxAmount);
+      if (invoiceViewer === 'manager') {
+        // Manager Invoice: Show earnings breakdown with net revenue from Stripe
+        // Use pre-fetched Stripe data or calculate fallback
+        const grossRevenue = totalAmount + taxAmount; // What customer paid
+        
+        let stripeProcessingFee: number;
+        let stripeNetPayout: number;
+        let actualPlatformFee: number;
+        let dataSource: 'stripe' | 'calculated';
+        
+        if (stripeDataForManager) {
+          // Use actual Stripe data
+          stripeProcessingFee = stripeDataForManager.stripeProcessingFee;
+          stripeNetPayout = stripeDataForManager.stripeNetPayout;
+          actualPlatformFee = stripeDataForManager.actualPlatformFee;
+          dataSource = stripeDataForManager.dataSource;
+        } else {
+          // Fallback calculation if Stripe data not available
+          actualPlatformFee = platformFee;
+          stripeProcessingFee = (grossRevenue * 0.029) + 0.30;
+          stripeNetPayout = grossRevenue - actualPlatformFee - stripeProcessingFee;
+          dataSource = 'calculated';
+        }
+        
+        // Section header for earnings breakdown
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#1f2937');
+        doc.text('EARNINGS BREAKDOWN', 60, currentY);
+        currentY += 25;
+        doc.fontSize(10).font('Helvetica').fillColor('#000000');
+        
+        addTotalRow('Subtotal (Services):', totalAmount);
+        if (taxAmount > 0) {
+          addTotalRow('Tax Collected:', taxAmount);
+        }
+        
+        // Gross revenue line
+        doc.moveTo(380, currentY - 5).lineTo(550, currentY - 5).stroke('#e5e7eb');
+        currentY += 5;
+        addTotalRow('Gross Revenue:', grossRevenue, false, true);
+        currentY += 5;
+        
+        // Deductions section
+        doc.fontSize(10).fillColor('#6b7280');
+        doc.text('Deductions:', 60, currentY);
+        currentY += 18;
+        doc.fillColor('#000000');
+        
+        if (actualPlatformFee > 0) {
+          addTotalRow('Platform Fee:', actualPlatformFee, true);
+        }
+        // Show Stripe fee with source indicator
+        const stripeFeeLabel = dataSource === 'stripe' ? 'Stripe Processing Fee:' : 'Est. Stripe Fee (~2.9% + $0.30):';
+        addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
+        
+        // Net payout (bold, highlighted)
+        doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
+        currentY += 10;
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#059669');
+        doc.text('Net Payout:', 380, currentY, { align: 'right', width: 110 });
+        doc.text(`$${stripeNetPayout.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+        doc.font('Helvetica').fontSize(10).fillColor('#000000');
+        
+        // Add data source note for transparency
+        if (dataSource === 'stripe') {
+          currentY += 20;
+          doc.fontSize(8).fillColor('#6b7280');
+          doc.text('* Fees retrieved from Stripe payment records', 60, currentY);
+          doc.fillColor('#000000').fontSize(10);
+        }
+      } else {
+        // Chef Invoice: Simple view (what they paid)
+        addTotalRow('Subtotal:', totalAmount);
+        if (taxAmount > 0) {
+          addTotalRow('Tax:', taxAmount);
+        }
+        
+        // Total (bold and larger)
+        doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
+        currentY += 10;
+        doc.fontSize(12).font('Helvetica-Bold');
+        doc.text('Total:', 380, currentY, { align: 'right', width: 110 });
+        doc.text(`$${grandTotal.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
+        doc.font('Helvetica').fontSize(10);
       }
-      
-      // Only show platform fee line item if it's relevant to the viewer?
-      // Or show it always?
-      // In manager view, it's an expense (deduction).
-      // In chef view, if they pay it, it's a charge.
-      if (platformFeeForInvoice > 0) {
-        addTotalRow('Platform Fee:', platformFeeForInvoice, invoiceViewer === 'manager');
-      }
-      // Note: Stripe processing fee is handled internally by Stripe and not shown on invoices
-
-      // Total (bold and larger)
-      doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).stroke();
-      currentY += 10;
-      doc.fontSize(12).font('Helvetica-Bold');
-      doc.text('Total:', 380, currentY, { align: 'right', width: 110 });
-      doc.text(`$${grandTotal.toFixed(2)}`, 500, currentY, { align: 'right', width: 50 });
-      doc.font('Helvetica').fontSize(10);
 
       // Payment info section
       currentY += 40;

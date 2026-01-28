@@ -68,11 +68,20 @@ export async function createCheckoutSession(
   if (bookingPriceInCents <= 0) {
     throw new Error('Booking price must be greater than 0');
   }
-  if (platformFeeInCents <= 0) {
-    throw new Error('Platform fee must be greater than 0');
+  // Platform fee validation - must be positive to cover Stripe fees and earn revenue
+  // With destination charges, platform pays Stripe fees from application_fee_amount
+  if (platformFeeInCents < 0) {
+    throw new Error('Platform fee cannot be negative');
   }
-  if (platformFeeInCents >= bookingPriceInCents + platformFeeInCents) {
-    throw new Error('Platform fee must be less than total charge amount');
+  if (platformFeeInCents >= bookingPriceInCents) {
+    throw new Error('Platform fee must be less than booking price');
+  }
+  // Warn if platform fee is too low to cover Stripe processing fees
+  const estimatedStripeFee = Math.round(bookingPriceInCents * 0.029 + 30);
+  if (platformFeeInCents > 0 && platformFeeInCents < estimatedStripeFee) {
+    console.warn(
+      `[Stripe Checkout] Platform fee (${platformFeeInCents} cents) is less than estimated Stripe fee (${estimatedStripeFee} cents). Platform may lose money on this transaction.`
+    );
   }
   if (!managerStripeAccountId) {
     throw new Error('Manager Stripe account ID is required');
@@ -85,42 +94,68 @@ export async function createCheckoutSession(
   const totalAmountInCents = bookingPriceInCents + platformFeeInCents;
 
   try {
-    // Create Checkout session with two line items
+    // Build line items - only include platform fee if > 0
+    const lineItems: Array<{
+      price_data: {
+        currency: string;
+        product_data: { name: string };
+        unit_amount: number;
+      };
+      quantity: number;
+    }> = [
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: 'Kitchen Session Booking',
+          },
+          unit_amount: bookingPriceInCents,
+        },
+        quantity: 1,
+      },
+    ];
+
+    // Only add platform fee line item if fee is greater than 0
+    if (platformFeeInCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: 'Platform Service Fee',
+          },
+          unit_amount: platformFeeInCents,
+        },
+        quantity: 1,
+      });
+    }
+
+    // Build payment intent data - only include application_fee_amount if > 0
+    const paymentIntentData: {
+      transfer_data: { destination: string };
+      metadata: Record<string, string>;
+      application_fee_amount?: number;
+    } = {
+      transfer_data: {
+        destination: managerStripeAccountId,
+      },
+      metadata: {
+        booking_id: bookingId.toString(),
+        ...metadata,
+      },
+    };
+
+    // Only set application_fee_amount if platform fee is positive
+    // This is the key to ensuring platform receives revenue!
+    if (platformFeeInCents > 0) {
+      paymentIntentData.application_fee_amount = platformFeeInCents;
+    }
+
+    // Create Checkout session
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: customerEmail,
-      line_items: [
-        {
-          price_data: {
-            currency: currency.toLowerCase(),
-            product_data: {
-              name: 'Kitchen Session Booking',
-            },
-            unit_amount: bookingPriceInCents,
-          },
-          quantity: 1,
-        },
-        {
-          price_data: {
-            currency: currency.toLowerCase(),
-            product_data: {
-              name: 'Platform Service Fee',
-            },
-            unit_amount: platformFeeInCents,
-          },
-          quantity: 1,
-        },
-      ],
-      payment_intent_data: {
-        application_fee_amount: platformFeeInCents,
-        transfer_data: {
-          destination: managerStripeAccountId,
-        },
-        metadata: {
-          booking_id: bookingId.toString(),
-          ...metadata,
-        },
-      },
+      line_items: lineItems,
+      payment_intent_data: paymentIntentData,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata: {

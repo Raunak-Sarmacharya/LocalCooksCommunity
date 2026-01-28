@@ -1715,4 +1715,272 @@ router.post('/send-promo-email', requireFirebaseAuthWithUser, requireAdmin, asyn
     }
 });
 
+// ===================================
+// PLATFORM FEE CONFIGURATION ENDPOINTS
+// Enterprise-grade admin-configurable fee management
+// ===================================
+
+import { platformSettings } from "@shared/schema";
+import { clearFeeConfigCache, getFeeConfig } from "../services/stripe-checkout-fee-service";
+
+/**
+ * GET /admin/fees/config
+ * Get current platform fee configuration
+ */
+router.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        // Get current configuration from database
+        const config = await getFeeConfig();
+        
+        // Get raw settings for display
+        const settings = await db
+            .select()
+            .from(platformSettings)
+            .where(sql`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+
+        const settingsMap = Object.fromEntries(settings.map(s => [s.key, {
+            value: s.value,
+            description: s.description,
+            updatedAt: s.updatedAt,
+            updatedBy: s.updatedBy,
+        }]));
+
+        res.json({
+            success: true,
+            config: {
+                stripePercentageFee: config.stripePercentageFee,
+                stripePercentageFeeDisplay: `${(config.stripePercentageFee * 100).toFixed(1)}%`,
+                stripeFlatFeeCents: config.stripeFlatFeeCents,
+                stripeFlatFeeDisplay: `$${(config.stripeFlatFeeCents / 100).toFixed(2)}`,
+                platformCommissionRate: config.platformCommissionRate,
+                platformCommissionRateDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`,
+                minimumApplicationFeeCents: config.minimumApplicationFeeCents,
+                minimumApplicationFeeDisplay: `$${(config.minimumApplicationFeeCents / 100).toFixed(2)}`,
+                useStripePlatformPricing: config.useStripePlatformPricing,
+            },
+            rawSettings: settingsMap,
+            documentation: {
+                stripePercentageFee: "Stripe's processing fee percentage (e.g., 0.029 for 2.9%)",
+                stripeFlatFeeCents: "Stripe's flat fee per transaction in cents (e.g., 30 for $0.30)",
+                platformCommissionRate: "Platform's commission rate (e.g., 0.05 for 5%)",
+                minimumApplicationFeeCents: "Minimum application fee in cents to ensure profitability",
+                useStripePlatformPricing: "If true, use Stripe Platform Pricing Tool instead of code-based fees",
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching fee config:', error);
+        res.status(500).json({
+            error: 'Failed to fetch fee configuration',
+            message: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+});
+
+/**
+ * PUT /admin/fees/config
+ * Update platform fee configuration
+ * Includes validation and audit logging
+ */
+router.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const user = await getAuthenticatedUser(req);
+        if (!user) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const {
+            stripePercentageFee,
+            stripeFlatFeeCents,
+            platformCommissionRate,
+            minimumApplicationFeeCents,
+            useStripePlatformPricing,
+        } = req.body;
+
+        const updates: Array<{ key: string; value: string; description: string }> = [];
+
+        // Validate and prepare updates
+        if (stripePercentageFee !== undefined) {
+            const fee = parseFloat(stripePercentageFee);
+            if (isNaN(fee) || fee < 0 || fee > 0.5) {
+                return res.status(400).json({ error: 'stripePercentageFee must be between 0 and 0.5 (50%)' });
+            }
+            updates.push({
+                key: 'stripe_percentage_fee',
+                value: fee.toString(),
+                description: 'Stripe processing fee percentage (e.g., 0.029 for 2.9%)',
+            });
+        }
+
+        if (stripeFlatFeeCents !== undefined) {
+            const cents = parseInt(stripeFlatFeeCents, 10);
+            if (isNaN(cents) || cents < 0 || cents > 500) {
+                return res.status(400).json({ error: 'stripeFlatFeeCents must be between 0 and 500 ($5.00)' });
+            }
+            updates.push({
+                key: 'stripe_flat_fee_cents',
+                value: cents.toString(),
+                description: 'Stripe flat fee in cents (e.g., 30 for $0.30)',
+            });
+        }
+
+        if (platformCommissionRate !== undefined) {
+            const rate = parseFloat(platformCommissionRate);
+            if (isNaN(rate) || rate < 0 || rate > 0.5) {
+                return res.status(400).json({ error: 'platformCommissionRate must be between 0 and 0.5 (50%)' });
+            }
+            updates.push({
+                key: 'platform_commission_rate',
+                value: rate.toString(),
+                description: 'Platform commission rate as decimal (e.g., 0.05 for 5%)',
+            });
+        }
+
+        if (minimumApplicationFeeCents !== undefined) {
+            const cents = parseInt(minimumApplicationFeeCents, 10);
+            if (isNaN(cents) || cents < 0 || cents > 1000) {
+                return res.status(400).json({ error: 'minimumApplicationFeeCents must be between 0 and 1000 ($10.00)' });
+            }
+            updates.push({
+                key: 'minimum_application_fee_cents',
+                value: cents.toString(),
+                description: 'Minimum application fee in cents (e.g., 50 for $0.50)',
+            });
+        }
+
+        if (useStripePlatformPricing !== undefined) {
+            updates.push({
+                key: 'use_stripe_platform_pricing',
+                value: useStripePlatformPricing ? 'true' : 'false',
+                description: 'If true, do not set application_fee_amount in code - let Stripe Platform Pricing Tool handle it',
+            });
+        }
+
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No valid updates provided' });
+        }
+
+        // Apply updates with audit trail
+        for (const update of updates) {
+            await db
+                .insert(platformSettings)
+                .values({
+                    key: update.key,
+                    value: update.value,
+                    description: update.description,
+                    updatedBy: user.id,
+                    updatedAt: new Date(),
+                })
+                .onConflictDoUpdate({
+                    target: platformSettings.key,
+                    set: {
+                        value: update.value,
+                        description: update.description,
+                        updatedBy: user.id,
+                        updatedAt: new Date(),
+                    },
+                });
+        }
+
+        // Clear the fee config cache so new values take effect immediately
+        clearFeeConfigCache();
+
+        // Log the change for audit purposes
+        console.log(`[AUDIT] Fee config updated by admin ${user.id} (${user.username}):`, updates);
+
+        // Get updated configuration
+        const newConfig = await getFeeConfig();
+
+        res.json({
+            success: true,
+            message: 'Fee configuration updated successfully',
+            updatedFields: updates.map(u => u.key),
+            newConfig: {
+                stripePercentageFee: newConfig.stripePercentageFee,
+                stripeFlatFeeCents: newConfig.stripeFlatFeeCents,
+                platformCommissionRate: newConfig.platformCommissionRate,
+                minimumApplicationFeeCents: newConfig.minimumApplicationFeeCents,
+                useStripePlatformPricing: newConfig.useStripePlatformPricing,
+            },
+        });
+    } catch (error) {
+        console.error('Error updating fee config:', error);
+        res.status(500).json({
+            error: 'Failed to update fee configuration',
+            message: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+});
+
+/**
+ * POST /admin/fees/simulate
+ * Simulate fee calculation for a given booking amount
+ * Useful for testing before applying changes
+ */
+router.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { bookingAmountCents, customConfig } = req.body;
+
+        if (!bookingAmountCents || bookingAmountCents <= 0) {
+            return res.status(400).json({ error: 'bookingAmountCents must be a positive number' });
+        }
+
+        const { calculateCheckoutFeesAsync, calculateCheckoutFeesWithRates } = await import('../services/stripe-checkout-fee-service');
+
+        // Calculate with current database config
+        const currentResult = await calculateCheckoutFeesAsync(bookingAmountCents);
+
+        // Calculate with custom config if provided
+        let customResult = null;
+        if (customConfig) {
+            const {
+                stripePercentageFee = 0.029,
+                stripeFlatFeeCents = 30,
+                platformCommissionRate = 0.05,
+                minimumFeeCents = 50,
+            } = customConfig;
+
+            customResult = calculateCheckoutFeesWithRates(
+                bookingAmountCents / 100, // Convert to dollars
+                stripePercentageFee,
+                stripeFlatFeeCents,
+                platformCommissionRate,
+                minimumFeeCents
+            );
+        }
+
+        res.json({
+            success: true,
+            bookingAmount: {
+                cents: bookingAmountCents,
+                dollars: `$${(bookingAmountCents / 100).toFixed(2)}`,
+            },
+            currentConfig: {
+                result: {
+                    stripeProcessingFee: `$${(currentResult.stripeProcessingFeeInCents / 100).toFixed(2)}`,
+                    platformCommission: `$${(currentResult.platformCommissionInCents / 100).toFixed(2)}`,
+                    totalApplicationFee: `$${(currentResult.totalPlatformFeeInCents / 100).toFixed(2)}`,
+                    managerReceives: `$${(currentResult.managerReceivesInCents / 100).toFixed(2)}`,
+                    useStripePlatformPricing: currentResult.useStripePlatformPricing,
+                },
+                raw: currentResult,
+            },
+            customConfig: customResult ? {
+                result: {
+                    stripeProcessingFee: `$${(customResult.stripeProcessingFeeInCents / 100).toFixed(2)}`,
+                    platformCommission: `$${(customResult.platformCommissionInCents / 100).toFixed(2)}`,
+                    totalApplicationFee: `$${(customResult.totalPlatformFeeInCents / 100).toFixed(2)}`,
+                    managerReceives: `$${(customResult.managerReceivesInCents / 100).toFixed(2)}`,
+                },
+                raw: customResult,
+            } : null,
+        });
+    } catch (error) {
+        console.error('Error simulating fees:', error);
+        res.status(500).json({
+            error: 'Failed to simulate fees',
+            message: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+});
+
 export default router;
