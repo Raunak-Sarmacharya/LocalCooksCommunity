@@ -307,6 +307,39 @@ export default function ApplicantDashboard() {
     });
   };
 
+  /**
+   * Enterprise-grade seller application approval check
+   * 
+   * A chef's seller application is considered "fully approved" when:
+   * 1. Application status is 'approved'
+   * 2. Food Safety License document status is 'approved'
+   * 3. Food Establishment Cert status is 'approved' (if provided)
+   * 
+   * Only when fully approved can the chef:
+   * - Access Stripe Connect setup
+   * - Receive login credentials via email
+   * - Start selling on the platform
+   */
+  const isSellerApplicationFullyApproved = useMemo(() => {
+    const mostRecentApp = getMostRecentApplication();
+    if (!mostRecentApp) return false;
+    
+    const app = mostRecentApp as Application;
+    
+    // Application must be approved
+    if (app.status !== 'approved') return false;
+    
+    // Food Safety License must be approved (required document)
+    if (app.foodSafetyLicenseStatus !== 'approved') return false;
+    
+    // Food Establishment Cert is optional - only check if URL was provided
+    if (app.foodEstablishmentCertUrl && app.foodEstablishmentCertStatus !== 'approved') {
+      return false;
+    }
+    
+    return true;
+  }, [userDisplayInfo.applications]);
+
   const getApplicationStatus = () => {
     const mostRecentApp = getMostRecentApplication();
     // This is the Chef Dashboard - user is always a chef, never show "Select Role"
@@ -786,10 +819,12 @@ export default function ApplicantDashboard() {
         </Button>
       </div>
 
-      {/* Stripe Connect Payment Setup - Only visible after chef is fully verified (both documents approved) */}
-      <ChefStripeConnectSetup 
-        isApproved={chefInfo?.isVerified === true} 
-      />
+      {/* Stripe Connect Payment Setup - Only visible after chef's seller application is FULLY approved */}
+      {/* Enterprise requirement: Application status must be 'approved' AND both documents must be approved */}
+      {/* Until fully approved, chef cannot use Stripe Connect anyway (no login creds sent) */}
+      {isSellerApplicationFullyApproved && (
+        <ChefStripeConnectSetup isApproved={true} />
+      )}
 
       {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
         <div className="grid gap-6">
