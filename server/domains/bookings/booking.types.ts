@@ -63,3 +63,34 @@ export interface OverstayerPenaltyResult {
     penaltyAmount: number;
     newEndDate: string;
 }
+
+// Storage/Equipment item types for JSONB fields
+export interface StorageItemDTO {
+    id: number;
+    storageListingId: number;
+    name: string;
+    storageType: string;
+    totalPrice: number; // in cents
+    startDate: string;
+    endDate: string;
+}
+
+export interface EquipmentItemDTO {
+    id: number;
+    equipmentListingId: number;
+    name: string;
+    totalPrice: number; // in cents
+}
+
+// Manager booking response with enriched data
+export interface ManagerBookingDTO extends KitchenBooking {
+    kitchen: any;
+    location: any;
+    chef: any;
+    chefName: string | null;
+    kitchenName: string;
+    locationName: string;
+    locationTimezone: string | null;
+    storageItems: StorageItemDTO[];
+    equipmentItems: EquipmentItemDTO[];
+}

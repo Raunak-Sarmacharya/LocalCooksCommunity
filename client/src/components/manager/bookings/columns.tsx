@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -20,6 +20,24 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 
+// Storage/Equipment item types from JSONB fields
+export type StorageItem = {
+    id: number;
+    storageListingId: number;
+    name: string;
+    storageType: string;
+    totalPrice: number; // in cents
+    startDate?: string;
+    endDate?: string;
+}
+
+export type EquipmentItem = {
+    id: number;
+    equipmentListingId: number;
+    name: string;
+    totalPrice: number; // in cents
+}
+
 // Define the Booking type
 export type Booking = {
     id: number;
@@ -35,6 +53,14 @@ export type Booking = {
     chefName?: string;
     locationName?: string;
     locationTimezone?: string;
+    storageItems?: StorageItem[];
+    equipmentItems?: EquipmentItem[];
+    // Price fields
+    totalPrice?: number; // in cents - gross amount charged to customer
+    serviceFee?: number; // in cents - platform fee (covers Stripe processing)
+    hourlyRate?: number; // in cents
+    durationHours?: number;
+    paymentStatus?: string;
 }
 
 interface BookingColumnsProps {
@@ -120,6 +146,173 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
         ),
     },
     {
+        id: "addons",
+        header: () => (
+            <div className="flex items-center gap-1">
+                <Boxes className="h-3.5 w-3.5" />
+                <span>Rentals</span>
+            </div>
+        ),
+        cell: ({ row }) => {
+            const storageItems = row.original.storageItems || [];
+            const equipmentItems = row.original.equipmentItems || [];
+            const hasAddons = storageItems.length > 0 || equipmentItems.length > 0;
+
+            if (!hasAddons) {
+                return <span className="text-muted-foreground text-xs">—</span>;
+            }
+
+            const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+            return (
+                <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <div className="flex flex-col gap-1 cursor-help max-w-[200px]">
+                                {storageItems.length > 0 && (
+                                    <div className="flex items-start gap-1.5">
+                                        <Boxes className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                                        <div className="text-xs">
+                                            {storageItems.map((s, idx) => {
+                                                const formatStorageDate = (dateStr?: string) => {
+                                                    if (!dateStr) return '';
+                                                    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                                };
+                                                // Use storage dates if available, otherwise fall back to booking date
+                                                const startDate = s.startDate || row.original.bookingDate;
+                                                const endDate = s.endDate || row.original.bookingDate;
+                                                const dateRange = startDate === endDate 
+                                                    ? formatStorageDate(startDate)
+                                                    : `${formatStorageDate(startDate)} - ${formatStorageDate(endDate)}`;
+                                                return (
+                                                    <div key={idx} className="truncate">
+                                                        {s.name} ({s.storageType}) <span className="text-muted-foreground">• {dateRange}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                                {equipmentItems.length > 0 && (
+                                    <div className="flex items-start gap-1.5">
+                                        <Package className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                                        <span className="text-xs truncate">
+                                            {equipmentItems.map(e => e.name).join(', ')}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-sm">
+                            <div className="space-y-2">
+                                {storageItems.length > 0 && (
+                                    <div>
+                                        <p className="font-medium text-xs flex items-center gap-1 mb-1">
+                                            <Boxes className="h-3 w-3" /> Storage Rentals
+                                        </p>
+                                        <ul className="text-xs space-y-1">
+                                            {storageItems.map((item, idx) => {
+                                                const formatStorageDate = (dateStr?: string) => {
+                                                    if (!dateStr) return '';
+                                                    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                                };
+                                                const dateRange = item.startDate && item.endDate 
+                                                    ? (item.startDate === item.endDate 
+                                                        ? formatStorageDate(item.startDate)
+                                                        : `${formatStorageDate(item.startDate)} - ${formatStorageDate(item.endDate)}`)
+                                                    : '';
+                                                return (
+                                                    <li key={idx} className="flex flex-col">
+                                                        <div className="flex justify-between gap-3">
+                                                            <span>{item.name} ({item.storageType})</span>
+                                                            <span className="text-muted-foreground">{formatPrice(item.totalPrice)}</span>
+                                                        </div>
+                                                        {dateRange && (
+                                                            <span className="text-muted-foreground text-[10px]">
+                                                                📅 {dateRange}
+                                                            </span>
+                                                        )}
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                )}
+                                {equipmentItems.length > 0 && (
+                                    <div>
+                                        <p className="font-medium text-xs flex items-center gap-1 mb-1">
+                                            <Package className="h-3 w-3" /> Equipment Rentals
+                                        </p>
+                                        <ul className="text-xs space-y-0.5">
+                                            {equipmentItems.map((item, idx) => (
+                                                <li key={idx} className="flex justify-between gap-3">
+                                                    <span>{item.name}</span>
+                                                    <span className="text-muted-foreground">{formatPrice(item.totalPrice)}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+            );
+        }
+    },
+    {
+        accessorKey: "totalPrice",
+        header: () => (
+            <div className="text-right flex items-center justify-end gap-1">
+                <DollarSign className="h-3.5 w-3.5" />
+                <span>Payment</span>
+            </div>
+        ),
+        cell: ({ row }) => {
+            const totalPrice = row.original.totalPrice ?? 0;
+            const serviceFee = row.original.serviceFee ?? 0;
+            const netAmount = totalPrice - serviceFee;
+            
+            const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+            
+            if (totalPrice === 0) {
+                return <span className="text-muted-foreground text-xs">—</span>;
+            }
+
+            return (
+                <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <div className="text-right cursor-help">
+                                <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
+                                <div className="text-xs text-green-600">You receive: {formatPrice(netAmount)}</div>
+                            </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                            <div className="space-y-1 text-sm">
+                                <div className="flex justify-between gap-4">
+                                    <span>Total Charged:</span>
+                                    <span className="font-medium">{formatPrice(totalPrice)}</span>
+                                </div>
+                                <div className="flex justify-between gap-4 text-violet-600">
+                                    <span>Platform Fee (Stripe):</span>
+                                    <span>-{formatPrice(serviceFee)}</span>
+                                </div>
+                                <div className="border-t pt-1 flex justify-between gap-4 font-semibold text-green-600">
+                                    <span>You Receive:</span>
+                                    <span>{formatPrice(netAmount)}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground pt-1">
+                                    Platform fee covers Stripe processing (2.9% + $0.30)
+                                </p>
+                            </div>
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+            );
+        },
+    },
+    {
         accessorKey: "status",
         header: "Status",
         cell: ({ row }) => {
@@ -129,13 +322,13 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
             let icon = null;
 
             if (status === 'confirmed') {
-                variant = "default" // or success style if we had it
+                variant = "default"
                 icon = <CheckCircle className="h-3 w-3 mr-1" />
             } else if (status === 'cancelled') {
                 variant = "destructive"
                 icon = <XCircle className="h-3 w-3 mr-1" />
             } else {
-                variant = "secondary" // Pending
+                variant = "secondary"
                 icon = <Clock className="h-3 w-3 mr-1" />
             }
 
