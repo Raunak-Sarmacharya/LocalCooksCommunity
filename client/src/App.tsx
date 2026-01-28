@@ -1,5 +1,4 @@
 import { CustomAlertsProvider, useCustomAlerts } from "@/components/ui/custom-alerts";
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
@@ -575,7 +574,6 @@ function App() {
       <AuthProvider>
         <CustomAlertsProvider>
           <TooltipProvider>
-            <Toaster />
             <SonnerToaster />
             <Router />
           </TooltipProvider>

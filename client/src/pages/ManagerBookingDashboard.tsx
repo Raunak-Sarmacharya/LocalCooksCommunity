@@ -12,7 +12,7 @@ import { useLocation } from "wouter";
 import 'react-calendar/dist/Calendar.css';
 import { useManagerDashboard } from "../hooks/use-manager-dashboard";
 import { useOnboardingStatus } from "@/hooks/use-onboarding-status";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -125,7 +125,6 @@ type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'set
 
 
 export default function ManagerBookingDashboard() {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation(); // [NEW] Used for setup navigation
   const { locations, isLoadingLocations } = useManagerDashboard();
@@ -662,7 +661,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 function CreateLocationSheet({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
-  const { toast } = useToast();
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
 
   const form = useForm<CreateLocationFormValues>({
@@ -884,7 +882,6 @@ function KitchenGalleryImages({
   galleryImages: string[];
   locationId: number;
 }) {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [currentGalleryImages, setCurrentGalleryImages] = useState<string[]>(galleryImages || []);
 
@@ -1079,7 +1076,6 @@ const VALID_SETTINGS_TABS = ['setup', 'branding', 'notifications', 'booking-rule
 type SettingsTab = typeof VALID_SETTINGS_TABS[number];
 
 function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewProps) {
-  const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Tab state - check URL params first, then default to 'setup'

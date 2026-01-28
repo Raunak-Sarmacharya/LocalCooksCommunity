@@ -22,6 +22,7 @@ import {
 } from "../email";
 import { normalizePhoneForStorage } from "../phone-utils";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
+import { notificationService } from "../services/notification.service";
 
 // Service Imports
 import { ApplicationRepository } from "../domains/applications/application.repository";
@@ -548,6 +549,41 @@ router.patch("/:id/document-verification", async (req: Request, res: Response) =
                     console.error('❌ Error sending full verification email:', emailError);
                 }
             }
+        }
+
+        // Create notifications for license approval/rejection (for managers)
+        try {
+            // Find the manager for this application's location (if it's a chef kitchen application)
+            const { locationService } = await import('../domains/locations/location.service');
+            
+            // Check if we have location info from the application
+            if ((updatedApplication as any).locationId) {
+                const location = await locationService.getLocationById((updatedApplication as any).locationId);
+                if (location && location.managerId) {
+                    const isApproved = updatedApplication.foodSafetyLicenseStatus === 'approved' || 
+                                       updatedApplication.foodEstablishmentCertStatus === 'approved';
+                    const isRejected = updatedApplication.foodSafetyLicenseStatus === 'rejected' || 
+                                       updatedApplication.foodEstablishmentCertStatus === 'rejected';
+
+                    if (isApproved) {
+                        await notificationService.notifyLicenseApproved({
+                            managerId: location.managerId,
+                            locationId: location.id,
+                            locationName: location.name,
+                            feedback: updatedApplication.documentsAdminFeedback || undefined
+                        });
+                    } else if (isRejected) {
+                        await notificationService.notifyLicenseRejected({
+                            managerId: location.managerId,
+                            locationId: location.id,
+                            locationName: location.name,
+                            feedback: updatedApplication.documentsAdminFeedback || undefined
+                        });
+                    }
+                }
+            }
+        } catch (notifError) {
+            console.error("Error creating license notification:", notifError);
         }
 
         return res.status(200).json(updatedApplication);

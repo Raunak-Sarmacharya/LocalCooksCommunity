@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 import { FileText, Upload, X } from "lucide-react";
 import React, { useState } from "react";
 
@@ -30,27 +30,22 @@ export function FileUpload({
   className = "",
   folder = "documents"
 }: FileUploadProps) {
-  const { toast } = useToast();
-  const [isDragOver, setIsDragOver] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
 
   const validateFile = (file: File): boolean => {
     // Validate file type
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      toast({
-        title: "Invalid file type",
+      toast.error("Invalid file type", {
         description: `Please upload ${description} only.`,
-        variant: "destructive",
       });
       return false;
     }
 
     // Validate file size
     if (file.size > maxSize * 1024 * 1024) {
-      toast({
-        title: "File too large",
+      toast.error("File too large", {
         description: `Please upload files smaller than 4.5MB.`,
-        variant: "destructive",
       });
       return false;
     }

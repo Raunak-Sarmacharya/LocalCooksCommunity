@@ -11,12 +11,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CreditCard, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/hooks/use-toast';
 import { useFirebaseAuth } from '@/hooks/use-auth';
 import { auth } from '@/lib/firebase';
 
 export default function StripeConnectSetup() {
-  const { toast } = useToast();
   const { user: firebaseUser } = useFirebaseAuth();
   const queryClient = useQueryClient();
 
@@ -97,9 +96,8 @@ export default function StripeConnectSetup() {
     channel.onmessage = (event) => {
       console.log('Received broadcast message:', event.data);
       if (event.data?.type === 'STRIPE_SETUP_COMPLETE') {
-        toast({
-          title: "Setup Verified",
-          description: "We detected your completed setup from the other tab.",
+        toast.success("Setup Verified", {
+          description: "We detected your completed setup from the other tab."
         });
         queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
       }
@@ -143,9 +141,8 @@ export default function StripeConnectSetup() {
       
       // If account already existed, don't try to start onboarding
       if (data.alreadyExists) {
-        toast({
-          title: 'Account Already Connected',
-          description: 'Your Stripe account is already connected. You can access your dashboard below.',
+        toast.info('Account Already Connected', {
+          description: 'Your Stripe account is already connected. You can access your dashboard below.'
         });
         return;
       }

@@ -44,6 +44,7 @@ import { DEFAULT_TIMEZONE } from "@shared/timezone-utils";
 import { getPresignedUrl, deleteFromR2 } from "../r2-storage";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
+import { notificationService } from "../services/notification.service";
 
 import {
     storageBookings as storageBookingsTable,
@@ -1558,6 +1559,24 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                     }
 
                     logger.info(`[Manager] Booking ${id} confirmed by manager ${user.id}`);
+                    
+                    // Create in-app notification for confirmed booking
+                    try {
+                        await notificationService.notifyBookingConfirmed({
+                            managerId: user.id,
+                            locationId: location.id,
+                            bookingId: id,
+                            chefName: chef.username || 'Chef',
+                            kitchenName: kitchen.name,
+                            bookingDate: booking.bookingDate instanceof Date 
+                                ? booking.bookingDate.toISOString().split('T')[0] 
+                                : String(booking.bookingDate).split('T')[0],
+                            startTime: booking.startTime,
+                            endTime: booking.endTime
+                        });
+                    } catch (notifError) {
+                        console.error("Error creating confirmation notification:", notifError);
+                    }
                 } else if (status === 'cancelled') {
                     // Send cancellation email to chef
                     const chefCancellationEmail = generateBookingCancellationEmail({
@@ -1593,6 +1612,25 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                     }
 
                     logger.info(`[Manager] Booking ${id} cancelled/declined by manager ${user.id}`);
+                    
+                    // Create in-app notification for cancelled booking
+                    try {
+                        await notificationService.notifyBookingCancelled({
+                            managerId: user.id,
+                            locationId: location.id,
+                            bookingId: id,
+                            chefName: chef.username || 'Chef',
+                            kitchenName: kitchen.name,
+                            bookingDate: booking.bookingDate instanceof Date 
+                                ? booking.bookingDate.toISOString().split('T')[0] 
+                                : String(booking.bookingDate).split('T')[0],
+                            startTime: booking.startTime,
+                            endTime: booking.endTime,
+                            cancelledBy: 'manager'
+                        });
+                    } catch (notifError) {
+                        console.error("Error creating cancellation notification:", notifError);
+                    }
                 }
             }
         } catch (emailError) {

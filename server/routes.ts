@@ -398,6 +398,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================================
   // All manager routes are now handled in ./routes/manager.ts
   app.use("/api/manager", (await import("./routes/manager")).default);
+  
+  // Manager notifications routes
+  app.use("/api/manager/notifications", (await import("./routes/notifications")).default);
 
   // ===================================
   // KITCHEN BOOKING SYSTEM - CHEF ROUTES
