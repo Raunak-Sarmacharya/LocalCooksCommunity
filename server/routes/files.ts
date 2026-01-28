@@ -45,20 +45,10 @@ router.post("/upload-file",
 
             const folder = req.body.folder || 'documents';
 
-            const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-            let fileUrl: string;
-            let fileName: string;
-
-            if (isProduction) {
-                // Upload to Cloudflare R2 in production
-                fileUrl = await uploadToBlob(req.file, userId, folder);
-                // Extract filename from R2 URL for response
-                fileName = fileUrl.split('/').pop() || req.file.originalname;
-            } else {
-                // Use local storage in development
-                fileUrl = getFileUrl(req.file.filename);
-                fileName = req.file.filename;
-            }
+            // Enterprise-grade: Always use uploadToBlob which handles R2 vs local automatically
+            // This ensures consistent behavior across all environments when R2 is configured
+            const fileUrl = await uploadToBlob(req.file, userId, folder);
+            const fileName = fileUrl.split('/').pop() || req.file.originalname;
 
             // Return success response with file information
             return res.status(200).json({

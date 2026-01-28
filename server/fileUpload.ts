@@ -19,14 +19,20 @@ declare global {
 // Check if we're in production (Vercel)
 const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
-// Ensure uploads directory exists (for development)
+// Enterprise-grade storage strategy:
+// - Use R2 (cloud) when configured, regardless of environment
+// - This ensures team collaboration: all developers see the same files
+// - Fall back to local storage only when R2 is not configured
+const useCloudStorage = isR2Configured() || isProduction;
+
+// Ensure uploads directory exists (fallback for when R2 is not configured)
 const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
-if (!isProduction && !fs.existsSync(uploadsDir)) {
+if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configure multer for file storage
-const storage = multer.diskStorage({
+// Configure multer for local file storage (fallback only)
+const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
   },
@@ -44,7 +50,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// Memory storage for production (Cloudflare R2)
+// Memory storage for R2 uploads (keeps file in memory buffer for cloud upload)
 const memoryStorage = multer.memoryStorage();
 
 // File filter to only allow certain file types
@@ -65,9 +71,12 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   }
 };
 
-// Configure multer based on environment
+// Configure multer: use memory storage when R2 is available (for cloud upload)
+// Use disk storage only as fallback when R2 is not configured
+console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? 'memory (R2)' : 'disk (local)'} storage`);
+
 export const upload = multer({
-  storage: isProduction ? memoryStorage : storage,
+  storage: useCloudStorage ? memoryStorage : diskStorage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
