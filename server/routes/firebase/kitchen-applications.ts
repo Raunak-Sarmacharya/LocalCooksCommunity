@@ -15,6 +15,7 @@ import { ApplicationService } from '../../domains/applications/application.servi
 
 import { sendSystemNotification, notifyTierTransition } from '../../chat-service';
 import { and, eq } from 'drizzle-orm';
+import { notificationService } from '../../services/notification.service';
 
 const router = Router();
 
@@ -511,6 +512,21 @@ router.post('/firebase/chef/kitchen-applications',
 
             console.log(`✅ Kitchen application created/updated: Chef ${req.neonUser!.id} → Location ${parsedData.data.locationId}, ID: ${application.id}`);
 
+            // Create in-app notification for manager about new application
+            try {
+                if (location.managerId) {
+                    await notificationService.notifyNewApplication({
+                        managerId: location.managerId,
+                        locationId: location.id,
+                        applicationId: application.id,
+                        chefName: formData.fullName || 'Chef',
+                        chefEmail: formData.email || ''
+                    });
+                }
+            } catch (notifError) {
+                console.error("Error creating application notification:", notifError);
+            }
+
             res.status(201).json({
                 success: true,
                 application,
@@ -820,6 +836,21 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
         }
 
         console.log(`✅ Application ${applicationId} ${status} by Manager ${user.id}`);
+
+        // Create in-app notification for application approval
+        if (status === 'approved' && updatedApplication) {
+            try {
+                await notificationService.notifyApplicationApproved({
+                    managerId: user.id,
+                    locationId: application.locationId,
+                    applicationId: application.id,
+                    chefName: application.fullName || 'Chef',
+                    chefEmail: application.email || ''
+                });
+            } catch (notifError) {
+                console.error("Error creating application approval notification:", notifError);
+            }
+        }
 
         // Handle tier transitions and chat initialization
         if (status === 'approved' && updatedApplication) {

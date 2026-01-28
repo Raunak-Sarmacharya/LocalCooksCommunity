@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
@@ -67,7 +67,6 @@ export default function BookingControlPanel({
   onCancelBooking,
   kitchens = [],
 }: BookingControlPanelProps) {
-  const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<FilterType>("all");
   const [viewType, setViewType] = useState<ViewType>("upcoming");
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
@@ -474,10 +473,8 @@ export default function BookingControlPanel({
       
       if (!currentUser) {
         console.error('No current user found for invoice download');
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to download invoice",
-          variant: "destructive",
+        toast.error("Authentication Required", {
+          description: "Please log in to download invoice"
         });
         setDownloadingInvoiceId(null);
         return;
@@ -488,10 +485,8 @@ export default function BookingControlPanel({
       
       if (!token) {
         console.error('Failed to get Firebase token');
-        toast({
-          title: "Authentication Error",
-          description: "Failed to get authentication token. Please try again.",
-          variant: "destructive",
+        toast.error("Authentication Error", {
+          description: "Failed to get authentication token. Please try again."
         });
         setDownloadingInvoiceId(null);
         return;
@@ -558,16 +553,13 @@ export default function BookingControlPanel({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      toast({
-        title: "Invoice Downloaded",
-        description: "Your invoice has been downloaded successfully!",
+      toast.success("Invoice Downloaded", {
+        description: "Your invoice has been downloaded successfully!"
       });
     } catch (err: any) {
       console.error('Error downloading invoice:', err);
-      toast({
-        title: "Download Failed",
-        description: err.message || "Failed to download invoice. Please try again.",
-        variant: "destructive",
+      toast.error("Download Failed", {
+        description: err.message || "Failed to download invoice. Please try again."
       });
     } finally {
       setDownloadingInvoiceId(null);
@@ -580,10 +572,8 @@ export default function BookingControlPanel({
       const bookingDateTime = new Date(`${dateStr}T${startTime}`);
       
       if (isNaN(bookingDateTime.getTime())) {
-        toast({
-          title: "Error",
-          description: "Invalid booking date format.",
-          variant: "destructive",
+        toast.error("Error", {
+          description: "Invalid booking date format."
         });
         return;
       }
@@ -598,10 +588,8 @@ export default function BookingControlPanel({
 
       // Don't allow cancellation if booking time has passed
       if (hoursUntilBooking < 0) {
-        toast({
-          title: "Cannot Cancel",
-          description: "This booking has already started or passed. Cancellation is no longer available.",
-          variant: "destructive",
+        toast.error("Cannot Cancel", {
+          description: "This booking has already started or passed. Cancellation is no longer available."
         });
         return;
       }
@@ -609,10 +597,8 @@ export default function BookingControlPanel({
       // Only apply cancellation policy to future bookings
       // Past bookings cannot be cancelled - only upcoming bookings outside cancellation window can be cancelled
       if (hoursUntilBooking >= 0 && hoursUntilBooking < cancellationHours) {
-        toast({
-          title: "Cancellation Policy",
-          description: policyMessage,
-          variant: "destructive",
+        toast.error("Cancellation Policy", {
+          description: policyMessage
         });
         return;
       }
@@ -622,10 +608,8 @@ export default function BookingControlPanel({
       }
     } catch (error) {
       console.error('Error in handleCancel:', error);
-      toast({
-        title: "Error",
-        description: "Failed to process cancellation. Please try again.",
-        variant: "destructive",
+      toast.error("Error", {
+        description: "Failed to process cancellation. Please try again."
       });
     }
   };

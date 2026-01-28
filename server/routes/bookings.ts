@@ -29,6 +29,7 @@ import {
     generateChefSelfCancellationSMS,
     generateManagerBookingCancellationSMS
 } from "../sms";
+import { notificationService } from "../services/notification.service";
 
 const router = Router();
 
@@ -1311,6 +1312,24 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
                         });
                         await sendEmail(managerEmail);
                     }
+                }
+            // Create in-app notification for manager
+                try {
+                    const managerId = (location as any)?.managerId || (location as any)?.manager_id;
+                    if (managerId && kitchen) {
+                        await notificationService.notifyNewBooking({
+                            managerId,
+                            locationId: kitchen.locationId,
+                            bookingId: booking.id,
+                            chefName: chef.username || 'Chef',
+                            kitchenName: kitchen.name,
+                            bookingDate: bookingDateObj.toISOString().split('T')[0],
+                            startTime,
+                            endTime
+                        });
+                    }
+                } catch (notifError) {
+                    console.error("Error creating booking notification:", notifError);
                 }
             }
         } catch (emailError) {

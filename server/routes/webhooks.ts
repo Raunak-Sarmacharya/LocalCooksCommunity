@@ -1,10 +1,11 @@
 import { Router, Request, Response } from "express";
 import Stripe from "stripe";
 import { db, pool } from "../db";
-import { users, kitchenBookings, storageBookings, equipmentBookings } from "@shared/schema";
+import { users, kitchenBookings, storageBookings, equipmentBookings, locations, kitchens } from "@shared/schema";
 import { eq, and, ne, notInArray } from "drizzle-orm";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
+import { notificationService } from "../services/notification.service";
 
 const router = Router();
 
@@ -358,6 +359,57 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent,
         });
 
         logger.info(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`);
+
+        // Create in-app notification for payment received
+        try {
+            // Find the booking to get manager info
+            const [booking] = await db
+                .select({
+                    id: kitchenBookings.id,
+                    kitchenId: kitchenBookings.kitchenId,
+                    chefId: kitchenBookings.chefId,
+                    totalPrice: kitchenBookings.totalPrice
+                })
+                .from(kitchenBookings)
+                .where(eq(kitchenBookings.paymentIntentId, paymentIntent.id))
+                .limit(1);
+
+            if (booking) {
+                const [kitchen] = await db
+                    .select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId })
+                    .from(kitchens)
+                    .where(eq(kitchens.id, booking.kitchenId))
+                    .limit(1);
+
+                if (kitchen) {
+                    const [location] = await db
+                        .select({ id: locations.id, managerId: locations.managerId })
+                        .from(locations)
+                        .where(eq(locations.id, kitchen.locationId))
+                        .limit(1);
+
+                    if (location && location.managerId) {
+                        const [chef] = await db
+                            .select({ username: users.username })
+                            .from(users)
+                            .where(eq(users.id, booking.chefId as number))
+                            .limit(1);
+
+                        await notificationService.notifyPaymentReceived({
+                            managerId: location.managerId,
+                            locationId: location.id,
+                            bookingId: booking.id,
+                            amount: paymentIntent.amount,
+                            currency: paymentIntent.currency.toUpperCase(),
+                            chefName: chef?.username || 'Chef',
+                            kitchenName: kitchen.name
+                        });
+                    }
+                }
+            }
+        } catch (notifError) {
+            logger.error(`[Webhook] Error creating payment notification:`, notifError);
+        }
     } catch (error: any) {
         logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
     }
@@ -427,6 +479,57 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent, we
         });
 
         logger.info(`[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`);
+
+        // Create in-app notification for payment failed
+        try {
+            const [booking] = await db
+                .select({
+                    id: kitchenBookings.id,
+                    kitchenId: kitchenBookings.kitchenId,
+                    chefId: kitchenBookings.chefId,
+                    totalPrice: kitchenBookings.totalPrice
+                })
+                .from(kitchenBookings)
+                .where(eq(kitchenBookings.paymentIntentId, paymentIntent.id))
+                .limit(1);
+
+            if (booking) {
+                const [kitchen] = await db
+                    .select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId })
+                    .from(kitchens)
+                    .where(eq(kitchens.id, booking.kitchenId))
+                    .limit(1);
+
+                if (kitchen) {
+                    const [location] = await db
+                        .select({ id: locations.id, managerId: locations.managerId })
+                        .from(locations)
+                        .where(eq(locations.id, kitchen.locationId))
+                        .limit(1);
+
+                    if (location && location.managerId) {
+                        const [chef] = await db
+                            .select({ username: users.username })
+                            .from(users)
+                            .where(eq(users.id, booking.chefId as number))
+                            .limit(1);
+
+                        await notificationService.notifyPaymentFailed({
+                            managerId: location.managerId,
+                            locationId: location.id,
+                            bookingId: booking.id,
+                            amount: paymentIntent.amount,
+                            currency: paymentIntent.currency.toUpperCase(),
+                            chefName: chef?.username || 'Chef',
+                            kitchenName: kitchen.name,
+                            reason: paymentIntent.last_payment_error?.message
+                        });
+                    }
+                }
+            }
+        } catch (notifError) {
+            logger.error(`[Webhook] Error creating payment failed notification:`, notifError);
+        }
     } catch (error: any) {
         logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
     }

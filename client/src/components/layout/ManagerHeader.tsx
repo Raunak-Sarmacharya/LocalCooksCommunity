@@ -10,6 +10,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useState } from "react";
 import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
+import NotificationCenter from "@/components/manager/NotificationCenter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -202,6 +203,9 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                   <HelpCircle className="h-4 w-4" />
                   Help
                 </Button>
+
+                {/* Notification Center */}
+                <NotificationCenter />
 
                 {/* Profile Dropdown Menu */}
                 <DropdownMenu modal={false}>

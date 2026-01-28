@@ -433,18 +433,15 @@ function AdminDashboard() {
         queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] })
       ]);
 
-      toast({
-        title: "Status updated",
-        description: `Application status changed to ${data.status}. Email notification sent.`,
+      toast.success("Status updated", {
+        description: `Application status changed to ${data.status}. Email notification sent.`
       });
 
       console.log('Status update successful with email notification:', data);
     },
     onError: (error) => {
-      toast({
-        title: "Error updating status",
-        description: error.message || "Please try again.",
-        variant: "destructive",
+      toast.error("Error updating status", {
+        description: error.message || "Please try again."
       });
     },
   });
@@ -489,9 +486,8 @@ function AdminDashboard() {
         await forceAdminRefresh();
       }, 1000);
 
-      toast({
-        title: "Document status updated",
-        description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. Email notification sent to user.`,
+      toast.success("Document status updated", {
+        description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. Email notification sent to user.`
       });
 
       console.log('Admin: Document status updated', {
@@ -502,10 +498,8 @@ function AdminDashboard() {
       });
     },
     onError: (error) => {
-      toast({
-        title: "Error updating document status",
-        description: error.message || "Please try again.",
-        variant: "destructive",
+      toast.error("Error updating document status", {
+        description: error.message || "Please try again."
       });
     },
   });

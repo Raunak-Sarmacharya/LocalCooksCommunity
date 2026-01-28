@@ -369,3 +369,12 @@ scripts/.sync-cache/
 .windsurf/skills/stripe-best-practices/SKILL.md
 .windsurf/skills/stripe/SKILL.md
 .windsurf/skills/invoice-generator/SKILL.md
+.windsurf/skills/tailwind-react-guidelines/SKILL.md
+.windsurf/skills/tailwind-react-guidelines/resources/component-patterns.md
+.windsurf/skills/tailwind-react-guidelines/resources/file-organization.md
+.windsurf/skills/tailwind-react-guidelines/resources/forms.md
+.windsurf/skills/tailwind-react-guidelines/resources/loading-and-error-states.md
+.windsurf/skills/tailwind-react-guidelines/resources/performance.md
+.windsurf/skills/tailwind-react-guidelines/resources/styling-guide.md
+.windsurf/skills/tailwind-react-guidelines/resources/testing.md
+.windsurf/skills/tailwind-react-guidelines/resources/typescript-standards.md
