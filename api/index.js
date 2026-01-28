@@ -11436,7 +11436,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
         pt.amount as pt_amount,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
-        COALESCE(pt.stripe_fee, 0)::bigint as actual_stripe_fee,
+        COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
         -- Actual tax amount from payment_transactions
         COALESCE(pt.tax_amount, 0)::bigint as actual_tax_amount,
         -- Service fee from payment_transactions
@@ -12741,6 +12741,7 @@ __export(payment_transactions_service_exports, {
   createPaymentTransaction: () => createPaymentTransaction,
   findPaymentTransactionByBooking: () => findPaymentTransactionByBooking,
   findPaymentTransactionByIntentId: () => findPaymentTransactionByIntentId,
+  findPaymentTransactionByMetadata: () => findPaymentTransactionByMetadata,
   getManagerPaymentTransactions: () => getManagerPaymentTransactions,
   getPaymentHistory: () => getPaymentHistory,
   syncExistingPaymentTransactionsFromStripe: () => syncExistingPaymentTransactionsFromStripe,
@@ -13244,6 +13245,15 @@ async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
   const result = await db2.execute(sql8`
     SELECT * FROM payment_transactions
     WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2) {
+  const result = await db2.execute(sql8`
+    SELECT * FROM payment_transactions
+    WHERE metadata->>${"checkout_session_id"} = ${metadataValue}
     ORDER BY created_at DESC
     LIMIT 1
   `);
@@ -16558,6 +16568,36 @@ var init_bookings = __esm({
           },
           db
         );
+        try {
+          const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const [bookingDetails] = await db.select({
+            chefId: kitchenBookings.chefId,
+            managerId: locations.managerId
+          }).from(kitchenBookings).innerJoin(kitchens, eq26(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).where(eq26(kitchenBookings.id, bookingId)).limit(1);
+          if (bookingDetails) {
+            await createPaymentTransaction2({
+              bookingId,
+              bookingType: "kitchen",
+              chefId: bookingDetails.chefId,
+              managerId: bookingDetails.managerId,
+              amount: feeCalculation.totalChargeInCents,
+              baseAmount: feeCalculation.bookingPriceInCents,
+              serviceFee: feeCalculation.totalPlatformFeeInCents,
+              managerRevenue: feeCalculation.managerReceivesInCents,
+              currency: "CAD",
+              paymentIntentId: void 0,
+              // Will be set when checkout completes
+              status: "pending",
+              metadata: {
+                checkout_session_id: checkoutSession.sessionId,
+                booking_id: bookingId.toString()
+              }
+            }, db);
+            console.log(`[Checkout] Created payment_transactions record for booking ${bookingId}`);
+          }
+        } catch (ptError) {
+          console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
+        }
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
@@ -19420,9 +19460,12 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     const stripe4 = new Stripe4(stripeSecretKey4, {
       apiVersion: "2025-12-15.clover"
     });
-    const expandedSession = await stripe4.checkout.sessions.retrieve(session.id, {
-      expand: ["line_items", "payment_intent"]
-    });
+    const expandedSession = await stripe4.checkout.sessions.retrieve(
+      session.id,
+      {
+        expand: ["line_items", "payment_intent"]
+      }
+    );
     const paymentIntent = expandedSession.payment_intent;
     let paymentIntentId;
     let chargeId;
@@ -19462,18 +19505,57 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
       db
     );
     if (updatedTransaction) {
-      logger.info(`[Webhook] Updated transaction for Checkout session ${session.id}:`, {
-        paymentIntentId,
-        chargeId,
-        amount: `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}`,
-        managerReceives: `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}`
-      });
+      logger.info(
+        `[Webhook] Updated transaction for Checkout session ${session.id}:`,
+        {
+          paymentIntentId,
+          chargeId,
+          amount: `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}`,
+          managerReceives: `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}`
+        }
+      );
     } else {
-      logger.warn(`[Webhook] Transaction not found for Checkout session ${session.id}`);
+      logger.warn(
+        `[Webhook] Transaction not found for Checkout session ${session.id}`
+      );
+    }
+    if (paymentIntentId) {
+      try {
+        const { findPaymentTransactionByMetadata: findPaymentTransactionByMetadata2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const ptRecord = await findPaymentTransactionByMetadata2(
+          "checkout_session_id",
+          session.id,
+          db
+        );
+        if (ptRecord) {
+          await updatePaymentTransaction2(
+            ptRecord.id,
+            {
+              paymentIntentId,
+              chargeId,
+              status: "processing",
+              stripeStatus: "processing"
+            },
+            db
+          );
+          logger.info(
+            `[Webhook] Updated payment_transactions with paymentIntentId for session ${session.id}`
+          );
+        }
+      } catch (ptError) {
+        logger.warn(
+          `[Webhook] Could not update payment_transactions:`,
+          ptError
+        );
+      }
     }
     const metadata = expandedSession.metadata || {};
     if (metadata.type === "storage_extension") {
-      await handleStorageExtensionPaymentCompleted(session.id, paymentIntentId, metadata);
+      await handleStorageExtensionPaymentCompleted(
+        session.id,
+        paymentIntentId,
+        metadata
+      );
     }
   } catch (error) {
     logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
@@ -19489,13 +19571,20 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
       logger.error("[Webhook] Invalid storage extension metadata:", metadata);
       return;
     }
-    const pendingExtension = await bookingService2.getPendingStorageExtension(storageBookingId, sessionId);
+    const pendingExtension = await bookingService2.getPendingStorageExtension(
+      storageBookingId,
+      sessionId
+    );
     if (!pendingExtension) {
-      logger.error(`[Webhook] Pending storage extension not found for session ${sessionId}`);
+      logger.error(
+        `[Webhook] Pending storage extension not found for session ${sessionId}`
+      );
       return;
     }
     if (pendingExtension.status === "completed") {
-      logger.info(`[Webhook] Storage extension already completed for session ${sessionId}`);
+      logger.info(
+        `[Webhook] Storage extension already completed for session ${sessionId}`
+      );
       return;
     }
     await bookingService2.updatePendingStorageExtension(pendingExtension.id, {
@@ -19512,7 +19601,10 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
       paymentIntentId
     });
   } catch (error) {
-    logger.error(`[Webhook] Error processing storage extension payment:`, error);
+    logger.error(
+      `[Webhook] Error processing storage extension payment:`,
+      error
+    );
   }
 }
 async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
@@ -19523,7 +19615,10 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
   try {
     const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
     const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-    const transaction = await findPaymentTransactionByIntentId2(paymentIntent.id, db);
+    const transaction = await findPaymentTransactionByIntentId2(
+      paymentIntent.id,
+      db
+    );
     if (transaction) {
       let managerConnectAccountId;
       try {
@@ -19537,9 +19632,14 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
           managerConnectAccountId = manager.stripeConnectAccountId;
         }
       } catch (error) {
-        logger.warn(`[Webhook] Could not fetch manager Connect account:`, { error });
+        logger.warn(`[Webhook] Could not fetch manager Connect account:`, {
+          error
+        });
       }
-      const stripeAmounts = await getStripePaymentAmounts2(paymentIntent.id, managerConnectAccountId);
+      const stripeAmounts = await getStripePaymentAmounts2(
+        paymentIntent.id,
+        managerConnectAccountId
+      );
       const updateParams = {
         status: "succeeded",
         stripeStatus: paymentIntent.status,
@@ -19555,15 +19655,20 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
         updateParams.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
         updateParams.stripePlatformFee = stripeAmounts.stripePlatformFee;
-        logger.info(`[Webhook] Syncing Stripe amounts for ${paymentIntent.id}:`, {
-          amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
-          netAmount: `$${(stripeAmounts.stripeNetAmount / 100).toFixed(2)}`,
-          processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
-          platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`
-        });
+        logger.info(
+          `[Webhook] Syncing Stripe amounts for ${paymentIntent.id}:`,
+          {
+            amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+            netAmount: `$${(stripeAmounts.stripeNetAmount / 100).toFixed(2)}`,
+            processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+            platformFee: `$${(stripeAmounts.stripePlatformFee / 100).toFixed(2)}`
+          }
+        );
       }
       await updatePaymentTransaction2(transaction.id, updateParams, db);
-      logger.info(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}${stripeAmounts ? " with Stripe amounts" : ""}`);
+      logger.info(
+        `[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}${stripeAmounts ? " with Stripe amounts" : ""}`
+      );
       if (stripeAmounts) {
         const { syncStripeAmountsToBookings: syncStripeAmountsToBookings2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
         await syncStripeAmountsToBookings2(paymentIntent.id, stripeAmounts, db);
@@ -19598,7 +19703,9 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         )
       );
     });
-    logger.info(`[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`);
+    logger.info(
+      `[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`
+    );
     try {
       const [booking] = await db.select({
         id: kitchenBookings.id,
@@ -19607,7 +19714,11 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         totalPrice: kitchenBookings.totalPrice
       }).from(kitchenBookings).where(eq28(kitchenBookings.paymentIntentId, paymentIntent.id)).limit(1);
       if (booking) {
-        const [kitchen] = await db.select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq28(kitchens.id, booking.kitchenId)).limit(1);
+        const [kitchen] = await db.select({
+          id: kitchens.id,
+          name: kitchens.name,
+          locationId: kitchens.locationId
+        }).from(kitchens).where(eq28(kitchens.id, booking.kitchenId)).limit(1);
         if (kitchen) {
           const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq28(locations.id, kitchen.locationId)).limit(1);
           if (location && location.managerId) {
@@ -19625,10 +19736,16 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         }
       }
     } catch (notifError) {
-      logger.error(`[Webhook] Error creating payment notification:`, notifError);
+      logger.error(
+        `[Webhook] Error creating payment notification:`,
+        notifError
+      );
     }
   } catch (error) {
-    logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+    logger.error(
+      `[Webhook] Error updating payment status for ${paymentIntent.id}:`,
+      error
+    );
   }
 }
 async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
@@ -19638,16 +19755,25 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
   }
   try {
     const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-    const transaction = await findPaymentTransactionByIntentId2(paymentIntent.id, db);
+    const transaction = await findPaymentTransactionByIntentId2(
+      paymentIntent.id,
+      db
+    );
     if (transaction) {
-      await updatePaymentTransaction2(transaction.id, {
-        status: "failed",
-        stripeStatus: paymentIntent.status,
-        failureReason: paymentIntent.last_payment_error?.message || "Payment failed",
-        lastSyncedAt: /* @__PURE__ */ new Date(),
-        webhookEventId
-      }, db);
-      logger.info(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+      await updatePaymentTransaction2(
+        transaction.id,
+        {
+          status: "failed",
+          stripeStatus: paymentIntent.status,
+          failureReason: paymentIntent.last_payment_error?.message || "Payment failed",
+          lastSyncedAt: /* @__PURE__ */ new Date(),
+          webhookEventId
+        },
+        db
+      );
+      logger.info(
+        `[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`
+      );
     }
     await db.transaction(async (tx) => {
       const excludedStatuses = ["paid", "refunded", "partially_refunded"];
@@ -19679,7 +19805,9 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         )
       );
     });
-    logger.info(`[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`);
+    logger.info(
+      `[Webhook] Updated booking payment status to 'failed' for PaymentIntent ${paymentIntent.id}`
+    );
     try {
       const [booking] = await db.select({
         id: kitchenBookings.id,
@@ -19688,7 +19816,11 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         totalPrice: kitchenBookings.totalPrice
       }).from(kitchenBookings).where(eq28(kitchenBookings.paymentIntentId, paymentIntent.id)).limit(1);
       if (booking) {
-        const [kitchen] = await db.select({ id: kitchens.id, name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq28(kitchens.id, booking.kitchenId)).limit(1);
+        const [kitchen] = await db.select({
+          id: kitchens.id,
+          name: kitchens.name,
+          locationId: kitchens.locationId
+        }).from(kitchens).where(eq28(kitchens.id, booking.kitchenId)).limit(1);
         if (kitchen) {
           const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq28(locations.id, kitchen.locationId)).limit(1);
           if (location && location.managerId) {
@@ -19707,10 +19839,16 @@ async function handlePaymentIntentFailed(paymentIntent, webhookEventId) {
         }
       }
     } catch (notifError) {
-      logger.error(`[Webhook] Error creating payment failed notification:`, notifError);
+      logger.error(
+        `[Webhook] Error creating payment failed notification:`,
+        notifError
+      );
     }
   } catch (error) {
-    logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+    logger.error(
+      `[Webhook] Error updating payment status for ${paymentIntent.id}:`,
+      error
+    );
   }
 }
 async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
@@ -19720,15 +19858,24 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
   }
   try {
     const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-    const transaction = await findPaymentTransactionByIntentId2(paymentIntent.id, db);
+    const transaction = await findPaymentTransactionByIntentId2(
+      paymentIntent.id,
+      db
+    );
     if (transaction) {
-      await updatePaymentTransaction2(transaction.id, {
-        status: "canceled",
-        stripeStatus: paymentIntent.status,
-        lastSyncedAt: /* @__PURE__ */ new Date(),
-        webhookEventId
-      }, db);
-      logger.info(`[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`);
+      await updatePaymentTransaction2(
+        transaction.id,
+        {
+          status: "canceled",
+          stripeStatus: paymentIntent.status,
+          lastSyncedAt: /* @__PURE__ */ new Date(),
+          webhookEventId
+        },
+        db
+      );
+      logger.info(
+        `[Webhook] Updated payment_transactions for PaymentIntent ${paymentIntent.id}`
+      );
     }
     await db.transaction(async (tx) => {
       const excludedStatuses = ["paid", "refunded", "partially_refunded"];
@@ -19761,9 +19908,14 @@ async function handlePaymentIntentCanceled(paymentIntent, webhookEventId) {
         )
       );
     });
-    logger.info(`[Webhook] Updated booking payment status for PaymentIntent ${paymentIntent.id}`);
+    logger.info(
+      `[Webhook] Updated booking payment status for PaymentIntent ${paymentIntent.id}`
+    );
   } catch (error) {
-    logger.error(`[Webhook] Error updating payment status for ${paymentIntent.id}:`, error);
+    logger.error(
+      `[Webhook] Error updating payment status for ${paymentIntent.id}:`,
+      error
+    );
   }
 }
 async function handleChargeRefunded(charge, webhookEventId) {
@@ -19781,17 +19933,26 @@ async function handleChargeRefunded(charge, webhookEventId) {
     const isPartial = charge.amount_refunded < charge.amount;
     const refundStatus = isPartial ? "partially_refunded" : "refunded";
     const refundAmountCents = charge.amount_refunded;
-    const transaction = await findPaymentTransactionByIntentId2(paymentIntentId, db);
+    const transaction = await findPaymentTransactionByIntentId2(
+      paymentIntentId,
+      db
+    );
     if (transaction) {
-      await updatePaymentTransaction2(transaction.id, {
-        status: refundStatus,
-        refundAmount: refundAmountCents,
-        refundId: charge.refunds?.data?.[0]?.id,
-        refundedAt: /* @__PURE__ */ new Date(),
-        lastSyncedAt: /* @__PURE__ */ new Date(),
-        webhookEventId
-      }, db);
-      logger.info(`[Webhook] Updated payment_transactions for refund on PaymentIntent ${paymentIntentId}`);
+      await updatePaymentTransaction2(
+        transaction.id,
+        {
+          status: refundStatus,
+          refundAmount: refundAmountCents,
+          refundId: charge.refunds?.data?.[0]?.id,
+          refundedAt: /* @__PURE__ */ new Date(),
+          lastSyncedAt: /* @__PURE__ */ new Date(),
+          webhookEventId
+        },
+        db
+      );
+      logger.info(
+        `[Webhook] Updated payment_transactions for refund on PaymentIntent ${paymentIntentId}`
+      );
     }
     await db.transaction(async (tx) => {
       await tx.update(kitchenBookings).set({
@@ -19822,20 +19983,29 @@ async function handleChargeRefunded(charge, webhookEventId) {
         )
       );
     });
-    logger.info(`[Webhook] Updated booking payment status to '${refundStatus}' for PaymentIntent ${paymentIntentId}`);
+    logger.info(
+      `[Webhook] Updated booking payment status to '${refundStatus}' for PaymentIntent ${paymentIntentId}`
+    );
   } catch (error) {
-    logger.error(`[Webhook] Error updating refund status for charge ${charge.id}:`, error);
+    logger.error(
+      `[Webhook] Error updating refund status for charge ${charge.id}:`,
+      error
+    );
   }
 }
 async function handlePayoutPaid(payout, connectedAccountId, _webhookEventId) {
   try {
     if (!connectedAccountId) {
-      logger.warn(`[Webhook] payout.paid event received without connected account ID`);
+      logger.warn(
+        `[Webhook] payout.paid event received without connected account ID`
+      );
       return;
     }
     const [manager] = await db.select({ id: users.id, username: users.username }).from(users).where(eq28(users.stripeConnectAccountId, connectedAccountId)).limit(1);
     if (!manager) {
-      logger.warn(`[Webhook] payout.paid for unknown Connect account ${connectedAccountId}`);
+      logger.warn(
+        `[Webhook] payout.paid for unknown Connect account ${connectedAccountId}`
+      );
       return;
     }
     const payoutAmount = (payout.amount / 100).toFixed(2);
@@ -19854,12 +20024,16 @@ async function handlePayoutPaid(payout, connectedAccountId, _webhookEventId) {
 async function handlePayoutFailed(payout, connectedAccountId, _webhookEventId) {
   try {
     if (!connectedAccountId) {
-      logger.warn(`[Webhook] payout.failed event received without connected account ID`);
+      logger.warn(
+        `[Webhook] payout.failed event received without connected account ID`
+      );
       return;
     }
     const [manager] = await db.select({ id: users.id, username: users.username }).from(users).where(eq28(users.stripeConnectAccountId, connectedAccountId)).limit(1);
     if (!manager) {
-      logger.warn(`[Webhook] payout.failed for unknown Connect account ${connectedAccountId}`);
+      logger.warn(
+        `[Webhook] payout.failed for unknown Connect account ${connectedAccountId}`
+      );
       return;
     }
     const payoutAmount = (payout.amount / 100).toFixed(2);
@@ -19893,12 +20067,19 @@ async function handleAccountUpdated(account, webhookEventId) {
         stripeConnectOnboardingStatus: onboardingStatus,
         updatedAt: /* @__PURE__ */ new Date()
       }).where(eq28(users.id, manager.id));
-      logger.info(`[Webhook] Updated onboarding status to '${onboardingStatus}' for manager ${manager.id} (Account: ${account.id})`);
+      logger.info(
+        `[Webhook] Updated onboarding status to '${onboardingStatus}' for manager ${manager.id} (Account: ${account.id})`
+      );
     } else {
-      logger.warn(`[Webhook] Received account.updated for unknown account ${account.id}`);
+      logger.warn(
+        `[Webhook] Received account.updated for unknown account ${account.id}`
+      );
     }
   } catch (error) {
-    logger.error(`[Webhook] Error handling account.updated for ${account.id}:`, error);
+    logger.error(
+      `[Webhook] Error handling account.updated for ${account.id}:`,
+      error
+    );
   }
 }
 var router20, webhooks_default;
@@ -19924,15 +20105,23 @@ var init_webhooks = __esm({
         });
         if (!webhookSecret) {
           if (process.env.NODE_ENV === "production") {
-            logger.error("\u274C CRITICAL: STRIPE_WEBHOOK_SECRET is required in production!");
+            logger.error(
+              "\u274C CRITICAL: STRIPE_WEBHOOK_SECRET is required in production!"
+            );
             return res.status(500).json({ error: "Webhook configuration error" });
           }
-          logger.warn("\u26A0\uFE0F STRIPE_WEBHOOK_SECRET not configured - webhook verification disabled (development only)");
+          logger.warn(
+            "\u26A0\uFE0F STRIPE_WEBHOOK_SECRET not configured - webhook verification disabled (development only)"
+          );
         }
         let event;
         if (webhookSecret && sig) {
           try {
-            event = stripe4.webhooks.constructEvent(req.body, sig, webhookSecret);
+            event = stripe4.webhooks.constructEvent(
+              req.body,
+              sig,
+              webhookSecret
+            );
           } catch (err) {
             logger.error("\u26A0\uFE0F Webhook signature verification failed:", err.message);
             return res.status(400).json({ error: `Webhook Error: ${err.message}` });
@@ -19943,32 +20132,61 @@ var init_webhooks = __esm({
         const webhookEventId = event.id;
         switch (event.type) {
           case "checkout.session.completed":
-            await handleCheckoutSessionCompleted(event.data.object, webhookEventId);
+            await handleCheckoutSessionCompleted(
+              event.data.object,
+              webhookEventId
+            );
             break;
           case "payment_intent.succeeded":
-            await handlePaymentIntentSucceeded(event.data.object, webhookEventId);
+            await handlePaymentIntentSucceeded(
+              event.data.object,
+              webhookEventId
+            );
             break;
           case "payment_intent.payment_failed":
-            await handlePaymentIntentFailed(event.data.object, webhookEventId);
+            await handlePaymentIntentFailed(
+              event.data.object,
+              webhookEventId
+            );
             break;
           case "payment_intent.canceled":
-            await handlePaymentIntentCanceled(event.data.object, webhookEventId);
+            await handlePaymentIntentCanceled(
+              event.data.object,
+              webhookEventId
+            );
             break;
           case "charge.refunded":
-            await handleChargeRefunded(event.data.object, webhookEventId);
+            await handleChargeRefunded(
+              event.data.object,
+              webhookEventId
+            );
             break;
           case "account.updated":
-            await handleAccountUpdated(event.data.object, webhookEventId);
+            await handleAccountUpdated(
+              event.data.object,
+              webhookEventId
+            );
             break;
           case "payout.paid":
-            await handlePayoutPaid(event.data.object, event.account, webhookEventId);
+            await handlePayoutPaid(
+              event.data.object,
+              event.account,
+              webhookEventId
+            );
             break;
           case "payout.failed":
-            await handlePayoutFailed(event.data.object, event.account, webhookEventId);
+            await handlePayoutFailed(
+              event.data.object,
+              event.account,
+              webhookEventId
+            );
             break;
           default:
             if (event.type.startsWith("charge.")) {
-              await handleChargeRefunded(event.data.object, webhookEventId);
+              await handleChargeRefunded(
+                event.data.object,
+                webhookEventId
+              );
             } else {
               logger.info(`Unhandled event type: ${event.type}`);
             }
