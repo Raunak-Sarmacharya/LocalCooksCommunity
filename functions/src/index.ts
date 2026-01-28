@@ -68,7 +68,8 @@ type NotificationType =
 type NotificationPriority = "low" | "normal" | "high" | "urgent";
 
 interface CreateNotificationParams {
-  userId: number;
+  managerId: number;
+  locationId?: number;
   type: NotificationType;
   title: string;
   message: string;
@@ -82,7 +83,8 @@ interface CreateNotificationParams {
  */
 async function createNotification(params: CreateNotificationParams): Promise<number | null> {
   const {
-    userId,
+    managerId,
+    locationId,
     type,
     title,
     message,
@@ -96,14 +98,14 @@ async function createNotification(params: CreateNotificationParams): Promise<num
     
     const result = await db.query(
       `INSERT INTO manager_notifications 
-       (user_id, type, title, message, priority, action_url, metadata, is_read, is_archived, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, false, false, NOW())
+       (manager_id, location_id, type, title, message, priority, action_url, metadata, is_read, is_archived, created_at)
+       VALUES ($1, $2, $3::notification_type, $4, $5, $6::notification_priority, $7, $8, false, false, NOW())
        RETURNING id`,
-      [userId, type, title, message, priority, actionUrl || null, metadata ? JSON.stringify(metadata) : null]
+      [managerId, locationId || null, type, title, message, priority, actionUrl || null, metadata ? JSON.stringify(metadata) : null]
     );
 
     const notificationId = result.rows[0]?.id;
-    logger.info(`✅ Created notification ${notificationId} for user ${userId}: ${type}`);
+    logger.info(`✅ Created notification ${notificationId} for manager ${managerId}: ${type}`);
     return notificationId;
   } catch (error) {
     logger.error("Error creating notification:", error);
@@ -260,7 +262,7 @@ export const onNewChatMessage = onDocumentCreated(
 
       // Create the notification
       await createNotification({
-        userId: recipientId,
+        managerId: recipientId,
         type: "message_received",
         title: `New message from ${senderName}`,
         message: contentPreview,
