@@ -229,7 +229,12 @@ router.get("/r2-presigned", async (req: Request, res: Response) => {
 });
 
 // Serve uploaded documents statically (Static first)
-router.use('/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
+// NOTE: On Vercel (serverless), the filesystem at /var/task is read-only and uploads don't persist.
+// Static serving only works in local development. Production uses R2 with presigned URLs.
+const isVercel = !!process.env.VERCEL;
+if (!isVercel) {
+  router.use('/documents', express.static(path.join(process.cwd(), 'uploads/documents')));
+}
 
 // FILE SERVING ROUTES (Authenticated)
 // ===============================

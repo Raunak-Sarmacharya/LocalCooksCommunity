@@ -16,24 +16,58 @@ declare global {
   }
 }
 
-// Check if we're in production (Vercel)
+// Check if we're in a serverless environment (Vercel)
+// Vercel's filesystem is READ-ONLY except for /tmp
+const isVercel = !!process.env.VERCEL;
 const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
 // Enterprise-grade storage strategy:
 // - Use R2 (cloud) when configured, regardless of environment
 // - This ensures team collaboration: all developers see the same files
-// - Fall back to local storage only when R2 is not configured
-const useCloudStorage = isR2Configured() || isProduction;
+// - Fall back to local storage only when R2 is not configured AND not on Vercel
+// - On Vercel without R2: use memory storage (files must go to R2)
+const useCloudStorage = isR2Configured() || isProduction || isVercel;
 
-// Ensure uploads directory exists (fallback for when R2 is not configured)
-const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+/**
+ * Get the uploads directory path.
+ * - On Vercel: use /tmp (only writable directory in serverless)
+ * - Locally: use project root/uploads/documents
+ * 
+ * IMPORTANT: Directory is created lazily, not at module load time,
+ * because Vercel's filesystem is read-only at /var/task
+ */
+function getUploadsDir(): string {
+  if (isVercel) {
+    return '/tmp/uploads/documents';
+  }
+  return path.join(process.cwd(), 'uploads', 'documents');
 }
+
+/**
+ * Ensures the uploads directory exists.
+ * Called lazily only when disk storage is actually needed.
+ * This prevents crashes on Vercel where /var/task is read-only.
+ */
+function ensureUploadsDirExists(): void {
+  // Skip directory creation if using cloud storage (memory -> R2)
+  if (useCloudStorage) {
+    return;
+  }
+  
+  const dir = getUploadsDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+// DO NOT create directories at module load time - Vercel's /var/task is read-only
+// Directory creation is now lazy via ensureUploadsDirExists()
+const uploadsDir = getUploadsDir();
 
 // Configure multer for local file storage (fallback only)
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
+    ensureUploadsDirExists(); // Create directory lazily
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
