@@ -129,7 +129,8 @@ async function getNotifications(
   }
 
   const typeCondition = type ? `AND type = '${type}'::notification_type` : '';
-  const locationCondition = locationId ? `AND location_id = ${locationId}` : '';
+  // Include notifications for the specific location OR global notifications (location_id IS NULL)
+  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : '';
 
   // Get notifications with pagination
   const notificationsResult = await db.execute(sql.raw(`
@@ -180,9 +181,13 @@ async function getNotifications(
 
 /**
  * Get unread notification count for a manager
+ * When locationId is provided, includes both location-specific AND global (null location) notifications
  */
 async function getUnreadCount(managerId: number, locationId?: number) {
-  const locationCondition = locationId ? `AND location_id = ${locationId}` : '';
+  // Include notifications for the specific location OR global notifications (location_id IS NULL)
+  const locationCondition = locationId 
+    ? `AND (location_id = ${locationId} OR location_id IS NULL)` 
+    : '';
   
   const result = await db.execute(sql.raw(`
     SELECT COUNT(*) as count
