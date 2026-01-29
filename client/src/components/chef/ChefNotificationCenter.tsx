@@ -1,7 +1,7 @@
 /**
- * Enterprise-Grade Notification Center Component
+ * Enterprise-Grade Chef Notification Center Component
  * 
- * A popout notification panel for the manager portal featuring:
+ * A popout notification panel for the chef portal featuring:
  * - Real-time unread count badge with polling
  * - Grouped notifications by priority and time
  * - Mark as read / archive / delete functionality
@@ -31,7 +31,10 @@ import {
   MessageSquare,
   AlertTriangle,
   Info,
-  RefreshCw
+  RefreshCw,
+  GraduationCap,
+  Package,
+  PartyPopper
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,13 +56,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
 import { toast } from "@/hooks/use-toast";
-import { formatDistanceToNow, format, isToday, isYesterday, isThisWeek } from "date-fns";
+import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns";
 
 // Types
 interface Notification {
   id: number;
-  manager_id: number;
-  location_id: number | null;
+  chef_id: number;
   type: string;
   priority: "low" | "normal" | "high" | "urgent";
   title: string;
@@ -104,23 +106,34 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 // Get icon for notification type
 function getNotificationIcon(type: string) {
   switch (type) {
-    case "booking_new":
     case "booking_confirmed":
     case "booking_cancelled":
+    case "booking_reminder":
       return <Calendar className="h-4 w-4" />;
     case "payment_received":
     case "payment_failed":
+    case "payment_refunded":
       return <CreditCard className="h-4 w-4" />;
-    case "application_new":
     case "application_approved":
     case "application_rejected":
+    case "application_pending":
       return <FileText className="h-4 w-4" />;
     case "message_received":
       return <MessageSquare className="h-4 w-4" />;
-    case "license_expiring":
     case "storage_expiring":
     case "storage_expired":
+    case "storage_extension_approved":
+    case "storage_extension_rejected":
+      return <Package className="h-4 w-4" />;
+    case "license_expiring":
+    case "license_approved":
+    case "license_rejected":
       return <AlertTriangle className="h-4 w-4" />;
+    case "training_reminder":
+      return <GraduationCap className="h-4 w-4" />;
+    case "welcome":
+      return <PartyPopper className="h-4 w-4" />;
+    case "system_announcement":
     default:
       return <Info className="h-4 w-4" />;
   }
@@ -135,39 +148,28 @@ function getPriorityColor(priority: string) {
       return "bg-orange-500";
     case "normal":
       return "bg-blue-500";
+    case "low":
     default:
-      return "bg-gray-400";
+      return "bg-gray-300";
   }
 }
 
 // Format notification time
-function formatNotificationTime(dateStr: string) {
-  const date = new Date(dateStr);
-  if (isToday(date)) {
-    return formatDistanceToNow(date, { addSuffix: true });
-  }
-  if (isYesterday(date)) {
-    return `Yesterday at ${format(date, "h:mm a")}`;
-  }
-  if (isThisWeek(date)) {
-    return format(date, "EEEE 'at' h:mm a");
-  }
-  return format(date, "MMM d 'at' h:mm a");
+function formatNotificationTime(dateString: string) {
+  const date = new Date(dateString);
+  return formatDistanceToNow(date, { addSuffix: true });
 }
 
-// Skeleton loading component for notifications
+// Skeleton components
 function NotificationItemSkeleton() {
   return (
     <div className="p-3 border-b border-gray-100">
-      <div className="flex items-start gap-3 pl-2">
-        <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
+      <div className="flex items-start gap-3">
+        <Skeleton className="h-8 w-8 rounded-full" />
         <div className="flex-1 space-y-2">
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-16" />
-          </div>
+          <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-2/3" />
+          <Skeleton className="h-3 w-1/2" />
         </div>
       </div>
     </div>
@@ -222,7 +224,7 @@ function EmptyNotificationState({ filter }: { filter: FilterType }) {
       description: "You have no unread notifications."
     },
     read: {
-      icon: <Bell className="h-12 w-12" />,
+      icon: <Check className="h-12 w-12" />,
       title: "No read notifications",
       description: "Notifications you've read will appear here."
     },
@@ -252,16 +254,16 @@ function groupNotificationsByDate(notifications: Notification[]) {
   const thisWeek: Notification[] = [];
   const older: Notification[] = [];
 
-  notifications.forEach((notification) => {
-    const date = new Date(notification.created_at);
+  notifications.forEach(n => {
+    const date = new Date(n.created_at);
     if (isToday(date)) {
-      today.push(notification);
+      today.push(n);
     } else if (isYesterday(date)) {
-      yesterday.push(notification);
+      yesterday.push(n);
     } else if (isThisWeek(date)) {
-      thisWeek.push(notification);
+      thisWeek.push(n);
     } else {
-      older.push(notification);
+      older.push(n);
     }
   });
 
@@ -279,15 +281,11 @@ function NotificationItem({
   onMarkRead, 
   onArchive,
   onDelete,
-  isSelected,
-  _onSelect
 }: { 
   notification: Notification;
   onMarkRead: (id: number) => void;
   onArchive: (id: number) => void;
   onDelete: (id: number) => void;
-  isSelected: boolean;
-  _onSelect: (id: number) => void;
 }) {
   // Handle keyboard navigation
   const handleKeyDown = async (e: React.KeyboardEvent) => {
@@ -317,8 +315,7 @@ function NotificationItem({
       className={cn(
         "group relative p-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer",
         "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset",
-        !notification.is_read && "bg-blue-50/50",
-        isSelected && "bg-blue-100"
+        !notification.is_read && "bg-blue-50/50"
       )}
       onClick={async () => {
         if (!notification.is_read) {
@@ -372,15 +369,12 @@ function NotificationItem({
               variant="link"
               size="sm"
               className="h-auto p-0 mt-1 text-blue-600"
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.stopPropagation();
-                // Mark as read when clicking action button
                 if (!notification.is_read) {
                   onMarkRead(notification.id);
                 }
                 if (notification.action_url) {
-                  // Small delay to allow mark-as-read API call to be sent before navigation
-                  await new Promise(resolve => setTimeout(resolve, 100));
                   window.location.href = notification.action_url;
                 }
               }}
@@ -415,8 +409,8 @@ function NotificationItem({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem 
-                className="text-red-600"
                 onClick={(e) => { e.stopPropagation(); onDelete(notification.id); }}
+                className="text-red-600"
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
@@ -429,46 +423,40 @@ function NotificationItem({
   );
 }
 
-// Main NotificationCenter component
-export default function NotificationCenter({ locationId }: { locationId?: number }) {
+// Main ChefNotificationCenter component
+export default function ChefNotificationCenter() {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   // Fetch unread count - poll more frequently when popover is open
   const { data: unreadData, isError: unreadError } = useQuery({
-    queryKey: ["/api/manager/notifications/unread-count", locationId],
+    queryKey: ["/api/chef/notifications/unread-count"],
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      const url = locationId 
-        ? `/api/manager/notifications/unread-count?locationId=${locationId}`
-        : "/api/manager/notifications/unread-count";
-      const res = await fetch(url, { headers });
+      const res = await fetch("/api/chef/notifications/unread-count", { headers });
       if (!res.ok) {
         throw new Error(`Failed to fetch unread count: ${res.status}`);
       }
       return res.json();
     },
-    refetchInterval: isOpen ? 10000 : 30000, // Poll every 10s when open, 30s when closed
+    refetchInterval: isOpen ? 10000 : 30000,
     retry: 2,
-    staleTime: 5000, // Consider data fresh for 5 seconds
+    staleTime: 5000,
   });
 
   // Fetch notifications
   const { data: notificationsData, isLoading, isError: notificationsError, refetch } = useQuery<NotificationResponse>({
-    queryKey: ["/api/manager/notifications", filter, locationId],
+    queryKey: ["/api/chef/notifications", filter],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ filter });
-      if (locationId) params.append("locationId", String(locationId));
-      const url = `/api/manager/notifications?${params}`;
+      const url = `/api/chef/notifications?${params}`;
       const res = await fetch(url, { headers });
       if (!res.ok) {
         throw new Error(`Failed to fetch notifications: ${res.status}`);
       }
-      const data = await res.json();
-      return data;
+      return res.json();
     },
     enabled: isOpen,
     retry: false,
@@ -478,7 +466,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
   const markReadMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/manager/notifications/mark-read", {
+      const res = await fetch("/api/chef/notifications/mark-read", {
         method: "POST",
         headers,
         body: JSON.stringify({ notificationIds: ids }),
@@ -486,19 +474,15 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       if (!res.ok) throw new Error("Failed to mark as read");
       return res.json();
     },
-    // Optimistic update: immediately mark as read in the UI
     onMutate: async (ids: number[]) => {
-      // Cancel any outgoing refetches to avoid overwriting optimistic update
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
 
-      // Snapshot the previous values
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
 
-      // Optimistically update notifications
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n =>
             ids.includes(n.id) ? { ...n, is_read: true, read_at: new Date().toISOString() } : n
@@ -506,29 +490,26 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         });
       }
 
-      // Optimistically update unread count
       if (previousUnreadCount) {
         const newCount = Math.max(0, previousUnreadCount.count - ids.length);
-        queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], { count: newCount });
+        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], { count: newCount });
       }
 
       return { previousNotifications, previousUnreadCount };
     },
-    // Rollback on error
-    onError: (err, ids, context) => {
-      console.error("[NotificationCenter] Failed to mark as read:", err);
+    onError: (err, _ids, context) => {
+      console.error("[ChefNotificationCenter] Failed to mark as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
       toast.error("Failed to mark notification as read");
     },
-    // Always refetch after error or success to ensure consistency
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
     },
   });
 
@@ -536,42 +517,38 @@ export default function NotificationCenter({ locationId }: { locationId?: number
   const markAllReadMutation = useMutation({
     mutationFn: async () => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/manager/notifications/mark-all-read", {
+      const res = await fetch("/api/chef/notifications/mark-all-read", {
         method: "POST",
         headers,
-        body: JSON.stringify({ locationId }),
       });
       if (!res.ok) throw new Error("Failed to mark all as read");
       return res.json();
     },
-    // Optimistic update: immediately mark all as read
     onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
 
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
 
-      // Optimistically mark all as read
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.map(n => ({ ...n, is_read: true, read_at: new Date().toISOString() })),
         });
       }
 
-      // Set unread count to 0
-      queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], { count: 0 });
+      queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], { count: 0 });
 
       return { previousNotifications, previousUnreadCount };
     },
     onError: (err, _, context) => {
-      console.error("[NotificationCenter] Failed to mark all as read:", err);
+      console.error("[ChefNotificationCenter] Failed to mark all as read:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
       toast.error("Failed to mark all as read");
     },
@@ -579,8 +556,8 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       toast.success("All notifications marked as read");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
     },
   });
 
@@ -588,7 +565,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
   const archiveMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/manager/notifications/archive", {
+      const res = await fetch("/api/chef/notifications/archive", {
         method: "POST",
         headers,
         body: JSON.stringify({ notificationIds: ids }),
@@ -597,41 +574,38 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       return res.json();
     },
     onMutate: async (ids: number[]) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
       
-      // Count how many unread notifications are being archived
       const unreadBeingArchived = previousNotifications?.notifications.filter(
         n => ids.includes(n.id) && !n.is_read
       ).length || 0;
       
-      // Optimistically remove archived notifications from the list
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => !ids.includes(n.id)),
         });
       }
       
-      // Update unread count if any unread notifications were archived
       if (previousUnreadCount && unreadBeingArchived > 0) {
-        queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], {
+        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], {
           count: Math.max(0, previousUnreadCount.count - unreadBeingArchived)
         });
       }
       
       return { previousNotifications, previousUnreadCount };
     },
-    onError: (err, ids, context) => {
-      console.error("[NotificationCenter] Failed to archive:", err);
+    onError: (err, _ids, context) => {
+      console.error("[ChefNotificationCenter] Failed to archive:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
       toast.error("Failed to archive notification");
     },
@@ -639,8 +613,8 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       toast.success("Notification archived");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
     },
   });
 
@@ -648,7 +622,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const headers = await getAuthHeaders();
-      const res = await fetch(`/api/manager/notifications/${id}`, {
+      const res = await fetch(`/api/chef/notifications/${id}`, {
         method: "DELETE",
         headers,
       });
@@ -656,39 +630,36 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       return res.json();
     },
     onMutate: async (id: number) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
-      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications/unread-count", locationId] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications", filter] });
+      await queryClient.cancelQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
       
-      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
-      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId]);
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/chef/notifications", filter]);
+      const previousUnreadCount = queryClient.getQueryData<{ count: number }>(["/api/chef/notifications/unread-count"]);
       
-      // Find the notification to check if it was unread
       const deletedNotification = previousNotifications?.notifications.find(n => n.id === id);
       
-      // Optimistically remove deleted notification from the list
       if (previousNotifications) {
-        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+        queryClient.setQueryData<NotificationResponse>(["/api/chef/notifications", filter], {
           ...previousNotifications,
           notifications: previousNotifications.notifications.filter(n => n.id !== id),
         });
       }
       
-      // Update unread count if the deleted notification was unread
       if (previousUnreadCount && deletedNotification && !deletedNotification.is_read) {
-        queryClient.setQueryData<{ count: number }>(["/api/manager/notifications/unread-count", locationId], {
+        queryClient.setQueryData<{ count: number }>(["/api/chef/notifications/unread-count"], {
           count: Math.max(0, previousUnreadCount.count - 1)
         });
       }
       
       return { previousNotifications, previousUnreadCount };
     },
-    onError: (err, id, context) => {
-      console.error("[NotificationCenter] Failed to delete:", err);
+    onError: (err, _id, context) => {
+      console.error("[ChefNotificationCenter] Failed to delete:", err);
       if (context?.previousNotifications) {
-        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+        queryClient.setQueryData(["/api/chef/notifications", filter], context.previousNotifications);
       }
       if (context?.previousUnreadCount) {
-        queryClient.setQueryData(["/api/manager/notifications/unread-count", locationId], context.previousUnreadCount);
+        queryClient.setQueryData(["/api/chef/notifications/unread-count"], context.previousUnreadCount);
       }
       toast.error("Failed to delete notification");
     },
@@ -696,8 +667,8 @@ export default function NotificationCenter({ locationId }: { locationId?: number
       toast.success("Notification deleted");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chef/notifications/unread-count"] });
     },
   });
 
@@ -713,26 +684,13 @@ export default function NotificationCenter({ locationId }: { locationId?: number
     deleteMutation.mutate(id);
   }, [deleteMutation]);
 
-  const handleSelect = useCallback((id: number) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-
   const unreadCount = unreadData?.count || 0;
   const notifications = notificationsData?.notifications || [];
   const groupedNotifications = groupNotificationsByDate(notifications);
 
-  // Keyboard shortcut to open notifications (Ctrl/Cmd + Shift + N to avoid browser conflicts)
+  // Keyboard shortcut to open notifications (Ctrl/Cmd + Shift + N)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + Shift + N to toggle notifications
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'N') {
         const target = e.target as HTMLElement;
         if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
@@ -740,7 +698,6 @@ export default function NotificationCenter({ locationId }: { locationId?: number
           setIsOpen(prev => !prev);
         }
       }
-      // Escape to close
       if (e.key === 'Escape' && isOpen) {
         setIsOpen(false);
       }
@@ -856,8 +813,6 @@ export default function NotificationCenter({ locationId }: { locationId?: number
                       onMarkRead={handleMarkRead}
                       onArchive={handleArchive}
                       onDelete={handleDelete}
-                      isSelected={selectedIds.has(notification.id)}
-                      _onSelect={handleSelect}
                     />
                   ))}
                 </section>
@@ -879,4 +834,4 @@ export default function NotificationCenter({ locationId }: { locationId?: number
   );
 }
 
-export { NotificationCenter };
+export { ChefNotificationCenter };

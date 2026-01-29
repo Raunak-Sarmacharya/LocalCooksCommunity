@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp } from "lucide-react";
+import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,18 @@ const StorageCategoryIcon = ({ iconName, className }: { iconName: string; classN
   return <Icon className={className} />;
 };
 
+interface SelectedStorage {
+  templateId: string;
+  name: string;
+  storageType: StorageTypeId;
+  description: string;
+  dailyRate: number;
+  totalVolume: number;
+  accessType: string;
+  temperatureRange: string;
+  minimumBookingDuration: number;
+}
+
 export default function StorageListingsStep() {
   const {
     kitchens,
@@ -44,7 +56,10 @@ export default function StorageListingsStep() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['dry', 'cold', 'freezer']);
+  const [selectedStorage, setSelectedStorage] = useState<Record<string, SelectedStorage>>({});
   const [isCreating, setIsCreating] = useState(false);
+
+  const selectedStorageCount = Object.keys(selectedStorage).length;
 
   // Custom storage state for intuitive "not found" flow
   const [customStorage, setCustomStorage] = useState({
@@ -121,39 +136,91 @@ export default function StorageListingsStep() {
     }
   };
 
-  // Save from template
-  const saveFromTemplate = async (template: StorageTemplate) => {
-    if (!selectedKitchenId) return;
-    setIsCreating(true);
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      const response = await fetch(`/api/manager/storage-listings`, {
-        method: "POST",
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          kitchenId: selectedKitchenId,
+  // Handle storage template selection (toggle)
+  const handleTemplateSelect = (template: StorageTemplate) => {
+    setSelectedStorage(prev => {
+      const newState = { ...prev };
+      if (newState[template.id]) {
+        delete newState[template.id];
+      } else {
+        newState[template.id] = {
+          templateId: template.id,
           name: template.name,
           storageType: template.storageType,
           description: template.description,
-          basePrice: Math.round(template.suggestedDailyRate * 100),
+          dailyRate: template.suggestedDailyRate,
+          totalVolume: 0,
           accessType: template.accessTypes[0] || 'walk-in',
-          temperatureRange: template.temperatureRange || getDefaultTemperatureRange(template.storageType) || undefined,
-          pricingModel: 'daily',
+          temperatureRange: template.temperatureRange || getDefaultTemperatureRange(template.storageType) || '',
           minimumBookingDuration: 1,
-          bookingDurationUnit: 'daily',
-          currency: "CAD",
-          isActive: true,
-        }),
+        };
+      }
+      return newState;
+    });
+  };
+
+  // Update selected storage details
+  const updateSelectedStorage = (templateId: string, updates: Partial<SelectedStorage>) => {
+    setSelectedStorage(prev => {
+      if (!prev[templateId]) return prev;
+      return { ...prev, [templateId]: { ...prev[templateId], ...updates } };
+    });
+  };
+
+  // Save all selected storage
+  const saveSelectedStorage = async () => {
+    if (!selectedKitchenId || selectedStorageCount === 0) return;
+    setIsCreating(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const storage of Object.values(selectedStorage)) {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch(`/api/manager/storage-listings`, {
+          method: "POST",
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            kitchenId: selectedKitchenId,
+            name: storage.name,
+            storageType: storage.storageType,
+            description: storage.description || undefined,
+            basePrice: Math.round(storage.dailyRate * 100),
+            totalVolume: storage.totalVolume || undefined,
+            accessType: storage.accessType || undefined,
+            temperatureRange: storage.temperatureRange || undefined,
+            pricingModel: 'daily',
+            minimumBookingDuration: storage.minimumBookingDuration || 1,
+            bookingDurationUnit: 'daily',
+            currency: "CAD",
+            isActive: true,
+          }),
+        });
+        if (!response.ok) throw new Error("Failed to create storage listing");
+        successCount++;
+      } catch (error) {
+        console.error('Error creating storage listing:', error);
+        errorCount++;
+      }
+    }
+
+    setIsCreating(false);
+
+    if (successCount > 0) {
+      toast({
+        title: "Storage Added",
+        description: `Successfully added ${successCount} storage listing${successCount > 1 ? 's' : ''}.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
-      if (!response.ok) throw new Error("Failed to create storage listing");
-      toast({ title: "Storage Added", description: `Successfully added "${template.name}"` });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } finally {
-      setIsCreating(false);
+      setSelectedStorage({});
+    } else {
+      toast({
+        title: "Error",
+        description: "Failed to add storage listings. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -222,112 +289,273 @@ export default function StorageListingsStep() {
                 <Input placeholder="Search storage types..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
               </div>
 
-              {/* Storage Templates */}
-              <ScrollArea className="h-[300px] border rounded-lg">
-                <div className="p-2 space-y-1">
-                  {filteredCategories.map((category) => (
-                    <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
-                      <CollapsibleTrigger asChild>
-                        <Button variant="ghost" className="w-full justify-between p-2 h-auto font-medium hover:bg-muted/50">
-                          <span className="flex items-center gap-2 text-sm">
-                            <StorageCategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />
-                            {category.name}
-                            <Badge variant="secondary" className="ml-1 text-xs">{category.items.length}</Badge>
-                          </span>
-                          {expandedCategories.includes(category.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </Button>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="pl-4 pr-2 pb-2 space-y-1">
-                          <p className="text-xs text-muted-foreground mb-2">{category.description}</p>
-                          {category.items.map((template) => {
-                            const isAlreadyListed = listings.some(l => l.name.toLowerCase() === template.name.toLowerCase());
-                            return (
-                              <div key={template.id} className={cn("flex items-center justify-between p-2 rounded border text-sm", isAlreadyListed && "opacity-50 bg-muted")}>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-sm">{template.name}</p>
-                                  <p className="text-xs text-muted-foreground">${template.suggestedDailyRate}/day</p>
-                                </div>
-                                {isAlreadyListed ? (
-                                  <Badge variant="secondary" className="text-xs">Listed</Badge>
-                                ) : (
-                                  <Button size="sm" variant="outline" onClick={() => saveFromTemplate(template)} disabled={isCreating} className="h-7 text-xs">
-                                    {isCreating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}
-                                    Add
-                                  </Button>
-                                )}
+              {/* Storage Templates - 2-column layout matching listing page */}
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                {/* Storage Selection */}
+                <div className="lg:col-span-3">
+                  <div className="border rounded-lg bg-gray-50">
+                    <ScrollArea className="h-[350px]">
+                      <div className="p-2 space-y-1">
+                        {filteredCategories.map((category) => (
+                          <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="sm" className="w-full justify-between p-2 h-auto font-medium hover:bg-white">
+                                <span className="flex items-center gap-2 text-sm">
+                                  <StorageCategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />
+                                  {category.name}
+                                  <Badge variant="secondary" className="text-xs">{category.items.length}</Badge>
+                                </span>
+                                {expandedCategories.includes(category.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="p-1.5 pl-6 space-y-1">
+                                <p className="text-xs text-muted-foreground mb-2">{category.description}</p>
+                                {category.items.map((template) => {
+                                  const isSelected = !!selectedStorage[template.id];
+                                  const isAlreadyListed = listings.some(l => l.name.toLowerCase() === template.name.toLowerCase());
+                                  
+                                  return (
+                                    <button
+                                      key={template.id}
+                                      onClick={() => !isAlreadyListed && handleTemplateSelect(template)}
+                                      disabled={isAlreadyListed}
+                                      className={cn(
+                                        "flex items-start gap-2 p-2 rounded-md border text-left transition-all text-xs w-full",
+                                        isSelected && "border-primary bg-primary/5 ring-1 ring-primary",
+                                        isAlreadyListed && "opacity-50 cursor-not-allowed bg-gray-100",
+                                        !isSelected && !isAlreadyListed && "bg-white hover:border-primary/50"
+                                      )}
+                                    >
+                                      <div className={cn(
+                                        "flex items-center justify-center w-4 h-4 rounded border flex-shrink-0 mt-0.5",
+                                        isSelected ? "bg-primary border-primary" : "border-gray-300"
+                                      )}>
+                                        {isSelected && <Check className="h-2.5 w-2.5 text-white" />}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-medium">{template.name}</span>
+                                          {isAlreadyListed && <Badge variant="secondary" className="text-[10px]">Listed</Badge>}
+                                        </div>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">{template.description}</p>
+                                        <p className="text-[10px] text-blue-600 mt-0.5">~${template.suggestedDailyRate}/day</p>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                               </div>
-                            );
-                          })}
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ))}
 
-                  {/* Custom storage option when search has no results */}
-                  {showNoResultsCustomOption && (
-                    <Card className="border-dashed border-primary/50 bg-primary/5 m-2">
-                      <CardHeader className="pb-2 pt-3 px-3">
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <SearchX className="h-4 w-4" />
-                          No matching storage found
-                        </CardTitle>
-                        <CardDescription className="text-xs">Add "{searchQuery}" as custom storage</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-2 px-3 pb-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs">Storage Type</Label>
-                            <Select value={customStorage.storageType} onValueChange={(v: StorageTypeId) => {
-                              setCustomStorage({ ...customStorage, storageType: v, temperatureRange: getDefaultTemperatureRange(v) || '' });
-                            }}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="dry">Dry Storage</SelectItem>
-                                <SelectItem value="cold">Cold Storage</SelectItem>
-                                <SelectItem value="freezer">Freezer</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Daily Rate ($) *</Label>
-                            <Input type="number" step="0.01" min="0" value={customStorage.dailyRate || ''} onChange={(e) => setCustomStorage({ ...customStorage, dailyRate: parseFloat(e.target.value) || 0 })} placeholder="15.00" className="h-8 text-xs" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs">Size (cubic feet)</Label>
-                            <Input type="number" min="0" value={customStorage.totalVolume || ''} onChange={(e) => setCustomStorage({ ...customStorage, totalVolume: parseFloat(e.target.value) || 0 })} placeholder="50" className="h-8 text-xs" />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Access Type</Label>
-                            <Select value={customStorage.accessType} onValueChange={(v) => setCustomStorage({ ...customStorage, accessType: v })}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
-                                  <SelectItem key={value} value={value}>{label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Minimum Booking (days)</Label>
-                          <Input type="number" min="1" value={customStorage.minimumBookingDuration || 1} onChange={(e) => setCustomStorage({ ...customStorage, minimumBookingDuration: parseInt(e.target.value) || 1 })} placeholder="1" className="h-8 text-xs" />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Description</Label>
-                          <Textarea value={customStorage.description} onChange={(e) => setCustomStorage({ ...customStorage, description: e.target.value })} placeholder="Describe the storage space..." rows={2} className="text-xs" />
-                        </div>
-                        <Button onClick={saveCustomStorage} disabled={isCreating || !customStorage.dailyRate} className="w-full h-8 text-xs">
-                          {isCreating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <PlusCircle className="h-3 w-3 mr-1" />}
-                          Add "{searchQuery}" Storage
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  )}
+                        {/* Custom storage option when search has no results */}
+                        {showNoResultsCustomOption && (
+                          <Card className="border-dashed border-primary/50 bg-primary/5 m-2">
+                            <CardHeader className="pb-2 pt-3 px-3">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <SearchX className="h-4 w-4" />
+                                No matching storage found
+                              </CardTitle>
+                              <CardDescription className="text-xs">Add custom storage</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-2 px-3 pb-3">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Storage Type</Label>
+                                  <Select value={customStorage.storageType} onValueChange={(v: StorageTypeId) => {
+                                    setCustomStorage({ ...customStorage, storageType: v, temperatureRange: getDefaultTemperatureRange(v) || '' });
+                                  }}>
+                                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="dry">Dry Storage</SelectItem>
+                                      <SelectItem value="cold">Cold Storage</SelectItem>
+                                      <SelectItem value="freezer">Freezer</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Daily Rate ($) *</Label>
+                                  <Input type="number" step="0.01" min="0" value={customStorage.dailyRate || ''} onChange={(e) => setCustomStorage({ ...customStorage, dailyRate: parseFloat(e.target.value) || 0 })} placeholder="15.00" className="h-8 text-xs" />
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Size (cubic feet)</Label>
+                                  <Input type="number" min="0" value={customStorage.totalVolume || ''} onChange={(e) => setCustomStorage({ ...customStorage, totalVolume: parseFloat(e.target.value) || 0 })} placeholder="50" className="h-8 text-xs" />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Access Type</Label>
+                                  <Select value={customStorage.accessType} onValueChange={(v) => setCustomStorage({ ...customStorage, accessType: v })}>
+                                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
+                                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Minimum Booking (days)</Label>
+                                <Input type="number" min="1" value={customStorage.minimumBookingDuration || 1} onChange={(e) => setCustomStorage({ ...customStorage, minimumBookingDuration: parseInt(e.target.value) || 1 })} placeholder="1" className="h-8 text-xs" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Description</Label>
+                                <Textarea value={customStorage.description} onChange={(e) => setCustomStorage({ ...customStorage, description: e.target.value })} placeholder="Describe the storage space..." rows={2} className="text-xs" />
+                              </div>
+                              <Button onClick={saveCustomStorage} disabled={isCreating || !customStorage.dailyRate} className="w-full h-8 text-xs">
+                                {isCreating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <PlusCircle className="h-3 w-3 mr-1" />}
+                                Add Custom Storage
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </div>
                 </div>
-              </ScrollArea>
+
+                {/* Configuration Panel */}
+                <div className="lg:col-span-2">
+                  <div className="border rounded-lg p-3 bg-white sticky top-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        <DollarSign className="h-4 w-4" />
+                        Configure
+                      </h4>
+                      {selectedStorageCount > 0 && (
+                        <Badge variant="default" className="text-xs">{selectedStorageCount}</Badge>
+                      )}
+                    </div>
+
+                    {selectedStorageCount === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                        <p className="text-xs">Select storage to configure</p>
+                      </div>
+                    ) : (
+                      <ScrollArea className="h-[350px]">
+                        <div className="space-y-3 pr-2">
+                          {Object.entries(selectedStorage).map(([templateId, storage]) => (
+                            <div key={templateId} className="p-3 border rounded-lg space-y-3 bg-gray-50">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <Input 
+                                    value={storage.name} 
+                                    onChange={(e) => updateSelectedStorage(templateId, { name: e.target.value })} 
+                                    className="font-medium h-7 text-xs px-2 border-transparent hover:border-input focus:border-input bg-transparent" 
+                                  />
+                                  <p className="text-[10px] text-muted-foreground capitalize mt-0.5 px-2">{storage.storageType} storage</p>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 -mr-1 -mt-1"
+                                  onClick={() => handleTemplateSelect({ id: templateId } as StorageTemplate)}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[10px] w-16 text-muted-foreground">Rate</Label>
+                                  <div className="relative flex-1">
+                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={storage.dailyRate}
+                                      onChange={(e) => updateSelectedStorage(templateId, { dailyRate: parseFloat(e.target.value) || 0 })}
+                                      className="h-7 text-xs pl-5"
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground">/day</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[10px] w-16 text-muted-foreground">Size</Label>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    value={storage.totalVolume || ''}
+                                    onChange={(e) => updateSelectedStorage(templateId, { totalVolume: parseFloat(e.target.value) || 0 })}
+                                    placeholder="cubic feet"
+                                    className="h-7 text-xs flex-1"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[10px] w-16 text-muted-foreground">Access</Label>
+                                  <Select
+                                    value={storage.accessType}
+                                    onValueChange={(v) => updateSelectedStorage(templateId, { accessType: v })}
+                                  >
+                                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
+                                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {(storage.storageType === 'cold' || storage.storageType === 'freezer') && (
+                                  <div className="flex items-center gap-2">
+                                    <Label className="text-[10px] w-16 text-muted-foreground">Temp</Label>
+                                    <Input
+                                      value={storage.temperatureRange}
+                                      onChange={(e) => updateSelectedStorage(templateId, { temperatureRange: e.target.value })}
+                                      placeholder="e.g., 35-40°F"
+                                      className="h-7 text-xs flex-1"
+                                    />
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[10px] w-16 text-muted-foreground">Min Days</Label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={storage.minimumBookingDuration}
+                                    onChange={(e) => updateSelectedStorage(templateId, { minimumBookingDuration: parseInt(e.target.value) || 1 })}
+                                    className="h-7 text-xs flex-1"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[10px] text-muted-foreground">Description</Label>
+                                  <Textarea
+                                    value={storage.description}
+                                    onChange={(e) => updateSelectedStorage(templateId, { description: e.target.value })}
+                                    placeholder="Optional description"
+                                    rows={2}
+                                    className="text-xs"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+
+                    {selectedStorageCount > 0 && (
+                      <Button 
+                        className="w-full mt-3" 
+                        size="sm"
+                        onClick={saveSelectedStorage}
+                        disabled={isCreating}
+                      >
+                        {isCreating ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4 mr-1" />
+                            Add {selectedStorageCount} Storage
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>

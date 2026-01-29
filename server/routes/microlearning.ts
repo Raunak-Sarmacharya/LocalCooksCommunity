@@ -21,6 +21,38 @@ const hasApprovedApplication = async (userId: number) => {
   }
 };
 
+// Get current user's microlearning progress (no userId param - uses authenticated user)
+router.get("/progress", async (req: Request, res: Response) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const userId = req.neonUser.id;
+    const progress = await microlearningService.getUserProgress(userId);
+    const completionStatus = await microlearningService.getUserCompletion(userId);
+    const hasApproval = await hasApprovedApplication(userId);
+
+    const isAdmin = req.neonUser.role === 'admin';
+    const isCompleted = completionStatus?.confirmed || false;
+    const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
+
+    res.json({
+      success: true,
+      progress: progress || [],
+      confirmed: completionStatus?.confirmed || false,
+      completionConfirmed: completionStatus?.confirmed || false,
+      completedAt: completionStatus?.completedAt,
+      hasApprovedApplication: hasApproval,
+      accessLevel: accessLevel,
+      isAdmin: isAdmin
+    });
+  } catch (error) {
+    console.error('Error fetching microlearning progress:', error);
+    res.status(500).json({ message: 'Failed to fetch progress' });
+  }
+});
+
 // Get user's microlearning access level and progress
 router.get("/progress/:userId", async (req: Request, res: Response) => {
   try {
@@ -76,11 +108,20 @@ router.post("/progress", async (req: Request, res: Response) => {
       return res.status(401).json({ message: 'Authentication required' });
     }
 
-    const { userId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
+    const { userId: requestUserId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
 
-    // Verify user can update this data (either their own or admin)
-    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
+    // Support both numeric Neon ID and Firebase UID
+    // If userId is not provided or is a Firebase UID (string), use authenticated user's Neon ID
+    let userId: number;
+    if (!requestUserId || typeof requestUserId === 'string') {
+      // Firebase UID or missing - use authenticated user's Neon ID
+      userId = req.neonUser.id;
+    } else {
+      userId = requestUserId;
+      // Verify user can update this data (either their own or admin)
+      if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
     }
 
     // Check if user has approved application for videos beyond the first one

@@ -409,6 +409,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Middleware (requireChef) moved to ./routes/middleware
   // It is now imported at the top level
 
+  // Chef notifications routes
+  app.use("/api/chef/notifications", (await import("./routes/chef-notifications")).default);
+
   // Mount Kitchens Router
   app.use("/api", (await import("./routes/kitchens")).default);
 
