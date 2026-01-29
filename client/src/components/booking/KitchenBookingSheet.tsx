@@ -971,94 +971,154 @@ export default function KitchenBookingSheet({
       );
     }
 
-    // Step 3: Calendar
+    // Step 3: Calendar - Enterprise-grade responsive design
     if (currentStep === 'calendar' && selectedKitchen) {
       return (
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-base font-medium text-foreground">Select Date</h3>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {isLoadingAvailability ? 'Loading availability...' : 'Green dates have available slots'}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Header with month navigation - compact on mobile */}
+          <div className="flex-shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-semibold text-foreground">Select Date</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {isLoadingAvailability ? (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading availability...
+                  </span>
+                ) : 'Tap a green date to continue'}
               </p>
             </div>
-            <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth('prev')}>
+            <div className="flex items-center justify-center gap-1 bg-muted/50 rounded-lg p-1 flex-shrink-0">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateMonth('prev')}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm font-medium w-28 text-center">{monthNames[currentMonth]} {currentYear}</span>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigateMonth('next')}>
+              <span className="text-sm font-semibold w-[110px] text-center tabular-nums">{monthNames[currentMonth]} {currentYear}</span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigateMonth('next')}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
           
-          {/* Legend */}
-          <div className="flex items-center gap-4 mb-4 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-muted-foreground">Available</span>
+          {/* Legend - horizontal scrollable on mobile, compact design */}
+          <div className="flex-shrink-0 flex items-center gap-3 sm:gap-5 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="w-4 h-4 rounded-md bg-gradient-to-br from-emerald-400 to-green-500 shadow-sm shadow-green-500/30" />
+              <span className="text-xs font-medium text-foreground">Available</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-muted" />
-              <span className="text-muted-foreground">Unavailable</span>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="w-4 h-4 rounded-md bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600" />
+              <span className="text-xs font-medium text-muted-foreground">Closed</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full ring-2 ring-primary bg-primary" />
-              <span className="text-muted-foreground">Selected</span>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div className="w-4 h-4 rounded-md bg-primary ring-2 ring-primary/30 ring-offset-1" />
+              <span className="text-xs font-medium text-foreground">Selected</span>
             </div>
           </div>
 
-          <div className="flex-1 bg-muted/30 rounded-lg p-3">
-            <div className="grid grid-cols-7 gap-1 mb-2">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                <div key={day} className="text-center text-xs font-semibold text-muted-foreground py-1">
-                  {day}
+          {/* Calendar Grid - responsive and contained */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="bg-gradient-to-b from-muted/40 to-muted/20 rounded-xl p-2 sm:p-3 border border-border/50">
+              {/* Day headers - abbreviated on mobile */}
+              <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1.5">
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
+                  <div key={idx} className="text-center text-[10px] sm:text-xs font-bold text-muted-foreground/70 uppercase tracking-wide py-1">
+                    <span className="sm:hidden">{day}</span>
+                    <span className="hidden sm:inline">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][idx]}</span>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Calendar days - compact responsive grid */}
+              <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
+                {calendarDays.map((date, index) => {
+                  if (!date) return <div key={index} className="h-8 sm:h-9" />;
+                  const isCurrent = isCurrentMonth(date);
+                  const isTodayDate = isToday(date);
+                  const isPastDate = isPast(date);
+                  const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
+                  const dateStr = date ? toLocalDateString(date) : '';
+                  const hasAvailability = dateAvailability[dateStr] === true;
+                  const isUnavailable = !isPastDate && isCurrent && dateAvailability[dateStr] === false;
+                  const isLoading = !isPastDate && isCurrent && dateAvailability[dateStr] === undefined;
+
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => !isPastDate && isCurrent && hasAvailability && handleDateClick(date)}
+                      disabled={isPastDate || !isCurrent || isUnavailable || isLoading}
+                      className={cn(
+                        "h-8 sm:h-9 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center justify-center relative",
+                        // Base hover effect for interactive dates
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
+                        
+                        // Selected state - prominent with ring
+                        isSelected && "bg-primary text-primary-foreground shadow-lg shadow-primary/30 ring-2 ring-primary/30 ring-offset-1 ring-offset-background scale-105 z-10",
+                        
+                        // Today indicator (not selected) - with available styling
+                        !isSelected && isTodayDate && hasAvailability && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-md shadow-green-500/30 ring-2 ring-green-400/50 ring-offset-1",
+                        !isSelected && isTodayDate && !hasAvailability && !isPastDate && "bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 ring-1 ring-slate-400",
+                        
+                        // Available dates - vibrant green gradient with hover
+                        !isSelected && !isTodayDate && isCurrent && hasAvailability && "bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-900/40 dark:to-green-800/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700 hover:from-emerald-100 hover:to-green-200 dark:hover:from-emerald-800/50 dark:hover:to-green-700/50 hover:shadow-md hover:shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98]",
+                        
+                        // Unavailable/closed dates - clearly disabled look
+                        !isSelected && !isTodayDate && isCurrent && isUnavailable && "bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-slate-200/50 dark:border-slate-700/50",
+                        
+                        // Loading state - subtle pulse animation
+                        isLoading && "bg-slate-100 dark:bg-slate-800 text-slate-400 animate-pulse cursor-wait",
+                        
+                        // Not current month - very faded
+                        !isCurrent && "text-slate-300 dark:text-slate-700 cursor-default",
+                        
+                        // Past dates - strikethrough effect
+                        isPastDate && isCurrent && "text-slate-300 dark:text-slate-700 cursor-not-allowed line-through decoration-slate-400/50"
+                      )}
+                    >
+                      {date.getDate()}
+                      {/* Today dot indicator */}
+                      {isTodayDate && !isSelected && (
+                        <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-current opacity-60" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Selected date preview - shows when date is selected */}
+          {selectedDate && (
+            <div className="flex-shrink-0 mt-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <CalendarIcon className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {isLoadingSlots ? 'Loading time slots...' : `${allSlots.length} time slot${allSlots.length !== 1 ? 's' : ''} available`}
+                    </p>
+                  </div>
                 </div>
-              ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setSelectedDate(null);
+                    setSelectedSlots([]);
+                  }}
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Clear
+                </Button>
+              </div>
             </div>
-            <div className="grid grid-cols-7 gap-1">
-              {calendarDays.map((date, index) => {
-                if (!date) return <div key={index} className="aspect-square" />;
-                const isCurrent = isCurrentMonth(date);
-                const isTodayDate = isToday(date);
-                const isPastDate = isPast(date);
-                const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
-                const dateStr = date ? toLocalDateString(date) : '';
-                const hasAvailability = dateAvailability[dateStr] === true;
-                const isUnavailable = !isPastDate && isCurrent && dateAvailability[dateStr] === false;
-
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => !isPastDate && isCurrent && hasAvailability && handleDateClick(date)}
-                    disabled={isPastDate || !isCurrent || isUnavailable}
-                    className={cn(
-                      "aspect-square rounded-md text-xs font-medium transition-all duration-150 flex items-center justify-center",
-                      // Selected state
-                      isSelected && "bg-primary text-primary-foreground shadow-sm",
-                      // Today (not selected)
-                      !isSelected && isTodayDate && hasAvailability && "bg-green-100 text-green-700 font-semibold",
-                      !isSelected && isTodayDate && !hasAvailability && "bg-muted text-muted-foreground",
-                      // Available dates
-                      !isSelected && !isTodayDate && isCurrent && hasAvailability && "bg-green-50 text-green-700 hover:bg-green-100",
-                      // Unavailable dates (kitchen closed)
-                      !isSelected && !isTodayDate && isCurrent && isUnavailable && "bg-muted/40 text-muted-foreground/40 cursor-not-allowed",
-                      // Loading state (no data yet)
-                      !isSelected && !isTodayDate && isCurrent && !isPastDate && dateAvailability[dateStr] === undefined && "bg-background text-foreground/60",
-                      // Not current month
-                      !isCurrent && "text-muted-foreground/20",
-                      // Past dates
-                      isPastDate && "text-muted-foreground/25 cursor-not-allowed"
-                    )}
-                  >
-                    {date.getDate()}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          )}
         </div>
       );
     }

@@ -450,7 +450,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
         </p>
         <div className="space-y-3">
           <Button asChild className="rounded-xl">
-            <Link href="/apply">
+            <Link href="/dashboard?view=applications&action=new">
               <ChefHat className="mr-2 h-4 w-4" />
               Submit New Application
             </Link>

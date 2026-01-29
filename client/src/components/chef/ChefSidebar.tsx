@@ -112,11 +112,6 @@ const navSecondary = [
         label: "Support",
         icon: LifeBuoy,
     },
-    {
-        id: "feedback",
-        label: "Feedback",
-        icon: Send,
-    },
 ]
 
 interface ChefSidebarProps extends React.ComponentProps<typeof Sidebar> {
