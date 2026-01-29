@@ -624,9 +624,11 @@ var init_schema = __esm({
       kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
       bookingDate: timestamp("booking_date").notNull(),
       startTime: text("start_time").notNull(),
-      // HH:MM format
+      // HH:MM format - earliest slot start
       endTime: text("end_time").notNull(),
-      // HH:MM format
+      // HH:MM format - latest slot end
+      selectedSlots: jsonb("selected_slots").default([]),
+      // Array of discrete 1-hour time slots, e.g., [{startTime: "09:00", endTime: "10:00"}, {startTime: "14:00", endTime: "15:00"}]
       status: bookingStatusEnum("status").default("pending").notNull(),
       specialNotes: text("special_notes"),
       bookingType: text("booking_type").default("chef").notNull(),
@@ -9504,7 +9506,8 @@ var init_booking_repository = __esm({
           kitchen: row.kitchen,
           location: row.location,
           kitchenName: row.kitchen.name,
-          locationName: row.location.name
+          locationName: row.location.name,
+          locationTimezone: row.location.timezone
         }));
       }
       async getBookingsByManagerId(managerId) {
@@ -9512,22 +9515,46 @@ var init_booking_repository = __esm({
           booking: kitchenBookings,
           kitchen: kitchens,
           location: locations,
-          chef: users
-        }).from(kitchenBookings).innerJoin(kitchens, eq13(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq13(kitchens.locationId, locations.id)).leftJoin(users, eq13(kitchenBookings.chefId, users.id)).where(eq13(locations.managerId, managerId)).orderBy(desc7(kitchenBookings.bookingDate));
+          chef: users,
+          // Chef's full name from chef_kitchen_applications table
+          chefFullName: chefKitchenApplications.fullName,
+          // Payment transaction data for accurate display (actual Stripe data)
+          transactionAmount: paymentTransactions.amount,
+          transactionServiceFee: paymentTransactions.serviceFee,
+          transactionManagerRevenue: paymentTransactions.managerRevenue,
+          transactionStatus: paymentTransactions.status
+        }).from(kitchenBookings).innerJoin(kitchens, eq13(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq13(kitchens.locationId, locations.id)).leftJoin(users, eq13(kitchenBookings.chefId, users.id)).leftJoin(chefKitchenApplications, and9(
+          eq13(chefKitchenApplications.chefId, kitchenBookings.chefId),
+          eq13(chefKitchenApplications.locationId, locations.id)
+        )).leftJoin(paymentTransactions, and9(
+          eq13(paymentTransactions.bookingId, kitchenBookings.id),
+          eq13(paymentTransactions.bookingType, "kitchen")
+        )).where(eq13(locations.managerId, managerId)).orderBy(desc7(kitchenBookings.bookingDate));
         return results.map((row) => {
           const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+          const transactionAmount = row.transactionAmount ? parseFloat(row.transactionAmount) : null;
+          const serviceFee = row.transactionServiceFee ? parseFloat(row.transactionServiceFee) : 0;
+          const managerRevenue = row.transactionManagerRevenue ? parseFloat(row.transactionManagerRevenue) : null;
           return {
             ...mappedBooking,
             kitchen: row.kitchen,
             location: row.location,
             chef: row.chef,
-            chefName: row.chef?.username,
+            // Use full name from chef_kitchen_applications if available, otherwise fall back to username (email)
+            chefName: row.chefFullName || row.chef?.username,
             kitchenName: row.kitchen.name,
             locationName: row.location.name,
             locationTimezone: row.location.timezone,
             // Include storage and equipment items from JSONB fields
             storageItems: row.booking.storageItems || [],
-            equipmentItems: row.booking.equipmentItems || []
+            equipmentItems: row.booking.equipmentItems || [],
+            // Use actual Stripe transaction data for accurate payment display
+            transactionAmount,
+            // Actual amount charged (from payment_transactions)
+            serviceFee,
+            // Platform fee (from payment_transactions)
+            managerRevenue
+            // What manager receives (from payment_transactions)
           };
         });
       }
@@ -10073,6 +10100,25 @@ var init_booking_service = __esm({
           }
         }
         const serviceFeeCents = await calculatePlatformFeeDynamic(pricing.totalPriceCents);
+        let selectedSlots = data.selectedSlots;
+        if (!selectedSlots || selectedSlots.length === 0) {
+          selectedSlots = [];
+          const [startHours, startMins] = data.startTime.split(":").map(Number);
+          const [endHours, endMins] = data.endTime.split(":").map(Number);
+          const startMinutes = startHours * 60 + startMins;
+          const endMinutes = endHours * 60 + endMins;
+          for (let mins = startMinutes; mins < endMinutes; mins += 60) {
+            const slotStartH = Math.floor(mins / 60);
+            const slotStartM = mins % 60;
+            const slotEndMins = mins + 60;
+            const slotEndH = Math.floor(slotEndMins / 60);
+            const slotEndM = slotEndMins % 60;
+            selectedSlots.push({
+              startTime: `${slotStartH.toString().padStart(2, "0")}:${slotStartM.toString().padStart(2, "0")}`,
+              endTime: `${slotEndH.toString().padStart(2, "0")}:${slotEndM.toString().padStart(2, "0")}`
+            });
+          }
+        }
         const booking = await this.repo.createKitchenBooking({
           ...data,
           totalPrice: "0",
@@ -10083,6 +10129,7 @@ var init_booking_service = __esm({
           currency: pricing.currency,
           storageItems: [],
           equipmentItems: [],
+          selectedSlots,
           paymentStatus: data.paymentStatus || "pending"
         });
         let storageTotalCents = 0;
@@ -13129,7 +13176,39 @@ async function generateInvoicePDF(booking, chef, kitchen, location, storageBooki
       }
       doc.text(`Date: ${bookingDateStr}`, 50, leftY);
       leftY += 15;
-      doc.text(`Time: ${booking.startTime || booking.start_time || "N/A"} - ${booking.endTime || booking.end_time || "N/A"}`, 50, leftY);
+      const selectedSlots = booking.selectedSlots || booking.selected_slots;
+      let timeDisplay = `${booking.startTime || booking.start_time || "N/A"} - ${booking.endTime || booking.end_time || "N/A"}`;
+      if (Array.isArray(selectedSlots) && selectedSlots.length > 0) {
+        const sorted = [...selectedSlots].sort(
+          (a, b) => (a.startTime || a).localeCompare(b.startTime || b)
+        );
+        let isContiguous = true;
+        for (let i = 1; i < sorted.length; i++) {
+          const prevSlot = sorted[i - 1];
+          const currSlot = sorted[i];
+          const prevEnd = typeof prevSlot === "string" ? prevSlot : prevSlot.endTime;
+          const currStart = typeof currSlot === "string" ? currSlot : currSlot.startTime;
+          if (prevEnd !== currStart) {
+            isContiguous = false;
+            break;
+          }
+        }
+        if (!isContiguous) {
+          const formatSlotTime = (time) => {
+            const [h, m] = time.split(":").map(Number);
+            const ampm = h >= 12 ? "PM" : "AM";
+            const displayH = h % 12 || 12;
+            return `${displayH}:${m.toString().padStart(2, "0")} ${ampm}`;
+          };
+          timeDisplay = sorted.map((slot) => {
+            if (typeof slot === "string") {
+              return formatSlotTime(slot);
+            }
+            return `${formatSlotTime(slot.startTime)}-${formatSlotTime(slot.endTime)}`;
+          }).join(", ");
+        }
+      }
+      doc.text(`Time: ${timeDisplay}`, 50, leftY);
       leftY += 30;
       const tableTop = leftY;
       doc.rect(50, tableTop, 500, 25).fill("#f3f4f6");
@@ -16489,7 +16568,7 @@ async function markAsRead(managerId, notificationIds) {
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql11.join(notificationIds.map((id) => sql11`${id}`), sql11`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
@@ -16511,8 +16590,19 @@ async function archiveNotifications(managerId, notificationIds) {
     UPDATE manager_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql11.join(notificationIds.map((id) => sql11`${id}`), sql11`, `)})
       AND is_archived = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function unarchiveNotifications(managerId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql11`
+    UPDATE manager_notifications
+    SET is_archived = false, archived_at = NULL
+    WHERE manager_id = ${managerId}
+      AND id IN (${sql11.join(notificationIds.map((id) => sql11`${id}`), sql11`, `)})
+      AND is_archived = true
   `);
   return { updated: result.rowCount || 0 };
 }
@@ -16603,6 +16693,20 @@ var init_notifications = __esm({
         res.json(result);
       } catch (error) {
         logger.error("Error archiving notifications:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router14.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await unarchiveNotifications(managerId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error unarchiving notifications:", error);
         return errorResponse(res, error);
       }
     });
@@ -16742,7 +16846,7 @@ async function markAsRead2(chefId, notificationIds) {
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql12.join(notificationIds.map((id) => sql12`${id}`), sql12`, `)})
       AND is_read = false
   `);
   return { updated: result.rowCount || 0 };
@@ -16763,7 +16867,7 @@ async function archiveNotifications2(chefId, notificationIds) {
     UPDATE chef_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql12.join(notificationIds.map((id) => sql12`${id}`), sql12`, `)})
       AND is_archived = false
   `);
   return { updated: result.rowCount || 0 };
@@ -17193,7 +17297,8 @@ async function createCheckoutSession(params) {
     currency = "cad",
     successUrl,
     cancelUrl,
-    metadata = {}
+    metadata = {},
+    lineItemName = "Kitchen Session Booking"
   } = params;
   if (bookingPriceInCents <= 0) {
     throw new Error("Booking price must be greater than 0");
@@ -17216,32 +17321,20 @@ async function createCheckoutSession(params) {
   if (!customerEmail) {
     throw new Error("Customer email is required");
   }
-  const totalAmountInCents = bookingPriceInCents + platformFeeInCents;
+  const totalAmountInCents = bookingPriceInCents;
   try {
     const lineItems = [
       {
         price_data: {
           currency: currency.toLowerCase(),
           product_data: {
-            name: "Kitchen Session Booking"
+            name: lineItemName
           },
           unit_amount: bookingPriceInCents
         },
         quantity: 1
       }
     ];
-    if (platformFeeInCents > 0) {
-      lineItems.push({
-        price_data: {
-          currency: currency.toLowerCase(),
-          product_data: {
-            name: "Platform Service Fee"
-          },
-          unit_amount: platformFeeInCents
-        },
-        quantity: 1
-      });
-    }
     const paymentIntentData = {
       transfer_data: {
         destination: managerStripeAccountId
@@ -17706,10 +17799,18 @@ var init_bookings = __esm({
         const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
         const basePricePerDayDollars = basePricePerDayCents / 100;
         const extensionBasePriceDollars = basePricePerDayDollars * extensionDays;
-        const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-        const serviceFeeRate = await getServiceFeeRate2();
-        const extensionServiceFeeDollars = extensionBasePriceDollars * serviceFeeRate;
-        const extensionTotalPriceDollars = extensionBasePriceDollars + extensionServiceFeeDollars;
+        const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
+        const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
+        let taxRatePercent = 0;
+        if (storageListing) {
+          const kitchen = await kitchenService.getKitchenById(storageListing.kitchenId);
+          if (kitchen && kitchen.taxRatePercent) {
+            taxRatePercent = parseFloat(String(kitchen.taxRatePercent));
+          }
+        }
+        const extensionTaxCents = Math.round(extensionBasePriceCents * taxRatePercent / 100);
+        const extensionTaxDollars = extensionTaxCents / 100;
+        const extensionTotalPriceDollars = extensionBasePriceDollars + extensionTaxDollars;
         res.json({
           storageBookingId: id,
           currentEndDate: currentEndDate.toISOString(),
@@ -17717,8 +17818,8 @@ var init_bookings = __esm({
           extensionDays,
           basePricePerDay: basePricePerDayDollars,
           extensionBasePrice: extensionBasePriceDollars,
-          serviceFeeRate,
-          extensionServiceFee: extensionServiceFeeDollars,
+          taxRatePercent,
+          extensionTax: extensionTaxDollars,
           extensionTotalPrice: extensionTotalPriceDollars,
           currency: "CAD"
         });
@@ -17764,8 +17865,6 @@ var init_bookings = __esm({
         }
         const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
         const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
-        const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
-        const feeCalculation = await calculateCheckoutFeesAsync2(extensionBasePriceCents);
         const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
         if (!storageListing) {
           return res.status(404).json({ error: "Storage listing not found" });
@@ -17774,6 +17873,11 @@ var init_bookings = __esm({
         if (!kitchen) {
           return res.status(404).json({ error: "Kitchen not found" });
         }
+        const taxRatePercent = kitchen.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
+        const extensionTaxCents = Math.round(extensionBasePriceCents * taxRatePercent / 100);
+        const totalWithTaxCents = extensionBasePriceCents + extensionTaxCents;
+        const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+        const feeCalculation = await calculateCheckoutFeesAsync2(totalWithTaxCents);
         const location = await locationService.getLocationById(kitchen.locationId);
         if (!location) {
           return res.status(404).json({ error: "Location not found" });
@@ -17796,7 +17900,7 @@ var init_bookings = __esm({
         const baseUrl = getBaseUrl(req);
         const { createCheckoutSession: createCheckoutSession2 } = await Promise.resolve().then(() => (init_stripe_checkout_service(), stripe_checkout_service_exports));
         const checkoutSession = await createCheckoutSession2({
-          bookingPriceInCents: feeCalculation.bookingPriceInCents,
+          bookingPriceInCents: totalWithTaxCents,
           platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
           managerStripeAccountId,
           customerEmail: chefEmail,
@@ -17805,6 +17909,7 @@ var init_bookings = __esm({
           currency: "cad",
           successUrl: `${baseUrl}/dashboard?storage_extended=true&storage_booking_id=${id}`,
           cancelUrl: `${baseUrl}/dashboard?storage_extension_cancelled=true&storage_booking_id=${id}`,
+          lineItemName: "Storage Extension",
           metadata: {
             type: "storage_extension",
             storage_booking_id: id.toString(),
@@ -17813,16 +17918,18 @@ var init_bookings = __esm({
             current_end_date: currentEndDate.toISOString(),
             chef_id: req.neonUser.id.toString(),
             kitchen_id: kitchen.id.toString(),
-            location_id: location.id.toString()
+            location_id: location.id.toString(),
+            tax_cents: extensionTaxCents.toString(),
+            tax_rate_percent: taxRatePercent.toString()
           }
         });
         const pendingExtension = await bookingService.createPendingStorageExtension({
           storageBookingId: id,
           newEndDate: newEndDateObj,
           extensionDays,
-          extensionBasePriceCents: feeCalculation.bookingPriceInCents,
+          extensionBasePriceCents,
           extensionServiceFeeCents: feeCalculation.totalPlatformFeeInCents,
-          extensionTotalPriceCents: feeCalculation.totalChargeInCents,
+          extensionTotalPriceCents: totalWithTaxCents,
           stripeSessionId: checkoutSession.sessionId,
           status: "pending"
         });
@@ -17833,8 +17940,8 @@ var init_bookings = __esm({
             bookingType: "storage",
             chefId: req.neonUser.id,
             managerId: location.managerId,
-            amount: feeCalculation.totalChargeInCents,
-            baseAmount: feeCalculation.bookingPriceInCents,
+            amount: totalWithTaxCents,
+            baseAmount: extensionBasePriceCents,
             serviceFee: feeCalculation.totalPlatformFeeInCents,
             managerRevenue: feeCalculation.managerReceivesInCents,
             currency: "CAD",
@@ -17846,7 +17953,9 @@ var init_bookings = __esm({
               storage_booking_id: id.toString(),
               storage_extension_id: pendingExtension.id.toString(),
               extension_days: extensionDays.toString(),
-              new_end_date: newEndDateObj.toISOString()
+              new_end_date: newEndDateObj.toISOString(),
+              tax_cents: extensionTaxCents.toString(),
+              tax_rate_percent: taxRatePercent.toString()
             }
           }, db);
           console.log(`[Storage Extension Checkout] Created payment_transactions record for storage booking ${id}, extension ${pendingExtension.id}`);
@@ -17859,15 +17968,16 @@ var init_bookings = __esm({
           extension: {
             storageBookingId: id,
             extensionDays,
-            extensionBasePrice: feeCalculation.bookingPriceInCents / 100,
-            extensionServiceFee: feeCalculation.totalPlatformFeeInCents / 100,
-            extensionTotalPrice: feeCalculation.totalChargeInCents / 100,
+            extensionBasePrice: extensionBasePriceCents / 100,
+            taxRatePercent,
+            extensionTax: extensionTaxCents / 100,
+            extensionTotalPrice: totalWithTaxCents / 100,
             newEndDate: newEndDateObj.toISOString()
           },
           booking: {
-            price: feeCalculation.bookingPriceInCents / 100,
-            platformFee: feeCalculation.totalPlatformFeeInCents / 100,
-            total: feeCalculation.totalChargeInCents / 100
+            price: extensionBasePriceCents / 100,
+            tax: extensionTaxCents / 100,
+            total: totalWithTaxCents / 100
           }
         });
       } catch (error) {
@@ -18470,9 +18580,191 @@ var init_bookings = __esm({
         });
       }
     });
+    router17.post("/chef/bookings/checkout", requireChef, async (req, res) => {
+      try {
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
+        const chefId = req.neonUser.id;
+        if (!kitchenId || !bookingDate || !startTime || !endTime) {
+          return res.status(400).json({ error: "Missing required booking fields" });
+        }
+        const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchenDetails) {
+          return res.status(404).json({ error: "Kitchen not found" });
+        }
+        const kitchenLocationId = kitchenDetails.locationId;
+        if (!kitchenLocationId) {
+          return res.status(400).json({ error: "Kitchen location not found" });
+        }
+        const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId);
+        if (!applicationStatus.canBook) {
+          return res.status(403).json({
+            error: applicationStatus.message,
+            hasApplication: applicationStatus.hasApplication,
+            applicationStatus: applicationStatus.status
+          });
+        }
+        const bookingDateObj = new Date(bookingDate);
+        const availabilityCheck = await bookingService.validateBookingAvailability(
+          kitchenId,
+          bookingDateObj,
+          startTime,
+          endTime
+        );
+        if (!availabilityCheck.valid) {
+          return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
+        }
+        const location = await locationService.getLocationById(kitchenLocationId);
+        if (!location) {
+          return res.status(404).json({ error: "Location not found" });
+        }
+        const timezone = location.timezone || "America/Edmonton";
+        const minimumBookingWindowHours = location.minimumBookingWindowHours ?? 1;
+        const bookingDateStr = typeof bookingDate === "string" ? bookingDate.split("T")[0] : bookingDateObj.toISOString().split("T")[0];
+        const { isBookingTimePast: isBookingTimePast2, getHoursUntilBooking: getHoursUntilBooking2 } = await Promise.resolve().then(() => (init_date_utils(), date_utils_exports));
+        if (isBookingTimePast2(bookingDateStr, startTime, timezone)) {
+          return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+        }
+        const hoursUntilBooking = getHoursUntilBooking2(bookingDateStr, startTime, timezone);
+        if (hoursUntilBooking < minimumBookingWindowHours) {
+          return res.status(400).json({
+            error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? "s" : ""} in advance`
+          });
+        }
+        const manager = await userService.getUser(location.managerId);
+        if (!manager) {
+          return res.status(404).json({ error: "Manager not found" });
+        }
+        const managerStripeAccountId = manager.stripeConnectAccountId;
+        if (!managerStripeAccountId) {
+          return res.status(400).json({
+            error: "Manager has not set up Stripe payments. Please contact the kitchen manager."
+          });
+        }
+        const chef = await userService.getUser(chefId);
+        if (!chef || !chef.username) {
+          return res.status(400).json({ error: "Chef email not found" });
+        }
+        const chefEmail = chef.username;
+        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+        let totalPriceCents = kitchenPricing.totalPriceCents;
+        const storageIds = [];
+        if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
+          for (const storage of selectedStorage) {
+            try {
+              const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
+              if (storageListing) {
+                storageIds.push(storage.storageListingId);
+                const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
+                const minDays = storageListing.minimumBookingDuration || 1;
+                const startDate = new Date(storage.startDate);
+                const endDate = new Date(storage.endDate);
+                const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60 * 24));
+                const effectiveDays = Math.max(days, minDays);
+                let storagePrice = basePriceCents * effectiveDays;
+                if (storageListing.pricingModel === "hourly") {
+                  const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1e3 * 60 * 60)));
+                  storagePrice = basePriceCents * durationHours;
+                } else if (storageListing.pricingModel === "monthly-flat") {
+                  storagePrice = basePriceCents;
+                }
+                totalPriceCents += storagePrice;
+              }
+            } catch (error) {
+              console.error("Error calculating storage price:", error);
+            }
+          }
+        }
+        if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
+          for (const equipmentListingId of selectedEquipmentIds) {
+            try {
+              const equipmentListing = await inventoryService.getEquipmentListingById(equipmentListingId);
+              if (equipmentListing && equipmentListing.availabilityType !== "included") {
+                const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
+                totalPriceCents += sessionRateCents;
+              }
+            } catch (error) {
+              console.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
+            }
+          }
+        }
+        const taxRatePercent = kitchenDetails.taxRatePercent ? parseFloat(String(kitchenDetails.taxRatePercent)) : 0;
+        const taxCents = Math.round(totalPriceCents * taxRatePercent / 100);
+        const totalWithTaxCents = totalPriceCents + taxCents;
+        const booking = await bookingService.createKitchenBooking({
+          kitchenId,
+          chefId,
+          bookingDate: bookingDateObj,
+          startTime,
+          endTime,
+          selectedSlots: selectedSlots || [],
+          // Pass discrete time slots
+          status: "pending",
+          paymentStatus: "pending",
+          specialNotes,
+          selectedStorageIds: storageIds,
+          selectedEquipmentIds: selectedEquipmentIds || []
+        });
+        const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+        const feeCalculation = await calculateCheckoutFeesAsync2(totalWithTaxCents);
+        const baseUrl = getBaseUrl(req);
+        const { createCheckoutSession: createCheckoutSession2 } = await Promise.resolve().then(() => (init_stripe_checkout_service(), stripe_checkout_service_exports));
+        const checkoutSession = await createCheckoutSession2({
+          bookingPriceInCents: totalWithTaxCents,
+          platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
+          managerStripeAccountId,
+          customerEmail: chefEmail,
+          bookingId: booking.id,
+          currency: "cad",
+          successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`,
+          cancelUrl: `${baseUrl}/booking-cancel?booking_id=${booking.id}`,
+          metadata: {
+            booking_id: booking.id.toString(),
+            kitchen_id: kitchenId.toString(),
+            chef_id: chefId.toString(),
+            type: "kitchen_booking"
+          }
+        });
+        try {
+          const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          await createPaymentTransaction2({
+            bookingId: booking.id,
+            bookingType: "kitchen",
+            chefId,
+            managerId: location.managerId,
+            amount: feeCalculation.totalChargeInCents,
+            baseAmount: totalWithTaxCents,
+            serviceFee: feeCalculation.totalPlatformFeeInCents,
+            managerRevenue: feeCalculation.managerReceivesInCents,
+            currency: "CAD",
+            paymentIntentId: void 0,
+            status: "pending",
+            metadata: {
+              checkout_session_id: checkoutSession.sessionId,
+              booking_id: booking.id.toString()
+            }
+          }, db);
+          console.log(`[Checkout] Created payment_transactions record for booking ${booking.id}`);
+        } catch (ptError) {
+          console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
+        }
+        res.json({
+          sessionUrl: checkoutSession.sessionUrl,
+          sessionId: checkoutSession.sessionId,
+          bookingId: booking.id,
+          booking: {
+            price: totalWithTaxCents / 100,
+            platformFee: feeCalculation.totalPlatformFeeInCents / 100,
+            total: feeCalculation.totalChargeInCents / 100
+          }
+        });
+      } catch (error) {
+        console.error("Error creating booking checkout:", error);
+        res.status(500).json({ error: error.message || "Failed to create booking checkout" });
+      }
+    });
     router17.post("/chef/bookings", requireChef, async (req, res) => {
       try {
-        const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
         console.log(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
         const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
@@ -18548,6 +18840,8 @@ var init_bookings = __esm({
           bookingDate: bookingDateObj,
           startTime,
           endTime,
+          selectedSlots: selectedSlots || [],
+          // Pass discrete time slots
           status: "pending",
           // Requires manager approval before confirmation
           paymentStatus: paymentIntentId ? "paid" : "pending",

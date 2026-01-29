@@ -46,6 +46,7 @@ export type Booking = {
     bookingDate: string;
     startTime: string;
     endTime: string;
+    selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots
     status: string;
     specialNotes?: string;
     createdAt: string;
@@ -56,8 +57,10 @@ export type Booking = {
     storageItems?: StorageItem[];
     equipmentItems?: EquipmentItem[];
     // Price fields
-    totalPrice?: number; // in cents - gross amount charged to customer
-    serviceFee?: number; // in cents - platform fee (covers Stripe processing)
+    totalPrice?: number; // in cents - gross amount charged to customer (from kitchen_bookings)
+    transactionAmount?: number; // in cents - actual amount charged via Stripe (from payment_transactions)
+    serviceFee?: number; // in cents - platform fee (from payment_transactions)
+    managerRevenue?: number; // in cents - what manager actually receives (from payment_transactions)
     hourlyRate?: number; // in cents
     durationHours?: number;
     paymentStatus?: string;
@@ -101,15 +104,26 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
                 </Button>
             )
         },
-        cell: ({ row }) => (
-            <div className="flex flex-col">
-                <span className="font-medium text-sm">{row.getValue("kitchenName") || 'Unknown Kitchen'}</span>
-                <div className="flex items-center text-xs text-muted-foreground mt-0.5">
-                    <MapPin className="h-3 w-3 mr-1" />
-                    {row.original.locationName || 'Unknown Location'}
+        cell: ({ row }) => {
+            const createdAt = row.original.createdAt;
+            const formattedCreatedAt = createdAt 
+                ? new Date(createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : null;
+            return (
+                <div className="flex flex-col">
+                    <span className="font-medium text-sm">{row.getValue("kitchenName") || 'Unknown Kitchen'}</span>
+                    <div className="flex items-center text-xs text-muted-foreground mt-0.5">
+                        <MapPin className="h-3 w-3 mr-1" />
+                        {row.original.locationName || 'Unknown Location'}
+                    </div>
+                    {formattedCreatedAt && (
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                            Created: {formattedCreatedAt}
+                        </div>
+                    )}
                 </div>
-            </div>
-        ),
+            );
+        },
     },
     {
         accessorKey: "chefName",
@@ -132,18 +146,69 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
                 <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
         ),
-        cell: ({ row }) => (
-            <div className="flex flex-col text-sm">
-                <div className="flex items-center">
-                    <CalendarIcon className="h-3 w-3 mr-2 text-muted-foreground" />
-                    {formatDate(row.getValue("bookingDate"))}
+        cell: ({ row }) => {
+            // Normalize slots to always have {startTime, endTime} format
+            // Database may have old format (strings like "09:00") or new format (objects)
+            const rawSlots = row.original.selectedSlots as Array<string | { startTime: string; endTime: string }> | undefined;
+            
+            const normalizeSlot = (slot: string | { startTime: string; endTime: string }): { startTime: string; endTime: string } => {
+                if (typeof slot === 'string') {
+                    // Old format: just start time string, calculate end time (+1 hour)
+                    const [h, m] = slot.split(':').map(Number);
+                    const endMins = h * 60 + m + 60;
+                    const endH = Math.floor(endMins / 60);
+                    const endM = endMins % 60;
+                    return {
+                        startTime: slot,
+                        endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+                    };
+                }
+                return slot;
+            };
+            
+            const normalizedSlots = rawSlots?.map(normalizeSlot).filter(s => s.startTime && s.endTime) || [];
+            const hasDiscreteSlots = normalizedSlots.length > 0;
+            
+            // Check if slots are contiguous (no gaps)
+            const areContiguous = (slots: Array<{ startTime: string; endTime: string }>) => {
+                if (slots.length <= 1) return true;
+                const sorted = [...slots].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                for (let i = 1; i < sorted.length; i++) {
+                    // Check if previous slot's endTime equals current slot's startTime
+                    if (sorted[i - 1].endTime !== sorted[i].startTime) return false;
+                }
+                return true;
+            };
+            
+            const showAsRange = !hasDiscreteSlots || areContiguous(normalizedSlots);
+            
+            return (
+                <div className="flex flex-col text-sm">
+                    <div className="flex items-center">
+                        <CalendarIcon className="h-3 w-3 mr-2 text-muted-foreground" />
+                        {formatDate(row.getValue("bookingDate"))}
+                    </div>
+                    {showAsRange ? (
+                        <div className="flex items-center text-xs text-muted-foreground mt-1">
+                            <Clock className="h-3 w-3 mr-2" />
+                            {formatTime(row.original.startTime)} - {formatTime(row.original.endTime)}
+                        </div>
+                    ) : (
+                        <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground mt-1">
+                            <Clock className="h-3 w-3 mr-1" />
+                            {[...normalizedSlots].sort((a, b) => a.startTime.localeCompare(b.startTime)).map((slot, idx) => (
+                                <span key={slot.startTime} className="inline-flex items-center">
+                                    <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">
+                                        {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
+                                    </span>
+                                    {idx < normalizedSlots.length - 1 && <span className="mx-0.5 text-gray-400">+</span>}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
-                <div className="flex items-center text-xs text-muted-foreground mt-1">
-                    <Clock className="h-3 w-3 mr-2" />
-                    {formatTime(row.original.startTime)} - {formatTime(row.original.endTime)}
-                </div>
-            </div>
-        ),
+            );
+        },
     },
     {
         id: "addons",
@@ -168,7 +233,7 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <div className="flex flex-col gap-1 cursor-help max-w-[200px]">
+                            <div className="flex flex-col gap-1 cursor-help max-w-[150px]">
                                 {storageItems.length > 0 && (
                                     <div className="flex items-start gap-1.5">
                                         <Boxes className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
@@ -185,8 +250,9 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
                                                     ? formatStorageDate(startDate)
                                                     : `${formatStorageDate(startDate)} - ${formatStorageDate(endDate)}`;
                                                 return (
-                                                    <div key={idx} className="truncate">
-                                                        {s.name} ({s.storageType}) <span className="text-muted-foreground">• {dateRange}</span>
+                                                    <div key={idx} className="flex flex-col">
+                                                        <span className="truncate">{s.name} ({s.storageType})</span>
+                                                        <span className="text-muted-foreground text-[10px]">{dateRange}</span>
                                                     </div>
                                                 );
                                             })}
@@ -269,42 +335,60 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
             </div>
         ),
         cell: ({ row }) => {
-            const totalPrice = row.original.totalPrice ?? 0;
+            // Use actual Stripe transaction data when available
+            const transactionAmount = row.original.transactionAmount;
             const serviceFee = row.original.serviceFee ?? 0;
-            const netAmount = totalPrice - serviceFee;
+            const managerRevenue = row.original.managerRevenue;
+            
+            // Fall back to booking totalPrice if no transaction data
+            const displayAmount = transactionAmount ?? row.original.totalPrice ?? 0;
+            const netAmount = managerRevenue ?? displayAmount;
             
             const formatPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
             
-            if (totalPrice === 0) {
+            if (displayAmount === 0) {
                 return <span className="text-muted-foreground text-xs">—</span>;
             }
+
+            // Show actual Stripe data if we have transaction data, otherwise show pending
+            const hasTransactionData = transactionAmount !== null && transactionAmount !== undefined;
 
             return (
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <div className="text-right cursor-help">
-                                <div className="font-medium text-sm">{formatPrice(totalPrice)}</div>
-                                <div className="text-xs text-green-600">You receive: {formatPrice(netAmount)}</div>
+                                <div className="font-medium text-sm">{formatPrice(displayAmount)}</div>
+                                {hasTransactionData ? (
+                                    <div className="text-xs text-green-600">You receive: {formatPrice(netAmount)}</div>
+                                ) : (
+                                    <div className="text-xs text-muted-foreground">Awaiting payment</div>
+                                )}
                             </div>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between gap-4">
                                     <span>Total Charged:</span>
-                                    <span className="font-medium">{formatPrice(totalPrice)}</span>
+                                    <span className="font-medium">{formatPrice(displayAmount)}</span>
                                 </div>
-                                <div className="flex justify-between gap-4 text-violet-600">
-                                    <span>Platform Fee (Stripe):</span>
-                                    <span>-{formatPrice(serviceFee)}</span>
-                                </div>
-                                <div className="border-t pt-1 flex justify-between gap-4 font-semibold text-green-600">
-                                    <span>You Receive:</span>
-                                    <span>{formatPrice(netAmount)}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground pt-1">
-                                    Platform fee covers Stripe processing (2.9% + $0.30)
-                                </p>
+                                {hasTransactionData && serviceFee > 0 && (
+                                    <div className="flex justify-between gap-4 text-violet-600">
+                                        <span>Platform Fee:</span>
+                                        <span>-{formatPrice(serviceFee)}</span>
+                                    </div>
+                                )}
+                                {hasTransactionData && (
+                                    <div className="border-t pt-1 flex justify-between gap-4 font-semibold text-green-600">
+                                        <span>You Receive:</span>
+                                        <span>{formatPrice(netAmount)}</span>
+                                    </div>
+                                )}
+                                {!hasTransactionData && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Payment data will be available after checkout completes
+                                    </p>
+                                )}
                             </div>
                         </TooltipContent>
                     </Tooltip>

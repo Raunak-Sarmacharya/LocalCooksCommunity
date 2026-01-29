@@ -251,6 +251,31 @@ export default function ApplicantDashboard() {
     });
   };
 
+  // Handle "Book a Session" button click - use platform standard booking flow
+  const handleBookSessionClick = () => {
+    // Get approved kitchens that are ready to book (Tier 3)
+    const readyToBookKitchens = kitchenApplications.filter(
+      (app) => app.status === 'approved' && (app.current_tier ?? 1) >= 3
+    );
+
+    if (readyToBookKitchens.length === 0) {
+      // No kitchens ready to book - navigate to discover kitchens
+      setActiveTab("discover-kitchens");
+    } else if (readyToBookKitchens.length === 1) {
+      // Single kitchen ready - open booking sheet directly
+      const kitchen = readyToBookKitchens[0];
+      setBookingLocation({
+        id: kitchen.locationId,
+        name: kitchen.location?.name || 'Kitchen',
+        address: kitchen.location?.address,
+      });
+      setBookingSheetOpen(true);
+    } else {
+      // Multiple kitchens ready - navigate to My Kitchens tab to select
+      setActiveTab("kitchen-applications");
+    }
+  };
+
   // Use localStorage to track if vendor portal popup has been shown for this user
   const [hasClosedVendorPopup, setHasClosedVendorPopup] = useState(() => {
     if (typeof window !== 'undefined' && user?.uid) {
@@ -861,7 +886,7 @@ export default function ApplicantDashboard() {
               <Button 
                 variant="outline" 
                 className="h-auto py-4 px-4 justify-start gap-3 hover:bg-amber-50 hover:border-amber-200"
-                onClick={() => setActiveTab("bookings")}
+                onClick={handleBookSessionClick}
               >
                 <Calendar className="h-5 w-5 text-amber-600" />
                 <div className="text-left">
@@ -1068,8 +1093,7 @@ export default function ApplicantDashboard() {
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Bookings</h2>
           <p className="text-muted-foreground mt-1">View and manage your upcoming kitchen sessions.</p>
         </div>
-        <Button onClick={() => setActiveTab("discover-kitchens")} className="w-fit">
-          <Calendar className="h-4 w-4 mr-2" />
+        <Button onClick={handleBookSessionClick}>
           Book a Session
         </Button>
       </div>

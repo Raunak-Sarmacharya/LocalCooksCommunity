@@ -106,6 +106,28 @@ export class BookingService {
         // So we stick to re-calculation.
 
         // 4. Create Booking
+        // Generate selectedSlots from startTime/endTime if not provided
+        let selectedSlots = data.selectedSlots;
+        if (!selectedSlots || selectedSlots.length === 0) {
+            // Generate contiguous slots from startTime to endTime for backward compatibility
+            selectedSlots = [];
+            const [startHours, startMins] = data.startTime.split(':').map(Number);
+            const [endHours, endMins] = data.endTime.split(':').map(Number);
+            const startMinutes = startHours * 60 + startMins;
+            const endMinutes = endHours * 60 + endMins;
+            for (let mins = startMinutes; mins < endMinutes; mins += 60) {
+                const slotStartH = Math.floor(mins / 60);
+                const slotStartM = mins % 60;
+                const slotEndMins = mins + 60;
+                const slotEndH = Math.floor(slotEndMins / 60);
+                const slotEndM = slotEndMins % 60;
+                selectedSlots.push({
+                    startTime: `${slotStartH.toString().padStart(2, '0')}:${slotStartM.toString().padStart(2, '0')}`,
+                    endTime: `${slotEndH.toString().padStart(2, '0')}:${slotEndM.toString().padStart(2, '0')}`
+                });
+            }
+        }
+
         const booking = await this.repo.createKitchenBooking({
             ...data,
             totalPrice: '0', // Will be updated after calculating addons
@@ -115,6 +137,7 @@ export class BookingService {
             currency: pricing.currency,
             storageItems: [], 
             equipmentItems: [], 
+            selectedSlots: selectedSlots,
             paymentStatus: data.paymentStatus || 'pending'
         });
 

@@ -168,9 +168,8 @@ export async function sendMessage(
       throw new Error('User must be authenticated to send messages');
     }
 
-    // Verify auth token is valid
     try {
-      await currentUser.getIdToken(true); // Force refresh to ensure valid token
+      await currentUser.getIdToken(); // Ensure valid token without forcing refresh
     } catch (authError) {
       console.error('Auth token error:', authError);
       throw new Error('Authentication failed. Please refresh the page and try again.');
@@ -240,47 +239,8 @@ export async function sendMessage(
     await updateDoc(conversationRef, updateData);
     console.log('Conversation updated successfully');
 
-    // Trigger notification for the recipient
-    try {
-      const { auth } = await import('@/lib/firebase');
-      const token = await auth.currentUser?.getIdToken();
-      
-      if (senderRole === 'manager' && conversation.chefId) {
-        // Manager sent message -> notify chef
-        await fetch('/api/chef/notifications/message-received', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            chefId: conversation.chefId,
-            senderName: 'Kitchen Manager',
-            messagePreview: content.substring(0, 100),
-            conversationId
-          })
-        });
-      } else if (senderRole === 'chef' && conversation.managerId) {
-        // Chef sent message -> notify manager
-        await fetch('/api/manager/notifications/message-received', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            managerId: conversation.managerId,
-            locationId: conversation.locationId,
-            senderName: 'Chef',
-            messagePreview: content.substring(0, 100),
-            conversationId
-          })
-        });
-      }
-    } catch (notifError) {
-      // Don't fail the message send if notification fails
-      console.warn('Failed to send notification:', notifError);
-    }
+    // Note: Notifications are handled by Firebase Cloud Function (onNewChatMessage)
+    // which triggers on Firestore message creation and uses the actual sender's name from the database
 
     return messageRef.id;
   } catch (error) {
@@ -364,7 +324,6 @@ export function subscribeToMessages(
   onError?: (error: Error) => void,
   limitCount: number = 50
 ): () => void {
-  console.log('Setting up Firestore subscription for conversation:', conversationId);
 
   const q = query(
     collection(db, 'conversations', conversationId, 'messages'),
@@ -375,23 +334,10 @@ export function subscribeToMessages(
   const unsubscribe = onSnapshot(
     q,
     (snapshot: QuerySnapshot<DocumentData>) => {
-      console.log('Snapshot received:', {
-        conversationId,
-        messageCount: snapshot.docs.length,
-        hasPendingWrites: snapshot.metadata.hasPendingWrites,
-        fromCache: snapshot.metadata.fromCache,
-      });
-
       const messages = snapshot.docs
         .map(doc => {
           const data = doc.data();
-          console.log('Message data:', {
-            id: doc.id,
-            senderId: data.senderId,
-            senderRole: data.senderRole,
-            hasContent: !!data.content,
-            createdAt: data.createdAt,
-          });
+
           return {
             id: doc.id,
             ...data,
@@ -506,9 +452,8 @@ export async function getAllConversations(
       throw new Error('User must be authenticated to load conversations');
     }
 
-    // Verify auth token is valid
     try {
-      await currentUser.getIdToken(true); // Force refresh to ensure valid token
+      await currentUser.getIdToken(); // Ensure valid token without forcing refresh
     } catch (authError) {
       console.error('Auth token error:', authError);
       throw new Error('Authentication failed. Please refresh the page and try again.');
@@ -520,7 +465,6 @@ export async function getAllConversations(
 
     const field = role === 'chef' ? 'chefId' : 'managerId';
 
-    console.log('Fetching conversations:', { userId, role, field, firebaseUid: currentUser.uid });
 
     // First, get all conversations for this user
     // Note: Ensure userId matches the data type stored in Firestore (should be number)
@@ -529,10 +473,7 @@ export async function getAllConversations(
       where(field, '==', userId)
     );
 
-    console.log('Executing Firestore query...');
     const querySnapshot = await getDocs(q);
-
-    console.log('Found conversations:', querySnapshot.docs.length);
 
     const conversations: Conversation[] = [];
     querySnapshot.docs.forEach(doc => {

@@ -59,31 +59,31 @@ export function StorageExtensionDialog({
     ].filter(opt => opt.days >= minDays);
   }, [minDate, minDays]);
 
-  // Fetch fee configuration from server (enterprise-grade - no hardcoded values)
-  const { data: feeConfig } = useQuery({
-    queryKey: ['/api/platform-settings/stripe-fees'],
+  // Fetch extension preview from server to get accurate pricing with tax
+  const { data: extensionPreview } = useQuery({
+    queryKey: ['/api/chef/storage-bookings', booking.id, 'extension-preview', selectedDate?.toISOString()],
     queryFn: async () => {
+      if (!selectedDate) return null;
       try {
-        const response = await fetch('/api/platform-settings/stripe-fees');
+        const headers = await getAuthHeaders();
+        const response = await fetch(`/api/chef/storage-bookings/${booking.id}/extension-preview`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ newEndDate: selectedDate.toISOString() }),
+        });
         if (response.ok) {
           return response.json();
         }
       } catch (error) {
-        console.error('Error fetching fee config:', error);
+        console.error('Error fetching extension preview:', error);
       }
-      // Default fallback (same as server defaults)
-      return {
-        stripePercentageFee: 0.029,
-        stripeFlatFeeCents: 30,
-        platformCommissionRate: 0,
-        stripePercentageDisplay: '2.9%',
-        stripeFlatFeeDisplay: '$0.30',
-      };
+      return null;
     },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    enabled: !!selectedDate && selectedDate > currentEndDate,
+    staleTime: 30 * 1000, // Cache for 30 seconds
   });
 
-  // Calculate extension details using server-provided fee configuration
+  // Calculate extension details using server-provided preview (includes tax)
   const extensionDetails = useMemo(() => {
     if (!selectedDate || selectedDate <= currentEndDate) {
       return null;
@@ -99,37 +99,37 @@ export function StorageExtensionDialog({
       };
     }
 
-    // Get fee configuration (with defaults)
-    const stripePercentageFee = feeConfig?.stripePercentageFee ?? 0.029;
-    const stripeFlatFeeCents = feeConfig?.stripeFlatFeeCents ?? 30;
+    // Use server preview if available (includes accurate tax calculation)
+    if (extensionPreview) {
+      const extensionBasePriceCents = Math.round((extensionPreview.extensionBasePrice || 0) * 100);
+      const extensionTaxCents = Math.round((extensionPreview.extensionTax || 0) * 100);
+      const extensionTotalPriceCents = Math.round((extensionPreview.extensionTotalPrice || 0) * 100);
+      const taxRatePercent = extensionPreview.taxRatePercent || 0;
 
-    // Calculate base price (in cents)
+      return {
+        valid: true,
+        extensionDays,
+        extensionBasePriceCents,
+        extensionTaxCents,
+        taxRatePercent,
+        extensionTotalPriceCents,
+      };
+    }
+
+    // Fallback: Calculate locally without tax (will be corrected at checkout)
     const basePricePerDayCents = booking.basePrice || 0;
     const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
     
-    // Calculate platform fee using same formula as server
-    const platformFeeCents = Math.round(
-      extensionBasePriceCents * stripePercentageFee + stripeFlatFeeCents
-    );
-    
-    // Manager receives base price minus platform fee
-    const managerReceivesCents = extensionBasePriceCents - platformFeeCents;
-    
-    // Total customer pays = base price (platform fee is deducted from manager's share)
-    const extensionTotalPriceCents = extensionBasePriceCents;
-
+    // Customer pays base price (tax will be added at checkout)
     return {
       valid: true,
       extensionDays,
       extensionBasePriceCents,
-      platformFeeCents,
-      managerReceivesCents,
-      extensionTotalPriceCents,
-      feeDisplay: feeConfig?.stripePercentageDisplay && feeConfig?.stripeFlatFeeDisplay 
-        ? `${feeConfig.stripePercentageDisplay} + ${feeConfig.stripeFlatFeeDisplay}`
-        : '2.9% + $0.30',
+      extensionTaxCents: 0,
+      taxRatePercent: 0,
+      extensionTotalPriceCents: extensionBasePriceCents,
     };
-  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, feeConfig]);
+  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, extensionPreview]);
 
   // Create checkout session for storage extension payment
   const checkoutMutation = useMutation({
@@ -320,6 +320,12 @@ export function StorageExtensionDialog({
                   </span>
                   <span className="font-medium">${((extensionDetails.extensionBasePriceCents ?? 0) / 100).toFixed(2)}</span>
                 </div>
+                {(extensionDetails.extensionTaxCents ?? 0) > 0 && (
+                  <div className="flex justify-between text-gray-600">
+                    <span>Tax ({extensionDetails.taxRatePercent ?? 0}%)</span>
+                    <span>${((extensionDetails.extensionTaxCents ?? 0) / 100).toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between pt-2 border-t border-green-200 font-bold text-green-900 text-base">
                   <span>Total</span>
                   <span>${((extensionDetails.extensionTotalPriceCents ?? 0) / 100).toFixed(2)} CAD</span>

@@ -103,7 +103,11 @@ export function PendingStorageExtensions() {
       return response.json();
     },
     onSuccess: (data) => {
+      // Invalidate all related queries to ensure UI updates properly
       queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-extensions/pending'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chef/storage-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chef/bookings'] });
+      
       if (data.status === 'paid') {
         toast({
           title: "Status Updated",

@@ -337,13 +337,23 @@ router.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (
         const basePricePerDayDollars = basePricePerDayCents / 100;
 
         const extensionBasePriceDollars = basePricePerDayDollars * extensionDays;
+        const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
         
-        // Get service fee rate
-        const { getServiceFeeRate } = await import('../services/pricing-service');
-        const serviceFeeRate = await getServiceFeeRate();
+        // Get tax rate from kitchen (consistent with kitchen bookings)
+        // Storage is associated with a kitchen, so we use the kitchen's tax rate
+        const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
+        let taxRatePercent = 0;
+        if (storageListing) {
+            const kitchen = await kitchenService.getKitchenById(storageListing.kitchenId);
+            if (kitchen && kitchen.taxRatePercent) {
+                taxRatePercent = parseFloat(String(kitchen.taxRatePercent));
+            }
+        }
         
-        const extensionServiceFeeDollars = extensionBasePriceDollars * serviceFeeRate;
-        const extensionTotalPriceDollars = extensionBasePriceDollars + extensionServiceFeeDollars;
+        // Calculate tax (same formula as kitchen bookings)
+        const extensionTaxCents = Math.round((extensionBasePriceCents * taxRatePercent) / 100);
+        const extensionTaxDollars = extensionTaxCents / 100;
+        const extensionTotalPriceDollars = extensionBasePriceDollars + extensionTaxDollars;
 
         res.json({
             storageBookingId: id,
@@ -352,8 +362,8 @@ router.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (
             extensionDays,
             basePricePerDay: basePricePerDayDollars,
             extensionBasePrice: extensionBasePriceDollars,
-            serviceFeeRate,
-            extensionServiceFee: extensionServiceFeeDollars,
+            taxRatePercent,
+            extensionTax: extensionTaxDollars,
             extensionTotalPrice: extensionTotalPriceDollars,
             currency: 'CAD',
         });
@@ -414,10 +424,6 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
         const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
         const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
 
-        // Calculate fees using database-driven configuration (same as kitchen bookings)
-        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
-        const feeCalculation = await calculateCheckoutFeesAsync(extensionBasePriceCents);
-
         // Get manager's Stripe Connect account through storage listing -> kitchen -> location -> manager
         const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
         if (!storageListing) {
@@ -428,6 +434,15 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
         if (!kitchen) {
             return res.status(404).json({ error: "Kitchen not found" });
         }
+
+        // Calculate tax (consistent with kitchen bookings - customer pays base + tax)
+        const taxRatePercent = kitchen.taxRatePercent ? parseFloat(String(kitchen.taxRatePercent)) : 0;
+        const extensionTaxCents = Math.round((extensionBasePriceCents * taxRatePercent) / 100);
+        const totalWithTaxCents = extensionBasePriceCents + extensionTaxCents;
+
+        // Calculate platform fees on total (base + tax) - deducted from manager's share
+        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
+        const feeCalculation = await calculateCheckoutFeesAsync(totalWithTaxCents);
 
         const location = await locationService.getLocationById(kitchen.locationId);
         if (!location) {
@@ -458,10 +473,11 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
         const baseUrl = getBaseUrl(req);
 
         // Create Stripe Checkout session (same pattern as kitchen bookings)
+        // Customer pays: base + tax. Platform fee is deducted from manager's share.
         const { createCheckoutSession } = await import('../services/stripe-checkout-service');
 
         const checkoutSession = await createCheckoutSession({
-            bookingPriceInCents: feeCalculation.bookingPriceInCents,
+            bookingPriceInCents: totalWithTaxCents,
             platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
@@ -469,6 +485,7 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
             currency: 'cad',
             successUrl: `${baseUrl}/dashboard?storage_extended=true&storage_booking_id=${id}`,
             cancelUrl: `${baseUrl}/dashboard?storage_extension_cancelled=true&storage_booking_id=${id}`,
+            lineItemName: 'Storage Extension',
             metadata: {
                 type: 'storage_extension',
                 storage_booking_id: id.toString(),
@@ -478,6 +495,8 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
                 chef_id: req.neonUser!.id.toString(),
                 kitchen_id: kitchen.id.toString(),
                 location_id: location.id.toString(),
+                tax_cents: extensionTaxCents.toString(),
+                tax_rate_percent: taxRatePercent.toString(),
             },
         });
 
@@ -487,9 +506,9 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
             storageBookingId: id,
             newEndDate: newEndDateObj,
             extensionDays,
-            extensionBasePriceCents: feeCalculation.bookingPriceInCents,
+            extensionBasePriceCents: extensionBasePriceCents,
             extensionServiceFeeCents: feeCalculation.totalPlatformFeeInCents,
-            extensionTotalPriceCents: feeCalculation.totalChargeInCents,
+            extensionTotalPriceCents: totalWithTaxCents,
             stripeSessionId: checkoutSession.sessionId,
             status: 'pending',
         });
@@ -504,8 +523,8 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
                 bookingType: 'storage',
                 chefId: req.neonUser!.id,
                 managerId: location.managerId,
-                amount: feeCalculation.totalChargeInCents,
-                baseAmount: feeCalculation.bookingPriceInCents,
+                amount: totalWithTaxCents,
+                baseAmount: extensionBasePriceCents,
                 serviceFee: feeCalculation.totalPlatformFeeInCents,
                 managerRevenue: feeCalculation.managerReceivesInCents,
                 currency: 'CAD',
@@ -517,6 +536,8 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
                     storage_extension_id: pendingExtension.id.toString(),
                     extension_days: extensionDays.toString(),
                     new_end_date: newEndDateObj.toISOString(),
+                    tax_cents: extensionTaxCents.toString(),
+                    tax_rate_percent: taxRatePercent.toString(),
                 },
             }, db);
             console.log(`[Storage Extension Checkout] Created payment_transactions record for storage booking ${id}, extension ${pendingExtension.id}`);
@@ -525,22 +546,23 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
             console.warn(`[Storage Extension Checkout] Could not create payment_transactions record:`, ptError);
         }
 
-        // Return response (same structure as kitchen bookings)
+        // Return response (consistent with kitchen bookings - shows base + tax, not platform fee)
         res.json({
             sessionUrl: checkoutSession.sessionUrl,
             sessionId: checkoutSession.sessionId,
             extension: {
                 storageBookingId: id,
                 extensionDays,
-                extensionBasePrice: feeCalculation.bookingPriceInCents / 100,
-                extensionServiceFee: feeCalculation.totalPlatformFeeInCents / 100,
-                extensionTotalPrice: feeCalculation.totalChargeInCents / 100,
+                extensionBasePrice: extensionBasePriceCents / 100,
+                taxRatePercent,
+                extensionTax: extensionTaxCents / 100,
+                extensionTotalPrice: totalWithTaxCents / 100,
                 newEndDate: newEndDateObj.toISOString(),
             },
             booking: {
-                price: feeCalculation.bookingPriceInCents / 100,
-                platformFee: feeCalculation.totalPlatformFeeInCents / 100,
-                total: feeCalculation.totalChargeInCents / 100,
+                price: extensionBasePriceCents / 100,
+                tax: extensionTaxCents / 100,
+                total: totalWithTaxCents / 100,
             },
         });
     } catch (error: any) {
@@ -1379,7 +1401,7 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
 // Create booking and redirect to Stripe Checkout (new flow - replaces embedded payment)
 router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
         const chefId = req.neonUser!.id;
 
         if (!kitchenId || !bookingDate || !startTime || !endTime) {
@@ -1528,6 +1550,7 @@ router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Re
             bookingDate: bookingDateObj,
             startTime,
             endTime,
+            selectedSlots: selectedSlots || [], // Pass discrete time slots
             status: 'pending',
             paymentStatus: 'pending',
             specialNotes,
@@ -1606,7 +1629,7 @@ router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Re
 // Create a booking
 router.post("/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {
-        const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
+        const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser!.id;
         
         console.log(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
@@ -1724,6 +1747,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             bookingDate: bookingDateObj,
             startTime,
             endTime,
+            selectedSlots: selectedSlots || [], // Pass discrete time slots
             status: 'pending', // Requires manager approval before confirmation
             paymentStatus: paymentIntentId ? 'paid' : 'pending',
             paymentIntentId,

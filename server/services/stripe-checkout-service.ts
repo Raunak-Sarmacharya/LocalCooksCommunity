@@ -1,9 +1,10 @@
 /**
  * Stripe Checkout Service
  * 
- * Handles Stripe Checkout session creation with two line items:
- * 1. Kitchen Session Booking (base price)
- * 2. Platform Service Fee (2.9% + $0.30)
+ * Handles Stripe Checkout session creation with Stripe Connect destination charges.
+ * 
+ * Customer sees: Base price + Tax (if applicable)
+ * Platform fee is deducted from manager's payout via application_fee_amount (invisible to customer)
  * 
  * Uses Stripe Connect to split payments between platform and manager.
  */
@@ -30,6 +31,8 @@ export interface CreateCheckoutSessionParams {
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  /** Custom line item name shown to customer (default: 'Kitchen Session Booking') */
+  lineItemName?: string;
 }
 
 export interface CheckoutSessionResult {
@@ -62,6 +65,7 @@ export async function createCheckoutSession(
     successUrl,
     cancelUrl,
     metadata = {},
+    lineItemName = 'Kitchen Session Booking',
   } = params;
 
   // Validate amounts
@@ -90,11 +94,13 @@ export async function createCheckoutSession(
     throw new Error('Customer email is required');
   }
 
-  // Total amount customer will be charged
-  const totalAmountInCents = bookingPriceInCents + platformFeeInCents;
+  // Customer pays only the booking price (which includes base + tax)
+  // Platform fee is NOT added to customer total - it's deducted from manager's payout
+  const totalAmountInCents = bookingPriceInCents;
 
   try {
-    // Build line items - only include platform fee if > 0
+    // Build line items - customer sees only the booking price (base + tax)
+    // Platform fee is invisible to customer - deducted from manager's share via application_fee_amount
     const lineItems: Array<{
       price_data: {
         currency: string;
@@ -107,7 +113,7 @@ export async function createCheckoutSession(
         price_data: {
           currency: currency.toLowerCase(),
           product_data: {
-            name: 'Kitchen Session Booking',
+            name: lineItemName,
           },
           unit_amount: bookingPriceInCents,
         },
@@ -115,19 +121,8 @@ export async function createCheckoutSession(
       },
     ];
 
-    // Only add platform fee line item if fee is greater than 0
-    if (platformFeeInCents > 0) {
-      lineItems.push({
-        price_data: {
-          currency: currency.toLowerCase(),
-          product_data: {
-            name: 'Platform Service Fee',
-          },
-          unit_amount: platformFeeInCents,
-        },
-        quantity: 1,
-      });
-    }
+    // NOTE: Platform fee is NOT shown to customer as a line item
+    // It is only set as application_fee_amount which is deducted from manager's payout
 
     // Build payment intent data - only include application_fee_amount if > 0
     const paymentIntentData: {

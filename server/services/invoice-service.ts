@@ -393,7 +393,47 @@ export async function generateInvoicePDF(
       }
       doc.text(`Date: ${bookingDateStr}`, 50, leftY);
       leftY += 15;
-      doc.text(`Time: ${booking.startTime || booking.start_time || 'N/A'} - ${booking.endTime || booking.end_time || 'N/A'}`, 50, leftY);
+      
+      // Format time - show discrete slots if available and non-contiguous
+      const selectedSlots = booking.selectedSlots || booking.selected_slots;
+      let timeDisplay = `${booking.startTime || booking.start_time || 'N/A'} - ${booking.endTime || booking.end_time || 'N/A'}`;
+      
+      if (Array.isArray(selectedSlots) && selectedSlots.length > 0) {
+        // Check if slots are contiguous (each slot has startTime and endTime)
+        const sorted = [...selectedSlots].sort((a: any, b: any) => 
+          (a.startTime || a).localeCompare(b.startTime || b)
+        );
+        let isContiguous = true;
+        for (let i = 1; i < sorted.length; i++) {
+          const prevSlot = sorted[i - 1];
+          const currSlot = sorted[i];
+          // Handle both old format (string) and new format (object with startTime/endTime)
+          const prevEnd = typeof prevSlot === 'string' ? prevSlot : prevSlot.endTime;
+          const currStart = typeof currSlot === 'string' ? currSlot : currSlot.startTime;
+          if (prevEnd !== currStart) {
+            isContiguous = false;
+            break;
+          }
+        }
+        
+        if (!isContiguous) {
+          // Show discrete slots
+          const formatSlotTime = (time: string) => {
+            const [h, m] = time.split(':').map(Number);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const displayH = h % 12 || 12;
+            return `${displayH}:${m.toString().padStart(2, '0')} ${ampm}`;
+          };
+          timeDisplay = sorted.map((slot: any) => {
+            if (typeof slot === 'string') {
+              return formatSlotTime(slot);
+            }
+            return `${formatSlotTime(slot.startTime)}-${formatSlotTime(slot.endTime)}`;
+          }).join(', ');
+        }
+      }
+      
+      doc.text(`Time: ${timeDisplay}`, 50, leftY);
       leftY += 30;
 
       // Items table
