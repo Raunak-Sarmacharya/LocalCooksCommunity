@@ -5,7 +5,7 @@
  * Includes filtering, sorting, pagination, and CSV export.
  */
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import {
     ColumnFiltersState,
     SortingState,
@@ -17,10 +17,12 @@ import {
     getSortedRowModel,
     useReactTable,
 } from "@tanstack/react-table"
-import { Search, Download, ChevronDown, Receipt, FileSpreadsheet } from "lucide-react"
+import { Search, Download, ChevronDown, Receipt, FileSpreadsheet, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -56,6 +58,7 @@ interface TransactionTableProps {
     isLoading: boolean
     onDownloadInvoice: (bookingId: number) => void
     onViewDetails?: (transaction: Transaction) => void
+    onRefundTransaction?: (transaction: Transaction, amountCents: number, reason?: string) => Promise<void> | void
 }
 
 export function TransactionTable({
@@ -63,16 +66,47 @@ export function TransactionTable({
     isLoading,
     onDownloadInvoice,
     onViewDetails,
+    onRefundTransaction,
 }: TransactionTableProps) {
     const [sorting, setSorting] = useState<SortingState>([])
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
     const [globalFilter, setGlobalFilter] = useState('')
     const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | 'all'>('all')
+    const [refundDialogOpen, setRefundDialogOpen] = useState(false)
+    const [refundTarget, setRefundTarget] = useState<Transaction | null>(null)
+    const [refundAmount, setRefundAmount] = useState('')
+    const [refundReason, setRefundReason] = useState('')
+    const [isRefunding, setIsRefunding] = useState(false)
+    const [refundError, setRefundError] = useState<string | null>(null)
+
+    const openRefundDialog = useCallback((transaction: Transaction) => {
+        if (!onRefundTransaction) return
+        setRefundTarget(transaction)
+        const remaining = transaction.refundableAmount ?? (transaction.totalPrice || 0)
+        setRefundAmount((remaining / 100).toFixed(2))
+        setRefundReason('')
+        setRefundError(null)
+        setIsRefunding(false)
+        setRefundDialogOpen(true)
+    }, [onRefundTransaction])
+
+    const closeRefundDialog = useCallback(() => {
+        setRefundDialogOpen(false)
+        setRefundTarget(null)
+        setRefundAmount('')
+        setRefundReason('')
+        setIsRefunding(false)
+        setRefundError(null)
+    }, [])
 
     const columns = useMemo(
-        () => getTransactionColumns({ onDownloadInvoice, onViewDetails }),
-        [onDownloadInvoice, onViewDetails]
+        () => getTransactionColumns({
+            onDownloadInvoice,
+            onViewDetails,
+            onRefund: openRefundDialog,
+        }),
+        [onDownloadInvoice, onViewDetails, openRefundDialog]
     )
 
     // Filter transactions by search and payment status
@@ -129,6 +163,31 @@ export function TransactionTable({
         )
     }, [filteredData])
 
+    const refundAmountValue = refundAmount.trim() === '' ? NaN : Number(refundAmount)
+    const refundAmountCents = Number.isFinite(refundAmountValue)
+        ? Math.round(refundAmountValue * 100)
+        : 0
+    const refundableAmount = refundTarget?.refundableAmount || 0
+    const isRefundAmountValid = refundAmountCents > 0 && refundAmountCents <= refundableAmount
+    const refundCurrency = refundTarget?.currency?.toUpperCase?.() || 'CAD'
+
+    // Handle modal lifecycle (focus + scroll lock)
+    useEffect(() => {
+        if (!refundDialogOpen) return
+        const previousOverflow = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                closeRefundDialog()
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+            document.body.style.overflow = previousOverflow
+        }
+    }, [refundDialogOpen, closeRefundDialog])
+
     // Export handlers
     const handleExportFiltered = useCallback(() => {
         const csv = transactionsToCSV(filteredData)
@@ -164,6 +223,7 @@ export function TransactionTable({
     }
 
     return (
+        <>
         <Card>
             <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -193,6 +253,7 @@ export function TransactionTable({
                                 <SelectItem value="pending">Pending</SelectItem>
                                 <SelectItem value="failed">Failed</SelectItem>
                                 <SelectItem value="refunded">Refunded</SelectItem>
+                                <SelectItem value="partially_refunded">Partial Refund</SelectItem>
                             </SelectContent>
                         </Select>
 
@@ -354,5 +415,131 @@ export function TransactionTable({
                 )}
             </CardContent>
         </Card>
+
+        {refundDialogOpen && (
+            <div className="fixed inset-0 z-50">
+                <div
+                    className="absolute inset-0 bg-black/40"
+                    onClick={closeRefundDialog}
+                />
+                <div className="absolute left-1/2 top-1/2 w-[95vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-6 shadow-lg">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="text-lg font-semibold">Issue Refund</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Refunds reverse the transfer from your Stripe account. Platform fee is not refunded.
+                            </p>
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={closeRefundDialog}
+                            aria-label="Close refund dialog"
+                        >
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
+
+                    {refundTarget && (
+                        <div className="mt-4 space-y-4">
+                            <div className="rounded-lg border p-3 text-sm">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Booking</span>
+                                    <span className="font-medium">{refundTarget.kitchenName}</span>
+                                </div>
+                                <div className="flex items-center justify-between mt-1">
+                                    <span className="text-muted-foreground">Total Charged</span>
+                                    <span>{formatCurrency(refundTarget.totalPrice, refundCurrency)}</span>
+                                </div>
+                                <div className="flex items-center justify-between mt-1">
+                                    <span className="text-muted-foreground">Already Refunded</span>
+                                    <span>{formatCurrency(refundTarget.refundAmount || 0, refundCurrency)}</span>
+                                </div>
+                                <div className="flex items-center justify-between mt-1">
+                                    <span className="text-muted-foreground">Refundable</span>
+                                    <span className="font-semibold">{formatCurrency(refundTarget.refundableAmount || 0, refundCurrency)}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="refund-amount">Refund amount ({refundCurrency})</Label>
+                                <Input
+                                    id="refund-amount"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={refundAmount}
+                                    onChange={(e) => {
+                                        setRefundAmount(e.target.value)
+                                        setRefundError(null)
+                                    }}
+                                />
+                                {!isRefundAmountValid && refundAmount.trim() !== '' && (
+                                    <p className="text-xs text-destructive">
+                                        Enter a valid amount up to {formatCurrency(refundableAmount, refundCurrency)}.
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="refund-reason">Reason (optional)</Label>
+                                <Textarea
+                                    id="refund-reason"
+                                    rows={3}
+                                    value={refundReason}
+                                    onChange={(e) => setRefundReason(e.target.value)}
+                                    placeholder="Add a short reason for your records"
+                                />
+                            </div>
+
+                            {refundError && (
+                                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                    {refundError}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="mt-6 flex items-center justify-end gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={closeRefundDialog}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={async () => {
+                                if (!refundTarget || !onRefundTransaction) return
+                                if (!isRefundAmountValid) {
+                                    setRefundError(`Refund amount must be between 0 and ${formatCurrency(refundableAmount, refundCurrency)}.`)
+                                    return
+                                }
+                                setIsRefunding(true)
+                                try {
+                                    await onRefundTransaction(
+                                        refundTarget,
+                                        refundAmountCents,
+                                        refundReason.trim() || undefined
+                                    )
+                                    closeRefundDialog()
+                                } catch (error: any) {
+                                    setRefundError(error?.message || 'Refund failed. Please try again.')
+                                } finally {
+                                    setIsRefunding(false)
+                                }
+                            }}
+                            disabled={
+                                isRefunding
+                                || !refundTarget
+                                || !isRefundAmountValid
+                            }
+                        >
+                            {isRefunding ? 'Processing...' : 'Confirm Refund'}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     )
 }

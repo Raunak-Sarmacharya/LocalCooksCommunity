@@ -370,17 +370,65 @@ async function handlePaymentIntentSucceeded(
   }
 
   try {
-    const { findPaymentTransactionByIntentId, updatePaymentTransaction } =
+    const { findPaymentTransactionByIntentId, updatePaymentTransaction, createPaymentTransaction } =
       await import("../services/payment-transactions-service");
     const { getStripePaymentAmounts } = await import(
       "../services/stripe-service"
     );
 
     // Update payment_transactions table
-    const transaction = await findPaymentTransactionByIntentId(
+    let transaction = await findPaymentTransactionByIntentId(
       paymentIntent.id,
       db,
     );
+    if (!transaction) {
+      const [booking] = await db
+        .select({
+          id: kitchenBookings.id,
+          chefId: kitchenBookings.chefId,
+          totalPrice: kitchenBookings.totalPrice,
+          serviceFee: kitchenBookings.serviceFee,
+          currency: kitchenBookings.currency,
+          taxRatePercent: kitchens.taxRatePercent,
+          managerId: locations.managerId,
+        })
+        .from(kitchenBookings)
+        .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+        .innerJoin(locations, eq(kitchens.locationId, locations.id))
+        .where(eq(kitchenBookings.paymentIntentId, paymentIntent.id))
+        .limit(1);
+
+      if (booking) {
+        const subtotalCents = booking.totalPrice != null ? parseInt(String(booking.totalPrice)) : 0;
+        const serviceFeeCents = booking.serviceFee != null ? parseInt(String(booking.serviceFee)) : 0;
+        const taxRatePercent = booking.taxRatePercent != null ? Number(booking.taxRatePercent) : 0;
+        const taxCents = Math.round((subtotalCents * taxRatePercent) / 100);
+        const totalAmountCents = subtotalCents + taxCents;
+        const managerRevenueCents = Math.max(0, subtotalCents - serviceFeeCents);
+
+        transaction = await createPaymentTransaction({
+          bookingId: booking.id,
+          bookingType: 'kitchen',
+          chefId: booking.chefId ?? null,
+          managerId: booking.managerId ?? null,
+          amount: totalAmountCents,
+          baseAmount: subtotalCents,
+          serviceFee: serviceFeeCents,
+          managerRevenue: managerRevenueCents,
+          currency: (booking.currency || 'CAD').toUpperCase(),
+          paymentIntentId: paymentIntent.id,
+          status: 'succeeded',
+          stripeStatus: paymentIntent.status,
+          metadata: {
+            createdFrom: 'webhook_upsert',
+            taxRatePercent,
+            taxCents,
+          },
+        }, db);
+
+        logger.info(`[Webhook] Created payment_transactions for PaymentIntent ${paymentIntent.id} (upsert)`);
+      }
+    }
     if (transaction) {
       // Get manager's Stripe Connect account ID if available
       let managerConnectAccountId: string | undefined;

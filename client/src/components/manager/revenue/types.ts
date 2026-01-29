@@ -23,10 +23,14 @@ export type PaymentStatus =
     | 'partially_refunded'
     | 'canceled';
 
+export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle';
+
 // Transaction type for transaction history
 export interface Transaction {
     id: number;
+    transactionId: number | null;
     bookingId: number;
+    bookingType: BookingType;
     bookingDate: string;
     chefId: number | null;
     chefName: string | null;
@@ -34,6 +38,7 @@ export interface Transaction {
     kitchenName: string;
     locationId: number;
     locationName: string;
+    itemName?: string | null;
     totalPrice: number;        // Amount in cents - gross amount charged
     managerRevenue: number;    // Amount in cents after fees
     platformFee: number;       // Platform fee in cents - DEPRECATED, use taxAmount
@@ -44,8 +49,11 @@ export interface Transaction {
     netRevenue: number;        // Net revenue after tax and Stripe fees
     paymentStatus: PaymentStatus;
     paymentIntentId: string | null;
+    currency: string;
     createdAt: string;
     paidAt: string | null;
+    refundAmount: number;
+    refundableAmount: number;
 }
 
 // Invoice type for invoice list

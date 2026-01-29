@@ -56,6 +56,49 @@ import {
 
 const router = Router();
 
+async function getManagerIdForBooking(
+    bookingId: number,
+    bookingType: "kitchen" | "storage" | "equipment" | "bundle",
+    db: any
+): Promise<number | null> {
+    if (bookingType === "kitchen" || bookingType === "bundle") {
+        const [row] = await db
+            .select({ managerId: locations.managerId })
+            .from(kitchenBookings)
+            .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(kitchenBookings.id, bookingId))
+            .limit(1);
+        return row?.managerId ?? null;
+    }
+
+    if (bookingType === "storage") {
+        const [row] = await db
+            .select({ managerId: locations.managerId })
+            .from(storageBookingsTable)
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(storageBookingsTable.id, bookingId))
+            .limit(1);
+        return row?.managerId ?? null;
+    }
+
+    if (bookingType === "equipment") {
+        const [row] = await db
+            .select({ managerId: locations.managerId })
+            .from(equipmentBookingsTable)
+            .innerJoin(equipmentListings, eq(equipmentBookingsTable.equipmentListingId, equipmentListings.id))
+            .innerJoin(kitchens, eq(equipmentListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(equipmentBookingsTable.id, bookingId))
+            .limit(1);
+        return row?.managerId ?? null;
+    }
+
+    return null;
+}
+
 // Initialize Services
 import { bookingService } from "../domains/bookings/booking.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
@@ -296,18 +339,206 @@ router.get("/revenue/transactions", requireFirebaseAuthWithUser, requireManager,
         const { startDate, endDate, locationId, paymentStatus, limit = '50', offset = '0' } = req.query;
 
         const { getTransactionHistory } = await import('../services/revenue-service');
-        const transactions = await getTransactionHistory(
+        const { transactions, total } = await getTransactionHistory(
             managerId,
             db,
             startDate as string,
             endDate as string,
             locationId ? parseInt(locationId as string) : undefined,
             parseInt(limit as string),
-            parseInt(offset as string)
+            parseInt(offset as string),
+            paymentStatus as string | undefined
         );
 
-        res.json({ transactions, total: transactions.length });
+        res.json({ transactions, total });
     } catch (error) {
+        return errorResponse(res, error);
+    }
+});
+
+// Refund a transaction (full or partial) - manager initiated
+router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        const transactionId = parseInt(req.params.transactionId);
+        const { amount, reason } = req.body || {};
+        const refundReason = typeof reason === 'string' ? reason.trim() : undefined;
+
+        if (isNaN(transactionId) || transactionId <= 0) {
+            return res.status(400).json({ error: "Invalid transaction ID" });
+        }
+
+        const amountCents = Math.round(Number(amount));
+        if (!Number.isFinite(amountCents) || amountCents <= 0) {
+            return res.status(400).json({ error: "Refund amount must be a positive number of cents" });
+        }
+
+        const { findPaymentTransactionById, updatePaymentTransaction } = await import('../services/payment-transactions-service');
+        const transaction = await findPaymentTransactionById(transactionId, db);
+
+        if (!transaction) {
+            return res.status(404).json({ error: "Transaction not found" });
+        }
+
+        // Ensure this transaction belongs to this manager
+        const transactionManagerId = transaction.manager_id ?? await getManagerIdForBooking(
+            transaction.booking_id,
+            transaction.booking_type as any,
+            db
+        );
+
+        if (!transactionManagerId || transactionManagerId !== managerId) {
+            return res.status(403).json({ error: "Access denied to this transaction" });
+        }
+
+        if (!transaction.payment_intent_id) {
+            return res.status(400).json({ error: "No payment intent linked to this transaction" });
+        }
+
+        // Only allow refunds for completed or partially refunded transactions
+        if (!['succeeded', 'partially_refunded'].includes(transaction.status)) {
+            return res.status(400).json({ error: `Refunds are only allowed for paid transactions. Current status: ${transaction.status}` });
+        }
+
+        const totalAmount = parseInt(String(transaction.amount || '0')) || 0;
+        const currentRefundAmount = parseInt(String(transaction.refund_amount || '0')) || 0;
+        const remainingAmount = totalAmount - currentRefundAmount;
+
+        if (amountCents > remainingAmount) {
+            return res.status(400).json({ error: "Refund amount exceeds remaining refundable amount" });
+        }
+
+        // Fetch manager's Stripe Connect account
+        const [manager] = await db
+            .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+            .from(users)
+            .where(eq(users.id, managerId))
+            .limit(1);
+
+        if (!manager?.stripeConnectAccountId) {
+            return res.status(400).json({ error: "Manager Stripe Connect account not found" });
+        }
+
+        const serviceFee = parseInt(String(transaction.service_fee || '0')) || 0;
+        const managerRevenue = parseInt(String(transaction.manager_revenue || '0')) || 0;
+        const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
+        const expectedReverseAmount = totalAmount > 0
+            ? Math.round(amountCents * (managerShare / totalAmount))
+            : amountCents;
+
+        const { reverseTransferAndRefund } = await import('../services/stripe-service');
+        const allowedStripeReasons = ['duplicate', 'fraudulent', 'requested_by_customer'] as const;
+        type StripeRefundReason = typeof allowedStripeReasons[number];
+        const stripeReason: StripeRefundReason = (refundReason && (allowedStripeReasons as readonly string[]).includes(refundReason))
+            ? refundReason as StripeRefundReason
+            : 'requested_by_customer';
+
+        const refund = await reverseTransferAndRefund(
+            transaction.payment_intent_id,
+            amountCents,
+            stripeReason,
+            {
+                reverseTransferAmount: expectedReverseAmount,
+                refundApplicationFee: false,
+                metadata: {
+                    transaction_id: String(transaction.id),
+                    booking_id: String(transaction.booking_id),
+                    booking_type: String(transaction.booking_type),
+                    manager_id: String(managerId),
+                    refund_reason: refundReason ? String(refundReason) : '',
+                },
+                transferMetadata: {
+                    transaction_id: String(transaction.id),
+                    booking_id: String(transaction.booking_id),
+                    booking_type: String(transaction.booking_type),
+                    manager_id: String(managerId),
+                    refund_reason: refundReason ? String(refundReason) : '',
+                },
+            }
+        );
+
+        // Update payment transaction totals
+        const newRefundTotal = currentRefundAmount + amountCents;
+        const newStatus = newRefundTotal >= totalAmount ? 'refunded' : 'partially_refunded';
+
+        // Append refund details to metadata
+        let currentMetadata: any = {};
+        if (transaction.metadata) {
+            if (typeof transaction.metadata === 'string') {
+                try {
+                    currentMetadata = JSON.parse(transaction.metadata);
+                } catch {
+                    currentMetadata = {};
+                }
+            } else {
+                currentMetadata = transaction.metadata;
+            }
+        }
+        const existingRefunds = Array.isArray(currentMetadata.refunds) ? currentMetadata.refunds : [];
+        const updatedMetadata = {
+            ...currentMetadata,
+            refunds: [
+                ...existingRefunds,
+                {
+                    id: refund.refundId,
+                    amount: amountCents,
+                    reason: refundReason || null,
+                    createdAt: new Date().toISOString(),
+                    createdBy: managerId,
+                    transferReversalId: refund.transferReversalId,
+                }
+            ],
+            lastRefund: {
+                id: refund.refundId,
+                amount: amountCents,
+                reason: refundReason || null,
+                createdAt: new Date().toISOString(),
+                createdBy: managerId,
+                transferReversalId: refund.transferReversalId,
+            }
+        };
+
+        await updatePaymentTransaction(
+            transaction.id,
+            {
+                status: newStatus as any,
+                stripeStatus: newStatus,
+                refundAmount: newRefundTotal,
+                refundId: refund.refundId,
+                refundReason: refundReason,
+                refundedAt: new Date(),
+                lastSyncedAt: new Date(),
+                metadata: updatedMetadata,
+            },
+            db
+        );
+
+        // Update booking payment status for chef visibility
+        const paymentStatus = newStatus === 'refunded' ? 'refunded' : 'partially_refunded';
+        if (transaction.booking_type === 'kitchen' || transaction.booking_type === 'bundle') {
+            await db.update(kitchenBookings)
+                .set({ paymentStatus, updatedAt: new Date() })
+                .where(eq(kitchenBookings.id, transaction.booking_id));
+        } else if (transaction.booking_type === 'storage') {
+            await db.update(storageBookingsTable)
+                .set({ paymentStatus, updatedAt: new Date() })
+                .where(eq(storageBookingsTable.id, transaction.booking_id));
+        } else if (transaction.booking_type === 'equipment') {
+            await db.update(equipmentBookingsTable)
+                .set({ paymentStatus, updatedAt: new Date() })
+                .where(eq(equipmentBookingsTable.id, transaction.booking_id));
+        }
+
+        res.json({
+            success: true,
+            refundId: refund.refundId,
+            status: newStatus,
+            refundAmount: newRefundTotal,
+            remainingAmount: totalAmount - newRefundTotal,
+            transferReversalId: refund.transferReversalId,
+        });
+    } catch (error: any) {
+        console.error('[Refund] Error processing refund:', error);
         return errorResponse(res, error);
     }
 });

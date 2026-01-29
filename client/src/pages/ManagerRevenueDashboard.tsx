@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo, useCallback } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useFirebaseAuth } from "@/hooks/use-auth"
 import { Info, CreditCard, ExternalLink, AlertCircle, FileText, Download } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,10 +38,12 @@ import {
   useStripeConnectStatus,
   downloadInvoice,
   downloadPayoutStatement,
+  refundTransaction,
   getDefaultDateRange,
   type DateRange,
   type LocationOption,
   type PaymentStatus,
+  type Transaction,
 } from "@/components/manager/revenue"
 
 import { RevenueMetricCards } from "@/components/manager/revenue/components/RevenueMetricCards"
@@ -75,6 +78,7 @@ export default function ManagerRevenueDashboard({
 }: ManagerRevenueDashboardProps) {
   const { user: firebaseUser } = useFirebaseAuth()
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const isEnabled = !!firebaseUser
 
   // Filter State
@@ -181,6 +185,42 @@ export default function ManagerRevenueDashboard({
     }
   }, [toast])
 
+  const handleRefundTransaction = useCallback(async (transaction: Transaction, amountCents: number, reason?: string) => {
+    if (!transaction?.transactionId) {
+      toast({
+        title: "Refund Failed",
+        description: "Missing transaction ID for this booking.",
+        variant: "destructive",
+      })
+      throw new Error("Missing transaction ID for this booking.")
+    }
+
+    try {
+      await refundTransaction({
+        transactionId: transaction.transactionId,
+        amountCents,
+        reason,
+      })
+
+      toast({
+        title: "Refund Initiated",
+        description: "The refund was submitted successfully.",
+      })
+
+      // Refresh revenue data after refund
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] })
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/overview'] })
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/charts'] })
+    } catch (error: any) {
+      toast({
+        title: "Refund Failed",
+        description: error?.message || "Unable to process refund. Please try again.",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }, [queryClient, toast])
+
   const handleNavigateToPayments = useCallback(() => {
     if (onNavigate) {
       onNavigate("payments")
@@ -271,6 +311,7 @@ export default function ManagerRevenueDashboard({
         transactions={transactionsData?.transactions || []}
         isLoading={isLoadingTransactions}
         onDownloadInvoice={handleDownloadInvoice}
+        onRefundTransaction={handleRefundTransaction}
       />
 
       {/* Recent Invoices */}
