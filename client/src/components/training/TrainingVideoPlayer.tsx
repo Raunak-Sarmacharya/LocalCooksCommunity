@@ -769,7 +769,7 @@ export default function TrainingVideoPlayer({ onBack, className }: TrainingVideo
                   if (isLimitedAccess && applicationInfo?.canApply) {
                     return (
                       <Button asChild className="bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600 gap-1.5">
-                        <Link href="/apply">
+                        <Link href="/dashboard?view=applications&action=new">
                           Submit Application
                           <ChevronRight className="h-4 w-4" />
                         </Link>
@@ -981,7 +981,7 @@ export default function TrainingVideoPlayer({ onBack, className }: TrainingVideo
                   size="sm"
                   className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white"
                 >
-                  <Link href="/apply">
+                  <Link href="/dashboard?view=applications&action=new">
                     <FileText className="h-3.5 w-3.5 mr-1.5" />
                     Submit Application
                   </Link>

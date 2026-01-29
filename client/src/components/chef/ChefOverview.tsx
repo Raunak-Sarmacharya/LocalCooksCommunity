@@ -31,6 +31,7 @@ interface ChefOverviewProps {
   enrichedBookings: any[];
   microlearningCompletion: { confirmed?: boolean } | null;
   onNavigate: (tab: string) => void;
+  onStartApplication?: () => void;
   getMostRecentApplication: () => Application | null;
   getApplicationStatus: () => string | null;
   getDocumentStatus: () => string;
@@ -44,6 +45,7 @@ export function ChefOverview({
   enrichedBookings,
   microlearningCompletion,
   onNavigate,
+  onStartApplication,
   getMostRecentApplication,
   getApplicationStatus,
   getDocumentStatus,
@@ -219,11 +221,12 @@ export function ChefOverview({
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <Button asChild className="w-full">
-                <Link href="/apply">
-                  Apply to Sell
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+              <Button 
+                className="w-full"
+                onClick={onStartApplication}
+              >
+                Apply to Sell
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             )}
           </CardFooter>
@@ -358,15 +361,13 @@ export function ChefOverview({
               <Button
                 variant="outline"
                 className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
-                asChild
+                onClick={onStartApplication}
               >
-                <Link href="/apply">
-                  <Store className="h-5 w-5 text-primary" />
-                  <div className="text-left">
-                    <p className="font-medium text-sm">Apply to Sell</p>
-                    <p className="text-xs text-muted-foreground">Start your seller journey</p>
-                  </div>
-                </Link>
+                <Store className="h-5 w-5 text-primary" />
+                <div className="text-left">
+                  <p className="font-medium text-sm">Apply to Sell</p>
+                  <p className="text-xs text-muted-foreground">Start your seller journey</p>
+                </div>
               </Button>
             )}
 

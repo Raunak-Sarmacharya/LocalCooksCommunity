@@ -118,7 +118,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
       icon: hasSubmittedApplication ? CheckCircle : FileText,
       color: hasSubmittedApplication ? "text-green-600" : "text-blue-600",
       bgColor: hasSubmittedApplication ? "bg-green-100" : "bg-blue-100",
-      action: !hasSubmittedApplication ? "/apply" : null
+      action: !hasSubmittedApplication ? "/dashboard?view=applications&action=new" : null
     },
     {
       id: 3,
@@ -264,7 +264,7 @@ export default function UnlockProgress({ hasApprovedApplication, className = "" 
 
                     {step.status === 'rejected' && (
                       <Button asChild size="sm" variant="outline" className="mt-2 h-8 text-xs">
-                        <Link href="/apply">
+                        <Link href="/dashboard?view=applications&action=new">
                           Update Application
                           <ArrowRight className="h-3 w-3 ml-1" />
                         </Link>

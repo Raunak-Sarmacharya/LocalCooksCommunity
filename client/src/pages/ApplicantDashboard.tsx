@@ -8,7 +8,7 @@ import ChatPanel from "@/components/chat/ChatPanel";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { useSubdomain } from "@/hooks/use-subdomain";
 import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
-import BookingControlPanel from "@/components/booking/BookingControlPanel";
+import ChefBookingsView from "@/components/booking/ChefBookingsView";
 import { PendingStorageExtensions } from "@/components/booking/PendingStorageExtensions";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
@@ -66,6 +66,9 @@ import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
+import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
+import ChefSupportPage from "@/components/chef/ChefSupportPage";
+import TidioController from "@/components/chat/TidioController";
 
 // Type alias for application
 type AnyApplication = Application;
@@ -88,7 +91,7 @@ export default function ApplicantDashboard() {
   const getInitialTab = () => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages'].includes(view)) {
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback'].includes(view)) {
       return view;
     }
     return 'overview';
@@ -96,12 +99,22 @@ export default function ApplicantDashboard() {
   
   const [activeTab, setActiveTab] = useState(getInitialTab);
   
-  // Update activeTab when URL changes (for notification clicks)
+  // Application form view mode - 'list' shows applications, 'form' shows the application form
+  const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form'>('list');
+  
+  // Update activeTab and applicationViewMode when URL changes (for notification clicks and deep links)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages'].includes(view)) {
+    const action = params.get('action');
+    
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages', 'support', 'feedback'].includes(view)) {
       setActiveTab(view);
+      
+      // If navigating to applications with action=new, open the form
+      if (view === 'applications' && action === 'new') {
+        setApplicationViewMode('form');
+      }
     }
   }, [location]);
 
@@ -647,11 +660,15 @@ export default function ApplicantDashboard() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <Button asChild className="w-full">
-                <Link href="/apply">
-                  Apply to Sell
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+              <Button 
+                className="w-full"
+                onClick={() => {
+                  setApplicationViewMode('form');
+                  setActiveTab('applications');
+                }}
+              >
+                Apply to Sell
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             )}
           </CardFooter>
@@ -813,15 +830,16 @@ export default function ApplicantDashboard() {
               <Button 
                 variant="outline" 
                 className="h-auto py-4 px-4 justify-start gap-3 hover:bg-primary/5 hover:border-primary/20"
-                asChild
+                onClick={() => {
+                  setApplicationViewMode('form');
+                  setActiveTab('applications');
+                }}
               >
-                <Link href="/apply">
-                  <Store className="h-5 w-5 text-primary" />
-                  <div className="text-left">
-                    <p className="font-medium text-sm">Apply to Sell</p>
-                    <p className="text-xs text-muted-foreground">Start your seller journey</p>
-                  </div>
-                </Link>
+                <Store className="h-5 w-5 text-primary" />
+                <div className="text-left">
+                  <p className="font-medium text-sm">Apply to Sell</p>
+                  <p className="text-xs text-muted-foreground">Start your seller journey</p>
+                </div>
               </Button>
             )}
 
@@ -870,7 +888,17 @@ export default function ApplicantDashboard() {
     </div>
   );
 
-  const applicationsTabContent = (
+  // Helper to check if user has an active application (not cancelled/rejected)
+  const hasActiveSellerApplication = useMemo(() => {
+    if (!userDisplayInfo.applications || userDisplayInfo.applications.length === 0) return false;
+    return userDisplayInfo.applications.some((app: AnyApplication) => 
+      app.status !== 'cancelled' && app.status !== 'rejected'
+    );
+  }, [userDisplayInfo.applications]);
+
+  const applicationsTabContent = applicationViewMode === 'form' ? (
+    <ApplicationFormPanel onBack={() => setApplicationViewMode('list')} />
+  ) : (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -882,9 +910,15 @@ export default function ApplicantDashboard() {
             <p className="text-muted-foreground mt-1">Your seller application and verification status</p>
           </div>
         </div>
-        <Button asChild size="lg" variant="outline" className="rounded-xl border-primary text-primary hover:bg-primary/10">
-          <Link href="/apply">New Application</Link>
-        </Button>
+        {!hasActiveSellerApplication && (
+          <Button 
+            size="lg" 
+            onClick={() => setApplicationViewMode('form')}
+            className="rounded-xl shadow-lg shadow-primary/10"
+          >
+            Start New Application
+          </Button>
+        )}
       </div>
 
       {/* Stripe Connect Payment Setup - Only visible after chef's seller application is FULLY approved */}
@@ -1010,8 +1044,12 @@ export default function ApplicantDashboard() {
                 You haven&apos;t submitted any applications for chef verification yet.
               </CardDescription>
             </div>
-            <Button asChild size="lg" className="rounded-xl shadow-lg shadow-primary/10">
-              <Link href="/apply">Start New Application</Link>
+            <Button 
+              size="lg" 
+              onClick={() => setApplicationViewMode('form')}
+              className="rounded-xl shadow-lg shadow-primary/10"
+            >
+              Start New Application
             </Button>
           </CardContent>
         </Card>
@@ -1025,27 +1063,26 @@ export default function ApplicantDashboard() {
 
   const bookingsTabContent = (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground">Kitchen Bookings</h2>
           <p className="text-muted-foreground mt-1">View and manage your upcoming kitchen sessions.</p>
         </div>
-        <Button onClick={() => setActiveTab("discover-kitchens")}>
+        <Button onClick={() => setActiveTab("discover-kitchens")} className="w-fit">
+          <Calendar className="h-4 w-4 mr-2" />
           Book a Session
         </Button>
       </div>
 
-      <div className="max-w-4xl">
-        {/* Pending Storage Extension Requests */}
-        <PendingStorageExtensions />
-        
-        <BookingControlPanel
-          bookings={enrichedBookings}
-          isLoading={isLoadingBookings}
-          onCancelBooking={handleCancelBooking}
-          kitchens={kitchens || []}
-        />
-      </div>
+      {/* Pending Storage Extension Requests */}
+      <PendingStorageExtensions />
+      
+      <ChefBookingsView
+        bookings={enrichedBookings}
+        isLoading={isLoadingBookings}
+        onCancelBooking={handleCancelBooking}
+        kitchens={kitchens || []}
+      />
     </div>
   );
 
@@ -1331,6 +1368,26 @@ export default function ApplicantDashboard() {
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{trainingTabContent}</div>;
       case "messages":
         return <div className="animate-in fade-in-50 duration-500">{messagesTabContent}</div>;
+      case "support":
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <ChefSupportPage
+              userEmail={authUser?.email || undefined}
+              userName={authUser?.displayName || undefined}
+              userId={authUser?.uid}
+            />
+          </div>
+        );
+      case "feedback":
+        return (
+          <div className="space-y-8 animate-in fade-in-50 duration-500">
+            <ChefSupportPage
+              userEmail={authUser?.email || undefined}
+              userName={authUser?.displayName || undefined}
+              userId={authUser?.uid}
+            />
+          </div>
+        );
       default:
         return <div className="space-y-8 animate-in fade-in-50 duration-500">{overviewTabContent}</div>;
     }
@@ -1342,6 +1399,13 @@ export default function ApplicantDashboard() {
       onViewChange={setActiveTab}
       messageBadgeCount={0}
     >
+      {/* Tidio Chat Controller - manages widget visibility based on current view */}
+      <TidioController
+        userEmail={authUser?.email || undefined}
+        userName={authUser?.displayName || undefined}
+        userId={authUser?.uid}
+      />
+      
       {/* Continue Setup Banner - Like managers have */}
       {showSetupBanner && (
         <div className="bg-blue-600 text-white px-6 py-4 shadow-md mb-6 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">

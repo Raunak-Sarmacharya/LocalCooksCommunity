@@ -343,7 +343,7 @@ function LocalCooksApplicationStep({ hasApplication }: { hasApplication: boolean
               Submit your application to start selling on Local Cooks. The application includes your personal information, kitchen preferences, and required certifications.
             </p>
             <Button asChild className="w-full">
-              <Link href="/apply">Start Application</Link>
+              <Link href="/dashboard?view=applications&action=new">Start Application</Link>
             </Button>
           </div>
         )}
@@ -409,7 +409,7 @@ function SummaryStep() {
         ? `Status: ${sellerApplicationStatus === 'approved' ? 'Approved' : sellerApplicationStatus === 'rejected' ? 'Rejected' : 'Under Review'}` 
         : 'You can submit your application anytime from the dashboard',
       actionLabel: hasSellerApplication ? 'View Application' : 'Start Application',
-      actionHref: hasSellerApplication ? '/dashboard' : '/apply',
+      actionHref: hasSellerApplication ? '/dashboard?view=applications' : '/dashboard?view=applications&action=new',
     });
 
     summaryItems.push({
