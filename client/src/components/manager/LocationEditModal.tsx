@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import {
   Form,
   FormControl,
@@ -36,6 +37,24 @@ import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { LocationData } from "./types"; // Use shared types
+
+// Helper component for authenticated document links
+function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
+  const { url: presignedUrl } = usePresignedDocumentUrl(url);
+  
+  if (!url) return null;
+  
+  return (
+    <a 
+      href={presignedUrl || url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
 
 // Zod schemas for validation
 const basicInfoSchema = z.object({
@@ -526,21 +545,13 @@ export default function LocationEditModal({
                             ? 'rejected'
                             : 'under review'}.
                       </p>
-                      <a
-                        href={
-                          location.kitchenLicenseUrl?.includes('.r2.dev/')
-                            ? location.kitchenLicenseUrl // Public R2 URLs work directly
-                            : (location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') || location.kitchenLicenseUrl?.includes('files.localcooks.ca'))
-                              ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
-                              : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <AuthenticatedDocumentLink
+                        url={location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
                         className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
                       >
                         <FileText className="w-4 h-4" />
                         View uploaded license
-                      </a>
+                      </AuthenticatedDocumentLink>
                     </div>
                   ) : (
                     <p className="text-sm text-gray-600">

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase';
 
 /**
  * Hook to fetch presigned URL for a document from the bucket
@@ -44,38 +45,53 @@ export function usePresignedDocumentUrl(documentUrl: string | null | undefined):
             return;
         }
 
-        // For private R2 bucket URLs, fetch presigned URL
+        // For private R2 bucket URLs, fetch presigned URL with authentication
         setIsLoading(true);
         setError(null);
 
-        // Use our normalized endpoint
-        const endpoint = `/api/files/r2-presigned?url=${encodeURIComponent(documentUrl)}`;
+        const fetchPresignedUrl = async () => {
+            try {
+                const headers: Record<string, string> = {};
 
-        // We can use GET here as defined in the manager page logic, or POST if preferred.
-        // The existing r2-presigned route in routes/files.ts is GET line 221
+                // Add Firebase auth token if user is authenticated
+                const currentUser = auth.currentUser;
+                if (currentUser) {
+                    try {
+                        const token = await currentUser.getIdToken();
+                        if (token) {
+                            headers['Authorization'] = `Bearer ${token}`;
+                        }
+                    } catch (tokenError) {
+                        console.warn('Could not get Firebase token for presigned document URL request:', tokenError);
+                    }
+                }
 
-        fetch(endpoint, {
-            method: 'GET',
-            credentials: 'include',
-        })
-            .then((response) => {
+                // Use our normalized endpoint
+                const endpoint = `/api/files/r2-presigned?url=${encodeURIComponent(documentUrl)}`;
+
+                const response = await fetch(endpoint, {
+                    method: 'GET',
+                    headers,
+                    credentials: 'include',
+                });
+
                 if (!response.ok) {
                     throw new Error('Failed to fetch presigned URL');
                 }
-                return response.json();
-            })
-            .then((data) => {
+
+                const data = await response.json();
                 setPresignedUrl(data.url);
-            })
-            .catch((err) => {
+            } catch (err) {
                 console.error('Error fetching presigned document URL:', err);
-                setError(err);
+                setError(err instanceof Error ? err : new Error('Unknown error'));
                 // Fallback to original URL - user might have access or it might work via other means
                 setPresignedUrl(documentUrl);
-            })
-            .finally(() => {
+            } finally {
                 setIsLoading(false);
-            });
+            }
+        };
+
+        fetchPresignedUrl();
     }, [documentUrl]);
 
     return { url: presignedUrl || documentUrl || null, isLoading, error };

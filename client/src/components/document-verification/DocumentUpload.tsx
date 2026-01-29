@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDocumentVerification } from "@/hooks/use-document-verification";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { useToast } from "@/hooks/use-toast";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { motion } from "framer-motion";
@@ -26,6 +27,24 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { Link } from "wouter";
+
+// Helper component for authenticated document links
+function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
+  const { url: presignedUrl } = usePresignedDocumentUrl(url);
+  
+  if (!url) return null;
+  
+  return (
+    <a 
+      href={presignedUrl || url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
 
 // Add types for props
 interface DocumentManagementModalProps {
@@ -505,17 +524,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                 </div>
                 <div className="flex items-center gap-2">
                   {getStatusBadge(verification.foodSafetyLicenseStatus)}
-                  <a href={
-                    verification.foodSafetyLicenseUrl?.includes('.r2.dev/')
-                      ? verification.foodSafetyLicenseUrl! // Public R2 URLs work directly
-                      : (verification.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') || verification.foodSafetyLicenseUrl?.includes('files.localcooks.ca'))
-                        ? `/api/files/r2-proxy?url=${encodeURIComponent(verification.foodSafetyLicenseUrl!)}`
-                        : verification.foodSafetyLicenseUrl!
-                  }
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-green-600 hover:text-green-800">
+                  <AuthenticatedDocumentLink 
+                    url={verification.foodSafetyLicenseUrl}
+                    className="text-green-600 hover:text-green-800"
+                  >
                     <FileText className="h-4 w-4" />
-                  </a>
+                  </AuthenticatedDocumentLink>
                 </div>
               </div>
 
@@ -532,17 +546,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                   </div>
                   <div className="flex items-center gap-2">
                     {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
-                    <a href={
-                      verification.foodEstablishmentCertUrl?.includes('.r2.dev/')
-                        ? verification.foodEstablishmentCertUrl // Public R2 URLs work directly
-                        : (verification.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') || verification.foodEstablishmentCertUrl?.includes('files.localcooks.ca'))
-                          ? `/api/files/r2-proxy?url=${encodeURIComponent(verification.foodEstablishmentCertUrl)}`
-                          : verification.foodEstablishmentCertUrl
-                    }
-                      target="_blank" rel="noopener noreferrer"
-                      className="text-green-600 hover:text-green-800">
+                    <AuthenticatedDocumentLink 
+                      url={verification.foodEstablishmentCertUrl}
+                      className="text-green-600 hover:text-green-800"
+                    >
                       <FileText className="h-4 w-4" />
-                    </a>
+                    </AuthenticatedDocumentLink>
                   </div>
                 </div>
               )}
@@ -702,16 +711,11 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
           <div className="flex items-center gap-2">
             {verification?.foodEstablishmentCertUrl && (
               <Button variant="ghost" size="sm" asChild>
-                <a href={
-                  verification.foodEstablishmentCertUrl?.includes('.r2.dev/')
-                    ? verification.foodEstablishmentCertUrl // Public R2 URLs work directly
-                    : (verification.foodEstablishmentCertUrl?.includes('r2.cloudflarestorage.com') || verification.foodEstablishmentCertUrl?.includes('files.localcooks.ca'))
-                      ? `/api/files/r2-proxy?url=${encodeURIComponent(verification.foodEstablishmentCertUrl)}`
-                      : verification.foodEstablishmentCertUrl
-                }
-                  target="_blank" rel="noopener noreferrer">
+                <AuthenticatedDocumentLink 
+                  url={verification.foodEstablishmentCertUrl}
+                >
                   <FileText className="h-4 w-4" />
-                </a>
+                </AuthenticatedDocumentLink>
               </Button>
             )}
             <Button

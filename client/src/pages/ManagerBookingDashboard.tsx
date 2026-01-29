@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useSessionFileUpload } from "@/hooks/useSessionFileUpload";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { useLocation } from "wouter";
 import 'react-calendar/dist/Calendar.css';
@@ -47,6 +48,23 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+// Helper component for authenticated document links
+function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
+  const { url: presignedUrl } = usePresignedDocumentUrl(url);
+  
+  if (!url) return null;
+  
+  return (
+    <a 
+      href={presignedUrl || url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
 
 interface Location {
   id: number;
@@ -1512,7 +1530,7 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">Notifications</h3>
                     <p className="text-sm text-gray-600">
-                      Set the email and phone number where you'll receive booking notifications
+                      Set the email and phone number where you&apos;ll receive booking notifications
                     </p>
                   </div>
                 </div>
@@ -1833,20 +1851,12 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                           </p>
                         </div>
                       )}
-                      <a
-                        href={
-                          location.kitchenLicenseUrl?.includes('.r2.dev/')
-                            ? location.kitchenLicenseUrl // Public R2 URLs work directly
-                            : (location.kitchenLicenseUrl?.includes('r2.cloudflarestorage.com') || location.kitchenLicenseUrl?.includes('files.localcooks.ca'))
-                              ? `/api/files/r2-proxy?url=${encodeURIComponent(location.kitchenLicenseUrl)}`
-                              : location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <AuthenticatedDocumentLink
+                        url={location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
                         className="text-sm text-blue-600 hover:text-blue-700 mt-2 inline-block"
                       >
                         View Current License →
-                      </a>
+                      </AuthenticatedDocumentLink>
                     </div>
                   ) : location.kitchenLicenseStatus === "rejected" ? (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
