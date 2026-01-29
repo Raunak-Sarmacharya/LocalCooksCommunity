@@ -179,7 +179,8 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
 });
 
 // R2 Proxy Endpoint (Legacy/Simple)
-router.get("/r2-proxy", async (req: Request, res: Response) => {
+// Uses optionalFirebaseAuth to support both authenticated and public access
+router.get("/r2-proxy", optionalFirebaseAuth, async (req: Request, res: Response) => {
     try {
         const { url } = req.query;
 
@@ -187,7 +188,17 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
             return res.status(400).send("Missing or invalid url parameter");
         }
 
-        console.log(`[R2 Proxy] Request for: ${url}`);
+        // SECURITY CHECK:
+        // If the file is in 'public/' or 'kitchens/' folder, allow access without auth
+        // If it is in 'documents/' or other protected folders, require authentication
+        const isPublic = url.includes('/public/') || url.includes('/kitchens/');
+
+        if (!isPublic && !req.neonUser) {
+            console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${url}`);
+            return res.status(401).send("Authentication required for protected files");
+        }
+
+        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, public: ${isPublic})`);
 
         // Generate a presigned URL (valid for 1 hour)
         const presignedUrl = await getPresignedUrl(url);
@@ -208,7 +219,8 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
 });
 
 // Get Presigned URL Endpoint (Legacy/Simple)
-router.get("/r2-presigned", async (req: Request, res: Response) => {
+// Uses optionalFirebaseAuth to support both authenticated and public access
+router.get("/r2-presigned", optionalFirebaseAuth, async (req: Request, res: Response) => {
     try {
         const { url } = req.query;
 
@@ -216,7 +228,17 @@ router.get("/r2-presigned", async (req: Request, res: Response) => {
             return res.status(400).json({ error: "Missing or invalid url parameter" });
         }
 
-        console.log(`[R2 Presigned] Request for: ${url}`);
+        // SECURITY CHECK:
+        // If the file is in 'public/' or 'kitchens/' folder, allow access without auth
+        // If it is in 'documents/' or other protected folders, require authentication
+        const isPublic = url.includes('/public/') || url.includes('/kitchens/');
+
+        if (!isPublic && !req.neonUser) {
+            console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, public: ${isPublic})`);
 
         // Generate a presigned URL (valid for 1 hour)
         const presignedUrl = await getPresignedUrl(url);

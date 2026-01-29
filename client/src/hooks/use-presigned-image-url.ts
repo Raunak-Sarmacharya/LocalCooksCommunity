@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { auth } from '@/lib/firebase';
 
 /**
  * Hook to fetch presigned URL for an image from the bucket
@@ -29,31 +30,49 @@ export function usePresignedImageUrl(imageUrl: string | null | undefined): strin
     // For R2 bucket URLs, fetch presigned URL
     setIsLoading(true);
 
-    fetch('/api/files/images/presigned-url', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ imageUrl }),
-    })
-      .then((response) => {
+    // Get Firebase auth token for authenticated requests
+    const fetchPresignedUrl = async () => {
+      try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        // Add Firebase auth token if user is authenticated
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          try {
+            const token = await currentUser.getIdToken();
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+            }
+          } catch (tokenError) {
+            console.warn('Could not get Firebase token for presigned URL request:', tokenError);
+          }
+        }
+
+        const response = await fetch('/api/files/images/presigned-url', {
+          method: 'POST',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ imageUrl }),
+        });
+
         if (!response.ok) {
           throw new Error('Failed to fetch presigned URL');
         }
-        return response.json();
-      })
-      .then((data) => {
+
+        const data = await response.json();
         setPresignedUrl(data.url);
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('Error fetching presigned URL:', error);
         // Fallback to original URL
         setPresignedUrl(imageUrl);
-      })
-      .finally(() => {
+      } finally {
         setIsLoading(false);
-      });
+      }
+    };
+
+    fetchPresignedUrl();
   }, [imageUrl]);
 
   return presignedUrl || imageUrl || null;
