@@ -90,6 +90,7 @@ type FilterType = "all" | "unread" | "read" | "archived";
 // Helper to get auth headers
 async function getAuthHeaders(): Promise<HeadersInit> {
   const currentUser = auth.currentUser;
+  console.log("[NotificationCenter] Current user:", currentUser?.email, currentUser?.uid);
   if (currentUser) {
     const token = await currentUser.getIdToken();
     return {
@@ -97,6 +98,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       Authorization: `Bearer ${token}`,
     };
   }
+  console.warn("[NotificationCenter] No current user - auth headers will be empty");
   return { "Content-Type": "application/json" };
 }
 
@@ -380,32 +382,49 @@ export default function NotificationCenter({ locationId }: { locationId?: number
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   // Fetch unread count
-  const { data: unreadData } = useQuery({
+  const { data: unreadData, error: unreadError } = useQuery({
     queryKey: ["/api/manager/notifications/unread-count", locationId],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const url = locationId 
         ? `/api/manager/notifications/unread-count?locationId=${locationId}`
         : "/api/manager/notifications/unread-count";
+      console.log("[NotificationCenter] Fetching unread count from:", url);
       const res = await fetch(url, { headers });
-      if (!res.ok) throw new Error("Failed to fetch unread count");
-      return res.json();
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("[NotificationCenter] Unread count error:", res.status, errorText);
+        throw new Error(`Failed to fetch unread count: ${res.status}`);
+      }
+      const data = await res.json();
+      console.log("[NotificationCenter] Unread count:", data);
+      return data;
     },
     refetchInterval: 30000, // Poll every 30 seconds
+    retry: false, // Don't retry on error for debugging
   });
 
   // Fetch notifications
-  const { data: notificationsData, isLoading, refetch } = useQuery<NotificationResponse>({
+  const { data: notificationsData, isLoading, error: notificationsError, refetch } = useQuery<NotificationResponse>({
     queryKey: ["/api/manager/notifications", filter, locationId],
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ filter });
       if (locationId) params.append("locationId", String(locationId));
-      const res = await fetch(`/api/manager/notifications?${params}`, { headers });
-      if (!res.ok) throw new Error("Failed to fetch notifications");
-      return res.json();
+      const url = `/api/manager/notifications?${params}`;
+      console.log("[NotificationCenter] Fetching notifications from:", url);
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("[NotificationCenter] Notifications error:", res.status, errorText);
+        throw new Error(`Failed to fetch notifications: ${res.status}`);
+      }
+      const data = await res.json();
+      console.log("[NotificationCenter] Notifications:", data);
+      return data;
     },
     enabled: isOpen,
+    retry: false,
   });
 
   // Mark as read mutation

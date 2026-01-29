@@ -13,7 +13,6 @@
 
 import { onDocumentCreated, FirestoreEvent, QueryDocumentSnapshot } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
-import { defineString } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import { Pool } from "pg";
 
@@ -23,20 +22,16 @@ admin.initializeApp();
 // Firestore reference
 const firestore = admin.firestore();
 
-// Define the database URL parameter (set via Firebase console or CLI)
-const databaseUrl = defineString("DATABASE_URL", {
-  description: "Neon PostgreSQL connection string",
-});
-
 // PostgreSQL connection pool for Neon database
 let pool: Pool | null = null;
 
 function getPool(): Pool {
   if (!pool) {
-    const connectionString = databaseUrl.value();
+    // Read from environment variable (set via .env file or Firebase config)
+    const connectionString = process.env.DATABASE_URL;
     
     if (!connectionString) {
-      throw new Error("DATABASE_URL not configured. Set it in Firebase console or .env file.");
+      throw new Error("DATABASE_URL not configured. Set it in .env file.");
     }
 
     pool = new Pool({
@@ -263,6 +258,7 @@ export const onNewChatMessage = onDocumentCreated(
       // Create the notification
       await createNotification({
         managerId: recipientId,
+        locationId: conversation.locationId || undefined,
         type: "message_received",
         title: `New message from ${senderName}`,
         message: contentPreview,
