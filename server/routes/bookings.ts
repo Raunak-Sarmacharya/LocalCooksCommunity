@@ -1376,6 +1376,233 @@ router.post("/payments/cancel", requireChef, async (req: Request, res: Response)
     }
 });
 
+// Create booking and redirect to Stripe Checkout (new flow - replaces embedded payment)
+router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Response) => {
+    try {
+        const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
+        const chefId = req.neonUser!.id;
+
+        if (!kitchenId || !bookingDate || !startTime || !endTime) {
+            return res.status(400).json({ error: "Missing required booking fields" });
+        }
+
+        // Get kitchen details
+        const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
+        if (!kitchenDetails) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const kitchenLocationId = kitchenDetails.locationId;
+        if (!kitchenLocationId) {
+            return res.status(400).json({ error: "Kitchen location not found" });
+        }
+
+        // Check if chef has an approved kitchen application for this location
+        const applicationStatus = await chefService.getApplicationStatusForBooking(chefId, kitchenLocationId);
+        if (!applicationStatus.canBook) {
+            return res.status(403).json({
+                error: applicationStatus.message,
+                hasApplication: applicationStatus.hasApplication,
+                applicationStatus: applicationStatus.status,
+            });
+        }
+
+        // Validate booking availability
+        const bookingDateObj = new Date(bookingDate);
+        const availabilityCheck = await bookingService.validateBookingAvailability(
+            kitchenId,
+            bookingDateObj,
+            startTime,
+            endTime
+        );
+
+        if (!availabilityCheck.valid) {
+            return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
+        }
+
+        // Get location details
+        const location = await locationService.getLocationById(kitchenLocationId);
+        if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+        }
+
+        const timezone = (location as any).timezone || "America/Edmonton";
+        const minimumBookingWindowHours = (location as any).minimumBookingWindowHours ?? 1;
+
+        // Validate booking time
+        const bookingDateStr = typeof bookingDate === 'string'
+            ? bookingDate.split('T')[0]
+            : bookingDateObj.toISOString().split('T')[0];
+
+        const { isBookingTimePast, getHoursUntilBooking } = await import('../date-utils');
+
+        if (isBookingTimePast(bookingDateStr, startTime, timezone)) {
+            return res.status(400).json({ error: "Cannot book a time slot that has already passed" });
+        }
+
+        const hoursUntilBooking = getHoursUntilBooking(bookingDateStr, startTime, timezone);
+        if (hoursUntilBooking < minimumBookingWindowHours) {
+            return res.status(400).json({
+                error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? 's' : ''} in advance`
+            });
+        }
+
+        // Get manager's Stripe Connect account
+        const manager = await userService.getUser((location as any).managerId);
+        if (!manager) {
+            return res.status(404).json({ error: "Manager not found" });
+        }
+
+        const managerStripeAccountId = manager.stripeConnectAccountId;
+        if (!managerStripeAccountId) {
+            return res.status(400).json({
+                error: "Manager has not set up Stripe payments. Please contact the kitchen manager."
+            });
+        }
+
+        // Get chef's email
+        const chef = await userService.getUser(chefId);
+        if (!chef || !chef.username) {
+            return res.status(400).json({ error: "Chef email not found" });
+        }
+        const chefEmail = chef.username;
+
+        // Calculate total price
+        const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
+        let totalPriceCents = kitchenPricing.totalPriceCents;
+
+        // Calculate storage add-ons
+        const storageIds: number[] = [];
+        if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
+            for (const storage of selectedStorage) {
+                try {
+                    const storageListing = await inventoryService.getStorageListingById(storage.storageListingId);
+                    if (storageListing) {
+                        storageIds.push(storage.storageListingId);
+                        const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
+                        const minDays = storageListing.minimumBookingDuration || 1;
+                        const startDate = new Date(storage.startDate);
+                        const endDate = new Date(storage.endDate);
+                        const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                        const effectiveDays = Math.max(days, minDays);
+
+                        let storagePrice = basePriceCents * effectiveDays;
+                        if (storageListing.pricingModel === 'hourly') {
+                            const durationHours = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)));
+                            storagePrice = basePriceCents * durationHours;
+                        } else if (storageListing.pricingModel === 'monthly-flat') {
+                            storagePrice = basePriceCents;
+                        }
+                        totalPriceCents += storagePrice;
+                    }
+                } catch (error) {
+                    console.error('Error calculating storage price:', error);
+                }
+            }
+        }
+
+        // Calculate equipment add-ons
+        if (selectedEquipmentIds && Array.isArray(selectedEquipmentIds) && selectedEquipmentIds.length > 0) {
+            for (const equipmentListingId of selectedEquipmentIds) {
+                try {
+                    const equipmentListing = await inventoryService.getEquipmentListingById(equipmentListingId);
+                    if (equipmentListing && equipmentListing.availabilityType !== 'included') {
+                        const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
+                        totalPriceCents += sessionRateCents;
+                    }
+                } catch (error) {
+                    console.error(`Error calculating equipment price for listing ${equipmentListingId}:`, error);
+                }
+            }
+        }
+
+        // Calculate tax
+        const taxRatePercent = kitchenDetails.taxRatePercent ? parseFloat(String(kitchenDetails.taxRatePercent)) : 0;
+        const taxCents = Math.round((totalPriceCents * taxRatePercent) / 100);
+        const totalWithTaxCents = totalPriceCents + taxCents;
+
+        // Create booking with pending_payment status
+        const booking = await bookingService.createKitchenBooking({
+            kitchenId,
+            chefId,
+            bookingDate: bookingDateObj,
+            startTime,
+            endTime,
+            status: 'pending',
+            paymentStatus: 'pending',
+            specialNotes,
+            selectedStorageIds: storageIds,
+            selectedEquipmentIds: selectedEquipmentIds || []
+        });
+
+        // Calculate fees for Stripe Checkout
+        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
+        const feeCalculation = await calculateCheckoutFeesAsync(totalWithTaxCents);
+
+        // Get base URL for success/cancel URLs
+        const baseUrl = getBaseUrl(req);
+
+        // Create Stripe Checkout session
+        const { createCheckoutSession } = await import('../services/stripe-checkout-service');
+        const checkoutSession = await createCheckoutSession({
+            bookingPriceInCents: totalWithTaxCents,
+            platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
+            managerStripeAccountId,
+            customerEmail: chefEmail,
+            bookingId: booking.id,
+            currency: 'cad',
+            successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`,
+            cancelUrl: `${baseUrl}/booking-cancel?booking_id=${booking.id}`,
+            metadata: {
+                booking_id: booking.id.toString(),
+                kitchen_id: kitchenId.toString(),
+                chef_id: chefId.toString(),
+                type: 'kitchen_booking',
+            },
+        });
+
+        // Create payment_transactions record
+        try {
+            const { createPaymentTransaction } = await import('../services/payment-transactions-service');
+            await createPaymentTransaction({
+                bookingId: booking.id,
+                bookingType: 'kitchen',
+                chefId,
+                managerId: (location as any).managerId,
+                amount: feeCalculation.totalChargeInCents,
+                baseAmount: totalWithTaxCents,
+                serviceFee: feeCalculation.totalPlatformFeeInCents,
+                managerRevenue: feeCalculation.managerReceivesInCents,
+                currency: 'CAD',
+                paymentIntentId: undefined,
+                status: 'pending',
+                metadata: {
+                    checkout_session_id: checkoutSession.sessionId,
+                    booking_id: booking.id.toString(),
+                },
+            }, db);
+            console.log(`[Checkout] Created payment_transactions record for booking ${booking.id}`);
+        } catch (ptError) {
+            console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
+        }
+
+        // Return checkout URL for redirect
+        res.json({
+            sessionUrl: checkoutSession.sessionUrl,
+            sessionId: checkoutSession.sessionId,
+            bookingId: booking.id,
+            booking: {
+                price: totalWithTaxCents / 100,
+                platformFee: feeCalculation.totalPlatformFeeInCents / 100,
+                total: feeCalculation.totalChargeInCents / 100,
+            },
+        });
+    } catch (error: any) {
+        console.error("Error creating booking checkout:", error);
+        res.status(500).json({ error: error.message || "Failed to create booking checkout" });
+    }
+});
+
 // Create a booking
 router.post("/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {

@@ -45,7 +45,6 @@ import {
   CreditCard,
   ArrowLeft,
 } from "lucide-react";
-import ACSSDebitPayment from "@/components/payment/ACSSDebitPayment";
 
 interface KitchenBookingSheetProps {
   open: boolean;
@@ -125,12 +124,7 @@ export default function KitchenBookingSheet({
   const [currentStep, setCurrentStep] = useState<'kitchen' | 'addons' | 'calendar' | 'slots' | 'confirm'>('kitchen');
 
   // Payment state
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [isCreatingPaymentIntent, setIsCreatingPaymentIntent] = useState(false);
-  const [paymentCurrency, setPaymentCurrency] = useState<string>('CAD');
+  const [isRedirectingToCheckout, setIsRedirectingToCheckout] = useState(false);
   const [isProcessingBooking, setIsProcessingBooking] = useState(false);
 
   // Calendar state
@@ -254,11 +248,7 @@ export default function KitchenBookingSheet({
       setEquipmentListings({ all: [], included: [], rental: [] });
       setCurrentStep('kitchen');
       // Reset payment state
-      setShowPayment(false);
-      setPaymentIntentId(null);
-      setClientSecret(null);
-      setPaymentAmount(0);
-      setIsCreatingPaymentIntent(false);
+      setIsRedirectingToCheckout(false);
       setIsProcessingBooking(false);
     }
   }, [open, locationKitchens]);
@@ -673,11 +663,11 @@ export default function KitchenBookingSheet({
     return `${formatTime(startTime)} - ${formatTime(endTimeStr)}`;
   };
 
-  // Create payment intent
-  const createPaymentIntent = async () => {
+  // Redirect to Stripe Checkout
+  const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
-    setIsCreatingPaymentIntent(true);
+    setIsRedirectingToCheckout(true);
     try {
       const sortedSlots = [...selectedSlots].sort();
       const startTime = sortedSlots[0];
@@ -696,7 +686,7 @@ export default function KitchenBookingSheet({
       const currentUser = auth.currentUser;
       const token = currentUser ? await currentUser.getIdToken() : '';
 
-      const response = await fetch('/api/payments/create-intent', {
+      const response = await fetch('/api/chef/bookings/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -708,102 +698,39 @@ export default function KitchenBookingSheet({
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
+          specialNotes: notes,
           selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
             storageListingId: s.storageListingId,
             startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
             endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
           })) : undefined,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
-          expectedAmountCents: grandTotal,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create payment intent');
+        throw new Error(errorData.error || 'Failed to create checkout session');
       }
 
       const data = await response.json();
-      setPaymentIntentId(data.paymentIntentId);
-      setClientSecret(data.clientSecret);
-      setPaymentAmount(data.amount);
-      setPaymentCurrency(data.currency);
-      setShowPayment(true);
+      
+      // Redirect to Stripe Checkout
+      if (data.sessionUrl) {
+        window.location.href = data.sessionUrl;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
     } catch (error: any) {
       toast({
-        title: "Payment Setup Failed",
-        description: error.message || "Failed to initialize payment. Please try again.",
+        title: "Checkout Failed",
+        description: error.message || "Failed to start checkout. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsCreatingPaymentIntent(false);
+      setIsRedirectingToCheckout(false);
     }
   };
 
-  // Handle payment success
-  const handlePaymentSuccess = async (paymentIntentIdResult: string, paymentMethodId: string) => {
-    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0 || isProcessingBooking) {
-      return;
-    }
-
-    setIsProcessingBooking(true);
-
-    const sortedSlots = [...selectedSlots].sort();
-    const startTime = sortedSlots[0];
-    const [startHours, startMins] = startTime.split(':').map(Number);
-    const totalDurationMins = selectedSlots.length * 60;
-    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
-    const endHours = Math.floor(endTotalMins / 60);
-    const endMins = endTotalMins % 60;
-    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
-
-    const bookingDateStr = toLocalDateString(selectedDate);
-    const [year, month, day] = bookingDateStr.split('-').map(Number);
-    const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-
-    createBooking.mutate(
-      {
-        kitchenId: selectedKitchen.id,
-        bookingDate: bookingDate.toISOString(),
-        startTime,
-        endTime,
-        specialNotes: notes,
-        paymentIntentId: paymentIntentIdResult,
-        selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
-          storageListingId: s.storageListingId,
-          startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
-          endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
-        })) : undefined,
-        selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
-      },
-      {
-        onSuccess: () => {
-          toast({
-            title: "Booking Confirmed!",
-            description: `Your ${selectedSlots.length} hour kitchen booking has been successfully created.`,
-          });
-          setIsProcessingBooking(false);
-          onOpenChange(false); // Close the sheet
-        },
-        onError: (error: any) => {
-          toast({
-            title: "Booking Failed",
-            description: error.message || "Failed to create booking. Please try again.",
-            variant: "destructive",
-          });
-          setIsProcessingBooking(false);
-        },
-      }
-    );
-  };
-
-  const handlePaymentError = (error: string) => {
-    toast({
-      title: "Payment Failed",
-      description: error,
-      variant: "destructive",
-    });
-  };
 
   // Handle free booking submission
   const handleFreeBookingSubmit = async () => {
@@ -1322,33 +1249,6 @@ export default function KitchenBookingSheet({
                 />
               </div>
 
-              {/* Payment Section */}
-              {showPayment && clientSecret && (
-                <div className="p-3 border rounded-lg">
-                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                    <CreditCard className="h-4 w-4 text-primary" />
-                    Payment
-                  </h4>
-                  <ACSSDebitPayment
-                    clientSecret={clientSecret}
-                    amount={paymentAmount}
-                    currency={paymentCurrency}
-                    onSuccess={handlePaymentSuccess}
-                    onError={handlePaymentError}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full mt-3"
-                    onClick={() => {
-                      setShowPayment(false);
-                      setClientSecret(null);
-                      setPaymentIntentId(null);
-                    }}
-                  >
-                    Cancel Payment
-                  </Button>
-                </div>
-              )}
             </div>
           </ScrollArea>
         </div>
@@ -1469,7 +1369,7 @@ export default function KitchenBookingSheet({
       );
     }
 
-    if (currentStep === 'confirm' && !showPayment) {
+    if (currentStep === 'confirm') {
       return (
         <div className="flex gap-3">
           <Button 
@@ -1482,18 +1382,18 @@ export default function KitchenBookingSheet({
           </Button>
           <Button 
             className="flex-1" 
-            onClick={grandTotal > 0 ? createPaymentIntent : handleFreeBookingSubmit}
-            disabled={createBooking.isPending || isCreatingPaymentIntent || isProcessingBooking}
+            onClick={grandTotal > 0 ? redirectToStripeCheckout : handleFreeBookingSubmit}
+            disabled={createBooking.isPending || isRedirectingToCheckout || isProcessingBooking}
           >
-            {createBooking.isPending || isCreatingPaymentIntent || isProcessingBooking ? (
+            {createBooking.isPending || isRedirectingToCheckout || isProcessingBooking ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isCreatingPaymentIntent ? 'Preparing...' : 'Booking...'}
+                {isRedirectingToCheckout ? 'Redirecting to checkout...' : 'Booking...'}
               </>
             ) : grandTotal > 0 ? (
               <>
                 <CreditCard className="mr-2 h-4 w-4" />
-                Pay & Confirm
+                Proceed to Checkout
               </>
             ) : (
               <>

@@ -7,7 +7,6 @@ import Footer from "@/components/layout/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
-import ACSSDebitPayment from "@/components/payment/ACSSDebitPayment";
 import { useQuery } from "@tanstack/react-query";
 
 export default function BookingConfirmationPage() {
@@ -52,13 +51,7 @@ export default function BookingConfirmationPage() {
   } | null>(null);
 
   // Payment state
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [isCreatingPaymentIntent, setIsCreatingPaymentIntent] = useState(false);
-  const [paymentCurrency, setPaymentCurrency] = useState<string>('CAD');
-  const [isProcessingBooking, setIsProcessingBooking] = useState(false);
+  const [isRedirectingToCheckout, setIsRedirectingToCheckout] = useState(false);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
     tax: number;
@@ -315,11 +308,11 @@ export default function BookingConfirmationPage() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // Create payment intent
-  const createPaymentIntent = async () => {
+  // Redirect to Stripe Checkout
+  const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
-    setIsCreatingPaymentIntent(true);
+    setIsRedirectingToCheckout(true);
     try {
       const sortedSlots = [...selectedSlots].sort();
       const startTime = sortedSlots[0];
@@ -340,9 +333,7 @@ export default function BookingConfirmationPage() {
       const currentUser = auth.currentUser;
       const token = currentUser ? await currentUser.getIdToken() : '';
 
-
-
-      const response = await fetch('/api/payments/create-intent', {
+      const response = await fetch('/api/chef/bookings/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -354,121 +345,39 @@ export default function BookingConfirmationPage() {
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
+          specialNotes: notes,
           selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
             storageListingId: s.storageListingId,
             startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
             endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
           })) : undefined,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
-          expectedAmountCents: grandTotal, // Frontend calculation is now in cents
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create payment intent');
+        throw new Error(errorData.error || 'Failed to create checkout session');
       }
 
       const data = await response.json();
-      setPaymentIntentId(data.paymentIntentId);
-      setClientSecret(data.clientSecret);
-      // Debug: Log both frontend and backend amounts to identify calculation mismatch
-
-      console.log('Payment amount debug:', {
-        frontendGrandTotal: grandTotal,
-        backendAmount: data.amount,
-        backendAmountDollars: data.amount / 100,
-        difference: data.amount - grandTotal,
-        ratio: grandTotal > 0 ? data.amount / grandTotal : 0
-      });
-      // Use backend amount (it's what the PaymentIntent was created with)
-      // But log the mismatch so we can fix the backend calculation
-      setPaymentAmount(data.amount);
-      setPaymentCurrency(data.currency);
-      setShowPayment(true);
+      
+      // Redirect to Stripe Checkout
+      if (data.sessionUrl) {
+        window.location.href = data.sessionUrl;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
     } catch (error: any) {
       toast({
-        title: "Payment Setup Failed",
-        description: error.message || "Failed to initialize payment. Please try again.",
+        title: "Checkout Failed",
+        description: error.message || "Failed to start checkout. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsCreatingPaymentIntent(false);
+      setIsRedirectingToCheckout(false);
     }
   };
 
-  // Handle payment success
-  const handlePaymentSuccess = async (paymentIntentId: string, paymentMethodId: string) => {
-    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0 || isProcessingBooking) {
-      return;
-    }
-
-    setIsProcessingBooking(true);
-
-    const sortedSlots = [...selectedSlots].sort();
-    const startTime = sortedSlots[0];
-    const [startHours, startMins] = startTime.split(':').map(Number);
-    const totalDurationMins = selectedSlots.length * 60;
-    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
-    const endHours = Math.floor(endTotalMins / 60);
-    const endMins = endTotalMins % 60;
-    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
-
-    // Use dateStr directly from URL to avoid timezone issues
-    const bookingDateStr = dateStr || toLocalDateString(selectedDate);
-    const [year, month, day] = bookingDateStr.split('-').map(Number);
-    const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-
-    createBooking.mutate(
-      {
-        kitchenId: selectedKitchen.id,
-        bookingDate: bookingDate.toISOString(),
-        startTime,
-        endTime,
-        specialNotes: notes,
-        paymentIntentId,
-        selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
-          storageListingId: s.storageListingId,
-          startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
-          endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
-        })) : undefined,
-        selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
-      },
-      {
-        onSuccess: (bookingData: any) => {
-          // Redirect to payment success page with booking ID
-          const bookingId = bookingData?.id || bookingData?.booking?.id;
-          if (bookingId) {
-            setLocation(`/payment-success?bookingId=${bookingId}`);
-          } else {
-            // Fallback to dashboard if booking ID not available
-            const addonsCount = selectedEquipmentIds.length;
-            const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
-            toast({
-              title: "Booking Created!",
-              description: `Your ${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
-            });
-            setLocation('/dashboard');
-          }
-        },
-        onError: (error: any) => {
-          toast({
-            title: "Booking Failed",
-            description: error.message || "Failed to create booking. Please try again.",
-            variant: "destructive",
-          });
-        },
-      }
-    );
-  };
-
-  const handlePaymentError = (error: string) => {
-    toast({
-      title: "Payment Failed",
-      description: error,
-      variant: "destructive",
-    });
-  };
 
   // Handle booking submission for free bookings (no payment required)
   const handleBookingSubmit = async () => {
@@ -856,62 +765,35 @@ export default function BookingConfirmationPage() {
                 )}
               </div>
 
-              {/* Payment Section */}
-              {showPayment && clientSecret ? (
-                <div className="pt-6 border-t">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
-                    Payment
-                  </h3>
-                  <ACSSDebitPayment
-                    clientSecret={clientSecret}
-                    amount={paymentAmount}
-                    currency={paymentCurrency}
-                    onSuccess={handlePaymentSuccess}
-                    onError={handlePaymentError}
-                  />
-                  <button
-                    onClick={() => {
-                      setShowPayment(false);
-                      setClientSecret(null);
-                      setPaymentIntentId(null);
-                    }}
-                    className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors text-gray-700"
-                  >
-                    Cancel Payment
-                  </button>
-                </div>
-              ) : (
-                /* Action Buttons */
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={handleBack}
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back
-                  </button>
-                  <button
-                    onClick={grandTotal > 0 ? createPaymentIntent : handleBookingSubmit}
-                    disabled={createBooking.isPending || isCreatingPaymentIntent}
-                    className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    {createBooking.isPending || isCreatingPaymentIntent ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        {isCreatingPaymentIntent ? 'Preparing Payment...' : 'Booking...'}
-                      </span>
-                    ) : grandTotal > 0 ? (
-                      <>
-                        <CreditCard className="h-4 w-4" />
-                        Proceed to Payment
-                      </>
-                    ) : (
-                      "Confirm Booking"
-                    )}
-                  </button>
-                </div>
-              )}
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleBack}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back
+                </button>
+                <button
+                  onClick={grandTotal > 0 ? redirectToStripeCheckout : handleBookingSubmit}
+                  disabled={createBooking.isPending || isRedirectingToCheckout}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  {createBooking.isPending || isRedirectingToCheckout ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      {isRedirectingToCheckout ? 'Redirecting to checkout...' : 'Booking...'}
+                    </span>
+                  ) : grandTotal > 0 ? (
+                    <>
+                      <CreditCard className="h-4 w-4" />
+                      Proceed to Checkout
+                    </>
+                  ) : (
+                    "Confirm Booking"
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
