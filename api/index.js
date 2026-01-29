@@ -6729,7 +6729,8 @@ var init_logger = __esm({
 import { sql as sql3 } from "drizzle-orm";
 async function createNotification(params) {
   const {
-    managerId,
+    userId,
+    target,
     locationId,
     type,
     priority = "normal",
@@ -6741,32 +6742,82 @@ async function createNotification(params) {
     expiresAt
   } = params;
   try {
-    const result = await db.execute(sql3`
-      INSERT INTO manager_notifications 
-      (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
-      VALUES (
-        ${managerId}, 
-        ${locationId || null}, 
-        ${type}::notification_type, 
-        ${priority}::notification_priority, 
-        ${title}, 
-        ${message}, 
-        ${JSON.stringify(metadata)}::jsonb, 
-        ${actionUrl || null}, 
-        ${actionLabel || null}, 
-        ${expiresAt ? expiresAt.toISOString() : null}
-      )
-      RETURNING *
-    `);
-    logger.info(`[NotificationService] Created ${type} notification for manager ${managerId}`);
+    let result;
+    if (target === "manager") {
+      result = await db.execute(sql3`
+        INSERT INTO manager_notifications 
+        (manager_id, location_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
+        VALUES (
+          ${userId}, 
+          ${locationId || null}, 
+          ${type}::notification_type, 
+          ${priority}::notification_priority, 
+          ${title}, 
+          ${message}, 
+          ${JSON.stringify(metadata)}::jsonb, 
+          ${actionUrl || null}, 
+          ${actionLabel || null}, 
+          ${expiresAt ? expiresAt.toISOString() : null}
+        )
+        RETURNING *
+      `);
+      logger.info(`[NotificationService] Created ${type} notification for manager ${userId}`);
+    } else {
+      result = await db.execute(sql3`
+        INSERT INTO chef_notifications 
+        (chef_id, type, priority, title, message, metadata, action_url, action_label, expires_at)
+        VALUES (
+          ${userId}, 
+          ${type}::chef_notification_type, 
+          ${priority}::chef_notification_priority, 
+          ${title}, 
+          ${message}, 
+          ${JSON.stringify(metadata)}::jsonb, 
+          ${actionUrl || null}, 
+          ${actionLabel || null}, 
+          ${expiresAt ? expiresAt.toISOString() : null}
+        )
+        RETURNING *
+      `);
+      logger.info(`[NotificationService] Created ${type} notification for chef ${userId}`);
+    }
     return result.rows[0];
   } catch (error) {
-    logger.error(`[NotificationService] Failed to create notification:`, error);
+    logger.error(`[NotificationService] Failed to create ${target} notification:`, error);
     throw error;
   }
 }
-async function notifyNewBooking(data) {
+async function createManagerNotification(params) {
   return createNotification({
+    userId: params.managerId,
+    target: "manager",
+    locationId: params.locationId,
+    type: params.type,
+    priority: params.priority,
+    title: params.title,
+    message: params.message,
+    metadata: params.metadata,
+    actionUrl: params.actionUrl,
+    actionLabel: params.actionLabel,
+    expiresAt: params.expiresAt
+  });
+}
+async function createChefNotification(params) {
+  return createNotification({
+    userId: params.chefId,
+    target: "chef",
+    type: params.type,
+    priority: params.priority,
+    title: params.title,
+    message: params.message,
+    metadata: params.metadata,
+    actionUrl: params.actionUrl,
+    actionLabel: params.actionLabel,
+    expiresAt: params.expiresAt
+  });
+}
+async function notifyNewBooking(data) {
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "booking_new",
@@ -6786,7 +6837,7 @@ async function notifyNewBooking(data) {
   });
 }
 async function notifyBookingConfirmed(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "booking_confirmed",
@@ -6804,7 +6855,7 @@ async function notifyBookingConfirmed(data) {
 }
 async function notifyBookingCancelled(data) {
   const isByChef = data.cancelledBy === "chef";
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "booking_cancelled",
@@ -6823,7 +6874,7 @@ async function notifyBookingCancelled(data) {
 }
 async function notifyPaymentReceived(data) {
   const formattedAmount = (data.amount / 100).toFixed(2);
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "payment_received",
@@ -6842,7 +6893,7 @@ async function notifyPaymentReceived(data) {
 }
 async function notifyPaymentFailed(data) {
   const formattedAmount = (data.amount / 100).toFixed(2);
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "payment_failed",
@@ -6861,7 +6912,7 @@ async function notifyPaymentFailed(data) {
   });
 }
 async function notifyNewApplication(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "application_new",
@@ -6878,7 +6929,7 @@ async function notifyNewApplication(data) {
   });
 }
 async function notifyApplicationApproved(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "application_approved",
@@ -6894,7 +6945,7 @@ async function notifyApplicationApproved(data) {
   });
 }
 async function notifyStorageExpiring(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "storage_expiring",
@@ -6913,7 +6964,7 @@ async function notifyStorageExpiring(data) {
   });
 }
 async function notifyLicenseApproved(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "license_approved",
@@ -6929,7 +6980,7 @@ async function notifyLicenseApproved(data) {
   });
 }
 async function notifyLicenseRejected(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "license_rejected",
@@ -6945,7 +6996,7 @@ async function notifyLicenseRejected(data) {
   });
 }
 async function notifyLicenseExpiring(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "license_expiring",
@@ -6962,7 +7013,7 @@ async function notifyLicenseExpiring(data) {
   });
 }
 async function notifyNewMessage(data) {
-  return createNotification({
+  return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
     type: "message_received",
@@ -6978,7 +7029,7 @@ async function notifyNewMessage(data) {
   });
 }
 async function notifySystemAnnouncement(managerId, data) {
-  return createNotification({
+  return createManagerNotification({
     managerId,
     type: "system_announcement",
     priority: data.priority || "normal",
@@ -7005,6 +7056,141 @@ async function broadcastSystemAnnouncement(data) {
     throw error;
   }
 }
+async function notifyChefBookingConfirmed(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "booking_confirmed",
+    priority: "high",
+    title: "Booking Confirmed!",
+    message: `Your booking at ${data.kitchenName} on ${data.bookingDate} from ${data.startTime} to ${data.endTime} has been confirmed.`,
+    metadata: {
+      bookingId: data.bookingId,
+      kitchenName: data.kitchenName,
+      locationName: data.locationName,
+      bookingDate: data.bookingDate
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyChefBookingCancelled(data) {
+  const isByManager = data.cancelledBy === "manager";
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "booking_cancelled",
+    priority: "high",
+    title: isByManager ? "Booking Cancelled by Manager" : "Booking Cancelled",
+    message: isByManager ? `Your booking at ${data.kitchenName} on ${data.bookingDate} was cancelled by the manager.${data.reason ? ` Reason: ${data.reason}` : ""}` : `Your booking at ${data.kitchenName} on ${data.bookingDate} has been cancelled.`,
+    metadata: {
+      bookingId: data.bookingId,
+      kitchenName: data.kitchenName,
+      cancelledBy: data.cancelledBy,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyChefApplicationApproved(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "application_approved",
+    priority: "high",
+    title: "Application Approved!",
+    message: `Congratulations! Your application to ${data.kitchenName} at ${data.locationName} has been approved. You can now book this kitchen.`,
+    metadata: {
+      kitchenName: data.kitchenName,
+      locationName: data.locationName
+    },
+    actionUrl: `/dashboard?view=discover`,
+    actionLabel: "Book Now"
+  });
+}
+async function notifyChefApplicationRejected(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "application_rejected",
+    priority: "normal",
+    title: "Application Update",
+    message: `Your application to ${data.kitchenName} at ${data.locationName} was not approved.${data.reason ? ` Reason: ${data.reason}` : ""}`,
+    metadata: {
+      kitchenName: data.kitchenName,
+      locationName: data.locationName,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=applications`,
+    actionLabel: "View Details"
+  });
+}
+async function notifyChefWelcome(chefId, chefName) {
+  return createChefNotification({
+    chefId,
+    type: "welcome",
+    priority: "normal",
+    title: `Welcome to LocalCooks, ${chefName}!`,
+    message: "Your account is set up. Start by exploring available kitchens and submitting your first application.",
+    metadata: { isWelcome: true },
+    actionUrl: `/dashboard?view=discover`,
+    actionLabel: "Explore Kitchens"
+  });
+}
+async function notifyChefPaymentReceived(data) {
+  const formattedAmount = (data.amount / 100).toFixed(2);
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "payment_received",
+    priority: "normal",
+    title: "Payment Confirmed",
+    message: `Your payment of $${formattedAmount} ${data.currency} for ${data.kitchenName} has been processed.`,
+    metadata: {
+      amount: data.amount,
+      currency: data.currency,
+      bookingId: data.bookingId
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyChefMessage(data) {
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "message_received",
+    priority: "normal",
+    title: `Message from ${data.senderName}`,
+    message: data.messagePreview.length > 100 ? `${data.messagePreview.substring(0, 100)}...` : data.messagePreview,
+    metadata: {
+      senderName: data.senderName,
+      conversationId: data.conversationId
+    },
+    actionUrl: `/dashboard?view=messages`,
+    actionLabel: "View Message"
+  });
+}
+async function broadcastChefAnnouncement(data) {
+  try {
+    const result = await db.execute(sql3`
+      SELECT id FROM users WHERE is_chef = true OR role = 'chef'
+    `);
+    const chefIds = result.rows.map((row) => row.id);
+    const notifications = await Promise.all(
+      chefIds.map((chefId) => createChefNotification({
+        chefId,
+        type: "system_announcement",
+        priority: data.priority || "normal",
+        title: data.title,
+        message: data.message,
+        metadata: { isSystemAnnouncement: true },
+        actionUrl: data.actionUrl,
+        actionLabel: data.actionLabel
+      }))
+    );
+    logger.info(`[NotificationService] Broadcasted system announcement to ${chefIds.length} chefs`);
+    return notifications;
+  } catch (error) {
+    logger.error(`[NotificationService] Failed to broadcast chef announcement:`, error);
+    throw error;
+  }
+}
 var notificationService;
 var init_notification_service = __esm({
   "server/services/notification.service.ts"() {
@@ -7012,27 +7198,40 @@ var init_notification_service = __esm({
     init_db();
     init_logger();
     notificationService = {
-      // Core
+      // Core - Unified
       create: createNotification,
-      // Booking
+      createForManager: createManagerNotification,
+      createForChef: createChefNotification,
+      // Manager: Booking
       notifyNewBooking,
       notifyBookingConfirmed,
       notifyBookingCancelled,
-      // Payment
+      // Manager: Payment
       notifyPaymentReceived,
       notifyPaymentFailed,
-      // Application
+      // Manager: Application
       notifyNewApplication,
       notifyApplicationApproved,
-      // Storage & License
+      // Manager: Storage & License
       notifyStorageExpiring,
       notifyLicenseApproved,
       notifyLicenseRejected,
       notifyLicenseExpiring,
-      // Message & System
+      // Manager: Message & System
       notifyNewMessage,
       notifySystemAnnouncement,
-      broadcastSystemAnnouncement
+      broadcastSystemAnnouncement,
+      // Chef: Booking
+      notifyChefBookingConfirmed,
+      notifyChefBookingCancelled,
+      // Chef: Application
+      notifyChefApplicationApproved,
+      notifyChefApplicationRejected,
+      // Chef: Other
+      notifyChefWelcome,
+      notifyChefPaymentReceived,
+      notifyChefMessage,
+      broadcastChefAnnouncement
     };
   }
 });
@@ -8086,6 +8285,33 @@ var init_microlearning = __esm({
         return false;
       }
     };
+    router11.get("/progress", async (req, res) => {
+      try {
+        if (!req.neonUser) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+        const userId = req.neonUser.id;
+        const progress = await microlearningService.getUserProgress(userId);
+        const completionStatus = await microlearningService.getUserCompletion(userId);
+        const hasApproval = await hasApprovedApplication(userId);
+        const isAdmin = req.neonUser.role === "admin";
+        const isCompleted = completionStatus?.confirmed || false;
+        const accessLevel = isAdmin || hasApproval || isCompleted ? "full" : "limited";
+        res.json({
+          success: true,
+          progress: progress || [],
+          confirmed: completionStatus?.confirmed || false,
+          completionConfirmed: completionStatus?.confirmed || false,
+          completedAt: completionStatus?.completedAt,
+          hasApprovedApplication: hasApproval,
+          accessLevel,
+          isAdmin
+        });
+      } catch (error) {
+        console.error("Error fetching microlearning progress:", error);
+        res.status(500).json({ message: "Failed to fetch progress" });
+      }
+    });
     router11.get("/progress/:userId", async (req, res) => {
       try {
         if (!req.neonUser) {
@@ -8127,9 +8353,15 @@ var init_microlearning = __esm({
         if (!req.neonUser) {
           return res.status(401).json({ message: "Authentication required" });
         }
-        const { userId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
-        if (req.neonUser.id !== userId && req.neonUser.role !== "admin") {
-          return res.status(403).json({ message: "Access denied" });
+        const { userId: requestUserId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
+        let userId;
+        if (!requestUserId || typeof requestUserId === "string") {
+          userId = req.neonUser.id;
+        } else {
+          userId = requestUserId;
+          if (req.neonUser.id !== userId && req.neonUser.role !== "admin") {
+            return res.status(403).json({ message: "Access denied" });
+          }
         }
         const hasApproval = await hasApprovedApplication(userId);
         const completionStatus = await microlearningService.getUserCompletion(userId);
@@ -8546,13 +8778,13 @@ var init_files = __esm({
             const searchPattern = `%${filename}`;
             const { kitchens: kitchens3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
             const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
-            const { or: or4, like, sql: sql15 } = await import("drizzle-orm");
+            const { or: or4, like, sql: sql16 } = await import("drizzle-orm");
             const [kitchenMatch] = await db2.select({ id: kitchens3.id }).from(kitchens3).where(
               or4(
                 like(kitchens3.imageUrl, searchPattern),
-                sql15`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
+                sql16`${kitchens3.galleryImages} @> ${JSON.stringify([`/api/files/documents/${filename}`])}::jsonb`,
                 // also try with just filename if that's how it's stored in array
-                sql15`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
+                sql16`${kitchens3.galleryImages} @> ${JSON.stringify([filename])}::jsonb`
               )
             ).limit(1);
             if (kitchenMatch) {
@@ -11390,24 +11622,28 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
     throw error;
   }
 }
-async function getTransactionHistory(managerId, db2, startDate, endDate, locationId, limit = 100, offset = 0) {
+async function getTransactionHistory(managerId, db2, startDate, endDate, locationId, limit = 100, offset = 0, paymentStatus) {
   try {
-    const whereConditions = [sql7`l.manager_id = ${managerId}`, sql7`kb.status != 'cancelled'`];
-    if (startDate) {
-      const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql7`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
+    const start = startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : void 0;
+    const end = endDate ? typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0] : void 0;
+    const mapPaymentStatus = (status) => {
+      if (!status) return "pending";
+      if (status === "succeeded") return "paid";
+      if (status === "canceled") return "canceled";
+      return status;
+    };
+    const kitchenWhereConditions = [sql7`l.manager_id = ${managerId}`, sql7`kb.status != 'cancelled'`];
+    if (start) {
+      kitchenWhereConditions.push(sql7`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
-    if (endDate) {
-      const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql7`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
+    if (end) {
+      kitchenWhereConditions.push(sql7`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
     if (locationId) {
-      whereConditions.push(sql7`l.id = ${locationId}`);
+      kitchenWhereConditions.push(sql7`l.id = ${locationId}`);
     }
-    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
-    const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-    const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql7`
+    const kitchenWhereClause = sql7`WHERE ${sql7.join(kitchenWhereConditions, sql7` AND `)}`;
+    const kitchenResult = await db2.execute(sql7`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -11433,31 +11669,37 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         u.username as chef_name,
         u.username as chef_email,
         kb.created_at,
+        kb.updated_at,
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
         pt.amount as pt_amount,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
         COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
-        -- Actual tax amount from payment_transactions
-        COALESCE(pt.tax_amount, 0)::bigint as actual_tax_amount,
         -- Service fee from payment_transactions
         COALESCE(pt.service_fee, 0)::bigint as pt_service_fee,
         -- Manager revenue from payment_transactions (actual Stripe net amount)
-        pt.manager_revenue as pt_manager_revenue
+        pt.manager_revenue as pt_manager_revenue,
+        pt.id as transaction_id,
+        pt.status as transaction_status,
+        pt.payment_intent_id as pt_payment_intent_id,
+        pt.refund_amount as pt_refund_amount,
+        pt.booking_type as pt_booking_type,
+        pt.currency as pt_currency,
+        pt.paid_at as pt_paid_at,
+        pt.metadata as pt_metadata
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON kb.chef_id = u.id
       LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
-      ${whereClause}
+      ${kitchenWhereClause}
       ORDER BY kb.booking_date DESC, kb.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
     `);
-    return result.rows.map((row) => {
+    const kitchenTransactions = kitchenResult.rows.map((row) => {
       const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
       const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
       const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
-      const actualTaxAmount = row.actual_tax_amount != null ? parseInt(String(row.actual_tax_amount)) : 0;
+      const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
       const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
       const kbServiceFee = row.service_fee != null ? parseInt(String(row.service_fee)) : 0;
       const taxRatePercent = row.tax_rate_percent != null ? parseFloat(String(row.tax_rate_percent)) : 0;
@@ -11467,7 +11709,7 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       let serviceFeeCents;
       if (hasPaymentTransaction) {
         totalPriceCents = ptAmount;
-        taxCents = actualTaxAmount;
+        taxCents = Math.round(kbTotalPrice * taxRatePercent / 100);
         serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
       } else {
         totalPriceCents = kbTotalPrice;
@@ -11479,13 +11721,19 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       const estimatedStripeFee = Math.round(totalPriceCents * 0.029 + 30);
       const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
       const netRevenue = totalPriceCents - taxCents - stripeFee;
+      const resolvedBookingType = row.pt_booking_type || "kitchen";
+      const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
+      const bookingId = parseInt(String(row.id));
       return {
-        id: row.id,
-        bookingId: row.id,
+        id: bookingId,
+        transactionId,
+        bookingId,
         // Add bookingId for invoice download
+        bookingType: resolvedBookingType,
         bookingDate: row.booking_date,
         startTime: row.start_time,
         endTime: row.end_time,
+        chefId: row.chef_id != null ? parseInt(String(row.chef_id)) : null,
         totalPrice: totalPriceCents,
         serviceFee: serviceFeeCents,
         platformFee: serviceFeeCents,
@@ -11499,18 +11747,35 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         managerRevenue: managerRevenue || 0,
         netRevenue,
         // Net after tax and Stripe fees
-        paymentStatus: row.payment_status,
-        paymentIntentId: row.payment_intent_id,
+        paymentStatus: mapPaymentStatus(row.transaction_status || row.payment_status),
+        paymentIntentId: row.pt_payment_intent_id || row.payment_intent_id,
         status: row.status,
-        currency: row.currency || "CAD",
+        currency: String(row.pt_currency || row.currency || "CAD").toUpperCase(),
+        kitchenId: parseInt(String(row.kitchen_id)),
         kitchenName: row.kitchen_name,
-        locationId: parseInt(row.location_id),
+        locationId: parseInt(String(row.location_id)),
         locationName: row.location_name,
         chefName: row.chef_name || "Guest",
         chefEmail: row.chef_email,
-        createdAt: row.created_at
+        createdAt: row.created_at,
+        paidAt: row.pt_paid_at || null,
+        refundAmount: ptRefundAmount,
+        refundableAmount: Math.max(0, totalPriceCents - ptRefundAmount)
       };
     });
+    let allTransactions = kitchenTransactions;
+    if (paymentStatus && paymentStatus !== "all") {
+      allTransactions = allTransactions.filter((t) => t.paymentStatus === paymentStatus);
+    }
+    allTransactions.sort((a, b) => {
+      const aDate = new Date(a.bookingDate || a.createdAt).getTime();
+      const bDate = new Date(b.bookingDate || b.createdAt).getTime();
+      if (bDate !== aDate) return bDate - aDate;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    const total = allTransactions.length;
+    const pagedTransactions = allTransactions.slice(offset, offset + limit);
+    return { transactions: pagedTransactions, total };
   } catch (error) {
     console.error("Error getting transaction history:", error);
     throw error;
@@ -11992,6 +12257,7 @@ __export(stripe_service_exports, {
   createRefund: () => createRefund,
   getPaymentIntent: () => getPaymentIntent,
   getStripePaymentAmounts: () => getStripePaymentAmounts,
+  reverseTransferAndRefund: () => reverseTransferAndRefund,
   verifyPaymentIntentForBooking: () => verifyPaymentIntentForBooking
 });
 import Stripe2 from "stripe";
@@ -12238,7 +12504,7 @@ async function cancelPaymentIntent(paymentIntentId) {
     throw new Error(`Failed to cancel payment intent: ${error.message}`);
   }
 }
-async function createRefund(paymentIntentId, amount, reason = "requested_by_customer") {
+async function createRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
   if (!stripe2) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
@@ -12254,6 +12520,15 @@ async function createRefund(paymentIntentId, amount, reason = "requested_by_cust
     };
     if (amount !== void 0 && amount > 0) {
       refundParams.amount = amount;
+    }
+    if (options?.reverseTransfer !== void 0) {
+      refundParams.reverse_transfer = options.reverseTransfer;
+    }
+    if (options?.refundApplicationFee !== void 0) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
     }
     const refund = await stripe2.refunds.create(refundParams);
     if (!refund.charge || typeof refund.charge !== "string") {
@@ -12273,6 +12548,64 @@ async function createRefund(paymentIntentId, amount, reason = "requested_by_cust
   } catch (error) {
     console.error("Error creating refund:", error);
     throw new Error(`Failed to create refund: ${error.message}`);
+  }
+}
+async function reverseTransferAndRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
+  if (!stripe2) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  if (!amount || amount <= 0) {
+    throw new Error("Refund amount must be greater than 0");
+  }
+  try {
+    const paymentIntent = await stripe2.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"]
+    });
+    if (!paymentIntent.latest_charge) {
+      throw new Error("Payment intent has no charge to refund");
+    }
+    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe2.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+    const chargeId = charge.id;
+    const transferId = typeof charge.transfer === "string" ? charge.transfer : charge.transfer?.id;
+    if (!transferId) {
+      throw new Error("No transfer found for this charge to reverse");
+    }
+    const reversalAmount = options?.reverseTransferAmount ?? amount;
+    if (reversalAmount <= 0) {
+      throw new Error("Transfer reversal amount must be greater than 0");
+    }
+    const reversal = await stripe2.transfers.createReversal(transferId, {
+      amount: reversalAmount,
+      metadata: options?.transferMetadata || options?.metadata
+    });
+    const refundParams = {
+      charge: chargeId,
+      reason,
+      amount
+    };
+    if (options?.refundApplicationFee !== void 0) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
+    }
+    const refund = await stripe2.refunds.create(refundParams);
+    if (!refund.charge || typeof refund.charge !== "string") {
+      throw new Error("Refund created but charge ID is missing");
+    }
+    if (!refund.status || typeof refund.status !== "string") {
+      throw new Error("Refund created but status is missing");
+    }
+    return {
+      refundId: refund.id,
+      refundAmount: refund.amount,
+      refundStatus: refund.status,
+      chargeId,
+      transferReversalId: reversal.id
+    };
+  } catch (error) {
+    console.error("Error reversing transfer and refunding:", error);
+    throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
   }
 }
 async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAmount) {
@@ -12740,6 +13073,7 @@ __export(payment_transactions_service_exports, {
   addPaymentHistory: () => addPaymentHistory,
   createPaymentTransaction: () => createPaymentTransaction,
   findPaymentTransactionByBooking: () => findPaymentTransactionByBooking,
+  findPaymentTransactionById: () => findPaymentTransactionById,
   findPaymentTransactionByIntentId: () => findPaymentTransactionByIntentId,
   findPaymentTransactionByMetadata: () => findPaymentTransactionByMetadata,
   getManagerPaymentTransactions: () => getManagerPaymentTransactions,
@@ -13241,6 +13575,14 @@ async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
   `);
   return result.rows[0];
 }
+async function findPaymentTransactionById(transactionId, db2) {
+  const result = await db2.execute(sql8`
+    SELECT * FROM payment_transactions
+    WHERE id = ${transactionId}
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
 async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
   const result = await db2.execute(sql8`
     SELECT * FROM payment_transactions
@@ -13731,6 +14073,21 @@ __export(manager_exports, {
 });
 import { Router as Router13 } from "express";
 import { eq as eq22, inArray as inArray4, and as and14, desc as desc11, sql as sql10 } from "drizzle-orm";
+async function getManagerIdForBooking(bookingId, bookingType, db2) {
+  if (bookingType === "kitchen" || bookingType === "bundle") {
+    const [row] = await db2.select({ managerId: locations.managerId }).from(kitchenBookings).innerJoin(kitchens, eq22(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq22(kitchens.locationId, locations.id)).where(eq22(kitchenBookings.id, bookingId)).limit(1);
+    return row?.managerId ?? null;
+  }
+  if (bookingType === "storage") {
+    const [row] = await db2.select({ managerId: locations.managerId }).from(storageBookings).innerJoin(storageListings, eq22(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq22(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq22(kitchens.locationId, locations.id)).where(eq22(storageBookings.id, bookingId)).limit(1);
+    return row?.managerId ?? null;
+  }
+  if (bookingType === "equipment") {
+    const [row] = await db2.select({ managerId: locations.managerId }).from(equipmentBookings).innerJoin(equipmentListings, eq22(equipmentBookings.equipmentListingId, equipmentListings.id)).innerJoin(kitchens, eq22(equipmentListings.kitchenId, kitchens.id)).innerJoin(locations, eq22(kitchens.locationId, locations.id)).where(eq22(equipmentBookings.id, bookingId)).limit(1);
+    return row?.managerId ?? null;
+  }
+  return null;
+}
 var router13, manager_default;
 var init_manager = __esm({
   "server/routes/manager.ts"() {
@@ -13923,17 +14280,162 @@ var init_manager = __esm({
         const managerId = req.neonUser.id;
         const { startDate, endDate, locationId, paymentStatus, limit = "50", offset = "0" } = req.query;
         const { getTransactionHistory: getTransactionHistory2 } = await Promise.resolve().then(() => (init_revenue_service(), revenue_service_exports));
-        const transactions = await getTransactionHistory2(
+        const { transactions, total } = await getTransactionHistory2(
           managerId,
           db,
           startDate,
           endDate,
           locationId ? parseInt(locationId) : void 0,
           parseInt(limit),
-          parseInt(offset)
+          parseInt(offset),
+          paymentStatus
         );
-        res.json({ transactions, total: transactions.length });
+        res.json({ transactions, total });
       } catch (error) {
+        return errorResponse(res, error);
+      }
+    });
+    router13.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const transactionId = parseInt(req.params.transactionId);
+        const { amount, reason } = req.body || {};
+        const refundReason = typeof reason === "string" ? reason.trim() : void 0;
+        if (isNaN(transactionId) || transactionId <= 0) {
+          return res.status(400).json({ error: "Invalid transaction ID" });
+        }
+        const amountCents = Math.round(Number(amount));
+        if (!Number.isFinite(amountCents) || amountCents <= 0) {
+          return res.status(400).json({ error: "Refund amount must be a positive number of cents" });
+        }
+        const { findPaymentTransactionById: findPaymentTransactionById2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const transaction = await findPaymentTransactionById2(transactionId, db);
+        if (!transaction) {
+          return res.status(404).json({ error: "Transaction not found" });
+        }
+        const transactionManagerId = transaction.manager_id ?? await getManagerIdForBooking(
+          transaction.booking_id,
+          transaction.booking_type,
+          db
+        );
+        if (!transactionManagerId || transactionManagerId !== managerId) {
+          return res.status(403).json({ error: "Access denied to this transaction" });
+        }
+        if (!transaction.payment_intent_id) {
+          return res.status(400).json({ error: "No payment intent linked to this transaction" });
+        }
+        if (!["succeeded", "partially_refunded"].includes(transaction.status)) {
+          return res.status(400).json({ error: `Refunds are only allowed for paid transactions. Current status: ${transaction.status}` });
+        }
+        const totalAmount = parseInt(String(transaction.amount || "0")) || 0;
+        const currentRefundAmount = parseInt(String(transaction.refund_amount || "0")) || 0;
+        const remainingAmount = totalAmount - currentRefundAmount;
+        if (amountCents > remainingAmount) {
+          return res.status(400).json({ error: "Refund amount exceeds remaining refundable amount" });
+        }
+        const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq22(users.id, managerId)).limit(1);
+        if (!manager?.stripeConnectAccountId) {
+          return res.status(400).json({ error: "Manager Stripe Connect account not found" });
+        }
+        const serviceFee = parseInt(String(transaction.service_fee || "0")) || 0;
+        const managerRevenue = parseInt(String(transaction.manager_revenue || "0")) || 0;
+        const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
+        const expectedReverseAmount = totalAmount > 0 ? Math.round(amountCents * (managerShare / totalAmount)) : amountCents;
+        const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        const allowedStripeReasons = ["duplicate", "fraudulent", "requested_by_customer"];
+        const stripeReason = refundReason && allowedStripeReasons.includes(refundReason) ? refundReason : "requested_by_customer";
+        const refund = await reverseTransferAndRefund2(
+          transaction.payment_intent_id,
+          amountCents,
+          stripeReason,
+          {
+            reverseTransferAmount: expectedReverseAmount,
+            refundApplicationFee: false,
+            metadata: {
+              transaction_id: String(transaction.id),
+              booking_id: String(transaction.booking_id),
+              booking_type: String(transaction.booking_type),
+              manager_id: String(managerId),
+              refund_reason: refundReason ? String(refundReason) : ""
+            },
+            transferMetadata: {
+              transaction_id: String(transaction.id),
+              booking_id: String(transaction.booking_id),
+              booking_type: String(transaction.booking_type),
+              manager_id: String(managerId),
+              refund_reason: refundReason ? String(refundReason) : ""
+            }
+          }
+        );
+        const newRefundTotal = currentRefundAmount + amountCents;
+        const newStatus = newRefundTotal >= totalAmount ? "refunded" : "partially_refunded";
+        let currentMetadata = {};
+        if (transaction.metadata) {
+          if (typeof transaction.metadata === "string") {
+            try {
+              currentMetadata = JSON.parse(transaction.metadata);
+            } catch {
+              currentMetadata = {};
+            }
+          } else {
+            currentMetadata = transaction.metadata;
+          }
+        }
+        const existingRefunds = Array.isArray(currentMetadata.refunds) ? currentMetadata.refunds : [];
+        const updatedMetadata = {
+          ...currentMetadata,
+          refunds: [
+            ...existingRefunds,
+            {
+              id: refund.refundId,
+              amount: amountCents,
+              reason: refundReason || null,
+              createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+              createdBy: managerId,
+              transferReversalId: refund.transferReversalId
+            }
+          ],
+          lastRefund: {
+            id: refund.refundId,
+            amount: amountCents,
+            reason: refundReason || null,
+            createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+            createdBy: managerId,
+            transferReversalId: refund.transferReversalId
+          }
+        };
+        await updatePaymentTransaction2(
+          transaction.id,
+          {
+            status: newStatus,
+            stripeStatus: newStatus,
+            refundAmount: newRefundTotal,
+            refundId: refund.refundId,
+            refundReason,
+            refundedAt: /* @__PURE__ */ new Date(),
+            lastSyncedAt: /* @__PURE__ */ new Date(),
+            metadata: updatedMetadata
+          },
+          db
+        );
+        const paymentStatus = newStatus === "refunded" ? "refunded" : "partially_refunded";
+        if (transaction.booking_type === "kitchen" || transaction.booking_type === "bundle") {
+          await db.update(kitchenBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq22(kitchenBookings.id, transaction.booking_id));
+        } else if (transaction.booking_type === "storage") {
+          await db.update(storageBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq22(storageBookings.id, transaction.booking_id));
+        } else if (transaction.booking_type === "equipment") {
+          await db.update(equipmentBookings).set({ paymentStatus, updatedAt: /* @__PURE__ */ new Date() }).where(eq22(equipmentBookings.id, transaction.booking_id));
+        }
+        res.json({
+          success: true,
+          refundId: refund.refundId,
+          status: newStatus,
+          refundAmount: newRefundTotal,
+          remainingAmount: totalAmount - newRefundTotal,
+          transferReversalId: refund.transferReversalId
+        });
+      } catch (error) {
+        console.error("[Refund] Error processing refund:", error);
         return errorResponse(res, error);
       }
     });
@@ -15516,7 +16018,7 @@ async function getNotifications(managerId, options = {}) {
     filterCondition = "AND is_archived = false";
   }
   const typeCondition = type ? `AND type = '${type}'::notification_type` : "";
-  const locationCondition = locationId ? `AND location_id = ${locationId}` : "";
+  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
   const notificationsResult = await db.execute(sql11.raw(`
     SELECT 
       id, manager_id, location_id, type, priority, title, message, 
@@ -15559,7 +16061,7 @@ async function getNotifications(managerId, options = {}) {
   };
 }
 async function getUnreadCount(managerId, locationId) {
-  const locationCondition = locationId ? `AND location_id = ${locationId}` : "";
+  const locationCondition = locationId ? `AND (location_id = ${locationId} OR location_id IS NULL)` : "";
   const result = await db.execute(sql11.raw(`
     SELECT COUNT(*) as count
     FROM manager_notifications
@@ -15694,6 +16196,32 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
+    router14.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const { managerId, locationId, senderName, messagePreview, conversationId } = req.body;
+        if (!managerId || !senderName || !conversationId) {
+          return res.status(400).json({ error: "managerId, senderName, and conversationId are required" });
+        }
+        await createNotification2({
+          managerId,
+          locationId,
+          type: "message_received",
+          priority: "normal",
+          title: `Message from ${senderName}`,
+          message: messagePreview?.length > 100 ? `${messagePreview.substring(0, 100)}...` : messagePreview || "You have a new message",
+          metadata: {
+            senderName,
+            conversationId
+          },
+          actionUrl: `/manager/booking-dashboard?view=messages`,
+          actionLabel: "View Message"
+        });
+        res.json({ success: true });
+      } catch (error) {
+        logger.error("Error creating message notification:", error);
+        return errorResponse(res, error);
+      }
+    });
     router14.delete("/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
@@ -15713,6 +16241,234 @@ var init_notifications = __esm({
       }
     });
     notifications_default = router14;
+  }
+});
+
+// server/routes/chef-notifications.ts
+var chef_notifications_exports = {};
+__export(chef_notifications_exports, {
+  archiveNotifications: () => archiveNotifications2,
+  default: () => chef_notifications_default,
+  getNotifications: () => getNotifications2,
+  getUnreadCount: () => getUnreadCount2,
+  markAllAsRead: () => markAllAsRead2,
+  markAsRead: () => markAsRead2,
+  notificationService: () => notificationService
+});
+import { Router as Router15 } from "express";
+import { sql as sql12 } from "drizzle-orm";
+async function getNotifications2(chefId, options = {}) {
+  const {
+    page = 1,
+    limit = 20,
+    filter = "all",
+    type
+  } = options;
+  const offset = (page - 1) * limit;
+  let filterCondition = "";
+  if (filter === "unread") {
+    filterCondition = "AND is_read = false AND is_archived = false";
+  } else if (filter === "read") {
+    filterCondition = "AND is_read = true AND is_archived = false";
+  } else if (filter === "archived") {
+    filterCondition = "AND is_archived = true";
+  } else {
+    filterCondition = "AND is_archived = false";
+  }
+  const typeCondition = type ? `AND type = '${type}'::chef_notification_type` : "";
+  const notificationsResult = await db.execute(sql12.raw(`
+    SELECT 
+      id, chef_id, type, priority, title, message, 
+      metadata, is_read, read_at, is_archived, archived_at, 
+      action_url, action_label, created_at, expires_at
+    FROM chef_notifications
+    WHERE chef_id = ${chefId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+    ORDER BY 
+      CASE WHEN priority = 'urgent' THEN 0
+           WHEN priority = 'high' THEN 1
+           WHEN priority = 'normal' THEN 2
+           ELSE 3 END,
+      created_at DESC
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `));
+  const countResult = await db.execute(sql12.raw(`
+    SELECT COUNT(*) as total
+    FROM chef_notifications
+    WHERE chef_id = ${chefId}
+      AND (expires_at IS NULL OR expires_at > NOW())
+      ${filterCondition}
+      ${typeCondition}
+  `));
+  const total = parseInt(countResult.rows[0]?.total || "0", 10);
+  return {
+    notifications: notificationsResult.rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasMore: page * limit < total
+    }
+  };
+}
+async function getUnreadCount2(chefId) {
+  const result = await db.execute(sql12.raw(`
+    SELECT COUNT(*) as count
+    FROM chef_notifications
+    WHERE chef_id = ${chefId}
+      AND is_read = false
+      AND is_archived = false
+      AND (expires_at IS NULL OR expires_at > NOW())
+  `));
+  return { count: parseInt(result.rows[0]?.count || "0", 10) };
+}
+async function markAsRead2(chefId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql12`
+    UPDATE chef_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE chef_id = ${chefId}
+      AND id = ANY(${notificationIds}::int[])
+      AND is_read = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function markAllAsRead2(chefId) {
+  const result = await db.execute(sql12`
+    UPDATE chef_notifications
+    SET is_read = true, read_at = NOW()
+    WHERE chef_id = ${chefId}
+      AND is_read = false
+      AND is_archived = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+async function archiveNotifications2(chefId, notificationIds) {
+  if (notificationIds.length === 0) return { updated: 0 };
+  const result = await db.execute(sql12`
+    UPDATE chef_notifications
+    SET is_archived = true, archived_at = NOW()
+    WHERE chef_id = ${chefId}
+      AND id = ANY(${notificationIds}::int[])
+      AND is_archived = false
+  `);
+  return { updated: result.rowCount || 0 };
+}
+var router15, chef_notifications_default;
+var init_chef_notifications = __esm({
+  "server/routes/chef-notifications.ts"() {
+    "use strict";
+    init_db();
+    init_firebase_auth_middleware();
+    init_logger();
+    init_api_response();
+    init_notification_service();
+    router15 = Router15();
+    router15.get("/", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { page, limit, filter, type } = req.query;
+        const result = await getNotifications2(chefId, {
+          page: page ? parseInt(page, 10) : void 0,
+          limit: limit ? parseInt(limit, 10) : void 0,
+          filter,
+          type
+        });
+        res.json(result);
+      } catch (error) {
+        logger.error("Error fetching chef notifications:", error);
+        return errorResponse(res, "Failed to fetch notifications", 500);
+      }
+    });
+    router15.get("/unread-count", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const result = await getUnreadCount2(chefId);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error fetching chef unread count:", error);
+        return errorResponse(res, "Failed to fetch unread count", 500);
+      }
+    });
+    router15.post("/mark-read", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await markAsRead2(chefId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking chef notifications as read:", error);
+        return errorResponse(res, "Failed to mark as read", 500);
+      }
+    });
+    router15.post("/mark-all-read", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const result = await markAllAsRead2(chefId);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error marking all chef notifications as read:", error);
+        return errorResponse(res, "Failed to mark all as read", 500);
+      }
+    });
+    router15.post("/archive", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { notificationIds } = req.body;
+        if (!Array.isArray(notificationIds)) {
+          return res.status(400).json({ error: "notificationIds must be an array" });
+        }
+        const result = await archiveNotifications2(chefId, notificationIds);
+        res.json(result);
+      } catch (error) {
+        logger.error("Error archiving chef notifications:", error);
+        return errorResponse(res, "Failed to archive notifications", 500);
+      }
+    });
+    router15.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const { chefId, senderName, messagePreview, conversationId } = req.body;
+        if (!chefId || !senderName || !conversationId) {
+          return res.status(400).json({ error: "chefId, senderName, and conversationId are required" });
+        }
+        await notificationService.notifyChefMessage({
+          chefId,
+          senderName,
+          messagePreview: messagePreview || "You have a new message",
+          conversationId
+        });
+        res.json({ success: true });
+      } catch (error) {
+        logger.error("Error creating message notification:", error);
+        return errorResponse(res, "Failed to create notification", 500);
+      }
+    });
+    router15.delete("/:id", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const notificationId = parseInt(req.params.id);
+        const result = await db.execute(sql12`
+      DELETE FROM chef_notifications
+      WHERE id = ${notificationId}
+        AND chef_id = ${chefId}
+    `);
+        if (result.rowCount === 0) {
+          return res.status(404).json({ error: "Notification not found" });
+        }
+        res.json({ deleted: true });
+      } catch (error) {
+        logger.error("Error deleting chef notification:", error);
+        return errorResponse(res, "Failed to delete notification", 500);
+      }
+    });
+    chef_notifications_default = router15;
   }
 });
 
@@ -15789,9 +16545,9 @@ var kitchens_exports = {};
 __export(kitchens_exports, {
   default: () => kitchens_default
 });
-import { Router as Router15 } from "express";
+import { Router as Router16 } from "express";
 import { eq as eq25, inArray as inArray5, desc as desc14, and as and16 } from "drizzle-orm";
-var router15, kitchens_default;
+var router16, kitchens_default;
 var init_kitchens = __esm({
   "server/routes/kitchens.ts"() {
     "use strict";
@@ -15805,8 +16561,8 @@ var init_kitchens = __esm({
     init_chef_service();
     init_booking_service();
     init_user_service();
-    router15 = Router15();
-    router15.get("/chef/kitchens", requireChef, async (req, res) => {
+    router16 = Router16();
+    router16.get("/chef/kitchens", requireChef, async (req, res) => {
       try {
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
         const activeKitchens = allKitchens.filter((kitchen) => kitchen.isActive);
@@ -15842,7 +16598,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
       }
     });
-    router15.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
+    router16.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -15864,7 +16620,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
       }
     });
-    router15.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
+    router16.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -15886,7 +16642,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
       }
     });
-    router15.post("/chef/share-profile", requireChef, async (req, res) => {
+    router16.post("/chef/share-profile", requireChef, async (req, res) => {
       try {
         const { locationId } = req.body;
         const chefId = req.user.id;
@@ -15936,7 +16692,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to share profile" });
       }
     });
-    router15.get("/chef/profiles", requireChef, async (req, res) => {
+    router16.get("/chef/profiles", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq25(chefLocationAccess.chefId, chefId));
@@ -15958,7 +16714,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get profiles" });
       }
     });
-    router15.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
+    router16.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { date: date2 } = req.query;
@@ -15980,7 +16736,7 @@ var init_kitchens = __esm({
         });
       }
     });
-    router15.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
+    router16.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { date: date2 } = req.query;
@@ -16004,7 +16760,7 @@ var init_kitchens = __esm({
         });
       }
     });
-    kitchens_default = router15;
+    kitchens_default = router16;
   }
 });
 
@@ -16326,7 +17082,7 @@ __export(stripe_checkout_transactions_service_exports, {
   getTransactionBySessionId: () => getTransactionBySessionId,
   updateTransactionBySessionId: () => updateTransactionBySessionId
 });
-import { sql as sql12 } from "drizzle-orm";
+import { sql as sql13 } from "drizzle-orm";
 async function createTransaction(params, db2) {
   const {
     bookingId,
@@ -16340,7 +17096,7 @@ async function createTransaction(params, db2) {
     managerReceivesCents,
     metadata = {}
   } = params;
-  const result = await db2.execute(sql12`
+  const result = await db2.execute(sql13`
     INSERT INTO transactions (
       booking_id,
       stripe_session_id,
@@ -16376,29 +17132,29 @@ async function createTransaction(params, db2) {
 async function updateTransactionBySessionId(sessionId, params, db2) {
   const updates = [];
   if (params.status !== void 0) {
-    updates.push(sql12`status = ${params.status}`);
+    updates.push(sql13`status = ${params.status}`);
   }
   if (params.stripePaymentIntentId !== void 0) {
-    updates.push(sql12`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
+    updates.push(sql13`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
   }
   if (params.stripeChargeId !== void 0) {
-    updates.push(sql12`stripe_charge_id = ${params.stripeChargeId}`);
+    updates.push(sql13`stripe_charge_id = ${params.stripeChargeId}`);
   }
   if (params.completedAt !== void 0) {
-    updates.push(sql12`completed_at = ${params.completedAt}`);
+    updates.push(sql13`completed_at = ${params.completedAt}`);
   }
   if (params.refundedAt !== void 0) {
-    updates.push(sql12`refunded_at = ${params.refundedAt}`);
+    updates.push(sql13`refunded_at = ${params.refundedAt}`);
   }
   if (params.metadata !== void 0) {
-    updates.push(sql12`metadata = ${JSON.stringify(params.metadata)}`);
+    updates.push(sql13`metadata = ${JSON.stringify(params.metadata)}`);
   }
   if (updates.length === 0) {
     return getTransactionBySessionId(sessionId, db2);
   }
-  const result = await db2.execute(sql12`
+  const result = await db2.execute(sql13`
     UPDATE transactions
-    SET ${sql12.join(updates, sql12`, `)}
+    SET ${sql13.join(updates, sql13`, `)}
     WHERE stripe_session_id = ${sessionId}
     RETURNING *
   `);
@@ -16408,7 +17164,7 @@ async function updateTransactionBySessionId(sessionId, params, db2) {
   return mapRowToTransaction(result.rows[0]);
 }
 async function getTransactionBySessionId(sessionId, db2) {
-  const result = await db2.execute(sql12`
+  const result = await db2.execute(sql13`
     SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
   `);
   if (result.rows.length === 0) {
@@ -16478,9 +17234,9 @@ var bookings_exports = {};
 __export(bookings_exports, {
   default: () => bookings_default
 });
-import { Router as Router16 } from "express";
+import { Router as Router17 } from "express";
 import { eq as eq26, and as and17 } from "drizzle-orm";
-var router16, bookings_default;
+var router17, bookings_default;
 var init_bookings = __esm({
   "server/routes/bookings.ts"() {
     "use strict";
@@ -16499,8 +17255,8 @@ var init_bookings = __esm({
     init_phone_utils();
     init_sms();
     init_notification_service();
-    router16 = Router16();
-    router16.post("/bookings/checkout", async (req, res) => {
+    router17 = Router17();
+    router17.post("/bookings/checkout", async (req, res) => {
       try {
         const { bookingId, managerStripeAccountId, bookingPrice, customerEmail } = req.body;
         if (!bookingId || !managerStripeAccountId || !bookingPrice || !customerEmail) {
@@ -16614,7 +17370,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router16.get("/chef/storage-bookings", requireChef, async (req, res) => {
+    router17.get("/chef/storage-bookings", requireChef, async (req, res) => {
       try {
         const storageBookings2 = await bookingService.getStorageBookingsByChef(req.neonUser.id);
         res.json(storageBookings2);
@@ -16623,7 +17379,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch storage bookings" });
       }
     });
-    router16.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
+    router17.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -16642,7 +17398,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
       }
     });
-    router16.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
+    router17.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
       try {
         const { maxDaysToCharge } = req.body;
         const processed = await bookingService.processOverstayerPenalties(maxDaysToCharge || 7);
@@ -16657,7 +17413,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
       }
     });
-    router16.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
+    router17.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const daysAhead = parseInt(req.query.days) || 3;
@@ -16687,7 +17443,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
       }
     });
-    router16.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req, res) => {
+    router17.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -16746,7 +17502,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
       }
     });
-    router16.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req, res) => {
+    router17.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -16867,7 +17623,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
       }
     });
-    router16.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
+    router17.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -16918,7 +17674,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to extend storage booking" });
       }
     });
-    router16.get("/chef/bookings/:id", requireChef, async (req, res) => {
+    router17.get("/chef/bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -16945,7 +17701,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
-    router16.get("/bookings/:id/invoice", requireChef, async (req, res) => {
+    router17.get("/bookings/:id/invoice", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -16991,7 +17747,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to generate invoice" });
       }
     });
-    router16.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
+    router17.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (!pool) {
@@ -17144,7 +17900,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
       }
     });
-    router16.post("/payments/create-intent", requireChef, async (req, res) => {
+    router17.post("/payments/create-intent", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
         const chefId = req.neonUser.id;
@@ -17274,7 +18030,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create payment intent" });
       }
     });
-    router16.post("/payments/confirm", requireChef, async (req, res) => {
+    router17.post("/payments/confirm", requireChef, async (req, res) => {
       try {
         const { paymentIntentId, paymentMethodId } = req.body;
         const chefId = req.neonUser.id;
@@ -17299,7 +18055,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router16.get("/payments/intent/:id/status", requireChef, async (req, res) => {
+    router17.get("/payments/intent/:id/status", requireChef, async (req, res) => {
       try {
         const { id } = req.params;
         const chefId = req.neonUser.id;
@@ -17320,13 +18076,13 @@ var init_bookings = __esm({
         });
       }
     });
-    router16.post("/payments/capture", requireChef, async (req, res) => {
+    router17.post("/payments/capture", requireChef, async (req, res) => {
       res.status(410).json({
         error: "This endpoint is deprecated. Payments are now automatically captured when confirmed.",
         message: "With automatic capture enabled, payments are processed immediately. No manual capture is needed."
       });
     });
-    router16.post("/payments/cancel", requireChef, async (req, res) => {
+    router17.post("/payments/cancel", requireChef, async (req, res) => {
       try {
         const { paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
@@ -17359,13 +18115,13 @@ var init_bookings = __esm({
         });
       }
     });
-    router16.post("/chef/bookings", requireChef, async (req, res) => {
+    router17.post("/chef/bookings", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
         console.log(`[Booking Route] Received booking request with selectedEquipmentIds: ${JSON.stringify(selectedEquipmentIds)}`);
-        const kitchen = await kitchenService.getKitchenById(kitchenId);
-        const kitchenLocationId1 = kitchen.locationId;
+        const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
+        const kitchenLocationId1 = kitchenDetails.locationId;
         if (!kitchenLocationId1) {
           return res.status(400).json({ error: "Kitchen location not found" });
         }
@@ -17387,7 +18143,7 @@ var init_bookings = __esm({
         if (!availabilityCheck.valid) {
           return res.status(400).json({ error: availabilityCheck.error || "Booking is not within manager-set available hours" });
         }
-        const kitchenLocationId2 = kitchen.locationId;
+        const kitchenLocationId2 = kitchenDetails.locationId;
         let location = null;
         let timezone = "America/Edmonton";
         let minimumBookingWindowHours = 1;
@@ -17415,6 +18171,7 @@ var init_bookings = __esm({
             error: `Bookings must be made at least ${minimumBookingWindowHours} hour${minimumBookingWindowHours !== 1 ? "s" : ""} in advance`
           });
         }
+        let paymentIntentStatus;
         if (paymentIntentId) {
           const { getPaymentIntent: getPaymentIntent2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
           const paymentIntent = await getPaymentIntent2(paymentIntentId);
@@ -17426,6 +18183,7 @@ var init_bookings = __esm({
               error: `Payment not completed. Status: ${paymentIntent.status}`
             });
           }
+          paymentIntentStatus = paymentIntent.status;
         }
         const storageIds = selectedStorageIds && selectedStorageIds.length > 0 ? selectedStorageIds : selectedStorage && Array.isArray(selectedStorage) ? selectedStorage.map((s) => s.storageListingId).filter(Boolean) : [];
         console.log(`[Booking Route] Received booking request with selectedStorage: ${JSON.stringify(selectedStorage)}, extracted storageIds: ${JSON.stringify(storageIds)}`);
@@ -17443,16 +18201,53 @@ var init_bookings = __esm({
           selectedStorageIds: storageIds,
           selectedEquipmentIds: selectedEquipmentIds || []
         });
+        if (paymentIntentId) {
+          try {
+            const { createPaymentTransaction: createPaymentTransaction2, findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+            const existingTransaction = await findPaymentTransactionByIntentId2(paymentIntentId, db);
+            if (!existingTransaction) {
+              const subtotalCents = booking?.totalPrice != null ? parseInt(String(booking.totalPrice)) : 0;
+              const serviceFeeCents = booking?.serviceFee != null ? parseInt(String(booking.serviceFee)) : 0;
+              const taxRatePercent = kitchenDetails?.taxRatePercent != null ? Number(kitchenDetails.taxRatePercent) : 0;
+              const taxCents = Math.round(subtotalCents * taxRatePercent / 100);
+              const totalAmountCents = subtotalCents + taxCents;
+              const managerRevenueCents = Math.max(0, subtotalCents - serviceFeeCents);
+              const managerId = location?.managerId || location?.manager_id || null;
+              const normalizedStatus = paymentIntentStatus === "succeeded" ? "succeeded" : "processing";
+              await createPaymentTransaction2({
+                bookingId: booking.id,
+                bookingType: "kitchen",
+                chefId,
+                managerId,
+                amount: totalAmountCents,
+                baseAmount: subtotalCents,
+                serviceFee: serviceFeeCents,
+                managerRevenue: managerRevenueCents,
+                currency: (booking.currency || "CAD").toUpperCase(),
+                paymentIntentId,
+                status: normalizedStatus,
+                stripeStatus: paymentIntentStatus,
+                metadata: {
+                  createdFrom: "chef_booking",
+                  taxRatePercent,
+                  taxCents
+                }
+              }, db);
+            }
+          } catch (ptError) {
+            console.warn(`[Booking Route] Could not create payment_transactions record for booking ${booking.id}:`, ptError);
+          }
+        }
         try {
           if (!pool) throw new Error("Database pool not available");
-          const kitchen2 = await kitchenService.getKitchenById(kitchenId);
+          const kitchen = await kitchenService.getKitchenById(kitchenId);
           const chef = await userService.getUser(chefId);
-          if (chef && kitchen2) {
+          if (chef && kitchen) {
             const { sendEmail: sendEmail2, generateBookingRequestEmail: generateBookingRequestEmail3, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
             const chefEmail = generateBookingRequestEmail3({
               chefEmail: chef.username,
               chefName: chef.username,
-              kitchenName: kitchen2.name,
+              kitchenName: kitchen.name,
               bookingDate: bookingDateObj,
               startTime,
               endTime,
@@ -17467,7 +18262,7 @@ var init_bookings = __esm({
                 const managerEmail = generateBookingNotificationEmail3({
                   managerEmail: notificationEmail,
                   chefName: chef.username,
-                  kitchenName: kitchen2.name,
+                  kitchenName: kitchen.name,
                   bookingDate: bookingDateObj,
                   startTime,
                   endTime,
@@ -17480,13 +18275,13 @@ var init_bookings = __esm({
             }
             try {
               const managerId = location?.managerId || location?.manager_id;
-              if (managerId && kitchen2) {
+              if (managerId && kitchen) {
                 await notificationService.notifyNewBooking({
                   managerId,
-                  locationId: kitchen2.locationId,
+                  locationId: kitchen.locationId,
                   bookingId: booking.id,
                   chefName: chef.username || "Chef",
-                  kitchenName: kitchen2.name,
+                  kitchenName: kitchen.name,
                   bookingDate: bookingDateObj.toISOString().split("T")[0],
                   startTime,
                   endTime
@@ -17505,7 +18300,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
-    router16.get("/chef/bookings", requireChef, async (req, res) => {
+    router17.get("/chef/bookings", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
@@ -17516,7 +18311,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch bookings" });
       }
     });
-    bookings_default = router16;
+    bookings_default = router17;
   }
 });
 
@@ -17525,8 +18320,8 @@ var equipment_exports = {};
 __export(equipment_exports, {
   default: () => equipment_default
 });
-import { Router as Router17 } from "express";
-var router17, equipment_default;
+import { Router as Router18 } from "express";
+var router18, equipment_default;
 var init_equipment = __esm({
   "server/routes/equipment.ts"() {
     "use strict";
@@ -17535,8 +18330,8 @@ var init_equipment = __esm({
     init_inventory_service();
     init_kitchen_service();
     init_location_service();
-    router17 = Router17();
-    router17.get("/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18 = Router18();
+    router18.get("/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -17559,7 +18354,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    router17.get("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.get("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -17585,7 +18380,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listing" });
       }
     });
-    router17.post("/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.post("/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { kitchenId, ...listingData } = req.body;
@@ -17623,7 +18418,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to create equipment listing" });
       }
     });
-    router17.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -17651,7 +18446,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to update equipment listing" });
       }
     });
-    router17.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router18.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -17679,7 +18474,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
       }
     });
-    router17.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
+    router18.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -17702,7 +18497,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    equipment_default = router17;
+    equipment_default = router18;
   }
 });
 
@@ -17711,8 +18506,8 @@ var storage_listings_exports = {};
 __export(storage_listings_exports, {
   default: () => storage_listings_default
 });
-import { Router as Router18 } from "express";
-var router18, storage_listings_default;
+import { Router as Router19 } from "express";
+var router19, storage_listings_default;
 var init_storage_listings = __esm({
   "server/routes/storage-listings.ts"() {
     "use strict";
@@ -17721,8 +18516,8 @@ var init_storage_listings = __esm({
     init_inventory_service();
     init_kitchen_service();
     init_location_service();
-    router18 = Router18();
-    router18.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19 = Router19();
+    router19.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -17745,7 +18540,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
-    router18.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -17771,7 +18566,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listing" });
       }
     });
-    router18.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { kitchenId, ...listingData } = req.body;
@@ -17804,7 +18599,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to create storage listing" });
       }
     });
-    router18.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -17832,7 +18627,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to update storage listing" });
       }
     });
-    router18.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -17860,7 +18655,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to delete storage listing" });
       }
     });
-    router18.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
+    router19.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -17877,7 +18672,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
-    storage_listings_default = router18;
+    storage_listings_default = router19;
   }
 });
 
@@ -17886,8 +18681,8 @@ var admin_exports = {};
 __export(admin_exports, {
   default: () => admin_default
 });
-import { Router as Router19 } from "express";
-import { eq as eq27, sql as sql13 } from "drizzle-orm";
+import { Router as Router20 } from "express";
+import { eq as eq27, sql as sql14 } from "drizzle-orm";
 async function getAuthenticatedUser2(req) {
   if (req.neonUser) {
     return {
@@ -17898,7 +18693,7 @@ async function getAuthenticatedUser2(req) {
   }
   return null;
 }
-var router19, admin_default;
+var router20, admin_default;
 var init_admin = __esm({
   "server/routes/admin.ts"() {
     "use strict";
@@ -17915,8 +18710,8 @@ var init_admin = __esm({
     init_booking_service();
     init_schema();
     init_stripe_checkout_fee_service();
-    router19 = Router19();
-    router19.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20 = Router20();
+    router20.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
@@ -17924,16 +18719,16 @@ var init_admin = __esm({
         const { startDate, endDate } = req.query;
         const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
         const serviceFeeRate = await getServiceFeeRate2();
-        const conditions = [sql13`kb.status != 'cancelled'`];
+        const conditions = [sql14`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql13`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql14`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql13`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql14`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql13.join(conditions, sql13` AND `);
+        const bookingFilters = sql14.join(conditions, sql14` AND `);
         const managerRole = "manager";
-        const result = await db.execute(sql13`
+        const result = await db.execute(sql14`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -18012,23 +18807,23 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get all managers revenue" });
       }
     });
-    router19.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
         }
         const { startDate, endDate } = req.query;
-        const managerCountResult = await db.select({ count: sql13`count(*)::int` }).from(users).where(eq27(users.role, "manager"));
+        const managerCountResult = await db.select({ count: sql14`count(*)::int` }).from(users).where(eq27(users.role, "manager"));
         const totalManagers = managerCountResult[0]?.count || 0;
-        const conditions = [sql13`kb.status != 'cancelled'`];
+        const conditions = [sql14`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql13`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql14`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql13`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql14`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql13.join(conditions, sql13` AND `);
-        const bookingResult = await db.execute(sql13`
+        const bookingFilters = sql14.join(conditions, sql14` AND `);
+        const bookingResult = await db.execute(sql14`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -18059,7 +18854,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get platform overview" });
       }
     });
-    router19.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
@@ -18108,7 +18903,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get manager revenue details" });
       }
     });
-    router19.post("/chef-location-access", async (req, res) => {
+    router20.post("/chef-location-access", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18157,7 +18952,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to grant access" });
       }
     });
-    router19.delete("/chef-location-access", async (req, res) => {
+    router20.delete("/chef-location-access", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18179,7 +18974,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to revoke access" });
       }
     });
-    router19.get("/chef-location-access", async (req, res) => {
+    router20.get("/chef-location-access", async (req, res) => {
       try {
         console.log("[Admin Chef Access] GET request received");
         const sessionUser = await getAuthenticatedUser2(req);
@@ -18257,7 +19052,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get access" });
       }
     });
-    router19.post("/managers", async (req, res) => {
+    router20.post("/managers", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18309,7 +19104,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create manager" });
       }
     });
-    router19.get("/managers", async (req, res) => {
+    router20.get("/managers", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18320,7 +19115,7 @@ var init_admin = __esm({
         if (user.role !== "admin") {
           return res.status(403).json({ error: "Admin access required" });
         }
-        const result = await db.execute(sql13.raw(`
+        const result = await db.execute(sql14.raw(`
             SELECT 
               u.id, 
               u.username, 
@@ -18395,7 +19190,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch managers" });
       }
     });
-    router19.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { status } = req.query;
         const query = db.select({
@@ -18434,7 +19229,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location licenses" });
       }
     });
-    router19.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const pendingLicenses = await db.select({
           id: locations.id,
@@ -18464,16 +19259,16 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
       }
     });
-    router19.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const result = await db.select({ count: sql13`count(*)::int` }).from(locations).where(eq27(locations.kitchenLicenseStatus, "pending"));
+        const result = await db.select({ count: sql14`count(*)::int` }).from(locations).where(eq27(locations.kitchenLicenseStatus, "pending"));
         const count3 = result[0]?.count || 0;
         res.json({ count: count3 });
       } catch (error) {
         res.status(500).json({ error: "Failed to get count" });
       }
     });
-    router19.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const locationId = parseInt(req.params.id);
         const { status, feedback } = req.body;
@@ -18499,7 +19294,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update license status" });
       }
     });
-    router19.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         const locations5 = await locationService.getAllLocations();
@@ -18519,7 +19314,7 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    router19.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         const { name, address, managerId } = req.body;
@@ -18571,7 +19366,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create location" });
       }
     });
-    router19.get("/kitchens/:locationId", async (req, res) => {
+    router20.get("/kitchens/:locationId", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18593,7 +19388,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
-    router19.post("/kitchens", async (req, res) => {
+    router20.post("/kitchens", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18635,7 +19430,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create kitchen" });
       }
     });
-    router19.put("/locations/:id", async (req, res) => {
+    router20.put("/locations/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18705,7 +19500,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update location" });
       }
     });
-    router19.delete("/locations/:id", async (req, res) => {
+    router20.delete("/locations/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18727,7 +19522,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete location" });
       }
     });
-    router19.put("/kitchens/:id", async (req, res) => {
+    router20.put("/kitchens/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18844,7 +19639,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update kitchen" });
       }
     });
-    router19.delete("/kitchens/:id", async (req, res) => {
+    router20.delete("/kitchens/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18866,7 +19661,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete kitchen" });
       }
     });
-    router19.put("/managers/:id", async (req, res) => {
+    router20.put("/managers/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18943,7 +19738,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update manager" });
       }
     });
-    router19.delete("/managers/:id", async (req, res) => {
+    router20.delete("/managers/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -18975,7 +19770,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete manager" });
       }
     });
-    router19.post("/test-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.post("/test-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         console.log(`POST /api/admin/test-email - User ID: ${user.id}`);
@@ -19108,7 +19903,7 @@ var init_admin = __esm({
         });
       }
     });
-    router19.post("/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.post("/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         console.log(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
@@ -19226,10 +20021,10 @@ var init_admin = __esm({
         });
       }
     });
-    router19.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const config = await getFeeConfig();
-        const settings = await db.select().from(platformSettings).where(sql13`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+        const settings = await db.select().from(platformSettings).where(sql14`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
         const settingsMap = Object.fromEntries(settings.map((s) => [s.key, {
           value: s.value,
           description: s.description,
@@ -19266,7 +20061,7 @@ var init_admin = __esm({
         });
       }
     });
-    router19.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = await getAuthenticatedUser2(req);
         if (!user) {
@@ -19374,7 +20169,7 @@ var init_admin = __esm({
         });
       }
     });
-    router19.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router20.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { bookingAmountCents, customConfig } = req.body;
         if (!bookingAmountCents || bookingAmountCents <= 0) {
@@ -19433,7 +20228,7 @@ var init_admin = __esm({
         });
       }
     });
-    admin_default = router19;
+    admin_default = router20;
   }
 });
 
@@ -19442,7 +20237,7 @@ var webhooks_exports = {};
 __export(webhooks_exports, {
   default: () => webhooks_default
 });
-import { Router as Router20 } from "express";
+import { Router as Router21 } from "express";
 import Stripe4 from "stripe";
 import { eq as eq28, and as and18, ne as ne6, notInArray } from "drizzle-orm";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
@@ -19613,12 +20408,51 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
     return;
   }
   try {
-    const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+    const { findPaymentTransactionByIntentId: findPaymentTransactionByIntentId2, updatePaymentTransaction: updatePaymentTransaction2, createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
     const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
-    const transaction = await findPaymentTransactionByIntentId2(
+    let transaction = await findPaymentTransactionByIntentId2(
       paymentIntent.id,
       db
     );
+    if (!transaction) {
+      const [booking] = await db.select({
+        id: kitchenBookings.id,
+        chefId: kitchenBookings.chefId,
+        totalPrice: kitchenBookings.totalPrice,
+        serviceFee: kitchenBookings.serviceFee,
+        currency: kitchenBookings.currency,
+        taxRatePercent: kitchens.taxRatePercent,
+        managerId: locations.managerId
+      }).from(kitchenBookings).innerJoin(kitchens, eq28(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq28(kitchens.locationId, locations.id)).where(eq28(kitchenBookings.paymentIntentId, paymentIntent.id)).limit(1);
+      if (booking) {
+        const subtotalCents = booking.totalPrice != null ? parseInt(String(booking.totalPrice)) : 0;
+        const serviceFeeCents = booking.serviceFee != null ? parseInt(String(booking.serviceFee)) : 0;
+        const taxRatePercent = booking.taxRatePercent != null ? Number(booking.taxRatePercent) : 0;
+        const taxCents = Math.round(subtotalCents * taxRatePercent / 100);
+        const totalAmountCents = subtotalCents + taxCents;
+        const managerRevenueCents = Math.max(0, subtotalCents - serviceFeeCents);
+        transaction = await createPaymentTransaction2({
+          bookingId: booking.id,
+          bookingType: "kitchen",
+          chefId: booking.chefId ?? null,
+          managerId: booking.managerId ?? null,
+          amount: totalAmountCents,
+          baseAmount: subtotalCents,
+          serviceFee: serviceFeeCents,
+          managerRevenue: managerRevenueCents,
+          currency: (booking.currency || "CAD").toUpperCase(),
+          paymentIntentId: paymentIntent.id,
+          status: "succeeded",
+          stripeStatus: paymentIntent.status,
+          metadata: {
+            createdFrom: "webhook_upsert",
+            taxRatePercent,
+            taxCents
+          }
+        }, db);
+        logger.info(`[Webhook] Created payment_transactions for PaymentIntent ${paymentIntent.id} (upsert)`);
+      }
+    }
     if (transaction) {
       let managerConnectAccountId;
       try {
@@ -20082,7 +20916,7 @@ async function handleAccountUpdated(account, webhookEventId) {
     );
   }
 }
-var router20, webhooks_default;
+var router21, webhooks_default;
 var init_webhooks = __esm({
   "server/routes/webhooks.ts"() {
     "use strict";
@@ -20091,8 +20925,8 @@ var init_webhooks = __esm({
     init_logger();
     init_api_response();
     init_notification_service();
-    router20 = Router20();
-    router20.post("/stripe", async (req, res) => {
+    router21 = Router21();
+    router21.post("/stripe", async (req, res) => {
       try {
         const sig = req.headers["stripe-signature"];
         const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -20197,7 +21031,7 @@ var init_webhooks = __esm({
         return errorResponse(res, err);
       }
     });
-    webhooks_default = router20;
+    webhooks_default = router21;
   }
 });
 
@@ -20292,10 +21126,10 @@ var portal_auth_exports = {};
 __export(portal_auth_exports, {
   default: () => portal_auth_default
 });
-import { Router as Router21 } from "express";
+import { Router as Router22 } from "express";
 import { eq as eq29, and as and19 } from "drizzle-orm";
 import * as admin from "firebase-admin";
-var router21, portal_auth_default;
+var router22, portal_auth_default;
 var init_portal_auth = __esm({
   "server/routes/portal-auth.ts"() {
     "use strict";
@@ -20306,8 +21140,8 @@ var init_portal_auth = __esm({
     init_passwordUtils();
     init_phone_utils();
     init_subdomain_utils();
-    router21 = Router21();
-    router21.post("/portal-login", async (req, res) => {
+    router22 = Router22();
+    router22.post("/portal-login", async (req, res) => {
       try {
         const { username, password } = req.body;
         if (!username || !password) {
@@ -20378,7 +21212,7 @@ var init_portal_auth = __esm({
         res.status(500).json({ error: error.message || "Portal login failed" });
       }
     });
-    router21.post("/portal-register", async (req, res) => {
+    router22.post("/portal-register", async (req, res) => {
       console.log("[Routes] /api/portal-register called");
       try {
         const { username, password, locationId, fullName, email, phone, company } = req.body;
@@ -20530,7 +21364,7 @@ Please log in to your manager dashboard to review and approve this application.`
         res.status(500).json({ error: error.message || "Portal registration failed" });
       }
     });
-    portal_auth_default = router21;
+    portal_auth_default = router22;
   }
 });
 
@@ -20539,9 +21373,9 @@ var portal_exports = {};
 __export(portal_exports, {
   default: () => portal_default
 });
-import { Router as Router22 } from "express";
+import { Router as Router23 } from "express";
 import { eq as eq30, desc as desc15 } from "drizzle-orm";
-var router22, portal_default;
+var router23, portal_default;
 var init_portal = __esm({
   "server/routes/portal.ts"() {
     "use strict";
@@ -20551,8 +21385,8 @@ var init_portal = __esm({
     init_booking_service();
     init_kitchen_service();
     init_location_service();
-    router22 = Router22();
-    router22.get("/application-status", async (req, res) => {
+    router23 = Router23();
+    router23.get("/application-status", async (req, res) => {
       try {
         const user = await getAuthenticatedUser(req);
         if (!user) {
@@ -20586,7 +21420,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to get application status" });
       }
     });
-    router22.get("/my-location", requirePortalUser, async (req, res) => {
+    router23.get("/my-location", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
@@ -20612,7 +21446,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router22.get("/locations", requirePortalUser, async (req, res) => {
+    router23.get("/locations", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const accessRecords = await db.select().from(portalUserLocationAccess).where(eq30(portalUserLocationAccess.portalUserId, userId)).limit(1);
@@ -20638,7 +21472,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router22.get("/locations/:locationSlug", requirePortalUser, async (req, res) => {
+    router23.get("/locations/:locationSlug", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const locationSlug = req.params.locationSlug;
@@ -20667,7 +21501,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router22.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req, res) => {
+    router23.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const locationSlug = req.params.locationSlug;
@@ -20698,7 +21532,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
-    router22.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
+    router23.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -20730,7 +21564,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch availability" });
       }
     });
-    router22.post("/bookings", requirePortalUser, async (req, res) => {
+    router23.post("/bookings", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const {
@@ -20835,7 +21669,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
-    portal_default = router22;
+    portal_default = router23;
   }
 });
 
@@ -20844,10 +21678,10 @@ var chef_exports = {};
 __export(chef_exports, {
   default: () => chef_default
 });
-import { Router as Router23 } from "express";
-import { sql as sql14 } from "drizzle-orm";
+import { Router as Router24 } from "express";
+import { sql as sql15 } from "drizzle-orm";
 import { eq as eq31 } from "drizzle-orm";
-var router23, chef_default;
+var router24, chef_default;
 var init_chef = __esm({
   "server/routes/chef.ts"() {
     "use strict";
@@ -20859,12 +21693,12 @@ var init_chef = __esm({
     init_db();
     init_schema();
     init_api_response();
-    router23 = Router23();
-    router23.post("/stripe-connect/create", requireChef, async (req, res) => {
+    router24 = Router24();
+    router24.post("/stripe-connect/create", requireChef, async (req, res) => {
       console.log("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql14`
+        const userResult = await db.execute(sql15`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -20908,10 +21742,10 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router23.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
+    router24.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql14`
+        const userResult = await db.execute(sql15`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -20932,10 +21766,10 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router23.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
+    router24.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
-        const userResult = await db.execute(sql14`
+        const userResult = await db.execute(sql15`
             SELECT stripe_connect_account_id 
             FROM users 
             WHERE id = ${chefId} 
@@ -20962,7 +21796,7 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router23.post("/stripe-connect/sync", requireChef, async (req, res) => {
+    router24.post("/stripe-connect/sync", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const [chef] = await db.select().from(users).where(eq31(users.id, chefId)).limit(1);
@@ -20985,7 +21819,7 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router23.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
+    router24.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -21008,7 +21842,7 @@ var init_chef = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    router23.get("/locations", requireChef, async (req, res) => {
+    router24.get("/locations", requireChef, async (req, res) => {
       try {
         const allLocations = await locationService.getAllLocations();
         const activeKitchens = await kitchenService.getAllActiveKitchens();
@@ -21031,7 +21865,7 @@ var init_chef = __esm({
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    chef_default = router23;
+    chef_default = router24;
   }
 });
 
@@ -22518,12 +23352,12 @@ var ChefApplicationService = class {
         )
       ).limit(1);
       if (existing) {
+        const newStatus = existing.status === "approved" ? "approved" : "inReview";
+        const shouldClearFeedback = existing.status === "rejected" || existing.status === "cancelled";
         const [updated] = await db.update(chefKitchenApplications).set({
           ...data,
-          status: "inReview",
-          // Reset status on resubmission
-          feedback: null,
-          // Clear old feedback
+          status: newStatus,
+          ...shouldClearFeedback && { feedback: null },
           updatedAt: /* @__PURE__ */ new Date()
         }).where(eq7(chefKitchenApplications.id, existing.id)).returning();
         return updated;
@@ -23702,6 +24536,7 @@ async function registerRoutes(app2) {
   });
   app2.use("/api/manager", (await Promise.resolve().then(() => (init_manager(), manager_exports))).default);
   app2.use("/api/manager/notifications", (await Promise.resolve().then(() => (init_notifications(), notifications_exports))).default);
+  app2.use("/api/chef/notifications", (await Promise.resolve().then(() => (init_chef_notifications(), chef_notifications_exports))).default);
   app2.use("/api", (await Promise.resolve().then(() => (init_kitchens(), kitchens_exports))).default);
   app2.use("/api", (await Promise.resolve().then(() => (init_bookings(), bookings_exports))).default);
   app2.use("/api", (await Promise.resolve().then(() => (init_equipment(), equipment_exports))).default);

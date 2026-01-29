@@ -43,17 +43,8 @@ export default function TrainingOverviewPanel({ className }: TrainingOverviewPan
 
   const user = firebaseUser;
 
-  // If in player mode, render the video player
-  if (viewMode === 'player') {
-    return (
-      <TrainingVideoPlayer 
-        onBack={() => setViewMode('overview')} 
-        className={className}
-      />
-    );
-  }
-
   // Query training access level and progress
+  // NOTE: All hooks must be called before any conditional returns
   const { data: trainingAccess, isLoading: isLoadingTrainingAccess } = useQuery({
     queryKey: ["training-access", user?.uid],
     queryFn: async () => {
@@ -157,6 +148,16 @@ export default function TrainingOverviewPanel({ className }: TrainingOverviewPan
   const completedVideos = videoProgress.filter((p: any) => p.completed).length;
   const totalVideos = 22;
   const progressPercentage = Math.round((completedVideos / totalVideos) * 100);
+
+  // If in player mode, render the video player (after all hooks)
+  if (viewMode === 'player') {
+    return (
+      <TrainingVideoPlayer 
+        onBack={() => setViewMode('overview')} 
+        className={className}
+      />
+    );
+  }
 
   const downloadCertificate = async () => {
     try {

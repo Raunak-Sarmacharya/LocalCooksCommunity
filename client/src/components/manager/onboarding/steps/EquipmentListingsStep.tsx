@@ -41,6 +41,9 @@ interface SelectedEquipment {
   condition: 'excellent' | 'good' | 'fair';
   availabilityType: 'included' | 'rental';
   sessionRate: number;
+  damageDeposit: number;
+  description: string;
+  brand: string;
 }
 
 export default function EquipmentListingsStep() {
@@ -113,6 +116,9 @@ export default function EquipmentListingsStep() {
           condition: template.defaultCondition,
           availabilityType: template.suggestedSessionRate > 0 ? 'rental' : 'included',
           sessionRate: template.suggestedSessionRate,
+          damageDeposit: 0,
+          description: '',
+          brand: '',
         };
       }
       return newState;
@@ -153,9 +159,12 @@ export default function EquipmentListingsStep() {
             kitchenId: selectedKitchenId,
             category: equipment.category,
             equipmentType: equipment.name,
+            brand: equipment.brand || undefined,
+            description: equipment.description || undefined,
             condition: equipment.condition,
             availabilityType: equipment.availabilityType,
             sessionRate: equipment.availabilityType === 'rental' ? Math.round(equipment.sessionRate * 100) : 0,
+            damageDeposit: equipment.availabilityType === 'rental' ? Math.round(equipment.damageDeposit * 100) : 0,
             currency: "CAD",
             isActive: true,
           }),
@@ -476,53 +485,119 @@ export default function EquipmentListingsStep() {
                         <p className="text-xs">Select equipment to configure</p>
                       </div>
                     ) : (
-                      <ScrollArea className="h-[250px]">
-                        <div className="space-y-2 pr-2">
+                      <ScrollArea className="h-[350px]">
+                        <div className="space-y-3 pr-2">
                           {Object.entries(selectedEquipment).map(([templateId, equipment]) => (
-                            <div key={templateId} className="p-2 border rounded-md space-y-2 bg-gray-50">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-medium truncate flex-1">{equipment.name}</span>
+                            <div key={templateId} className="p-3 border rounded-lg space-y-3 bg-gray-50">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <Input 
+                                    value={equipment.name} 
+                                    onChange={(e) => updateSelectedEquipment(templateId, { name: e.target.value })} 
+                                    className="font-medium h-7 text-xs px-2 border-transparent hover:border-input focus:border-input bg-transparent" 
+                                  />
+                                  <p className="text-[10px] text-muted-foreground capitalize mt-0.5 px-2">{equipment.category.replace('-', ' ')}</p>
+                                </div>
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-5 w-5"
+                                  className="h-5 w-5 -mr-1 -mt-1"
                                   onClick={() => handleTemplateSelect({ id: templateId } as EquipmentTemplate)}
                                 >
                                   <X className="h-3 w-3" />
                                 </Button>
                               </div>
-                              <div className="flex gap-2">
-                                <Select
-                                  value={equipment.availabilityType}
-                                  onValueChange={(v: 'included' | 'rental') => 
-                                    updateSelectedEquipment(templateId, { 
-                                      availabilityType: v,
-                                      sessionRate: v === 'included' ? 0 : equipment.sessionRate
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger className="h-7 text-xs flex-1">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="included">Included</SelectItem>
-                                    <SelectItem value="rental">Rental</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[10px] w-16 text-muted-foreground">Condition</Label>
+                                  <Select
+                                    value={equipment.condition}
+                                    onValueChange={(v: 'excellent' | 'good' | 'fair') => 
+                                      updateSelectedEquipment(templateId, { condition: v })
+                                    }
+                                  >
+                                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="excellent">Excellent</SelectItem>
+                                      <SelectItem value="good">Good</SelectItem>
+                                      <SelectItem value="fair">Fair</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[10px] w-16 text-muted-foreground">Brand</Label>
+                                  <Input
+                                    value={equipment.brand}
+                                    onChange={(e) => updateSelectedEquipment(templateId, { brand: e.target.value })}
+                                    placeholder="Optional"
+                                    className="h-7 text-xs flex-1"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Label className="text-[10px] w-16 text-muted-foreground">Type</Label>
+                                  <Select
+                                    value={equipment.availabilityType}
+                                    onValueChange={(v: 'included' | 'rental') => 
+                                      updateSelectedEquipment(templateId, { 
+                                        availabilityType: v,
+                                        sessionRate: v === 'included' ? 0 : equipment.sessionRate,
+                                        damageDeposit: v === 'included' ? 0 : equipment.damageDeposit
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="h-7 text-xs flex-1"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="included">Included (Free)</SelectItem>
+                                      <SelectItem value="rental">Rental (Paid)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                                 {equipment.availabilityType === 'rental' && (
-                                  <div className="relative w-20">
-                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      value={equipment.sessionRate}
-                                      onChange={(e) => updateSelectedEquipment(templateId, { 
-                                        sessionRate: parseFloat(e.target.value) || 0 
-                                      })}
-                                      className="h-7 text-xs pl-5"
-                                    />
-                                  </div>
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <Label className="text-[10px] w-16 text-muted-foreground">Rate</Label>
+                                      <div className="relative flex-1">
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={equipment.sessionRate}
+                                          onChange={(e) => updateSelectedEquipment(templateId, { 
+                                            sessionRate: parseFloat(e.target.value) || 0 
+                                          })}
+                                          className="h-7 text-xs pl-5"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Label className="text-[10px] w-16 text-muted-foreground">Deposit</Label>
+                                      <div className="relative flex-1">
+                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={equipment.damageDeposit}
+                                          onChange={(e) => updateSelectedEquipment(templateId, { 
+                                            damageDeposit: parseFloat(e.target.value) || 0 
+                                          })}
+                                          className="h-7 text-xs pl-5"
+                                          placeholder="0.00"
+                                        />
+                                      </div>
+                                    </div>
+                                  </>
                                 )}
+                                <div className="space-y-1">
+                                  <Label className="text-[10px] text-muted-foreground">Description</Label>
+                                  <Input
+                                    value={equipment.description}
+                                    onChange={(e) => updateSelectedEquipment(templateId, { description: e.target.value })}
+                                    placeholder="Optional description"
+                                    className="h-7 text-xs"
+                                  />
+                                </div>
                               </div>
                             </div>
                           ))}

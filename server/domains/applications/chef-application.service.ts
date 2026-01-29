@@ -327,13 +327,21 @@ export class ChefApplicationService {
                 .limit(1);
 
             if (existing) {
-                // If existing application is rejected or cancelled, allow resubmission
+                // Determine the appropriate status for the update:
+                // - If existing is 'approved' (Step 1 approved, chef submitting Step 2), preserve 'approved' status
+                // - If existing is 'rejected' or 'cancelled', reset to 'inReview' for resubmission
+                // - If existing is 'inReview', keep 'inReview'
+                const newStatus = existing.status === 'approved' ? 'approved' : 'inReview';
+                
+                // Only clear feedback if this is a true resubmission (rejected/cancelled -> inReview)
+                const shouldClearFeedback = existing.status === 'rejected' || existing.status === 'cancelled';
+                
                 const [updated] = await db
                     .update(chefKitchenApplications)
                     .set({
                         ...(data as any),
-                        status: 'inReview', // Reset status on resubmission
-                        feedback: null, // Clear old feedback
+                        status: newStatus,
+                        ...(shouldClearFeedback && { feedback: null }),
                         updatedAt: new Date()
                     })
                     .where(eq(chefKitchenApplications.id, existing.id))

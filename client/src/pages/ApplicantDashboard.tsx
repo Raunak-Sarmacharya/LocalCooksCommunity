@@ -56,7 +56,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useCustomAlerts } from "@/components/ui/custom-alerts";
 import ChefStripeConnectSetup from "@/components/chef/ChefStripeConnectSetup";
 import { useChefOnboardingStatus } from "@/hooks/use-chef-onboarding-status";
@@ -81,7 +81,28 @@ export default function ApplicantDashboard() {
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const subdomain = useSubdomain();
-  const [activeTab, setActiveTab] = useState("overview");
+  const [location] = useLocation();
+  
+  // Parse view from URL query parameter (e.g., /dashboard?view=messages)
+  const getInitialTab = () => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages'].includes(view)) {
+      return view;
+    }
+    return 'overview';
+  };
+  
+  const [activeTab, setActiveTab] = useState(getInitialTab);
+  
+  // Update activeTab when URL changes (for notification clicks)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view && ['overview', 'applications', 'kitchen-applications', 'discover-kitchens', 'bookings', 'training', 'messages'].includes(view)) {
+      setActiveTab(view);
+    }
+  }, [location]);
 
   // Booking sheet state
   const [bookingSheetOpen, setBookingSheetOpen] = useState(false);

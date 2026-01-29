@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { useLocation } from "wouter";
 import { CheckCircle2, XCircle, AlertTriangle, Sparkles, ExternalLink, Clock, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,7 @@ interface SetupItem {
 }
 
 export default function CompletionSummaryStep() {
+    const [, setLocation] = useLocation();
     const {
         selectedLocation,
         kitchens,
@@ -137,7 +139,7 @@ export default function CompletionSummaryStep() {
         });
 
         return items;
-    }, [selectedLocation, kitchens, hasAvailability, isStripeOnboardingComplete, storageForm, equipmentForm]);
+    }, [selectedLocation, kitchens, hasAvailability, hasRequirements, isStripeOnboardingComplete, storageForm, equipmentForm]);
 
     // Calculate Readiness (Only Required Items count towards "Blocking")
     const requiredItems = setupItems.filter(item => item.isRequired);
@@ -152,6 +154,7 @@ export default function CompletionSummaryStep() {
 
     const handleClose = () => {
         setIsOpen(false);
+        setLocation('/manager/dashboard');
     };
 
     return (

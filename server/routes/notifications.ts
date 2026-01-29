@@ -378,6 +378,44 @@ router.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req:
 });
 
 /**
+ * POST /api/manager/notifications/message-received
+ * Trigger a notification when a manager receives a new message from a chef
+ * Called by the client after a message is sent in the chat
+ */
+router.post("/message-received", requireFirebaseAuthWithUser, async (req: Request, res: Response) => {
+  try {
+    const { managerId, locationId, senderName, messagePreview, conversationId } = req.body;
+
+    if (!managerId || !senderName || !conversationId) {
+      return res.status(400).json({ error: "managerId, senderName, and conversationId are required" });
+    }
+
+    // Create notification for the manager
+    await createNotification({
+      managerId,
+      locationId,
+      type: 'message_received',
+      priority: 'normal',
+      title: `Message from ${senderName}`,
+      message: messagePreview?.length > 100 
+        ? `${messagePreview.substring(0, 100)}...` 
+        : (messagePreview || "You have a new message"),
+      metadata: {
+        senderName,
+        conversationId
+      },
+      actionUrl: `/manager/booking-dashboard?view=messages`,
+      actionLabel: 'View Message'
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error("Error creating message notification:", error);
+    return errorResponse(res, error);
+  }
+});
+
+/**
  * DELETE /api/manager/notifications/:id
  * Delete a specific notification (permanently)
  */

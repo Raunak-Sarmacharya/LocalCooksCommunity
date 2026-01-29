@@ -240,6 +240,48 @@ export async function sendMessage(
     await updateDoc(conversationRef, updateData);
     console.log('Conversation updated successfully');
 
+    // Trigger notification for the recipient
+    try {
+      const { auth } = await import('@/lib/firebase');
+      const token = await auth.currentUser?.getIdToken();
+      
+      if (senderRole === 'manager' && conversation.chefId) {
+        // Manager sent message -> notify chef
+        await fetch('/api/chef/notifications/message-received', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            chefId: conversation.chefId,
+            senderName: 'Kitchen Manager',
+            messagePreview: content.substring(0, 100),
+            conversationId
+          })
+        });
+      } else if (senderRole === 'chef' && conversation.managerId) {
+        // Chef sent message -> notify manager
+        await fetch('/api/manager/notifications/message-received', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            managerId: conversation.managerId,
+            locationId: conversation.locationId,
+            senderName: 'Chef',
+            messagePreview: content.substring(0, 100),
+            conversationId
+          })
+        });
+      }
+    } catch (notifError) {
+      // Don't fail the message send if notification fails
+      console.warn('Failed to send notification:', notifError);
+    }
+
     return messageRef.id;
   } catch (error) {
     console.error('Error sending message:', error);
