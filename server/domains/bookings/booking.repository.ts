@@ -200,6 +200,8 @@ export class BookingRepository {
                 storageType: storageListings.storageType,
                 kitchenId: storageListings.kitchenId,
                 kitchenName: kitchens.name,
+                basePrice: storageListings.basePrice,
+                minimumBookingDuration: storageListings.minimumBookingDuration,
             })
             .from(storageBookings)
             .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
@@ -211,6 +213,8 @@ export class BookingRepository {
             ...row,
             totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
             serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+            basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
+            minimumBookingDuration: row.minimumBookingDuration || 1,
         }));
     }
 

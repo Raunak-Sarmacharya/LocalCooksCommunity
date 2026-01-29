@@ -279,7 +279,14 @@ async function handleCheckoutSessionCompleted(
 
     // Check if this is a storage extension payment
     const metadata = expandedSession.metadata || {};
+    logger.info(`[Webhook] Checkout session metadata:`, { 
+      sessionId: session.id, 
+      metadataType: metadata.type,
+      allMetadata: metadata 
+    });
+    
     if (metadata.type === "storage_extension") {
+      logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`);
       await handleStorageExtensionPaymentCompleted(
         session.id,
         paymentIntentId,
@@ -292,6 +299,7 @@ async function handleCheckoutSessionCompleted(
 }
 
 // Handle storage extension payment completion
+// Enterprise-grade: Payment success sets status to 'paid', manager must approve before date extends
 async function handleStorageExtensionPaymentCompleted(
   sessionId: string,
   paymentIntentId: string | undefined,
@@ -328,30 +336,32 @@ async function handleStorageExtensionPaymentCompleted(
       return;
     }
 
-    if (pendingExtension.status === "completed") {
+    // Skip if already processed
+    if (pendingExtension.status === "paid" || pendingExtension.status === "completed" || pendingExtension.status === "approved") {
       logger.info(
-        `[Webhook] Storage extension already completed for session ${sessionId}`,
+        `[Webhook] Storage extension already processed for session ${sessionId} (status: ${pendingExtension.status})`,
       );
       return;
     }
 
-    // Update the pending extension status
+    // Update status to 'paid' - awaiting manager approval
+    // The storage booking date will NOT be extended until manager approves
     await bookingService.updatePendingStorageExtension(pendingExtension.id, {
-      status: "completed",
+      status: "paid",
       stripePaymentIntentId: paymentIntentId,
-      completedAt: new Date(),
     });
 
-    // Extend the actual storage booking
-    await bookingService.extendStorageBooking(storageBookingId, newEndDate);
-
-    logger.info(`[Webhook] Storage extension completed successfully:`, {
+    logger.info(`[Webhook] Storage extension payment received - awaiting manager approval:`, {
       storageBookingId,
       extensionDays,
       newEndDate: newEndDate.toISOString(),
       sessionId,
       paymentIntentId,
+      status: "paid",
     });
+
+    // TODO: Send notification to manager about pending extension approval
+    // TODO: Send notification to chef that payment received, awaiting approval
   } catch (error: any) {
     logger.error(
       `[Webhook] Error processing storage extension payment:`,

@@ -9,6 +9,7 @@ import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { useSubdomain } from "@/hooks/use-subdomain";
 import { getRequiredSubdomainForRole, getSubdomainUrl } from "@shared/subdomain-utils";
 import BookingControlPanel from "@/components/booking/BookingControlPanel";
+import { PendingStorageExtensions } from "@/components/booking/PendingStorageExtensions";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import {
@@ -1035,6 +1036,9 @@ export default function ApplicantDashboard() {
       </div>
 
       <div className="max-w-4xl">
+        {/* Pending Storage Extension Requests */}
+        <PendingStorageExtensions />
+        
         <BookingControlPanel
           bookings={enrichedBookings}
           isLoading={isLoadingBookings}

@@ -1,13 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Check, Package, Calendar as CalendarIcon } from "lucide-react";
-import { format, differenceInDays, addDays, startOfToday, isBefore } from "date-fns";
-import { DateRange } from "react-day-picker";
+import { AlertCircle, Check, Package, CalendarDays, ArrowRight, Clock } from "lucide-react";
+import { format, differenceInDays, startOfToday, isBefore, addDays, addWeeks, addMonths } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { getAuthHeaders } from "@/lib/api";
 
 interface StorageBooking {
   id: number;
@@ -31,50 +31,59 @@ interface StorageExtensionDialogProps {
   onSuccess?: () => void;
 }
 
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
-  return {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-  };
-}
-
 export function StorageExtensionDialog({
   booking,
   open,
   onOpenChange,
-  onSuccess,
+  onSuccess: _onSuccess,
 }: StorageExtensionDialogProps) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
-  const currentEndDate = new Date(booking.endDate);
+  // Memoize currentEndDate to prevent useMemo dependency changes on every render
+  const currentEndDate = useMemo(() => new Date(booking.endDate), [booking.endDate]);
   const today = startOfToday();
   const minDate = currentEndDate > today ? currentEndDate : today;
+  const minDays = booking.minimumBookingDuration || 1;
 
-  // Fetch service fee rate (public endpoint - no auth required for chefs to see the rate)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
+  // Quick extension options
+  const quickOptions = useMemo(() => {
+    const baseDate = minDate;
+    return [
+      { label: '1 Week', days: 7, date: addWeeks(baseDate, 1) },
+      { label: '2 Weeks', days: 14, date: addWeeks(baseDate, 2) },
+      { label: '1 Month', days: 30, date: addMonths(baseDate, 1) },
+      { label: '3 Months', days: 90, date: addMonths(baseDate, 3) },
+    ].filter(opt => opt.days >= minDays);
+  }, [minDate, minDays]);
+
+  // Fetch fee configuration from server (enterprise-grade - no hardcoded values)
+  const { data: feeConfig } = useQuery({
+    queryKey: ['/api/platform-settings/stripe-fees'],
     queryFn: async () => {
       try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
+        const response = await fetch('/api/platform-settings/stripe-fees');
         if (response.ok) {
           return response.json();
         }
       } catch (error) {
-        console.error('Error fetching service fee rate:', error);
+        console.error('Error fetching fee config:', error);
       }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
+      // Default fallback (same as server defaults)
+      return {
+        stripePercentageFee: 0.029,
+        stripeFlatFeeCents: 30,
+        platformCommissionRate: 0,
+        stripePercentageDisplay: '2.9%',
+        stripeFlatFeeDisplay: '$0.30',
+      };
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  const serviceFeeRate = serviceFeeRateData?.rate ?? 0.05; // Default to 5% if not available
-
-  // Calculate extension details
+  // Calculate extension details using server-provided fee configuration
   const extensionDetails = useMemo(() => {
     if (!selectedDate || selectedDate <= currentEndDate) {
       return null;
@@ -90,20 +99,37 @@ export function StorageExtensionDialog({
       };
     }
 
-    const basePricePerDay = booking.basePrice || 0;
-    const extensionBasePrice = basePricePerDay * extensionDays;
-    const percentageFee = extensionBasePrice * serviceFeeRate; // Percentage-based service fee
-    const extensionServiceFee = percentageFee; // No flat fee
-    const extensionTotalPrice = extensionBasePrice + extensionServiceFee;
+    // Get fee configuration (with defaults)
+    const stripePercentageFee = feeConfig?.stripePercentageFee ?? 0.029;
+    const stripeFlatFeeCents = feeConfig?.stripeFlatFeeCents ?? 30;
+
+    // Calculate base price (in cents)
+    const basePricePerDayCents = booking.basePrice || 0;
+    const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
+    
+    // Calculate platform fee using same formula as server
+    const platformFeeCents = Math.round(
+      extensionBasePriceCents * stripePercentageFee + stripeFlatFeeCents
+    );
+    
+    // Manager receives base price minus platform fee
+    const managerReceivesCents = extensionBasePriceCents - platformFeeCents;
+    
+    // Total customer pays = base price (platform fee is deducted from manager's share)
+    const extensionTotalPriceCents = extensionBasePriceCents;
 
     return {
       valid: true,
       extensionDays,
-      extensionBasePrice,
-      extensionServiceFee,
-      extensionTotalPrice,
+      extensionBasePriceCents,
+      platformFeeCents,
+      managerReceivesCents,
+      extensionTotalPriceCents,
+      feeDisplay: feeConfig?.stripePercentageDisplay && feeConfig?.stripeFlatFeeDisplay 
+        ? `${feeConfig.stripePercentageDisplay} + ${feeConfig.stripeFlatFeeDisplay}`
+        : '2.9% + $0.30',
     };
-  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, serviceFeeRate]);
+  }, [selectedDate, currentEndDate, booking.basePrice, booking.minimumBookingDuration, feeConfig]);
 
   // Create checkout session for storage extension payment
   const checkoutMutation = useMutation({
@@ -136,7 +162,7 @@ export function StorageExtensionDialog({
         });
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Extension Failed",
         description: error.message || "Failed to create checkout session",
@@ -172,124 +198,152 @@ export function StorageExtensionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5 text-purple-600" />
             Extend Storage Booking
           </DialogTitle>
           <DialogDescription>
-            Extend your storage booking for {booking.storageName} at {booking.kitchenName}
+            {booking.storageName} at {booking.kitchenName}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Current Booking Info */}
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <h4 className="font-semibold text-sm text-gray-700">Current Booking</h4>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <span className="text-gray-600">Start Date:</span>
-                <span className="ml-2 font-medium">{format(new Date(booking.startDate), "PPP")}</span>
+        <div className="space-y-5">
+          {/* Current Booking Timeline */}
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-center">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Current End Date</p>
+                <p className="text-lg font-bold text-gray-900">{format(currentEndDate, "MMM d, yyyy")}</p>
               </div>
-              <div>
-                <span className="text-gray-600">End Date:</span>
-                <span className="ml-2 font-medium">{format(currentEndDate, "PPP")}</span>
+              <ArrowRight className="h-5 w-5 text-purple-400" />
+              <div className="text-center">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">New End Date</p>
+                {selectedDate ? (
+                  <p className="text-lg font-bold text-purple-700">{format(selectedDate, "MMM d, yyyy")}</p>
+                ) : (
+                  <p className="text-lg font-medium text-gray-400">Select below</p>
+                )}
               </div>
-              <div>
-                <span className="text-gray-600">Storage Type:</span>
-                <span className="ml-2 font-medium capitalize">{booking.storageType}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Daily Rate:</span>
-                <span className="ml-2 font-medium">${((booking.basePrice || 0) / 100).toFixed(2)}/day</span>
-              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-purple-100 flex items-center justify-between text-sm">
+              <span className="text-gray-600">Daily Rate:</span>
+              <span className="font-bold text-purple-700 bg-purple-100 px-2 py-1 rounded">
+                ${((booking.basePrice || 0) / 100).toFixed(2)}/day
+              </span>
             </div>
           </div>
-
-          {/* Date Selection */}
-          <div className="space-y-3">
-            <Label>Select New End Date</Label>
-            <div className="flex justify-center">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={handleDateSelect}
-                disabled={(date) => isBefore(date, minDate)}
-                defaultMonth={minDate}
-                className="rounded-md border"
-              />
-            </div>
-            {selectedDate && (
-              <div className="text-sm text-gray-600 text-center">
-                Selected: <span className="font-medium">{format(selectedDate, "PPP")}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Extension Details */}
-          {extensionDetails && (
-            <div className={`rounded-lg p-4 ${
-              extensionDetails.valid
-                ? 'bg-green-50 border border-green-200'
-                : 'bg-red-50 border border-red-200'
-            }`}>
-              {extensionDetails.valid ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-green-800 font-semibold">
-                    <Check className="h-4 w-4" />
-                    Extension Summary
-                  </div>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-700">Extension Period:</span>
-                      <span className="font-medium">
-                        {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-700">
-                        {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${((booking.basePrice || 0) / 100).toFixed(2)}/day:
-                      </span>
-                      <span className="font-medium">${((extensionDetails.extensionBasePrice ?? 0) / 100).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-700">Service Fee ({(serviceFeeRate * 100).toFixed(1)}%):</span>
-                      <span className="font-medium">${((extensionDetails.extensionServiceFee ?? 0) / 100).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between pt-2 border-t border-green-200 font-semibold text-green-900">
-                      <span>Additional Cost:</span>
-                      <span>${((extensionDetails.extensionTotalPrice ?? 0) / 100).toFixed(2)} CAD</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-red-800">
-                  <AlertCircle className="h-4 w-4" />
-                  <span>{extensionDetails.error}</span>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Warning for expiring soon */}
           {differenceInDays(currentEndDate, today) <= 2 && differenceInDays(currentEndDate, today) >= 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+              <Clock className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
               <div className="text-sm text-amber-800">
-                <p className="font-semibold">Storage Expiring Soon</p>
-                <p>Your storage expires in {differenceInDays(currentEndDate, today)} day{differenceInDays(currentEndDate, today) !== 1 ? 's' : ''}. Extend now to avoid interruption.</p>
+                <p className="font-semibold">Expiring {differenceInDays(currentEndDate, today) === 0 ? 'Today' : `in ${differenceInDays(currentEndDate, today)} day${differenceInDays(currentEndDate, today) !== 1 ? 's' : ''}`}</p>
+                <p className="text-amber-700">Extend now to keep your storage.</p>
               </div>
+            </div>
+          )}
+
+          {/* Quick Extension Options */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Quick Extend</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {quickOptions.map((option) => {
+                const isSelected = selectedDate?.getTime() === option.date.getTime();
+                const price = ((booking.basePrice || 0) * option.days) / 100;
+                return (
+                  <button
+                    key={option.label}
+                    onClick={() => setSelectedDate(option.date)}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      isSelected
+                        ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
+                        : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className={`font-semibold ${isSelected ? 'text-purple-700' : 'text-gray-900'}`}>
+                          {option.label}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Until {format(option.date, "MMM d")}
+                        </p>
+                      </div>
+                      <p className={`font-bold ${isSelected ? 'text-purple-700' : 'text-gray-700'}`}>
+                        ${price.toFixed(0)}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom Date Option */}
+          <div className="space-y-3">
+            <button
+              onClick={() => setShowCalendar(!showCalendar)}
+              className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+            >
+              <CalendarDays className="h-4 w-4" />
+              {showCalendar ? 'Hide calendar' : 'Choose custom date'}
+            </button>
+            
+            {showCalendar && (
+              <div className="flex justify-center border rounded-lg p-2 bg-white">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={handleDateSelect}
+                  disabled={(date) => isBefore(date, addDays(minDate, minDays - 1))}
+                  defaultMonth={minDate}
+                  className="rounded-md"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Extension Summary */}
+          {extensionDetails && extensionDetails.valid && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-green-800 font-semibold mb-3">
+                <Check className="h-4 w-4" />
+                Extension Summary
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-700">
+                    {extensionDetails.extensionDays} day{(extensionDetails.extensionDays ?? 0) > 1 ? 's' : ''} × ${((booking.basePrice || 0) / 100).toFixed(2)}/day
+                  </span>
+                  <span className="font-medium">${((extensionDetails.extensionBasePriceCents ?? 0) / 100).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-green-200 font-bold text-green-900 text-base">
+                  <span>Total</span>
+                  <span>${((extensionDetails.extensionTotalPriceCents ?? 0) / 100).toFixed(2)} CAD</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {extensionDetails && !extensionDetails.valid && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-800">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm">{extensionDetails.error}</span>
             </div>
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-0">
           <Button
             variant="outline"
             onClick={() => {
               onOpenChange(false);
               setSelectedDate(undefined);
+              setShowCalendar(false);
             }}
             disabled={isProcessing}
           >
@@ -298,9 +352,15 @@ export function StorageExtensionDialog({
           <Button
             onClick={handleExtend}
             disabled={!selectedDate || !extensionDetails || !extensionDetails.valid || isProcessing}
-            className="bg-purple-600 hover:bg-purple-700"
+            className="bg-purple-600 hover:bg-purple-700 min-w-[160px]"
           >
-            {isProcessing ? "Processing..." : `Extend & Pay $${(extensionDetails?.extensionTotalPrice ?? 0).toFixed(2)}`}
+            {isProcessing ? (
+              "Processing..."
+            ) : extensionDetails?.valid ? (
+              `Pay $${((extensionDetails.extensionTotalPriceCents ?? 0) / 100).toFixed(2)} CAD`
+            ) : (
+              "Select Duration"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

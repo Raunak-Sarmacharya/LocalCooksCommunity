@@ -2615,5 +2615,320 @@ router.post("/availability", requireFirebaseAuthWithUser, requireManager, async 
 });
 
 
+// ===================================
+// STORAGE EXTENSION APPROVAL ENDPOINTS
+// ===================================
+
+import { pendingStorageExtensions } from "@shared/schema";
+
+// Get pending storage extension requests for manager's locations
+router.get("/storage-extensions/pending", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+
+        // Get all pending (paid) storage extensions for manager's locations
+        const pendingExtensions = await db
+            .select({
+                id: pendingStorageExtensions.id,
+                storageBookingId: pendingStorageExtensions.storageBookingId,
+                newEndDate: pendingStorageExtensions.newEndDate,
+                extensionDays: pendingStorageExtensions.extensionDays,
+                extensionBasePriceCents: pendingStorageExtensions.extensionBasePriceCents,
+                extensionServiceFeeCents: pendingStorageExtensions.extensionServiceFeeCents,
+                extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
+                status: pendingStorageExtensions.status,
+                createdAt: pendingStorageExtensions.createdAt,
+                // Storage booking details
+                currentEndDate: storageBookingsTable.endDate,
+                storageName: storageListings.name,
+                storageType: storageListings.storageType,
+                // Chef details
+                chefId: storageBookingsTable.chefId,
+                chefEmail: users.username,
+                // Kitchen/Location details
+                kitchenName: kitchens.name,
+                locationId: locations.id,
+            })
+            .from(pendingStorageExtensions)
+            .innerJoin(storageBookingsTable, eq(pendingStorageExtensions.storageBookingId, storageBookingsTable.id))
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .innerJoin(users, eq(storageBookingsTable.chefId, users.id))
+            .where(
+                and(
+                    eq(locations.managerId, managerId),
+                    eq(pendingStorageExtensions.status, "paid") // Only show paid extensions awaiting approval
+                )
+            )
+            .orderBy(desc(pendingStorageExtensions.createdAt));
+
+        res.json(pendingExtensions);
+    } catch (error) {
+        logger.error("Error fetching pending storage extensions:", error);
+        return errorResponse(res, error);
+    }
+});
+
+// Approve a storage extension request
+router.post("/storage-extensions/:id/approve", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const extensionId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+
+        if (isNaN(extensionId) || extensionId <= 0) {
+            return res.status(400).json({ error: "Invalid extension ID" });
+        }
+
+        // Get the extension with location verification
+        const [extension] = await db
+            .select({
+                id: pendingStorageExtensions.id,
+                storageBookingId: pendingStorageExtensions.storageBookingId,
+                newEndDate: pendingStorageExtensions.newEndDate,
+                extensionDays: pendingStorageExtensions.extensionDays,
+                status: pendingStorageExtensions.status,
+                locationManagerId: locations.managerId,
+                chefId: storageBookingsTable.chefId,
+                chefEmail: users.username,
+                storageName: storageListings.name,
+            })
+            .from(pendingStorageExtensions)
+            .innerJoin(storageBookingsTable, eq(pendingStorageExtensions.storageBookingId, storageBookingsTable.id))
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .innerJoin(users, eq(storageBookingsTable.chefId, users.id))
+            .where(eq(pendingStorageExtensions.id, extensionId))
+            .limit(1);
+
+        if (!extension) {
+            return res.status(404).json({ error: "Extension request not found" });
+        }
+
+        // Verify manager owns this location
+        if (extension.locationManagerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to approve this extension" });
+        }
+
+        // Verify extension is in 'paid' status
+        if (extension.status !== "paid") {
+            return res.status(400).json({ error: `Cannot approve extension with status '${extension.status}'` });
+        }
+
+        // Update extension status to approved
+        await db
+            .update(pendingStorageExtensions)
+            .set({
+                status: "approved",
+                managerId: managerId,
+                approvedAt: new Date(),
+                updatedAt: new Date(),
+            })
+            .where(eq(pendingStorageExtensions.id, extensionId));
+
+        // Actually extend the storage booking
+        await bookingService.extendStorageBooking(extension.storageBookingId, extension.newEndDate);
+
+        // Update extension to completed
+        await db
+            .update(pendingStorageExtensions)
+            .set({
+                status: "completed",
+                completedAt: new Date(),
+                updatedAt: new Date(),
+            })
+            .where(eq(pendingStorageExtensions.id, extensionId));
+
+        logger.info(`[Manager] Storage extension ${extensionId} approved by manager ${managerId}`, {
+            storageBookingId: extension.storageBookingId,
+            newEndDate: extension.newEndDate,
+            extensionDays: extension.extensionDays,
+        });
+
+        // TODO: Send notification to chef about approval
+
+        res.json({
+            success: true,
+            message: "Storage extension approved successfully",
+            extension: {
+                id: extensionId,
+                storageBookingId: extension.storageBookingId,
+                newEndDate: extension.newEndDate,
+                status: "completed",
+            },
+        });
+    } catch (error) {
+        logger.error("Error approving storage extension:", error);
+        return errorResponse(res, error);
+    }
+});
+
+// Reject a storage extension request
+router.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const extensionId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const { reason } = req.body;
+
+        if (isNaN(extensionId) || extensionId <= 0) {
+            return res.status(400).json({ error: "Invalid extension ID" });
+        }
+
+        // Get the extension with location verification
+        const [extension] = await db
+            .select({
+                id: pendingStorageExtensions.id,
+                storageBookingId: pendingStorageExtensions.storageBookingId,
+                status: pendingStorageExtensions.status,
+                stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
+                extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
+                locationManagerId: locations.managerId,
+                chefId: storageBookingsTable.chefId,
+                chefEmail: users.username,
+            })
+            .from(pendingStorageExtensions)
+            .innerJoin(storageBookingsTable, eq(pendingStorageExtensions.storageBookingId, storageBookingsTable.id))
+            .innerJoin(storageListings, eq(storageBookingsTable.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .innerJoin(users, eq(storageBookingsTable.chefId, users.id))
+            .where(eq(pendingStorageExtensions.id, extensionId))
+            .limit(1);
+
+        if (!extension) {
+            return res.status(404).json({ error: "Extension request not found" });
+        }
+
+        // Verify manager owns this location
+        if (extension.locationManagerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to reject this extension" });
+        }
+
+        // Verify extension is in 'paid' status
+        if (extension.status !== "paid") {
+            return res.status(400).json({ error: `Cannot reject extension with status '${extension.status}'` });
+        }
+
+        // Update extension status to rejected
+        await db
+            .update(pendingStorageExtensions)
+            .set({
+                status: "rejected",
+                managerId: managerId,
+                rejectedAt: new Date(),
+                rejectionReason: reason || "Extension request declined by manager",
+                updatedAt: new Date(),
+            })
+            .where(eq(pendingStorageExtensions.id, extensionId));
+
+        logger.info(`[Manager] Storage extension ${extensionId} rejected by manager ${managerId}`, {
+            storageBookingId: extension.storageBookingId,
+            reason: reason || "No reason provided",
+        });
+
+        // Process refund if payment was made
+        let refundResult = null;
+        if (extension.stripePaymentIntentId) {
+            try {
+                const { reverseTransferAndRefund } = await import("../services/stripe-service");
+                const { findPaymentTransactionByMetadata, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+
+                const refundAmount = extension.extensionTotalPriceCents;
+
+                // Get the payment transaction to calculate proper reversal amount
+                const paymentTransaction = await findPaymentTransactionByMetadata(
+                    "storage_extension_id",
+                    String(extensionId),
+                    db
+                );
+
+                // Calculate manager's share for transfer reversal
+                let reverseTransferAmount = refundAmount;
+                if (paymentTransaction) {
+                    const serviceFee = parseInt(String(paymentTransaction.service_fee || "0")) || 0;
+                    const managerRevenue = parseInt(String(paymentTransaction.manager_revenue || "0")) || 0;
+                    const totalAmount = parseInt(String(paymentTransaction.amount || "0")) || 0;
+                    const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
+                    reverseTransferAmount = totalAmount > 0
+                        ? Math.round(refundAmount * (managerShare / totalAmount))
+                        : refundAmount;
+                }
+
+                // Process refund with transfer reversal
+                refundResult = await reverseTransferAndRefund(
+                    extension.stripePaymentIntentId,
+                    refundAmount,
+                    "requested_by_customer",
+                    {
+                        reverseTransferAmount,
+                        refundApplicationFee: false,
+                        metadata: {
+                            storage_extension_id: String(extensionId),
+                            storage_booking_id: String(extension.storageBookingId),
+                            rejection_reason: reason || "Extension declined by manager",
+                            manager_id: String(managerId),
+                        },
+                    }
+                );
+
+                logger.info(`[Manager] Refund processed for storage extension ${extensionId}`, {
+                    refundId: refundResult.refundId,
+                    refundAmount: refundResult.refundAmount,
+                    transferReversalId: refundResult.transferReversalId,
+                });
+
+                // Update extension status to refunded
+                await db
+                    .update(pendingStorageExtensions)
+                    .set({
+                        status: "refunded",
+                        updatedAt: new Date(),
+                    })
+                    .where(eq(pendingStorageExtensions.id, extensionId));
+
+                // Update payment transaction if exists
+                if (paymentTransaction) {
+                    await updatePaymentTransaction(
+                        paymentTransaction.id,
+                        {
+                            status: "refunded",
+                            refundAmount: refundResult.refundAmount,
+                            refundId: refundResult.refundId,
+                            refundedAt: new Date(),
+                        },
+                        db
+                    );
+                }
+            } catch (refundError: any) {
+                logger.error(`[Manager] Failed to process refund for extension ${extensionId}:`, refundError);
+                // Continue - extension is rejected, refund can be retried manually
+            }
+        }
+
+        // TODO: Send notification to chef about rejection and refund
+
+        res.json({
+            success: true,
+            message: refundResult 
+                ? "Storage extension rejected and refund processed successfully."
+                : "Storage extension rejected. Refund will be processed.",
+            extension: {
+                id: extensionId,
+                storageBookingId: extension.storageBookingId,
+                status: refundResult ? "refunded" : "rejected",
+            },
+            refund: refundResult ? {
+                refundId: refundResult.refundId,
+                amount: refundResult.refundAmount,
+            } : null,
+        });
+    } catch (error) {
+        logger.error("Error rejecting storage extension:", error);
+        return errorResponse(res, error);
+    }
+});
+
+
 export default router;
 
