@@ -812,7 +812,7 @@ export async function findPaymentTransactionByMetadata(
 ): Promise<PaymentTransactionRecord | null> {
   const result = await db.execute(sql`
     SELECT * FROM payment_transactions
-    WHERE metadata->>${'checkout_session_id'} = ${metadataValue}
+    WHERE metadata->>${metadataKey} = ${metadataValue}
     ORDER BY created_at DESC
     LIMIT 1
   `);

@@ -1506,8 +1506,14 @@ var init_schema = __esm({
       extensionTotalPriceCents: integer("extension_total_price_cents").notNull(),
       stripeSessionId: text("stripe_session_id").notNull(),
       stripePaymentIntentId: text("stripe_payment_intent_id"),
+      // Status flow: pending (awaiting payment) -> paid (awaiting approval) -> approved/rejected -> completed/refunded
       status: text("status").notNull().default("pending"),
-      // pending, completed, failed, expired
+      // pending, paid, approved, rejected, completed, refunded, failed, expired
+      // Manager approval fields
+      managerId: integer("manager_id").references(() => users.id),
+      approvedAt: timestamp("approved_at"),
+      rejectedAt: timestamp("rejected_at"),
+      rejectionReason: text("rejection_reason"),
       createdAt: timestamp("created_at").notNull().defaultNow(),
       updatedAt: timestamp("updated_at").notNull().defaultNow(),
       completedAt: timestamp("completed_at")
@@ -5040,6 +5046,195 @@ var init_microlearning_service = __esm({
       }
     };
     microlearningService = new MicrolearningService();
+  }
+});
+
+// server/services/stripe-checkout-fee-service.ts
+var stripe_checkout_fee_service_exports = {};
+__export(stripe_checkout_fee_service_exports, {
+  DEFAULT_FEE_CONFIG: () => DEFAULT_FEE_CONFIG,
+  FEE_CONFIG: () => FEE_CONFIG,
+  calculateCheckoutFees: () => calculateCheckoutFees,
+  calculateCheckoutFeesAsync: () => calculateCheckoutFeesAsync,
+  calculateCheckoutFeesWithRates: () => calculateCheckoutFeesWithRates,
+  clearFeeConfigCache: () => clearFeeConfigCache,
+  getFeeConfig: () => getFeeConfig
+});
+async function getFeeConfig() {
+  if (feeConfigCache && Date.now() - feeConfigCache.timestamp < CACHE_TTL_MS) {
+    return feeConfigCache.config;
+  }
+  try {
+    const allSettings = await db.select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings);
+    const settingsMap = new Map(allSettings.map((s) => [s.key, s.value]));
+    const parseFloatOrDefault = (value, defaultValue) => {
+      if (value === void 0 || value === "") return defaultValue;
+      const parsed = parseFloat(value);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+    const parseIntOrDefault = (value, defaultValue) => {
+      if (value === void 0 || value === "") return defaultValue;
+      const parsed = parseInt(value, 10);
+      return isNaN(parsed) ? defaultValue : parsed;
+    };
+    const config = {
+      stripePercentageFee: parseFloatOrDefault(settingsMap.get("stripe_percentage_fee"), DEFAULT_FEE_CONFIG.stripePercentageFee),
+      stripeFlatFeeCents: parseIntOrDefault(settingsMap.get("stripe_flat_fee_cents"), DEFAULT_FEE_CONFIG.stripeFlatFeeCents),
+      platformCommissionRate: parseFloatOrDefault(settingsMap.get("platform_commission_rate"), DEFAULT_FEE_CONFIG.platformCommissionRate),
+      minimumApplicationFeeCents: parseIntOrDefault(settingsMap.get("minimum_application_fee_cents"), DEFAULT_FEE_CONFIG.minimumApplicationFeeCents),
+      useStripePlatformPricing: settingsMap.get("use_stripe_platform_pricing") === "true"
+    };
+    if (config.stripePercentageFee < 0 || config.stripePercentageFee > 1) {
+      console.warn("Invalid stripe_percentage_fee, using default");
+      config.stripePercentageFee = DEFAULT_FEE_CONFIG.stripePercentageFee;
+    }
+    if (config.platformCommissionRate < 0 || config.platformCommissionRate > 1) {
+      console.warn("Invalid platform_commission_rate, using default");
+      config.platformCommissionRate = DEFAULT_FEE_CONFIG.platformCommissionRate;
+    }
+    feeConfigCache = { config, timestamp: Date.now() };
+    return config;
+  } catch (error) {
+    console.error("Error fetching fee config from database, using defaults:", error);
+    return DEFAULT_FEE_CONFIG;
+  }
+}
+function clearFeeConfigCache() {
+  feeConfigCache = null;
+}
+function calculateCheckoutFees(bookingPrice, options) {
+  if (bookingPrice <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  const platformCommissionRate = options?.platformCommissionRate ?? FEE_CONFIG.PLATFORM_COMMISSION_RATE;
+  const chargeFeesToCustomer = options?.chargeFeesToCustomer ?? false;
+  const bookingPriceInCents = Math.round(bookingPrice * 100);
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * FEE_CONFIG.STRIPE_PERCENTAGE_FEE + FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
+  );
+  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, FEE_CONFIG.MINIMUM_APPLICATION_FEE_CENTS);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error(
+      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+    );
+  }
+  const totalChargeInCents = chargeFeesToCustomer ? bookingPriceInCents + totalPlatformFeeInCents : bookingPriceInCents;
+  return {
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents,
+    managerReceivesInCents,
+    // Legacy fields for backward compatibility
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
+  };
+}
+function calculateCheckoutFeesWithRates(bookingPrice, stripePercentage, stripeFlatCents, platformCommissionRate, minimumFeeCents = 50) {
+  if (bookingPrice <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  const bookingPriceInCents = Math.round(bookingPrice * 100);
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * stripePercentage + stripeFlatCents
+  );
+  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, minimumFeeCents);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error("Total fees exceed booking price");
+  }
+  return {
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents: bookingPriceInCents,
+    managerReceivesInCents,
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: stripeFlatCents
+  };
+}
+async function calculateCheckoutFeesAsync(bookingPriceInCents) {
+  if (bookingPriceInCents <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  const config = await getFeeConfig();
+  if (config.useStripePlatformPricing) {
+    return {
+      bookingPriceInCents,
+      stripeProcessingFeeInCents: 0,
+      platformCommissionInCents: 0,
+      totalPlatformFeeInCents: 0,
+      totalChargeInCents: bookingPriceInCents,
+      managerReceivesInCents: bookingPriceInCents,
+      percentageFeeInCents: 0,
+      flatFeeInCents: 0,
+      useStripePlatformPricing: true
+    };
+  }
+  const stripeProcessingFeeInCents = Math.round(
+    bookingPriceInCents * config.stripePercentageFee + config.stripeFlatFeeCents
+  );
+  const platformCommissionInCents = Math.round(
+    bookingPriceInCents * config.platformCommissionRate
+  );
+  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
+  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
+  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
+  if (managerReceivesInCents <= 0) {
+    throw new Error(
+      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
+    );
+  }
+  return {
+    bookingPriceInCents,
+    stripeProcessingFeeInCents,
+    platformCommissionInCents,
+    totalPlatformFeeInCents,
+    totalChargeInCents: bookingPriceInCents,
+    managerReceivesInCents,
+    percentageFeeInCents: stripeProcessingFeeInCents,
+    flatFeeInCents: config.stripeFlatFeeCents,
+    useStripePlatformPricing: false
+  };
+}
+var DEFAULT_FEE_CONFIG, feeConfigCache, CACHE_TTL_MS, FEE_CONFIG;
+var init_stripe_checkout_fee_service = __esm({
+  "server/services/stripe-checkout-fee-service.ts"() {
+    "use strict";
+    init_db();
+    init_schema();
+    DEFAULT_FEE_CONFIG = {
+      stripePercentageFee: 0.029,
+      // 2.9% - Stripe Canada card processing fee
+      stripeFlatFeeCents: 30,
+      // $0.30 CAD - Stripe Canada flat fee per transaction
+      platformCommissionRate: 0,
+      // 0% platform commission for break-even
+      minimumApplicationFeeCents: 0,
+      // No minimum for break-even mode
+      useStripePlatformPricing: false
+    };
+    feeConfigCache = null;
+    CACHE_TTL_MS = 5 * 60 * 1e3;
+    FEE_CONFIG = {
+      // Stripe processing fees (Canada)
+      STRIPE_PERCENTAGE_FEE: DEFAULT_FEE_CONFIG.stripePercentageFee,
+      // 2.9%
+      STRIPE_FLAT_FEE_CENTS: DEFAULT_FEE_CONFIG.stripeFlatFeeCents,
+      // $0.30 CAD
+      // Platform commission (0% for break-even)
+      PLATFORM_COMMISSION_RATE: DEFAULT_FEE_CONFIG.platformCommissionRate,
+      // 0%
+      MINIMUM_APPLICATION_FEE_CENTS: DEFAULT_FEE_CONFIG.minimumApplicationFeeCents
+      // 0
+    };
   }
 });
 
@@ -9370,12 +9565,16 @@ var init_booking_repository = __esm({
           storageName: storageListings.name,
           storageType: storageListings.storageType,
           kitchenId: storageListings.kitchenId,
-          kitchenName: kitchens.name
+          kitchenName: kitchens.name,
+          basePrice: storageListings.basePrice,
+          minimumBookingDuration: storageListings.minimumBookingDuration
         }).from(storageBookings).innerJoin(storageListings, eq13(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq13(storageListings.kitchenId, kitchens.id)).where(eq13(storageBookings.chefId, chefId)).orderBy(desc7(storageBookings.startDate));
         return result.map((row) => ({
           ...row,
           totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
-          serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0
+          serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+          basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
+          minimumBookingDuration: row.minimumBookingDuration || 1
         }));
       }
       async getStorageBookingById(id) {
@@ -13595,7 +13794,7 @@ async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
 async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2) {
   const result = await db2.execute(sql8`
     SELECT * FROM payment_transactions
-    WHERE metadata->>${"checkout_session_id"} = ${metadataValue}
+    WHERE metadata->>${metadataKey} = ${metadataValue}
     ORDER BY created_at DESC
     LIMIT 1
   `);
@@ -14109,6 +14308,7 @@ var init_manager = __esm({
     init_location_service();
     init_chef_service();
     init_manager_service();
+    init_schema();
     router13 = Router13();
     router13.get("/revenue/overview", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
@@ -15948,6 +16148,216 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
+    router13.get("/storage-extensions/pending", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const managerId = req.neonUser.id;
+        const pendingExtensions = await db.select({
+          id: pendingStorageExtensions.id,
+          storageBookingId: pendingStorageExtensions.storageBookingId,
+          newEndDate: pendingStorageExtensions.newEndDate,
+          extensionDays: pendingStorageExtensions.extensionDays,
+          extensionBasePriceCents: pendingStorageExtensions.extensionBasePriceCents,
+          extensionServiceFeeCents: pendingStorageExtensions.extensionServiceFeeCents,
+          extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
+          status: pendingStorageExtensions.status,
+          createdAt: pendingStorageExtensions.createdAt,
+          // Storage booking details
+          currentEndDate: storageBookings.endDate,
+          storageName: storageListings.name,
+          storageType: storageListings.storageType,
+          // Chef details
+          chefId: storageBookings.chefId,
+          chefEmail: users.username,
+          // Kitchen/Location details
+          kitchenName: kitchens.name,
+          locationId: locations.id
+        }).from(pendingStorageExtensions).innerJoin(storageBookings, eq22(pendingStorageExtensions.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq22(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq22(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq22(kitchens.locationId, locations.id)).innerJoin(users, eq22(storageBookings.chefId, users.id)).where(
+          and14(
+            eq22(locations.managerId, managerId),
+            eq22(pendingStorageExtensions.status, "paid")
+            // Only show paid extensions awaiting approval
+          )
+        ).orderBy(desc11(pendingStorageExtensions.createdAt));
+        res.json(pendingExtensions);
+      } catch (error) {
+        logger.error("Error fetching pending storage extensions:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router13.post("/storage-extensions/:id/approve", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const extensionId = parseInt(req.params.id);
+        const managerId = req.neonUser.id;
+        if (isNaN(extensionId) || extensionId <= 0) {
+          return res.status(400).json({ error: "Invalid extension ID" });
+        }
+        const [extension] = await db.select({
+          id: pendingStorageExtensions.id,
+          storageBookingId: pendingStorageExtensions.storageBookingId,
+          newEndDate: pendingStorageExtensions.newEndDate,
+          extensionDays: pendingStorageExtensions.extensionDays,
+          status: pendingStorageExtensions.status,
+          locationManagerId: locations.managerId,
+          chefId: storageBookings.chefId,
+          chefEmail: users.username,
+          storageName: storageListings.name
+        }).from(pendingStorageExtensions).innerJoin(storageBookings, eq22(pendingStorageExtensions.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq22(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq22(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq22(kitchens.locationId, locations.id)).innerJoin(users, eq22(storageBookings.chefId, users.id)).where(eq22(pendingStorageExtensions.id, extensionId)).limit(1);
+        if (!extension) {
+          return res.status(404).json({ error: "Extension request not found" });
+        }
+        if (extension.locationManagerId !== managerId) {
+          return res.status(403).json({ error: "Not authorized to approve this extension" });
+        }
+        if (extension.status !== "paid") {
+          return res.status(400).json({ error: `Cannot approve extension with status '${extension.status}'` });
+        }
+        await db.update(pendingStorageExtensions).set({
+          status: "approved",
+          managerId,
+          approvedAt: /* @__PURE__ */ new Date(),
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq22(pendingStorageExtensions.id, extensionId));
+        await bookingService.extendStorageBooking(extension.storageBookingId, extension.newEndDate);
+        await db.update(pendingStorageExtensions).set({
+          status: "completed",
+          completedAt: /* @__PURE__ */ new Date(),
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq22(pendingStorageExtensions.id, extensionId));
+        logger.info(`[Manager] Storage extension ${extensionId} approved by manager ${managerId}`, {
+          storageBookingId: extension.storageBookingId,
+          newEndDate: extension.newEndDate,
+          extensionDays: extension.extensionDays
+        });
+        res.json({
+          success: true,
+          message: "Storage extension approved successfully",
+          extension: {
+            id: extensionId,
+            storageBookingId: extension.storageBookingId,
+            newEndDate: extension.newEndDate,
+            status: "completed"
+          }
+        });
+      } catch (error) {
+        logger.error("Error approving storage extension:", error);
+        return errorResponse(res, error);
+      }
+    });
+    router13.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const extensionId = parseInt(req.params.id);
+        const managerId = req.neonUser.id;
+        const { reason } = req.body;
+        if (isNaN(extensionId) || extensionId <= 0) {
+          return res.status(400).json({ error: "Invalid extension ID" });
+        }
+        const [extension] = await db.select({
+          id: pendingStorageExtensions.id,
+          storageBookingId: pendingStorageExtensions.storageBookingId,
+          status: pendingStorageExtensions.status,
+          stripePaymentIntentId: pendingStorageExtensions.stripePaymentIntentId,
+          extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
+          locationManagerId: locations.managerId,
+          chefId: storageBookings.chefId,
+          chefEmail: users.username
+        }).from(pendingStorageExtensions).innerJoin(storageBookings, eq22(pendingStorageExtensions.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq22(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq22(storageListings.kitchenId, kitchens.id)).innerJoin(locations, eq22(kitchens.locationId, locations.id)).innerJoin(users, eq22(storageBookings.chefId, users.id)).where(eq22(pendingStorageExtensions.id, extensionId)).limit(1);
+        if (!extension) {
+          return res.status(404).json({ error: "Extension request not found" });
+        }
+        if (extension.locationManagerId !== managerId) {
+          return res.status(403).json({ error: "Not authorized to reject this extension" });
+        }
+        if (extension.status !== "paid") {
+          return res.status(400).json({ error: `Cannot reject extension with status '${extension.status}'` });
+        }
+        await db.update(pendingStorageExtensions).set({
+          status: "rejected",
+          managerId,
+          rejectedAt: /* @__PURE__ */ new Date(),
+          rejectionReason: reason || "Extension request declined by manager",
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq22(pendingStorageExtensions.id, extensionId));
+        logger.info(`[Manager] Storage extension ${extensionId} rejected by manager ${managerId}`, {
+          storageBookingId: extension.storageBookingId,
+          reason: reason || "No reason provided"
+        });
+        let refundResult = null;
+        if (extension.stripePaymentIntentId) {
+          try {
+            const { reverseTransferAndRefund: reverseTransferAndRefund2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+            const { findPaymentTransactionByMetadata: findPaymentTransactionByMetadata2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+            const refundAmount = extension.extensionTotalPriceCents;
+            const paymentTransaction = await findPaymentTransactionByMetadata2(
+              "storage_extension_id",
+              String(extensionId),
+              db
+            );
+            let reverseTransferAmount = refundAmount;
+            if (paymentTransaction) {
+              const serviceFee = parseInt(String(paymentTransaction.service_fee || "0")) || 0;
+              const managerRevenue = parseInt(String(paymentTransaction.manager_revenue || "0")) || 0;
+              const totalAmount = parseInt(String(paymentTransaction.amount || "0")) || 0;
+              const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
+              reverseTransferAmount = totalAmount > 0 ? Math.round(refundAmount * (managerShare / totalAmount)) : refundAmount;
+            }
+            refundResult = await reverseTransferAndRefund2(
+              extension.stripePaymentIntentId,
+              refundAmount,
+              "requested_by_customer",
+              {
+                reverseTransferAmount,
+                refundApplicationFee: false,
+                metadata: {
+                  storage_extension_id: String(extensionId),
+                  storage_booking_id: String(extension.storageBookingId),
+                  rejection_reason: reason || "Extension declined by manager",
+                  manager_id: String(managerId)
+                }
+              }
+            );
+            logger.info(`[Manager] Refund processed for storage extension ${extensionId}`, {
+              refundId: refundResult.refundId,
+              refundAmount: refundResult.refundAmount,
+              transferReversalId: refundResult.transferReversalId
+            });
+            await db.update(pendingStorageExtensions).set({
+              status: "refunded",
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq22(pendingStorageExtensions.id, extensionId));
+            if (paymentTransaction) {
+              await updatePaymentTransaction2(
+                paymentTransaction.id,
+                {
+                  status: "refunded",
+                  refundAmount: refundResult.refundAmount,
+                  refundId: refundResult.refundId,
+                  refundedAt: /* @__PURE__ */ new Date()
+                },
+                db
+              );
+            }
+          } catch (refundError) {
+            logger.error(`[Manager] Failed to process refund for extension ${extensionId}:`, refundError);
+          }
+        }
+        res.json({
+          success: true,
+          message: refundResult ? "Storage extension rejected and refund processed successfully." : "Storage extension rejected. Refund will be processed.",
+          extension: {
+            id: extensionId,
+            storageBookingId: extension.storageBookingId,
+            status: refundResult ? "refunded" : "rejected"
+          },
+          refund: refundResult ? {
+            refundId: refundResult.refundId,
+            amount: refundResult.refundAmount
+          } : null
+        });
+      } catch (error) {
+        logger.error("Error rejecting storage extension:", error);
+        return errorResponse(res, error);
+      }
+    });
     manager_default = router13;
   }
 });
@@ -16764,195 +17174,6 @@ var init_kitchens = __esm({
   }
 });
 
-// server/services/stripe-checkout-fee-service.ts
-var stripe_checkout_fee_service_exports = {};
-__export(stripe_checkout_fee_service_exports, {
-  DEFAULT_FEE_CONFIG: () => DEFAULT_FEE_CONFIG,
-  FEE_CONFIG: () => FEE_CONFIG,
-  calculateCheckoutFees: () => calculateCheckoutFees,
-  calculateCheckoutFeesAsync: () => calculateCheckoutFeesAsync,
-  calculateCheckoutFeesWithRates: () => calculateCheckoutFeesWithRates,
-  clearFeeConfigCache: () => clearFeeConfigCache,
-  getFeeConfig: () => getFeeConfig
-});
-async function getFeeConfig() {
-  if (feeConfigCache && Date.now() - feeConfigCache.timestamp < CACHE_TTL_MS) {
-    return feeConfigCache.config;
-  }
-  try {
-    const allSettings = await db.select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings);
-    const settingsMap = new Map(allSettings.map((s) => [s.key, s.value]));
-    const parseFloatOrDefault = (value, defaultValue) => {
-      if (value === void 0 || value === "") return defaultValue;
-      const parsed = parseFloat(value);
-      return isNaN(parsed) ? defaultValue : parsed;
-    };
-    const parseIntOrDefault = (value, defaultValue) => {
-      if (value === void 0 || value === "") return defaultValue;
-      const parsed = parseInt(value, 10);
-      return isNaN(parsed) ? defaultValue : parsed;
-    };
-    const config = {
-      stripePercentageFee: parseFloatOrDefault(settingsMap.get("stripe_percentage_fee"), DEFAULT_FEE_CONFIG.stripePercentageFee),
-      stripeFlatFeeCents: parseIntOrDefault(settingsMap.get("stripe_flat_fee_cents"), DEFAULT_FEE_CONFIG.stripeFlatFeeCents),
-      platformCommissionRate: parseFloatOrDefault(settingsMap.get("platform_commission_rate"), DEFAULT_FEE_CONFIG.platformCommissionRate),
-      minimumApplicationFeeCents: parseIntOrDefault(settingsMap.get("minimum_application_fee_cents"), DEFAULT_FEE_CONFIG.minimumApplicationFeeCents),
-      useStripePlatformPricing: settingsMap.get("use_stripe_platform_pricing") === "true"
-    };
-    if (config.stripePercentageFee < 0 || config.stripePercentageFee > 1) {
-      console.warn("Invalid stripe_percentage_fee, using default");
-      config.stripePercentageFee = DEFAULT_FEE_CONFIG.stripePercentageFee;
-    }
-    if (config.platformCommissionRate < 0 || config.platformCommissionRate > 1) {
-      console.warn("Invalid platform_commission_rate, using default");
-      config.platformCommissionRate = DEFAULT_FEE_CONFIG.platformCommissionRate;
-    }
-    feeConfigCache = { config, timestamp: Date.now() };
-    return config;
-  } catch (error) {
-    console.error("Error fetching fee config from database, using defaults:", error);
-    return DEFAULT_FEE_CONFIG;
-  }
-}
-function clearFeeConfigCache() {
-  feeConfigCache = null;
-}
-function calculateCheckoutFees(bookingPrice, options) {
-  if (bookingPrice <= 0) {
-    throw new Error("Booking price must be greater than 0");
-  }
-  const platformCommissionRate = options?.platformCommissionRate ?? FEE_CONFIG.PLATFORM_COMMISSION_RATE;
-  const chargeFeesToCustomer = options?.chargeFeesToCustomer ?? false;
-  const bookingPriceInCents = Math.round(bookingPrice * 100);
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * FEE_CONFIG.STRIPE_PERCENTAGE_FEE + FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
-  );
-  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
-  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
-  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, FEE_CONFIG.MINIMUM_APPLICATION_FEE_CENTS);
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
-  if (managerReceivesInCents <= 0) {
-    throw new Error(
-      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
-    );
-  }
-  const totalChargeInCents = chargeFeesToCustomer ? bookingPriceInCents + totalPlatformFeeInCents : bookingPriceInCents;
-  return {
-    bookingPriceInCents,
-    stripeProcessingFeeInCents,
-    platformCommissionInCents,
-    totalPlatformFeeInCents,
-    totalChargeInCents,
-    managerReceivesInCents,
-    // Legacy fields for backward compatibility
-    percentageFeeInCents: stripeProcessingFeeInCents,
-    flatFeeInCents: FEE_CONFIG.STRIPE_FLAT_FEE_CENTS
-  };
-}
-function calculateCheckoutFeesWithRates(bookingPrice, stripePercentage, stripeFlatCents, platformCommissionRate, minimumFeeCents = 50) {
-  if (bookingPrice <= 0) {
-    throw new Error("Booking price must be greater than 0");
-  }
-  const bookingPriceInCents = Math.round(bookingPrice * 100);
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * stripePercentage + stripeFlatCents
-  );
-  const platformCommissionInCents = Math.round(bookingPriceInCents * platformCommissionRate);
-  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
-  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, minimumFeeCents);
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
-  if (managerReceivesInCents <= 0) {
-    throw new Error("Total fees exceed booking price");
-  }
-  return {
-    bookingPriceInCents,
-    stripeProcessingFeeInCents,
-    platformCommissionInCents,
-    totalPlatformFeeInCents,
-    totalChargeInCents: bookingPriceInCents,
-    managerReceivesInCents,
-    percentageFeeInCents: stripeProcessingFeeInCents,
-    flatFeeInCents: stripeFlatCents
-  };
-}
-async function calculateCheckoutFeesAsync(bookingPriceInCents) {
-  if (bookingPriceInCents <= 0) {
-    throw new Error("Booking price must be greater than 0");
-  }
-  const config = await getFeeConfig();
-  if (config.useStripePlatformPricing) {
-    return {
-      bookingPriceInCents,
-      stripeProcessingFeeInCents: 0,
-      platformCommissionInCents: 0,
-      totalPlatformFeeInCents: 0,
-      totalChargeInCents: bookingPriceInCents,
-      managerReceivesInCents: bookingPriceInCents,
-      percentageFeeInCents: 0,
-      flatFeeInCents: 0,
-      useStripePlatformPricing: true
-    };
-  }
-  const stripeProcessingFeeInCents = Math.round(
-    bookingPriceInCents * config.stripePercentageFee + config.stripeFlatFeeCents
-  );
-  const platformCommissionInCents = Math.round(
-    bookingPriceInCents * config.platformCommissionRate
-  );
-  let totalPlatformFeeInCents = stripeProcessingFeeInCents + platformCommissionInCents;
-  totalPlatformFeeInCents = Math.max(totalPlatformFeeInCents, config.minimumApplicationFeeCents);
-  const managerReceivesInCents = bookingPriceInCents - totalPlatformFeeInCents;
-  if (managerReceivesInCents <= 0) {
-    throw new Error(
-      `Application fee (${totalPlatformFeeInCents} cents) cannot exceed booking price (${bookingPriceInCents} cents)`
-    );
-  }
-  return {
-    bookingPriceInCents,
-    stripeProcessingFeeInCents,
-    platformCommissionInCents,
-    totalPlatformFeeInCents,
-    totalChargeInCents: bookingPriceInCents,
-    managerReceivesInCents,
-    percentageFeeInCents: stripeProcessingFeeInCents,
-    flatFeeInCents: config.stripeFlatFeeCents,
-    useStripePlatformPricing: false
-  };
-}
-var DEFAULT_FEE_CONFIG, feeConfigCache, CACHE_TTL_MS, FEE_CONFIG;
-var init_stripe_checkout_fee_service = __esm({
-  "server/services/stripe-checkout-fee-service.ts"() {
-    "use strict";
-    init_db();
-    init_schema();
-    DEFAULT_FEE_CONFIG = {
-      stripePercentageFee: 0.029,
-      // 2.9% - Stripe Canada card processing fee
-      stripeFlatFeeCents: 30,
-      // $0.30 CAD - Stripe Canada flat fee per transaction
-      platformCommissionRate: 0,
-      // 0% platform commission for break-even
-      minimumApplicationFeeCents: 0,
-      // No minimum for break-even mode
-      useStripePlatformPricing: false
-    };
-    feeConfigCache = null;
-    CACHE_TTL_MS = 5 * 60 * 1e3;
-    FEE_CONFIG = {
-      // Stripe processing fees (Canada)
-      STRIPE_PERCENTAGE_FEE: DEFAULT_FEE_CONFIG.stripePercentageFee,
-      // 2.9%
-      STRIPE_FLAT_FEE_CENTS: DEFAULT_FEE_CONFIG.stripeFlatFeeCents,
-      // $0.30 CAD
-      // Platform commission (0% for break-even)
-      PLATFORM_COMMISSION_RATE: DEFAULT_FEE_CONFIG.platformCommissionRate,
-      // 0%
-      MINIMUM_APPLICATION_FEE_CENTS: DEFAULT_FEE_CONFIG.minimumApplicationFeeCents
-      // 0
-    };
-  }
-});
-
 // server/services/stripe-checkout-service.ts
 var stripe_checkout_service_exports = {};
 __export(stripe_checkout_service_exports, {
@@ -17236,6 +17457,12 @@ __export(bookings_exports, {
 });
 import { Router as Router17 } from "express";
 import { eq as eq26, and as and17 } from "drizzle-orm";
+function getBaseUrl(req) {
+  const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
+  const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
+  const protocol = isLocalhost ? "http" : req.get("x-forwarded-proto") || "https";
+  return `${protocol}://${host}`;
+}
 var router17, bookings_default;
 var init_bookings = __esm({
   "server/routes/bookings.ts"() {
@@ -17285,9 +17512,7 @@ var init_bookings = __esm({
         }
         const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
         const feeCalculation = await calculateCheckoutFeesAsync2(Math.round(bookingPriceNum * 100));
-        const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
-        const host = req.get("x-forwarded-host") || req.get("host") || "localhost:3000";
-        const baseUrl = `${protocol}://${host}`;
+        const baseUrl = getBaseUrl(req);
         const { createCheckoutSession: createCheckoutSession2 } = await Promise.resolve().then(() => (init_stripe_checkout_service(), stripe_checkout_service_exports));
         const checkoutSession = await createCheckoutSession2({
           bookingPriceInCents: feeCalculation.bookingPriceInCents,
@@ -17539,10 +17764,8 @@ var init_bookings = __esm({
         }
         const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
         const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
-        const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
-        const serviceFeeRate = await getServiceFeeRate2();
-        const extensionServiceFeeCents = Math.round(extensionBasePriceCents * serviceFeeRate);
-        const extensionTotalPriceCents = extensionBasePriceCents + extensionServiceFeeCents;
+        const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+        const feeCalculation = await calculateCheckoutFeesAsync2(extensionBasePriceCents);
         const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
         if (!storageListing) {
           return res.status(404).json({ error: "Storage listing not found" });
@@ -17570,21 +17793,18 @@ var init_bookings = __esm({
           return res.status(400).json({ error: "Chef email not found" });
         }
         const chefEmail = chef.username;
-        const protocol = req.get("x-forwarded-proto") || "https";
-        const host = req.get("x-forwarded-host") || req.get("host") || "localhost:3000";
-        const baseUrl = `${protocol}://${host}`;
+        const baseUrl = getBaseUrl(req);
         const { createCheckoutSession: createCheckoutSession2 } = await Promise.resolve().then(() => (init_stripe_checkout_service(), stripe_checkout_service_exports));
-        const platformFeeCents = extensionServiceFeeCents > 0 ? extensionServiceFeeCents : 1;
         const checkoutSession = await createCheckoutSession2({
-          bookingPriceInCents: extensionBasePriceCents,
-          platformFeeInCents: platformFeeCents,
+          bookingPriceInCents: feeCalculation.bookingPriceInCents,
+          platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
           managerStripeAccountId,
           customerEmail: chefEmail,
           bookingId: id,
           // Using storage booking ID
           currency: "cad",
-          successUrl: `${baseUrl}/chef/bookings?storage_extended=true&storage_booking_id=${id}`,
-          cancelUrl: `${baseUrl}/chef/bookings?storage_extension_cancelled=true&storage_booking_id=${id}`,
+          successUrl: `${baseUrl}/dashboard?storage_extended=true&storage_booking_id=${id}`,
+          cancelUrl: `${baseUrl}/dashboard?storage_extension_cancelled=true&storage_booking_id=${id}`,
           metadata: {
             type: "storage_extension",
             storage_booking_id: id.toString(),
@@ -17596,31 +17816,166 @@ var init_bookings = __esm({
             location_id: location.id.toString()
           }
         });
-        await bookingService.createPendingStorageExtension({
+        const pendingExtension = await bookingService.createPendingStorageExtension({
           storageBookingId: id,
           newEndDate: newEndDateObj,
           extensionDays,
-          extensionBasePriceCents,
-          extensionServiceFeeCents,
-          extensionTotalPriceCents,
+          extensionBasePriceCents: feeCalculation.bookingPriceInCents,
+          extensionServiceFeeCents: feeCalculation.totalPlatformFeeInCents,
+          extensionTotalPriceCents: feeCalculation.totalChargeInCents,
           stripeSessionId: checkoutSession.sessionId,
           status: "pending"
         });
+        try {
+          const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          await createPaymentTransaction2({
+            bookingId: id,
+            bookingType: "storage",
+            chefId: req.neonUser.id,
+            managerId: location.managerId,
+            amount: feeCalculation.totalChargeInCents,
+            baseAmount: feeCalculation.bookingPriceInCents,
+            serviceFee: feeCalculation.totalPlatformFeeInCents,
+            managerRevenue: feeCalculation.managerReceivesInCents,
+            currency: "CAD",
+            paymentIntentId: void 0,
+            // Will be set when checkout completes
+            status: "pending",
+            metadata: {
+              checkout_session_id: checkoutSession.sessionId,
+              storage_booking_id: id.toString(),
+              storage_extension_id: pendingExtension.id.toString(),
+              extension_days: extensionDays.toString(),
+              new_end_date: newEndDateObj.toISOString()
+            }
+          }, db);
+          console.log(`[Storage Extension Checkout] Created payment_transactions record for storage booking ${id}, extension ${pendingExtension.id}`);
+        } catch (ptError) {
+          console.warn(`[Storage Extension Checkout] Could not create payment_transactions record:`, ptError);
+        }
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
           extension: {
             storageBookingId: id,
             extensionDays,
-            extensionBasePrice: extensionBasePriceCents / 100,
-            extensionServiceFee: extensionServiceFeeCents / 100,
-            extensionTotalPrice: extensionTotalPriceCents / 100,
+            extensionBasePrice: feeCalculation.bookingPriceInCents / 100,
+            extensionServiceFee: feeCalculation.totalPlatformFeeInCents / 100,
+            extensionTotalPrice: feeCalculation.totalChargeInCents / 100,
             newEndDate: newEndDateObj.toISOString()
+          },
+          booking: {
+            price: feeCalculation.bookingPriceInCents / 100,
+            platformFee: feeCalculation.totalPlatformFeeInCents / 100,
+            total: feeCalculation.totalChargeInCents / 100
           }
         });
       } catch (error) {
         console.error("Error creating storage extension checkout:", error);
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
+      }
+    });
+    router17.get("/chef/storage-extensions/pending", requireChef, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { pendingStorageExtensions: pendingStorageExtensions2, storageBookings: storageBookings2, storageListings: storageListings3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const extensions = await db.select({
+          id: pendingStorageExtensions2.id,
+          storageBookingId: pendingStorageExtensions2.storageBookingId,
+          newEndDate: pendingStorageExtensions2.newEndDate,
+          extensionDays: pendingStorageExtensions2.extensionDays,
+          extensionBasePriceCents: pendingStorageExtensions2.extensionBasePriceCents,
+          extensionTotalPriceCents: pendingStorageExtensions2.extensionTotalPriceCents,
+          status: pendingStorageExtensions2.status,
+          createdAt: pendingStorageExtensions2.createdAt,
+          approvedAt: pendingStorageExtensions2.approvedAt,
+          rejectedAt: pendingStorageExtensions2.rejectedAt,
+          rejectionReason: pendingStorageExtensions2.rejectionReason,
+          // Storage booking details
+          currentEndDate: storageBookings2.endDate,
+          storageName: storageListings3.name,
+          storageType: storageListings3.storageType,
+          kitchenName: kitchens.name
+        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq26(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).innerJoin(storageListings3, eq26(storageBookings2.storageListingId, storageListings3.id)).innerJoin(kitchens, eq26(storageListings3.kitchenId, kitchens.id)).where(eq26(storageBookings2.chefId, chefId)).orderBy(pendingStorageExtensions2.createdAt);
+        res.json(extensions);
+      } catch (error) {
+        console.error("Error fetching chef's pending storage extensions:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch pending extensions" });
+      }
+    });
+    router17.post("/storage-extensions/:id/sync", requireChef, async (req, res) => {
+      try {
+        const extensionId = parseInt(req.params.id);
+        const chefId = req.neonUser.id;
+        if (isNaN(extensionId) || extensionId <= 0) {
+          return res.status(400).json({ error: "Invalid extension ID" });
+        }
+        const { pendingStorageExtensions: pendingStorageExtensions2, storageBookings: storageBookings2 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const [extension] = await db.select({
+          id: pendingStorageExtensions2.id,
+          storageBookingId: pendingStorageExtensions2.storageBookingId,
+          stripeSessionId: pendingStorageExtensions2.stripeSessionId,
+          status: pendingStorageExtensions2.status,
+          chefId: storageBookings2.chefId
+        }).from(pendingStorageExtensions2).innerJoin(storageBookings2, eq26(pendingStorageExtensions2.storageBookingId, storageBookings2.id)).where(eq26(pendingStorageExtensions2.id, extensionId)).limit(1);
+        if (!extension) {
+          return res.status(404).json({ error: "Extension not found" });
+        }
+        if (extension.chefId !== chefId) {
+          return res.status(403).json({ error: "Not authorized" });
+        }
+        if (extension.status !== "pending") {
+          return res.json({
+            message: "Extension already processed",
+            status: extension.status
+          });
+        }
+        const Stripe5 = (await import("stripe")).default;
+        const stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
+        if (!stripeSecretKey4) {
+          return res.status(500).json({ error: "Stripe not configured" });
+        }
+        const stripe4 = new Stripe5(stripeSecretKey4, { apiVersion: "2025-12-15.clover" });
+        const session = await stripe4.checkout.sessions.retrieve(extension.stripeSessionId, {
+          expand: ["payment_intent"]
+        });
+        if (session.payment_status === "paid") {
+          let paymentIntentId;
+          if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
+            paymentIntentId = session.payment_intent.id;
+          } else if (typeof session.payment_intent === "string") {
+            paymentIntentId = session.payment_intent;
+          }
+          await db.update(pendingStorageExtensions2).set({
+            status: "paid",
+            stripePaymentIntentId: paymentIntentId,
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq26(pendingStorageExtensions2.id, extensionId));
+          console.log(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
+          return res.json({
+            success: true,
+            message: "Extension status synced - now awaiting manager approval",
+            status: "paid"
+          });
+        } else if (session.status === "expired") {
+          await db.update(pendingStorageExtensions2).set({
+            status: "expired",
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq26(pendingStorageExtensions2.id, extensionId));
+          return res.json({
+            success: true,
+            message: "Session expired",
+            status: "expired"
+          });
+        }
+        return res.json({
+          message: "Payment not yet completed",
+          stripeStatus: session.payment_status,
+          sessionStatus: session.status
+        });
+      } catch (error) {
+        console.error("Error syncing storage extension:", error);
+        res.status(500).json({ error: error.message || "Failed to sync extension" });
       }
     });
     router17.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
@@ -20239,7 +20594,7 @@ __export(webhooks_exports, {
 });
 import { Router as Router21 } from "express";
 import Stripe4 from "stripe";
-import { eq as eq28, and as and18, ne as ne6, notInArray } from "drizzle-orm";
+import { eq as eq28, and as and18, ne as ne5, notInArray } from "drizzle-orm";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
   if (!pool) {
     logger.error("Database pool not available for webhook");
@@ -20345,7 +20700,13 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
       }
     }
     const metadata = expandedSession.metadata || {};
+    logger.info(`[Webhook] Checkout session metadata:`, {
+      sessionId: session.id,
+      metadataType: metadata.type,
+      allMetadata: metadata
+    });
     if (metadata.type === "storage_extension") {
+      logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`);
       await handleStorageExtensionPaymentCompleted(
         session.id,
         paymentIntentId,
@@ -20376,24 +20737,23 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
       );
       return;
     }
-    if (pendingExtension.status === "completed") {
+    if (pendingExtension.status === "paid" || pendingExtension.status === "completed" || pendingExtension.status === "approved") {
       logger.info(
-        `[Webhook] Storage extension already completed for session ${sessionId}`
+        `[Webhook] Storage extension already processed for session ${sessionId} (status: ${pendingExtension.status})`
       );
       return;
     }
     await bookingService2.updatePendingStorageExtension(pendingExtension.id, {
-      status: "completed",
-      stripePaymentIntentId: paymentIntentId,
-      completedAt: /* @__PURE__ */ new Date()
+      status: "paid",
+      stripePaymentIntentId: paymentIntentId
     });
-    await bookingService2.extendStorageBooking(storageBookingId, newEndDate);
-    logger.info(`[Webhook] Storage extension completed successfully:`, {
+    logger.info(`[Webhook] Storage extension payment received - awaiting manager approval:`, {
       storageBookingId,
       extensionDays,
       newEndDate: newEndDate.toISOString(),
       sessionId,
-      paymentIntentId
+      paymentIntentId,
+      status: "paid"
     });
   } catch (error) {
     logger.error(
@@ -20459,7 +20819,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(
           and18(
             eq28(users.id, transaction.manager_id),
-            ne6(users.stripeConnectAccountId, "")
+            ne5(users.stripeConnectAccountId, "")
           )
         ).limit(1);
         if (manager?.stripeConnectAccountId) {
@@ -20515,7 +20875,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and18(
           eq28(kitchenBookings.paymentIntentId, paymentIntent.id),
-          ne6(kitchenBookings.paymentStatus, "paid")
+          ne5(kitchenBookings.paymentStatus, "paid")
         )
       );
       await tx.update(storageBookings).set({
@@ -20524,7 +20884,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and18(
           eq28(storageBookings.paymentIntentId, paymentIntent.id),
-          ne6(storageBookings.paymentStatus, "paid")
+          ne5(storageBookings.paymentStatus, "paid")
         )
       );
       await tx.update(equipmentBookings).set({
@@ -20533,7 +20893,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and18(
           eq28(equipmentBookings.paymentIntentId, paymentIntent.id),
-          ne6(equipmentBookings.paymentStatus, "paid")
+          ne5(equipmentBookings.paymentStatus, "paid")
         )
       );
     });
@@ -22979,6 +23339,33 @@ init_schema();
 import { Router as Router6 } from "express";
 import { eq as eq6 } from "drizzle-orm";
 var router6 = Router6();
+router6.get("/platform-settings/stripe-fees", async (req, res) => {
+  try {
+    const { getFeeConfig: getFeeConfig2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
+    const config = await getFeeConfig2();
+    return res.json({
+      stripePercentageFee: config.stripePercentageFee,
+      stripeFlatFeeCents: config.stripeFlatFeeCents,
+      platformCommissionRate: config.platformCommissionRate,
+      useStripePlatformPricing: config.useStripePlatformPricing,
+      // Human-readable values
+      stripePercentageDisplay: `${(config.stripePercentageFee * 100).toFixed(1)}%`,
+      stripeFlatFeeDisplay: `$${(config.stripeFlatFeeCents / 100).toFixed(2)}`,
+      platformCommissionDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`
+    });
+  } catch (error) {
+    console.error("Error getting Stripe fee config:", error);
+    return res.json({
+      stripePercentageFee: 0.029,
+      stripeFlatFeeCents: 30,
+      platformCommissionRate: 0,
+      useStripePlatformPricing: false,
+      stripePercentageDisplay: "2.9%",
+      stripeFlatFeeDisplay: "$0.30",
+      platformCommissionDisplay: "0%"
+    });
+  }
+});
 router6.get("/platform-settings/service-fee-rate", async (req, res) => {
   try {
     const [setting] = await db.select().from(platformSettings).where(eq6(platformSettings.key, "service_fee_rate")).limit(1);

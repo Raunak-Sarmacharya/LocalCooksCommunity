@@ -1371,7 +1371,7 @@ export type UpdatePaymentTransaction = z.infer<typeof updatePaymentTransactionSc
 export type PaymentHistory = typeof paymentHistory.$inferSelect;
 
 // ===== PENDING STORAGE EXTENSIONS TABLE =====
-// Tracks pending storage extension requests awaiting payment confirmation
+// Tracks pending storage extension requests awaiting payment and manager approval
 export const pendingStorageExtensions = pgTable("pending_storage_extensions", {
   id: serial("id").primaryKey(),
   storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
@@ -1382,7 +1382,13 @@ export const pendingStorageExtensions = pgTable("pending_storage_extensions", {
   extensionTotalPriceCents: integer("extension_total_price_cents").notNull(),
   stripeSessionId: text("stripe_session_id").notNull(),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
-  status: text("status").notNull().default("pending"), // pending, completed, failed, expired
+  // Status flow: pending (awaiting payment) -> paid (awaiting approval) -> approved/rejected -> completed/refunded
+  status: text("status").notNull().default("pending"), // pending, paid, approved, rejected, completed, refunded, failed, expired
+  // Manager approval fields
+  managerId: integer("manager_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),

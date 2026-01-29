@@ -2,27 +2,32 @@ import { Router, Request, Response } from "express";
 import { db, pool } from "../db";
 import {
     kitchenBookings,
-    storageBookings as storageBookingsTable,
-    equipmentBookings as equipmentBookingsTable,
     kitchens,
     locations,
     users
 } from "@shared/schema";
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../logger";
-import { errorResponse } from "../api-response";
 import { requireChef } from "./middleware";
 import { createPaymentIntent } from "../services/stripe-service";
-import { calculateKitchenBookingPrice, calculatePlatformFeeDynamic, calculateTotalWithFees } from "../services/pricing-service";
-import { calculateCheckoutFees } from "../services/stripe-checkout-fee-service";
-import { createCheckoutSession } from "../services/stripe-checkout-service";
-import { createTransaction } from "../services/stripe-checkout-transactions-service";
+import { calculateKitchenBookingPrice } from "../services/pricing-service";
 import { userService } from "../domains/users/user.service";
 import { bookingService } from "../domains/bookings/booking.service";
 import { inventoryService } from "../domains/inventory/inventory.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
 import { chefService } from "../domains/users/chef.service";
+
+/**
+ * Get base URL for Stripe redirect URLs
+ * Works correctly in both development (http://localhost) and production (https://...)
+ */
+function getBaseUrl(req: Request): string {
+    const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5001';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+    const protocol = isLocalhost ? 'http' : (req.get('x-forwarded-proto') || 'https');
+    return `${protocol}://${host}`;
+}
 import { getChefPhone, getManagerPhone } from "../phone-utils";
 import {
     sendSMS,
@@ -81,9 +86,7 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
         const feeCalculation = await calculateCheckoutFeesAsync(Math.round(bookingPriceNum * 100));
 
         // Get base URL for success/cancel URLs
-        const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
-        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
-        const baseUrl = `${protocol}://${host}`;
+        const baseUrl = getBaseUrl(req);
 
         // Create Stripe Checkout session
         const { createCheckoutSession } = await import('../services/stripe-checkout-service');
@@ -411,11 +414,9 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
         const basePricePerDayCents = booking.basePrice ? parseFloat(booking.basePrice.toString()) : 0;
         const extensionBasePriceCents = Math.round(basePricePerDayCents * extensionDays);
 
-        // Get service fee rate and calculate fees
-        const { getServiceFeeRate } = await import('../services/pricing-service');
-        const serviceFeeRate = await getServiceFeeRate();
-        const extensionServiceFeeCents = Math.round(extensionBasePriceCents * serviceFeeRate);
-        const extensionTotalPriceCents = extensionBasePriceCents + extensionServiceFeeCents;
+        // Calculate fees using database-driven configuration (same as kitchen bookings)
+        const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
+        const feeCalculation = await calculateCheckoutFeesAsync(extensionBasePriceCents);
 
         // Get manager's Stripe Connect account through storage listing -> kitchen -> location -> manager
         const storageListing = await inventoryService.getStorageListingById(booking.storageListingId);
@@ -454,25 +455,20 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
         const chefEmail = chef.username; // Username is the email in this system
 
         // Get base URL for success/cancel URLs
-        const protocol = req.get('x-forwarded-proto') || 'https';
-        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
-        const baseUrl = `${protocol}://${host}`;
+        const baseUrl = getBaseUrl(req);
 
-        // Create Stripe Checkout session
+        // Create Stripe Checkout session (same pattern as kitchen bookings)
         const { createCheckoutSession } = await import('../services/stripe-checkout-service');
-        
-        // For storage extension, platform fee goes to LocalCooks
-        const platformFeeCents = extensionServiceFeeCents > 0 ? extensionServiceFeeCents : 1; // Minimum 1 cent
 
         const checkoutSession = await createCheckoutSession({
-            bookingPriceInCents: extensionBasePriceCents,
-            platformFeeInCents: platformFeeCents,
+            bookingPriceInCents: feeCalculation.bookingPriceInCents,
+            platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
             bookingId: id, // Using storage booking ID
             currency: 'cad',
-            successUrl: `${baseUrl}/chef/bookings?storage_extended=true&storage_booking_id=${id}`,
-            cancelUrl: `${baseUrl}/chef/bookings?storage_extension_cancelled=true&storage_booking_id=${id}`,
+            successUrl: `${baseUrl}/dashboard?storage_extended=true&storage_booking_id=${id}`,
+            cancelUrl: `${baseUrl}/dashboard?storage_extension_cancelled=true&storage_booking_id=${id}`,
             metadata: {
                 type: 'storage_extension',
                 storage_booking_id: id.toString(),
@@ -487,32 +483,218 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
 
         // Store pending extension in database for webhook to process
         // We'll update the booking when payment succeeds via webhook
-        await bookingService.createPendingStorageExtension({
+        const pendingExtension = await bookingService.createPendingStorageExtension({
             storageBookingId: id,
             newEndDate: newEndDateObj,
             extensionDays,
-            extensionBasePriceCents,
-            extensionServiceFeeCents,
-            extensionTotalPriceCents,
+            extensionBasePriceCents: feeCalculation.bookingPriceInCents,
+            extensionServiceFeeCents: feeCalculation.totalPlatformFeeInCents,
+            extensionTotalPriceCents: feeCalculation.totalChargeInCents,
             stripeSessionId: checkoutSession.sessionId,
             status: 'pending',
         });
 
+        // Create payment_transactions record for accurate revenue tracking
+        // Note: We skip the legacy 'transactions' table for storage extensions because it has
+        // a foreign key constraint to kitchen_bookings. payment_transactions supports all booking types.
+        try {
+            const { createPaymentTransaction } = await import('../services/payment-transactions-service');
+            await createPaymentTransaction({
+                bookingId: id,
+                bookingType: 'storage',
+                chefId: req.neonUser!.id,
+                managerId: location.managerId,
+                amount: feeCalculation.totalChargeInCents,
+                baseAmount: feeCalculation.bookingPriceInCents,
+                serviceFee: feeCalculation.totalPlatformFeeInCents,
+                managerRevenue: feeCalculation.managerReceivesInCents,
+                currency: 'CAD',
+                paymentIntentId: undefined, // Will be set when checkout completes
+                status: 'pending',
+                metadata: {
+                    checkout_session_id: checkoutSession.sessionId,
+                    storage_booking_id: id.toString(),
+                    storage_extension_id: pendingExtension.id.toString(),
+                    extension_days: extensionDays.toString(),
+                    new_end_date: newEndDateObj.toISOString(),
+                },
+            }, db);
+            console.log(`[Storage Extension Checkout] Created payment_transactions record for storage booking ${id}, extension ${pendingExtension.id}`);
+        } catch (ptError) {
+            // Don't fail checkout if payment_transactions creation fails
+            console.warn(`[Storage Extension Checkout] Could not create payment_transactions record:`, ptError);
+        }
+
+        // Return response (same structure as kitchen bookings)
         res.json({
             sessionUrl: checkoutSession.sessionUrl,
             sessionId: checkoutSession.sessionId,
             extension: {
                 storageBookingId: id,
                 extensionDays,
-                extensionBasePrice: extensionBasePriceCents / 100,
-                extensionServiceFee: extensionServiceFeeCents / 100,
-                extensionTotalPrice: extensionTotalPriceCents / 100,
+                extensionBasePrice: feeCalculation.bookingPriceInCents / 100,
+                extensionServiceFee: feeCalculation.totalPlatformFeeInCents / 100,
+                extensionTotalPrice: feeCalculation.totalChargeInCents / 100,
                 newEndDate: newEndDateObj.toISOString(),
+            },
+            booking: {
+                price: feeCalculation.bookingPriceInCents / 100,
+                platformFee: feeCalculation.totalPlatformFeeInCents / 100,
+                total: feeCalculation.totalChargeInCents / 100,
             },
         });
     } catch (error: any) {
         console.error("Error creating storage extension checkout:", error);
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
+    }
+});
+
+// Get chef's pending storage extension requests
+router.get("/chef/storage-extensions/pending", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+
+        // Import schema
+        const { pendingStorageExtensions, storageBookings, storageListings } = await import("@shared/schema");
+
+        // Get all pending extensions for this chef's storage bookings
+        const extensions = await db
+            .select({
+                id: pendingStorageExtensions.id,
+                storageBookingId: pendingStorageExtensions.storageBookingId,
+                newEndDate: pendingStorageExtensions.newEndDate,
+                extensionDays: pendingStorageExtensions.extensionDays,
+                extensionBasePriceCents: pendingStorageExtensions.extensionBasePriceCents,
+                extensionTotalPriceCents: pendingStorageExtensions.extensionTotalPriceCents,
+                status: pendingStorageExtensions.status,
+                createdAt: pendingStorageExtensions.createdAt,
+                approvedAt: pendingStorageExtensions.approvedAt,
+                rejectedAt: pendingStorageExtensions.rejectedAt,
+                rejectionReason: pendingStorageExtensions.rejectionReason,
+                // Storage booking details
+                currentEndDate: storageBookings.endDate,
+                storageName: storageListings.name,
+                storageType: storageListings.storageType,
+                kitchenName: kitchens.name,
+            })
+            .from(pendingStorageExtensions)
+            .innerJoin(storageBookings, eq(pendingStorageExtensions.storageBookingId, storageBookings.id))
+            .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .where(eq(storageBookings.chefId, chefId))
+            .orderBy(pendingStorageExtensions.createdAt);
+
+        res.json(extensions);
+    } catch (error: any) {
+        console.error("Error fetching chef's pending storage extensions:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch pending extensions" });
+    }
+});
+
+// Sync storage extension status from Stripe (for when webhook doesn't fire)
+router.post("/storage-extensions/:id/sync", requireChef, async (req: Request, res: Response) => {
+    try {
+        const extensionId = parseInt(req.params.id);
+        const chefId = req.neonUser!.id;
+
+        if (isNaN(extensionId) || extensionId <= 0) {
+            return res.status(400).json({ error: "Invalid extension ID" });
+        }
+
+        const { pendingStorageExtensions, storageBookings } = await import("@shared/schema");
+
+        // Get the extension and verify ownership
+        const [extension] = await db
+            .select({
+                id: pendingStorageExtensions.id,
+                storageBookingId: pendingStorageExtensions.storageBookingId,
+                stripeSessionId: pendingStorageExtensions.stripeSessionId,
+                status: pendingStorageExtensions.status,
+                chefId: storageBookings.chefId,
+            })
+            .from(pendingStorageExtensions)
+            .innerJoin(storageBookings, eq(pendingStorageExtensions.storageBookingId, storageBookings.id))
+            .where(eq(pendingStorageExtensions.id, extensionId))
+            .limit(1);
+
+        if (!extension) {
+            return res.status(404).json({ error: "Extension not found" });
+        }
+
+        if (extension.chefId !== chefId) {
+            return res.status(403).json({ error: "Not authorized" });
+        }
+
+        // Only sync if still pending
+        if (extension.status !== "pending") {
+            return res.json({ 
+                message: "Extension already processed", 
+                status: extension.status 
+            });
+        }
+
+        // Check Stripe session status
+        const Stripe = (await import("stripe")).default;
+        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+        if (!stripeSecretKey) {
+            return res.status(500).json({ error: "Stripe not configured" });
+        }
+
+        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2025-12-15.clover" });
+        const session = await stripe.checkout.sessions.retrieve(extension.stripeSessionId, {
+            expand: ["payment_intent"],
+        });
+
+        if (session.payment_status === "paid") {
+            // Extract payment intent ID
+            let paymentIntentId: string | undefined;
+            if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
+                paymentIntentId = session.payment_intent.id;
+            } else if (typeof session.payment_intent === "string") {
+                paymentIntentId = session.payment_intent;
+            }
+
+            // Update to paid status
+            await db
+                .update(pendingStorageExtensions)
+                .set({
+                    status: "paid",
+                    stripePaymentIntentId: paymentIntentId,
+                    updatedAt: new Date(),
+                })
+                .where(eq(pendingStorageExtensions.id, extensionId));
+
+            console.log(`[Storage Extension Sync] Updated extension ${extensionId} to 'paid' status`);
+
+            return res.json({
+                success: true,
+                message: "Extension status synced - now awaiting manager approval",
+                status: "paid",
+            });
+        } else if (session.status === "expired") {
+            await db
+                .update(pendingStorageExtensions)
+                .set({
+                    status: "expired",
+                    updatedAt: new Date(),
+                })
+                .where(eq(pendingStorageExtensions.id, extensionId));
+
+            return res.json({
+                success: true,
+                message: "Session expired",
+                status: "expired",
+            });
+        }
+
+        return res.json({
+            message: "Payment not yet completed",
+            stripeStatus: session.payment_status,
+            sessionStatus: session.status,
+        });
+    } catch (error: any) {
+        console.error("Error syncing storage extension:", error);
+        res.status(500).json({ error: error.message || "Failed to sync extension" });
     }
 });
 

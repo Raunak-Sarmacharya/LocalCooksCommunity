@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
+import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -388,6 +389,11 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Booking Requests</h1>
           <p className="text-gray-600 mt-2">Review and manage chef booking requests</p>
+        </div>
+
+        {/* Storage Extension Approvals */}
+        <div className="mb-8">
+          <StorageExtensionApprovals />
         </div>
 
         {/* Location Filter (shown only when multiple locations exist) */}

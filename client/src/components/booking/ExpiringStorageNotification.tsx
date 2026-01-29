@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, differenceInDays, startOfToday } from "date-fns";
+import { format } from "date-fns";
 import { AlertTriangle, Package, CalendarPlus, X, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
+import { getAuthHeaders } from "@/lib/api";
 
 interface ExpiringStorageBooking {
   id: number;
@@ -22,14 +23,6 @@ interface ExpiringStorageBooking {
   daysUntilExpiry: number;
   isExpired: boolean;
   isExpiringSoon: boolean;
-}
-
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const token = localStorage.getItem('firebaseToken');
-  return {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-  };
 }
 
 export function ExpiringStorageNotification() {

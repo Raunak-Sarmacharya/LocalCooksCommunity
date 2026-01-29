@@ -6,6 +6,39 @@ import { eq } from 'drizzle-orm';
 
 const router = Router();
 
+// 🔥 Public Platform Settings Endpoint - Stripe Fee Configuration
+// Returns the current fee configuration for client-side display (enterprise-grade)
+router.get('/platform-settings/stripe-fees', async (req: Request, res: Response) => {
+    try {
+        const { getFeeConfig } = await import('../../services/stripe-checkout-fee-service');
+        const config = await getFeeConfig();
+        
+        // Return fee configuration for client-side calculations
+        return res.json({
+            stripePercentageFee: config.stripePercentageFee,
+            stripeFlatFeeCents: config.stripeFlatFeeCents,
+            platformCommissionRate: config.platformCommissionRate,
+            useStripePlatformPricing: config.useStripePlatformPricing,
+            // Human-readable values
+            stripePercentageDisplay: `${(config.stripePercentageFee * 100).toFixed(1)}%`,
+            stripeFlatFeeDisplay: `$${(config.stripeFlatFeeCents / 100).toFixed(2)}`,
+            platformCommissionDisplay: `${(config.platformCommissionRate * 100).toFixed(1)}%`,
+        });
+    } catch (error) {
+        console.error('Error getting Stripe fee config:', error);
+        // Return defaults on error
+        return res.json({
+            stripePercentageFee: 0.029,
+            stripeFlatFeeCents: 30,
+            platformCommissionRate: 0,
+            useStripePlatformPricing: false,
+            stripePercentageDisplay: '2.9%',
+            stripeFlatFeeDisplay: '$0.30',
+            platformCommissionDisplay: '0%',
+        });
+    }
+});
+
 // 🔥 Public Platform Settings Endpoint (for chefs to see service fee rate)
 router.get('/platform-settings/service-fee-rate', async (req: Request, res: Response) => {
     try {

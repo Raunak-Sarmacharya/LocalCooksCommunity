@@ -283,7 +283,7 @@ function NotificationItem({
   onDelete,
 }: { 
   notification: Notification;
-  onMarkRead: (id: number) => void;
+  onMarkRead: (id: number) => Promise<void>;
   onArchive: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
@@ -292,11 +292,9 @@ function NotificationItem({
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (!notification.is_read) {
-        onMarkRead(notification.id);
+        await onMarkRead(notification.id);
       }
       if (notification.action_url) {
-        // Small delay to allow mark-as-read API call to be sent before navigation
-        await new Promise(resolve => setTimeout(resolve, 100));
         window.location.href = notification.action_url;
       }
     }
@@ -319,11 +317,9 @@ function NotificationItem({
       )}
       onClick={async () => {
         if (!notification.is_read) {
-          onMarkRead(notification.id);
+          await onMarkRead(notification.id);
         }
         if (notification.action_url) {
-          // Small delay to allow mark-as-read API call to be sent before navigation
-          await new Promise(resolve => setTimeout(resolve, 100));
           window.location.href = notification.action_url;
         }
       }}
@@ -672,8 +668,12 @@ export default function ChefNotificationCenter() {
     },
   });
 
-  const handleMarkRead = useCallback((id: number) => {
-    markReadMutation.mutate([id]);
+  const handleMarkRead = useCallback((id: number): Promise<void> => {
+    return new Promise((resolve) => {
+      markReadMutation.mutate([id], {
+        onSettled: () => resolve(),
+      });
+    });
   }, [markReadMutation]);
 
   const handleArchive = useCallback((id: number) => {
