@@ -278,6 +278,7 @@ function NotificationItem({
   notification, 
   onMarkRead, 
   onArchive,
+  onUnarchive,
   onDelete,
   isSelected,
   _onSelect
@@ -285,6 +286,7 @@ function NotificationItem({
   notification: Notification;
   onMarkRead: (id: number) => Promise<void>;
   onArchive: (id: number) => void;
+  onUnarchive: (id: number) => void;
   onDelete: (id: number) => void;
   isSelected: boolean;
   _onSelect: (id: number) => void;
@@ -344,9 +346,9 @@ function NotificationItem({
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
             <h4 className={cn(
-              "text-sm truncate",
+              "text-sm break-words",
               notification.is_read ? "font-normal text-gray-700" : "font-semibold text-gray-900"
             )}>
               {notification.title}
@@ -357,7 +359,7 @@ function NotificationItem({
           </div>
           <p 
             id={`notification-${notification.id}-message`}
-            className="text-sm text-gray-600 line-clamp-2 mt-0.5"
+            className="text-sm text-gray-600 line-clamp-3 mt-0.5 break-words"
           >
             {notification.message}
           </p>
@@ -403,10 +405,17 @@ function NotificationItem({
                   Mark as read
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(notification.id); }}>
-                <Archive className="h-4 w-4 mr-2" />
-                Archive
-              </DropdownMenuItem>
+              {notification.is_archived ? (
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onUnarchive(notification.id); }}>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Restore
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchive(notification.id); }}>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="text-red-600"
@@ -638,6 +647,49 @@ export default function NotificationCenter({ locationId }: { locationId?: number
     },
   });
 
+  // Unarchive mutation with optimistic updates
+  const unarchiveMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/manager/notifications/unarchive", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ notificationIds: ids }),
+      });
+      if (!res.ok) throw new Error("Failed to unarchive");
+      return res.json();
+    },
+    onMutate: async (ids: number[]) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/manager/notifications", filter, locationId] });
+      
+      const previousNotifications = queryClient.getQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId]);
+      
+      // Optimistically remove unarchived notifications from the archived list
+      if (previousNotifications && filter === "archived") {
+        queryClient.setQueryData<NotificationResponse>(["/api/manager/notifications", filter, locationId], {
+          ...previousNotifications,
+          notifications: previousNotifications.notifications.filter(n => !ids.includes(n.id)),
+        });
+      }
+      
+      return { previousNotifications };
+    },
+    onError: (err, ids, context) => {
+      console.error("[NotificationCenter] Failed to unarchive:", err);
+      if (context?.previousNotifications) {
+        queryClient.setQueryData(["/api/manager/notifications", filter, locationId], context.previousNotifications);
+      }
+      toast.error("Failed to unarchive notification");
+    },
+    onSuccess: () => {
+      toast.success("Notification restored");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/notifications/unread-count"] });
+    },
+  });
+
   // Delete mutation with optimistic updates
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -706,6 +758,10 @@ export default function NotificationCenter({ locationId }: { locationId?: number
   const handleArchive = useCallback((id: number) => {
     archiveMutation.mutate([id]);
   }, [archiveMutation]);
+
+  const handleUnarchive = useCallback((id: number) => {
+    unarchiveMutation.mutate([id]);
+  }, [unarchiveMutation]);
 
   const handleDelete = useCallback((id: number) => {
     deleteMutation.mutate(id);
@@ -853,6 +909,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
                       notification={notification}
                       onMarkRead={handleMarkRead}
                       onArchive={handleArchive}
+                      onUnarchive={handleUnarchive}
                       onDelete={handleDelete}
                       isSelected={selectedIds.has(notification.id)}
                       _onSelect={handleSelect}
@@ -865,10 +922,20 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         </ScrollArea>
 
         {/* Footer */}
-        {notifications.length > 0 && (
+        {notifications.length > 0 && notificationsData?.pagination?.hasMore && (
           <div className="p-3 border-t bg-gray-50 text-center">
-            <Button variant="link" size="sm" className="text-xs text-gray-600">
-              View all notifications
+            <Button 
+              variant="link" 
+              size="sm" 
+              className="text-xs text-gray-600"
+              onClick={() => {
+                toast({
+                  title: "All notifications shown",
+                  description: "Use the filters above to browse through your notifications.",
+                });
+              }}
+            >
+              View all notifications ({notificationsData.pagination.total} total)
             </Button>
           </div>
         )}

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
+import KitchenBookingSheet from "@/components/booking/KitchenBookingSheet";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,24 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
   const { user } = useFirebaseAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("discover");
+  
+  // Booking sheet state for platform standard booking flow
+  const [bookingSheetOpen, setBookingSheetOpen] = useState(false);
+  const [bookingLocation, setBookingLocation] = useState<{
+    id: number;
+    name: string;
+    address?: string;
+  } | null>(null);
+
+  // Handler for Book button clicks - opens KitchenBookingSheet
+  const handleBookClick = (locationId: number, locationName: string, locationAddress?: string) => {
+    setBookingLocation({
+      id: locationId,
+      name: locationName,
+      address: locationAddress,
+    });
+    setBookingSheetOpen(true);
+  };
 
   const {
     applications,
@@ -588,12 +607,18 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
                             <div className="flex gap-2">
                               {(app.current_tier ?? 1) >= 3 && (
-                                <Link href={`/book-kitchen?location=${app.locationId}`}>
-                                  <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                                    <Calendar className="mr-2 h-4 w-4" />
-                                    Book
-                                  </Button>
-                                </Link>
+                                <Button 
+                                  size="sm" 
+                                  className="bg-green-600 hover:bg-green-700"
+                                  onClick={() => handleBookClick(
+                                    app.locationId,
+                                    app.location?.name || 'Kitchen',
+                                    app.location?.address
+                                  )}
+                                >
+                                  <Calendar className="mr-2 h-4 w-4" />
+                                  Book
+                                </Button>
                               )}
                               {app.status === "approved" && (app.current_tier ?? 1) < 3 && (
                                 <Button size="sm" variant="outline" disabled className="cursor-not-allowed">
@@ -631,7 +656,7 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                 <Check className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                 <p className="text-gray-600 font-medium">No approved applications yet</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Once your applications are approved, they'll appear here
+                  Once your applications are approved, they&apos;ll appear here
                 </p>
               </div>
             ) : (
@@ -662,12 +687,18 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
 
                               <div className="mt-3">
                                 {(app.current_tier ?? 1) >= 3 ? (
-                                  <Link href={`/book-kitchen?location=${app.locationId}`}>
-                                    <Button className="bg-green-600 hover:bg-green-700" size="sm">
-                                      <Calendar className="mr-2 h-4 w-4" />
-                                      Book Kitchen
-                                    </Button>
-                                  </Link>
+                                  <Button 
+                                    className="bg-green-600 hover:bg-green-700" 
+                                    size="sm"
+                                    onClick={() => handleBookClick(
+                                      app.locationId,
+                                      app.location?.name || 'Kitchen',
+                                      app.location?.address
+                                    )}
+                                  >
+                                    <Calendar className="mr-2 h-4 w-4" />
+                                    Book Kitchen
+                                  </Button>
                                 ) : (
                                   <Button
                                     variant="outline"
@@ -690,6 +721,17 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
           </TabsContent>
         </Tabs>
       </CardContent>
+
+      {/* Kitchen Booking Sheet - Platform standard booking flow */}
+      {bookingLocation && (
+        <KitchenBookingSheet
+          open={bookingSheetOpen}
+          onOpenChange={setBookingSheetOpen}
+          locationId={bookingLocation.id}
+          locationName={bookingLocation.name}
+          locationAddress={bookingLocation.address}
+        />
+      )}
     </Card>
   );
 }

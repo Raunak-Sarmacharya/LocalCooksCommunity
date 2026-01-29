@@ -212,7 +212,7 @@ async function markAsRead(managerId: number, notificationIds: number[]) {
     UPDATE manager_notifications
     SET is_read = true, read_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql.join(notificationIds.map(id => sql`${id}`), sql`, `)})
       AND is_read = false
   `);
 
@@ -246,8 +246,25 @@ async function archiveNotifications(managerId: number, notificationIds: number[]
     UPDATE manager_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE manager_id = ${managerId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql.join(notificationIds.map(id => sql`${id}`), sql`, `)})
       AND is_archived = false
+  `);
+
+  return { updated: result.rowCount || 0 };
+}
+
+/**
+ * Unarchive notification(s)
+ */
+async function unarchiveNotifications(managerId: number, notificationIds: number[]) {
+  if (notificationIds.length === 0) return { updated: 0 };
+
+  const result = await db.execute(sql`
+    UPDATE manager_notifications
+    SET is_archived = false, archived_at = NULL
+    WHERE manager_id = ${managerId}
+      AND id IN (${sql.join(notificationIds.map(id => sql`${id}`), sql`, `)})
+      AND is_archived = true
   `);
 
   return { updated: result.rowCount || 0 };
@@ -373,6 +390,27 @@ router.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req:
     res.json(result);
   } catch (error) {
     logger.error("Error archiving notifications:", error);
+    return errorResponse(res, error);
+  }
+});
+
+/**
+ * POST /api/manager/notifications/unarchive
+ * Unarchive specific notifications
+ */
+router.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+  try {
+    const managerId = req.neonUser!.id;
+    const { notificationIds } = req.body;
+
+    if (!Array.isArray(notificationIds)) {
+      return res.status(400).json({ error: "notificationIds must be an array" });
+    }
+
+    const result = await unarchiveNotifications(managerId, notificationIds);
+    res.json(result);
+  } catch (error) {
+    logger.error("Error unarchiving notifications:", error);
     return errorResponse(res, error);
   }
 });

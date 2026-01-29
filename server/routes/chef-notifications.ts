@@ -133,7 +133,7 @@ async function markAsRead(chefId: number, notificationIds: number[]) {
     UPDATE chef_notifications
     SET is_read = true, read_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql.join(notificationIds.map(id => sql`${id}`), sql`, `)})
       AND is_read = false
   `);
 
@@ -165,7 +165,7 @@ async function archiveNotifications(chefId: number, notificationIds: number[]) {
     UPDATE chef_notifications
     SET is_archived = true, archived_at = NOW()
     WHERE chef_id = ${chefId}
-      AND id = ANY(${notificationIds}::int[])
+      AND id IN (${sql.join(notificationIds.map(id => sql`${id}`), sql`, `)})
       AND is_archived = false
   `);
 

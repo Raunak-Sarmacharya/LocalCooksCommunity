@@ -27,6 +27,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots
   status: string;
   specialNotes?: string;
   createdAt: string;
@@ -523,7 +524,38 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">Time:</span>
-                      <span>{formatTime(bookingToCancel.startTime)} - {formatTime(bookingToCancel.endTime)}</span>
+                      <span>
+                        {(() => {
+                          const rawSlots = bookingToCancel.selectedSlots as Array<string | { startTime: string; endTime: string }> | undefined;
+                          if (rawSlots && rawSlots.length > 0) {
+                            // Normalize slots to handle both old string format and new object format
+                            const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
+                              if (typeof slot === 'string') {
+                                const [h, m] = slot.split(':').map(Number);
+                                const endMins = h * 60 + m + 60;
+                                const endH = Math.floor(endMins / 60);
+                                const endM = endMins % 60;
+                                return { startTime: slot, endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}` };
+                              }
+                              return slot;
+                            };
+                            const normalized = rawSlots.map(normalizeSlot).filter(s => s.startTime && s.endTime);
+                            const sorted = [...normalized].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                            // Check if contiguous
+                            let isContiguous = true;
+                            for (let i = 1; i < sorted.length; i++) {
+                              if (sorted[i - 1].endTime !== sorted[i].startTime) {
+                                isContiguous = false;
+                                break;
+                              }
+                            }
+                            if (!isContiguous) {
+                              return sorted.map(s => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ');
+                            }
+                          }
+                          return `${formatTime(bookingToCancel.startTime)} - ${formatTime(bookingToCancel.endTime)}`;
+                        })()}
+                      </span>
                     </div>
                   </div>
                 )}

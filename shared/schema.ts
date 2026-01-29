@@ -392,8 +392,9 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
   kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
-  startTime: text("start_time").notNull(), // HH:MM format
-  endTime: text("end_time").notNull(), // HH:MM format
+  startTime: text("start_time").notNull(), // HH:MM format - earliest slot start
+  endTime: text("end_time").notNull(), // HH:MM format - latest slot end
+  selectedSlots: jsonb("selected_slots").default([]), // Array of discrete 1-hour time slots, e.g., [{startTime: "09:00", endTime: "10:00"}, {startTime: "14:00", endTime: "15:00"}]
   status: bookingStatusEnum("status").default("pending").notNull(),
   specialNotes: text("special_notes"),
   bookingType: text("booking_type").default("chef").notNull(), // 'chef', 'external', 'manager_blocked'

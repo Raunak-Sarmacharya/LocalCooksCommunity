@@ -10,6 +10,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }>; // Discrete time slots
   status: "pending" | "confirmed" | "cancelled";
   specialNotes?: string;
   createdAt: string;
@@ -21,6 +22,7 @@ interface CreateBookingData {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots
   specialNotes?: string;
   paymentIntentId?: string;
   selectedStorage?: Array<{

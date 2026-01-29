@@ -55,6 +55,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }>; // Discrete time slots
   status: "pending" | "confirmed" | "cancelled";
   specialNotes?: string;
   createdAt: string;
@@ -359,6 +360,47 @@ export default function ChefBookingsView({
     const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  // Helper to format discrete time slots for display
+  const formatBookingTimeSlots = (booking: Booking): string => {
+    const rawSlots = booking.selectedSlots;
+    
+    // If no slots or empty, fall back to startTime - endTime
+    if (!rawSlots || rawSlots.length === 0) {
+      return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`;
+    }
+    
+    // Normalize slots to {startTime, endTime} format
+    const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
+      if (typeof slot === 'string') {
+        const [h, m] = slot.split(':').map(Number);
+        const endMins = h * 60 + m + 60;
+        const endH = Math.floor(endMins / 60);
+        const endM = endMins % 60;
+        return { startTime: slot, endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}` };
+      }
+      return slot;
+    };
+    
+    const normalized = rawSlots.map(normalizeSlot).filter(s => s.startTime && s.endTime);
+    const sorted = [...normalized].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    
+    // Check if contiguous
+    let isContiguous = true;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i - 1].endTime !== sorted[i].startTime) {
+        isContiguous = false;
+        break;
+      }
+    }
+    
+    if (isContiguous) {
+      return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`;
+    }
+    
+    // Non-contiguous: show each slot
+    return sorted.map(s => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ');
   };
 
   const formatDate = (dateStr: string) => {
@@ -749,7 +791,7 @@ export default function ChefBookingsView({
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                           <Clock className="h-3.5 w-3.5" />
-                                          <span>{formatTime(booking.startTime)} - {formatTime(booking.endTime)}</span>
+                                          <span>{formatBookingTimeSlots(booking)}</span>
                                         </div>
                                       </div>
                                     </div>
@@ -828,7 +870,7 @@ export default function ChefBookingsView({
                                       <div>
                                         <p className="text-xs text-muted-foreground mb-0.5">Scheduled Time</p>
                                         <p className="font-medium">
-                                          {formatDateTime(booking.bookingDate, booking.startTime)} - {formatTime(booking.endTime)}
+                                          {formatDate(booking.bookingDate)}, {formatBookingTimeSlots(booking)}
                                         </p>
                                       </div>
                                     </div>

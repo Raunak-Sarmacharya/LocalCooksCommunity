@@ -9,7 +9,9 @@ import {
     kitchens,
     locations,
     users,
-    pendingStorageExtensions
+    pendingStorageExtensions,
+    paymentTransactions,
+    chefKitchenApplications
 } from "@shared/schema";
 import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
@@ -107,6 +109,7 @@ export class BookingRepository {
             location: row.location,
             kitchenName: row.kitchen.name,
             locationName: row.location.name,
+            locationTimezone: row.location.timezone,
         }));
     }
 
@@ -117,28 +120,58 @@ export class BookingRepository {
                 kitchen: kitchens,
                 location: locations,
                 chef: users,
+                // Chef's full name from chef_kitchen_applications table
+                chefFullName: chefKitchenApplications.fullName,
+                // Payment transaction data for accurate display (actual Stripe data)
+                transactionAmount: paymentTransactions.amount,
+                transactionServiceFee: paymentTransactions.serviceFee,
+                transactionManagerRevenue: paymentTransactions.managerRevenue,
+                transactionStatus: paymentTransactions.status,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
             .innerJoin(locations, eq(kitchens.locationId, locations.id))
             .leftJoin(users, eq(kitchenBookings.chefId, users.id))
+            .leftJoin(chefKitchenApplications, and(
+                eq(chefKitchenApplications.chefId, kitchenBookings.chefId),
+                eq(chefKitchenApplications.locationId, locations.id)
+            ))
+            .leftJoin(paymentTransactions, and(
+                eq(paymentTransactions.bookingId, kitchenBookings.id),
+                eq(paymentTransactions.bookingType, 'kitchen')
+            ))
             .where(eq(locations.managerId, managerId))
             .orderBy(desc(kitchenBookings.bookingDate));
 
         return results.map(row => {
             const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
+            // Use actual Stripe transaction data for accurate display
+            const transactionAmount = row.transactionAmount 
+                ? parseFloat(row.transactionAmount as string) 
+                : null;
+            const serviceFee = row.transactionServiceFee 
+                ? parseFloat(row.transactionServiceFee as string) 
+                : 0;
+            const managerRevenue = row.transactionManagerRevenue
+                ? parseFloat(row.transactionManagerRevenue as string)
+                : null;
             return {
                 ...mappedBooking,
                 kitchen: row.kitchen,
                 location: row.location,
                 chef: row.chef,
-                chefName: row.chef?.username,
+                // Use full name from chef_kitchen_applications if available, otherwise fall back to username (email)
+                chefName: row.chefFullName || row.chef?.username,
                 kitchenName: row.kitchen.name,
                 locationName: row.location.name,
                 locationTimezone: row.location.timezone,
                 // Include storage and equipment items from JSONB fields
                 storageItems: row.booking.storageItems || [],
                 equipmentItems: row.booking.equipmentItems || [],
+                // Use actual Stripe transaction data for accurate payment display
+                transactionAmount, // Actual amount charged (from payment_transactions)
+                serviceFee,        // Platform fee (from payment_transactions)
+                managerRevenue,    // What manager receives (from payment_transactions)
             };
         });
     }

@@ -316,9 +316,10 @@ export default function BookingConfirmationPage() {
     try {
       const sortedSlots = [...selectedSlots].sort();
       const startTime = sortedSlots[0];
-      const [startHours, startMins] = startTime.split(':').map(Number);
-      const totalDurationMins = selectedSlots.length * 60;
-      const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+      // Calculate endTime from the last slot (each slot is 1 hour)
+      const lastSlot = sortedSlots[sortedSlots.length - 1];
+      const [lastH, lastM] = lastSlot.split(':').map(Number);
+      const endTotalMins = lastH * 60 + lastM + 60; // Add 1 hour to last slot start
       const endHours = Math.floor(endTotalMins / 60);
       const endMins = endTotalMins % 60;
       const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
@@ -345,6 +346,16 @@ export default function BookingConfirmationPage() {
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
+          selectedSlots: [...selectedSlots].sort().map(slot => {
+            const [h, m] = slot.split(':').map(Number);
+            const endMins = h * 60 + m + 60;
+            const endH = Math.floor(endMins / 60);
+            const endM = endMins % 60;
+            return {
+              startTime: slot,
+              endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+            };
+          }), // Pass discrete time slots with start and end times
           specialNotes: notes,
           selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
             storageListingId: s.storageListingId,
@@ -385,9 +396,10 @@ export default function BookingConfirmationPage() {
 
     const sortedSlots = [...selectedSlots].sort();
     const startTime = sortedSlots[0];
-    const [startHours, startMins] = startTime.split(':').map(Number);
-    const totalDurationMins = selectedSlots.length * 60;
-    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+    // Calculate endTime from the last slot (each slot is 1 hour)
+    const lastSlot = sortedSlots[sortedSlots.length - 1];
+    const [lastH, lastM] = lastSlot.split(':').map(Number);
+    const endTotalMins = lastH * 60 + lastM + 60; // Add 1 hour to last slot start
     const endHours = Math.floor(endTotalMins / 60);
     const endMins = endTotalMins % 60;
     const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
@@ -403,6 +415,16 @@ export default function BookingConfirmationPage() {
         bookingDate: bookingDate.toISOString(),
         startTime,
         endTime,
+        selectedSlots: [...selectedSlots].sort().map(slot => {
+          const [h, m] = slot.split(':').map(Number);
+          const endMins = h * 60 + m + 60;
+          const endH = Math.floor(endMins / 60);
+          const endM = endMins % 60;
+          return {
+            startTime: slot,
+            endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+          };
+        }), // Pass discrete time slots with start and end times
         specialNotes: notes,
         selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
           storageListingId: s.storageListingId,
