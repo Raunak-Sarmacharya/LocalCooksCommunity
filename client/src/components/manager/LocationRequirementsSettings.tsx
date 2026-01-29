@@ -15,6 +15,7 @@ import { auth } from '@/lib/firebase';
 interface LocationRequirementsSettingsProps {
   locationId: number;
   locationName?: string; // Optional: location name to display in header
+  onSaveSuccess?: () => void; // [NEW] Callback when requirements are saved
 }
 
 interface CustomField {
@@ -113,7 +114,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-export default function LocationRequirementsSettings({ locationId, locationName }: LocationRequirementsSettingsProps) {
+export default function LocationRequirementsSettings({ locationId, locationName, onSaveSuccess }: LocationRequirementsSettingsProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [requirements, setRequirements] = useState<Partial<LocationRequirements>>({});
@@ -193,11 +194,14 @@ export default function LocationRequirementsSettings({ locationId, locationName 
       return response.json();
     },
     onSuccess: () => {
-      // Invalidate both the requirements query and any chat-related queries that might use location data
       queryClient.invalidateQueries({ queryKey: [`/api/manager/locations/${locationId}/requirements`] });
       queryClient.invalidateQueries({ queryKey: [`location-${locationId}`], exact: false });
       setHasUnsavedChanges(false);
       toast({ title: 'Success', description: 'Application requirements updated successfully' });
+      // [NEW] Notify parent that save was successful
+      if (onSaveSuccess) {
+        onSaveSuccess();
+      }
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });

@@ -1,37 +1,33 @@
-import * as React from "react";
-import "./switch.css";
+import * as React from "react"
+import * as SwitchPrimitives from "@radix-ui/react-switch"
+import { cn } from "@/lib/utils"
 
-interface SwitchProps {
-  checked?: boolean;
-  onCheckedChange?: (checked: boolean) => void;
-  disabled?: boolean;
-  id?: string;
-  className?: string;
-}
+const Switch = React.forwardRef<
+  React.ElementRef<typeof SwitchPrimitives.Root>,
+  React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
+>(({ className, ...props }, ref) => (
+  <SwitchPrimitives.Root
+    className={cn(
+      "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input",
+      className
+    )}
+    {...props}
+    ref={ref}
+    style={{
+      width: '44px',
+      height: '24px',
+      minWidth: '44px',
+      minHeight: '24px', // Override global button min-height: 44px
+      aspectRatio: 'unset'
+    }}
+  >
+    <SwitchPrimitives.Thumb
+      className={cn(
+        "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
+      )}
+    />
+  </SwitchPrimitives.Root>
+))
+Switch.displayName = SwitchPrimitives.Root.displayName
 
-const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
-  ({ checked, onCheckedChange, disabled, id, className }, ref) => {
-    const uniqueId = id || React.useId();
-
-    return (
-      <div className={`switch-parent ${className || ""}`}>
-        <input
-          type="checkbox"
-          className="switch-checkbox"
-          id={uniqueId}
-          checked={checked}
-          onChange={(e) => onCheckedChange?.(e.target.checked)}
-          disabled={disabled}
-          ref={ref}
-        />
-        <label className="switch-label" htmlFor={uniqueId}>
-          <span className="switch-slider" />
-        </label>
-      </div>
-    );
-  }
-);
-
-Switch.displayName = "Switch";
-
-export { Switch };
+export { Switch }

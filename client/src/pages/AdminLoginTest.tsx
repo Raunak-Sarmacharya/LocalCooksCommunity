@@ -11,7 +11,7 @@ export default function AdminLoginTest() {
   const testLogin = async () => {
     try {
       console.log('Testing admin login...');
-      const loginResponse = await fetch('/api/admin-login', {
+      const loginResponse = await fetch('/api/admin/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -19,14 +19,14 @@ export default function AdminLoginTest() {
         body: JSON.stringify({ username, password }),
         credentials: 'include',
       });
-      
+
       const loginData = await loginResponse.json();
       setResponse({
         status: loginResponse.status,
         data: loginData,
         headers: Object.fromEntries(loginResponse.headers.entries())
       });
-      
+
       if (loginResponse.ok) {
         // Test session immediately after login
         await testSession();
@@ -86,7 +86,7 @@ export default function AdminLoginTest() {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Admin Login Test</h1>
-      
+
       <div className="space-y-4 mb-6">
         <div>
           <label className="block text-sm font-medium mb-1">Username:</label>
@@ -141,21 +141,21 @@ export default function AdminLoginTest() {
             {JSON.stringify(response, null, 2)}
           </pre>
         </div>
-        
+
         <div>
           <h2 className="text-lg font-semibold mb-2">Session Data</h2>
           <pre className="bg-gray-100 p-4 rounded text-xs overflow-auto h-64">
             {JSON.stringify(sessionData, null, 2)}
           </pre>
         </div>
-        
+
         <div>
           <h2 className="text-lg font-semibold mb-2">User Info</h2>
           <pre className="bg-gray-100 p-4 rounded text-xs overflow-auto h-64">
             {JSON.stringify(userInfo, null, 2)}
           </pre>
         </div>
-        
+
         <div>
           <h2 className="text-lg font-semibold mb-2">Sync Status</h2>
           <pre className="bg-gray-100 p-4 rounded text-xs overflow-auto h-64">

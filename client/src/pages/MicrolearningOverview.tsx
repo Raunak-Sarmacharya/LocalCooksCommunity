@@ -615,7 +615,7 @@ export default function MicrolearningOverview() {
                       asChild
                       className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-semibold py-3"
                     >
-                      <Link href="/apply">
+                      <Link href="/dashboard?view=applications&action=new">
                         <FileText className="h-5 w-5 mr-2" />
                         Submit Application Now
                       </Link>

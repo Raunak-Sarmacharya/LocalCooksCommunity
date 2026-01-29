@@ -60,15 +60,21 @@ export const users = pgTable("users", {
   // Support dual roles - users can be both chef and manager
   isChef: boolean("is_chef").default(false).notNull(),
   isManager: boolean("is_manager").default(false).notNull(),
-  isPortalUser: boolean("is_portal_user").default(false).notNull(), // Portal user (third-party kitchen users)
+  isPortalUser: boolean("is_portal_user").default(false).notNull(),
   applicationType: applicationTypeEnum("application_type"), // DEPRECATED: kept for backward compatibility
   // Manager onboarding fields
   managerOnboardingCompleted: boolean("manager_onboarding_completed").default(false).notNull(), // Whether manager completed onboarding
   managerOnboardingSkipped: boolean("manager_onboarding_skipped").default(false).notNull(), // Whether manager skipped onboarding
   managerOnboardingStepsCompleted: jsonb("manager_onboarding_steps_completed").default({}).notNull(), // JSON object tracking completed onboarding steps
+  // Chef onboarding fields (informative onboarding - no restrictions)
+  chefOnboardingCompleted: boolean("chef_onboarding_completed").default(false).notNull(), // Whether chef completed informative onboarding
+  chefOnboardingPaths: jsonb("chef_onboarding_paths").default([]).notNull(), // Selected paths: ['localcooks', 'kitchen']
+  // Manager profile data (bespoke fields)
+  managerProfileData: jsonb("manager_profile_data").default({}).notNull(),
   // Stripe Connect fields for manager payments
   stripeConnectAccountId: text("stripe_connect_account_id").unique(), // Stripe Connect Express account ID
   stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(), // Status: 'not_started', 'in_progress', 'complete', 'failed'
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Define the applications table (for chefs)
@@ -162,10 +168,29 @@ export const insertUserSchema = z.object({
   isChef: z.boolean().default(false),
   isManager: z.boolean().default(false),
   isPortalUser: z.boolean().default(false),
+  managerProfileData: z.record(z.any()).default({}),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export interface UserWithFlags extends User {
+  uid?: string;
+  displayName?: string | null;
+  fullName?: string | null;
+  emailVerified?: boolean;
+}
+
+// Define email verification tokens table
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  token: text("token").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
 
 // Remove old document verification schemas and types since they're now part of applications
 // The document verification functionality is now integrated into the applications table
@@ -252,6 +277,8 @@ export const locations = pgTable("locations", {
   kitchenLicenseApprovedAt: timestamp("kitchen_license_approved_at"), // When license was approved/rejected
   kitchenLicenseFeedback: text("kitchen_license_feedback"), // Admin feedback on license
   kitchenLicenseExpiry: date("kitchen_license_expiry"), // Expiration date of the kitchen license
+  description: text("description"), // Description of the location
+  customOnboardingLink: text("custom_onboarding_link"), // Custom link for onboarding
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -331,6 +358,7 @@ export const kitchens = pgTable("kitchens", {
   currency: text("currency").default("CAD").notNull(), // Currency code (ISO 4217)
   minimumBookingHours: integer("minimum_booking_hours").default(1).notNull(), // Minimum booking duration
   pricingModel: text("pricing_model").default("hourly").notNull(), // Pricing structure ('hourly', 'daily', 'weekly')
+  taxRatePercent: numeric("tax_rate_percent"), // Optional tax percentage (e.g., 13 for 13%)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -364,8 +392,9 @@ export const kitchenBookings = pgTable("kitchen_bookings", {
   chefId: integer("chef_id").references(() => users.id), // Nullable for external/third-party bookings
   kitchenId: integer("kitchen_id").references(() => kitchens.id).notNull(),
   bookingDate: timestamp("booking_date").notNull(),
-  startTime: text("start_time").notNull(), // HH:MM format
-  endTime: text("end_time").notNull(), // HH:MM format
+  startTime: text("start_time").notNull(), // HH:MM format - earliest slot start
+  endTime: text("end_time").notNull(), // HH:MM format - latest slot end
+  selectedSlots: jsonb("selected_slots").default([]), // Array of discrete 1-hour time slots, e.g., [{startTime: "09:00", endTime: "10:00"}, {startTime: "14:00", endTime: "15:00"}]
   status: bookingStatusEnum("status").default("pending").notNull(),
   specialNotes: text("special_notes"),
   bookingType: text("booking_type").default("chef").notNull(), // 'chef', 'external', 'manager_blocked'
@@ -467,6 +496,8 @@ export const insertLocationSchema = createInsertSchema(locations, {
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
+  description: z.string().optional(),
+  customOnboardingLink: z.string().optional(),
 }).omit({
   id: true,
   createdAt: true,
@@ -480,6 +511,8 @@ export const updateLocationSchema = z.object({
   managerId: z.number().optional(),
   notificationEmail: z.string().email("Please enter a valid email address").optional(),
   notificationPhone: optionalPhoneNumberSchema, // Optional phone for SMS notifications
+  description: z.string().optional(),
+  customOnboardingLink: z.string().optional(),
 });
 
 // Zod schemas for location requirements
@@ -560,6 +593,7 @@ export const insertKitchenSchema = createInsertSchema(kitchens, {
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
+  taxRatePercent: z.number().min(0).max(100).nullable().optional(),
 }).omit({
   id: true,
   createdAt: true,
@@ -575,6 +609,7 @@ export const updateKitchenSchema = z.object({
   currency: z.string().min(3).max(3).optional(),
   minimumBookingHours: z.number().int().positive("Minimum booking hours must be positive").optional(),
   pricingModel: z.enum(["hourly", "daily", "weekly"]).optional(),
+  taxRatePercent: z.number().min(0).max(100).nullable().optional(),
 });
 
 export const insertKitchenAvailabilitySchema = createInsertSchema(kitchenAvailability, {
@@ -917,62 +952,22 @@ export const equipmentListings = pgTable("equipment_listings", {
   category: equipmentCategoryEnum("category").notNull(),
   equipmentType: text("equipment_type").notNull(), // 'mixer', 'oven', 'fryer', etc.
   brand: text("brand"),
-  model: text("model"),
-
-  // Specifications
   description: text("description"),
   condition: equipmentConditionEnum("condition").notNull(),
-  age: integer("age"), // years
-  serviceHistory: text("service_history"),
-  dimensions: jsonb("dimensions").default({}), // {width, depth, height, weight}
-  powerRequirements: text("power_requirements"), // '110V', '208V', '240V', '3-phase'
-
-  // Equipment-specific fields (JSONB for flexibility)
-  specifications: jsonb("specifications").default({}),
-  certifications: jsonb("certifications").default([]),
-  safetyFeatures: jsonb("safety_features").default([]),
 
   // Availability type: included (free with kitchen) or rental (paid addon)
   availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("rental").notNull(),
 
-  // Pricing - SIMPLIFIED to flat session rate (in cents)
-  // For rental equipment: charged once per kitchen booking session, regardless of duration
+  // Pricing - flat session rate (in cents)
   sessionRate: numeric("session_rate").default("0"), // Flat session rate in cents (e.g., 2500 = $25.00/session)
-  pricingModel: equipmentPricingModelEnum("pricing_model"), // Nullable for included equipment
-  // Legacy rate fields - kept for backwards compatibility but session_rate is primary
-  hourlyRate: numeric("hourly_rate"), // @deprecated - use sessionRate
-  dailyRate: numeric("daily_rate"), // @deprecated - use sessionRate
-  weeklyRate: numeric("weekly_rate"), // @deprecated - use sessionRate
-  monthlyRate: numeric("monthly_rate"), // @deprecated - use sessionRate
-  minimumRentalHours: integer("minimum_rental_hours"), // @deprecated
-  minimumRentalDays: integer("minimum_rental_days"), // @deprecated
   currency: text("currency").default("CAD").notNull(),
 
-  // Usage terms
-  usageRestrictions: jsonb("usage_restrictions").default([]),
-  trainingRequired: boolean("training_required").default(false),
-  cleaningResponsibility: text("cleaning_responsibility"), // 'renter', 'host', 'shared'
-
-  // Status & moderation (admin approval workflow)
-  status: listingStatusEnum("status").default("draft").notNull(), // Reuse same enum
-  approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
-  approvedAt: timestamp("approved_at"),
-  rejectionReason: text("rejection_reason"),
-
-  // Availability
-  isActive: boolean("is_active").default(true).notNull(),
-  availabilityCalendar: jsonb("availability_calendar").default({}),
-  prepTimeHours: integer("prep_time_hours").default(4), // Cleaning time between rentals
-
-  // Visuals & documentation
-  photos: jsonb("photos").default([]),
-  manuals: jsonb("manuals").default([]), // PDF URLs
-  maintenanceLog: jsonb("maintenance_log").default([]),
-
-  // Damage & liability (deposits in cents)
+  // Damage deposit (in cents)
   damageDeposit: numeric("damage_deposit").default("0"), // Refundable deposit (in cents)
-  insuranceRequired: boolean("insurance_required").default(false),
 
+  // Status
+  status: listingStatusEnum("status").default("draft").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -984,34 +979,12 @@ export const insertEquipmentListingSchema = createInsertSchema(equipmentListings
   equipmentType: z.string().min(1, "Equipment type is required"),
   condition: z.enum(["excellent", "good", "fair", "needs-repair"]),
   availabilityType: z.enum(["included", "rental"]),
-  pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]).optional(), // Optional for included equipment
-  hourlyRate: z.number().int().positive("Hourly rate must be positive").optional(),
-  dailyRate: z.number().int().positive("Daily rate must be positive").optional(),
-  weeklyRate: z.number().int().positive("Weekly rate must be positive").optional(),
-  monthlyRate: z.number().int().positive("Monthly rate must be positive").optional(),
-  minimumRentalHours: z.number().int().min(1).optional(),
-  minimumRentalDays: z.number().int().min(1).optional(),
   damageDeposit: z.number().int().min(0).optional(),
-  age: z.number().int().min(0).optional(),
-  prepTimeHours: z.number().int().min(0).optional(),
-  dimensions: z.record(z.any()).optional(),
-  specifications: z.record(z.any()).optional(),
-  certifications: z.array(z.string()).optional(),
-  safetyFeatures: z.array(z.string()).optional(),
-  usageRestrictions: z.array(z.string()).optional(),
-  photos: z.array(z.string()).optional(),
-  manuals: z.array(z.string()).optional(),
-  maintenanceLog: z.array(z.any()).optional(),
-  availabilityCalendar: z.record(z.any()).optional(),
-  cleaningResponsibility: z.enum(["renter", "host", "shared"]).optional(),
 }).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
   status: true,
-  approvedBy: true,
-  approvedAt: true,
-  rejectionReason: true,
   currency: true, // Always CAD, not user-selectable
 });
 
@@ -1020,41 +993,17 @@ export const updateEquipmentListingSchema = z.object({
   category: z.enum(["food-prep", "cooking", "refrigeration", "cleaning", "specialty"]).optional(),
   equipmentType: z.string().min(1).optional(),
   brand: z.string().optional(),
-  model: z.string().optional(),
   description: z.string().optional(),
   condition: z.enum(["excellent", "good", "fair", "needs-repair"]).optional(),
-  age: z.number().int().min(0).optional(),
-  serviceHistory: z.string().optional(),
-  dimensions: z.record(z.any()).optional(),
-  powerRequirements: z.string().optional(),
-  specifications: z.record(z.any()).optional(),
   availabilityType: z.enum(["included", "rental"]).optional(),
-  pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]).optional(),
-  hourlyRate: z.number().int().positive().optional(),
-  dailyRate: z.number().int().positive().optional(),
-  weeklyRate: z.number().int().positive().optional(),
-  monthlyRate: z.number().int().positive().optional(),
-  minimumRentalHours: z.number().int().min(1).optional(),
-  minimumRentalDays: z.number().int().min(1).optional(),
-  usageRestrictions: z.array(z.string()).optional(),
-  trainingRequired: z.boolean().optional(),
-  cleaningResponsibility: z.enum(["renter", "host", "shared"]).optional(),
-  isActive: z.boolean().optional(),
-  prepTimeHours: z.number().int().min(0).optional(),
+  sessionRate: z.number().int().min(0).optional(),
   damageDeposit: z.number().int().min(0).optional(),
-  insuranceRequired: z.boolean().optional(),
-  certifications: z.array(z.string()).optional(),
-  safetyFeatures: z.array(z.string()).optional(),
-  photos: z.array(z.string()).optional(),
-  manuals: z.array(z.string()).optional(),
-  maintenanceLog: z.array(z.any()).optional(),
-  availabilityCalendar: z.record(z.any()).optional(),
+  isActive: z.boolean().optional(),
 });
 
 export const updateEquipmentListingStatusSchema = z.object({
   id: z.number(),
   status: z.enum(["draft", "pending", "approved", "rejected", "active", "inactive"]),
-  rejectionReason: z.string().optional(),
 });
 
 // Type exports for equipment listings
@@ -1358,6 +1307,7 @@ export const paymentTransactions = pgTable("payment_transactions", {
   amount: numeric("amount").notNull(), // Total transaction amount (includes service fee)
   baseAmount: numeric("base_amount").notNull(), // Base amount before service fee
   serviceFee: numeric("service_fee").notNull().default("0"), // Platform service fee
+  stripeProcessingFee: numeric("stripe_processing_fee").default("0"), // Actual Stripe processing fee from BalanceTransaction (in cents)
   managerRevenue: numeric("manager_revenue").notNull(), // Manager earnings (base_amount - service_fee)
   refundAmount: numeric("refund_amount").default("0"), // Total refunded amount
   netAmount: numeric("net_amount").notNull(), // Final amount after refunds (amount - refund_amount)
@@ -1420,3 +1370,31 @@ export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
 export type InsertPaymentTransaction = z.infer<typeof insertPaymentTransactionSchema>;
 export type UpdatePaymentTransaction = z.infer<typeof updatePaymentTransactionSchema>;
 export type PaymentHistory = typeof paymentHistory.$inferSelect;
+
+// ===== PENDING STORAGE EXTENSIONS TABLE =====
+// Tracks pending storage extension requests awaiting payment and manager approval
+export const pendingStorageExtensions = pgTable("pending_storage_extensions", {
+  id: serial("id").primaryKey(),
+  storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
+  newEndDate: timestamp("new_end_date").notNull(),
+  extensionDays: integer("extension_days").notNull(),
+  extensionBasePriceCents: integer("extension_base_price_cents").notNull(),
+  extensionServiceFeeCents: integer("extension_service_fee_cents").notNull(),
+  extensionTotalPriceCents: integer("extension_total_price_cents").notNull(),
+  stripeSessionId: text("stripe_session_id").notNull(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  // Status flow: pending (awaiting payment) -> paid (awaiting approval) -> approved/rejected -> completed/refunded
+  status: text("status").notNull().default("pending"), // pending, paid, approved, rejected, completed, refunded, failed, expired
+  // Manager approval fields
+  managerId: integer("manager_id").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Type exports for pending storage extensions
+export type PendingStorageExtension = typeof pendingStorageExtensions.$inferSelect;
+export type InsertPendingStorageExtension = typeof pendingStorageExtensions.$inferInsert;

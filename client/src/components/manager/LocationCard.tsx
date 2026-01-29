@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { 
-  Building2, MapPin, ChefHat, Calendar, Clock, 
-  CheckCircle, AlertCircle, XCircle, Edit, Eye, 
+import {
+  Building2, MapPin, ChefHat, Calendar, Clock,
+  CheckCircle, AlertCircle, XCircle, Edit, Eye,
   ArrowRight, Info, Image as ImageIcon
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -9,29 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { LocationData } from "./types";
 
-export interface LocationData {
-  id: number;
-  name: string;
-  address: string;
-  managerId?: number;
-  createdAt?: string;
-  updatedAt?: string;
-  kitchenLicenseUrl?: string;
-  kitchenLicenseStatus?: string;
-  kitchenLicenseApprovedBy?: number;
-  kitchenLicenseApprovedAt?: string;
-  kitchenLicenseFeedback?: string;
-  logoUrl?: string;
-  brandImageUrl?: string;
-  notificationEmail?: string;
-  notificationPhone?: string;
-  timezone?: string;
-  cancellationPolicyHours?: number;
-  cancellationPolicyMessage?: string;
-  defaultDailyBookingLimit?: number;
-  minimumBookingWindowHours?: number;
-}
+// Re-export LocationData for backward compatibility
+export type { LocationData };
 
 interface LocationCardProps {
   location: LocationData;
@@ -91,7 +72,7 @@ export default function LocationCard({
 
   return (
     <TooltipProvider>
-      <Card 
+      <Card
         className={cn(
           "relative overflow-hidden transition-all duration-300 border-2",
           isHovered ? "shadow-lg scale-[1.02]" : "shadow-sm",
@@ -117,8 +98,8 @@ export default function LocationCard({
             {/* Logo/Icon */}
             <div className="flex-shrink-0">
               {location.logoUrl ? (
-                <img 
-                  src={location.logoUrl} 
+                <img
+                  src={location.logoUrl}
                   alt={location.name}
                   className="w-14 h-14 rounded-lg object-cover border border-gray-200"
                   onError={(e) => {
@@ -152,8 +133,8 @@ export default function LocationCard({
                   )}
                 </div>
               </TooltipTrigger>
-              <TooltipContent 
-                side="bottom" 
+              <TooltipContent
+                side="bottom"
                 className="max-w-xs bg-gray-900 text-white p-3"
               >
                 <p className="text-sm">{statusConfig.description}</p>

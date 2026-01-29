@@ -11,7 +11,7 @@
  * - Missing data recovery
  */
 
-import type { Pool } from '@neondatabase/serverless';
+import { sql } from "drizzle-orm";
 import { getPaymentIntent } from './stripe-service';
 
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded' | 'processing' | 'canceled';
@@ -56,11 +56,11 @@ export function mapStripeStatusToPaymentStatus(stripeStatus: string): PaymentSta
  */
 export async function syncPaymentStatusFromStripe(
   bookingId: number,
-  dbPool: Pool
+  db: any
 ): Promise<PaymentTrackingResult> {
   try {
     // Get booking with payment intent
-    const bookingResult = await dbPool.query(`
+    const bookingResult = await db.execute(sql`
       SELECT 
         id,
         payment_intent_id,
@@ -69,8 +69,8 @@ export async function syncPaymentStatusFromStripe(
         chef_id,
         kitchen_id
       FROM kitchen_bookings
-      WHERE id = $1
-    `, [bookingId]);
+      WHERE id = ${bookingId}
+    `);
 
     if (bookingResult.rows.length === 0) {
       return {
@@ -81,7 +81,7 @@ export async function syncPaymentStatusFromStripe(
       };
     }
 
-    const booking = bookingResult.rows[0];
+    const booking = bookingResult.rows[0] as any;
 
     // If no payment intent, can't sync
     if (!booking.payment_intent_id) {
@@ -96,7 +96,7 @@ export async function syncPaymentStatusFromStripe(
 
     // Get current status from Stripe
     const paymentIntent = await getPaymentIntent(booking.payment_intent_id);
-    
+
     if (!paymentIntent) {
       return {
         success: false,
@@ -112,13 +112,13 @@ export async function syncPaymentStatusFromStripe(
 
     // Only update if status has changed
     if (newPaymentStatus !== currentStatus) {
-      await dbPool.query(`
+      await db.execute(sql`
         UPDATE kitchen_bookings
         SET 
-          payment_status = $1,
+          payment_status = ${newPaymentStatus},
           updated_at = NOW()
-        WHERE id = $2
-      `, [newPaymentStatus, bookingId]);
+        WHERE id = ${bookingId}
+      `);
 
       console.log(`[Payment Tracking] Updated booking ${bookingId} payment status: ${currentStatus} -> ${newPaymentStatus} (Stripe: ${paymentIntent.status})`);
 
@@ -157,11 +157,11 @@ export async function syncPaymentStatusFromStripe(
  */
 export async function syncManagerPayments(
   managerId: number,
-  dbPool: Pool
+  db: any
 ): Promise<{ synced: number; updated: number; errors: number }> {
   try {
     // Get all bookings with payment intents for this manager
-    const bookingsResult = await dbPool.query(`
+    const bookingsResult = await db.execute(sql`
       SELECT 
         kb.id,
         kb.payment_intent_id,
@@ -169,19 +169,19 @@ export async function syncManagerPayments(
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
-      WHERE l.manager_id = $1
+      WHERE l.manager_id = ${managerId}
         AND kb.status != 'cancelled'
         AND kb.payment_intent_id IS NOT NULL
         AND kb.payment_status IN ('pending', 'processing')
-    `, [managerId]);
+    `);
 
     let synced = 0;
     let updated = 0;
     let errors = 0;
 
-    for (const booking of bookingsResult.rows) {
+    for (const booking of bookingsResult.rows as any[]) {
       synced++;
-      const result = await syncPaymentStatusFromStripe(booking.id, dbPool);
+      const result = await syncPaymentStatusFromStripe(booking.id, db);
       if (result.success && result.updated) {
         updated++;
       } else if (!result.success) {
@@ -204,10 +204,10 @@ export async function syncManagerPayments(
  */
 export async function recoverMissingPaymentData(
   bookingId: number,
-  dbPool: Pool
+  db: any
 ): Promise<PaymentTrackingResult> {
   try {
-    const bookingResult = await dbPool.query(`
+    const bookingResult = await db.execute(sql`
       SELECT 
         id,
         payment_intent_id,
@@ -216,8 +216,8 @@ export async function recoverMissingPaymentData(
         service_fee,
         currency
       FROM kitchen_bookings
-      WHERE id = $1
-    `, [bookingId]);
+      WHERE id = ${bookingId}
+    `);
 
     if (bookingResult.rows.length === 0) {
       return {
@@ -228,7 +228,7 @@ export async function recoverMissingPaymentData(
       };
     }
 
-    const booking = bookingResult.rows[0];
+    const booking = bookingResult.rows[0] as any;
 
     // If no payment intent, nothing to recover
     if (!booking.payment_intent_id) {
@@ -243,7 +243,7 @@ export async function recoverMissingPaymentData(
 
     // Get payment intent from Stripe to recover data
     const paymentIntent = await getPaymentIntent(booking.payment_intent_id);
-    
+
     if (!paymentIntent) {
       return {
         success: false,
@@ -254,34 +254,27 @@ export async function recoverMissingPaymentData(
       };
     }
 
-    const updates: string[] = [];
-    const params: any[] = [];
-    let paramIndex = 1;
+    const updates: any[] = [];
 
     // Recover payment status
     const newPaymentStatus = mapStripeStatusToPaymentStatus(paymentIntent.status);
     if (!booking.payment_status || booking.payment_status !== newPaymentStatus) {
-      updates.push(`payment_status = $${paramIndex}`);
-      params.push(newPaymentStatus);
-      paramIndex++;
+      updates.push(sql`payment_status = ${newPaymentStatus}`);
     }
 
     // Recover total_price from Stripe if missing
     if (!booking.total_price && paymentIntent.amount) {
-      updates.push(`total_price = $${paramIndex}`);
-      params.push(paymentIntent.amount.toString());
-      paramIndex++;
+      updates.push(sql`total_price = ${paymentIntent.amount.toString()}`);
     }
 
     if (updates.length > 0) {
-      params.push(bookingId);
-      await dbPool.query(`
+      await db.execute(sql`
         UPDATE kitchen_bookings
         SET 
-          ${updates.join(', ')},
+          ${sql.join(updates, sql`, `)},
           updated_at = NOW()
-        WHERE id = $${paramIndex}
-      `, params);
+        WHERE id = ${bookingId}
+      `);
 
       console.log(`[Payment Tracking] Recovered payment data for booking ${bookingId}:`, {
         status: newPaymentStatus,
@@ -325,18 +318,18 @@ export async function trackRefund(
   bookingId: number,
   refundAmount: number,
   isPartial: boolean,
-  dbPool: Pool
+  db: any
 ): Promise<PaymentTrackingResult> {
   try {
     const newStatus: PaymentStatus = isPartial ? 'partially_refunded' : 'refunded';
 
-    await dbPool.query(`
+    await db.execute(sql`
       UPDATE kitchen_bookings
       SET 
-        payment_status = $1,
+        payment_status = ${newStatus},
         updated_at = NOW()
-      WHERE id = $2
-    `, [newStatus, bookingId]);
+      WHERE id = ${bookingId}
+    `);
 
     console.log(`[Payment Tracking] Tracked ${isPartial ? 'partial' : 'full'} refund for booking ${bookingId}: ${refundAmount} cents`);
 
@@ -365,7 +358,7 @@ export async function trackRefund(
  */
 export async function getPaymentStatus(
   bookingId: number,
-  dbPool: Pool
+  db: any
 ): Promise<{
   bookingId: number;
   dbStatus: PaymentStatus | null;
@@ -376,15 +369,15 @@ export async function getPaymentStatus(
   needsSync: boolean;
 }> {
   try {
-    const bookingResult = await dbPool.query(`
+    const bookingResult = await db.execute(sql`
       SELECT 
         id,
         payment_intent_id,
         payment_status,
         total_price
       FROM kitchen_bookings
-      WHERE id = $1
-    `, [bookingId]);
+      WHERE id = ${bookingId}
+    `);
 
     if (bookingResult.rows.length === 0) {
       return {
@@ -398,7 +391,7 @@ export async function getPaymentStatus(
       };
     }
 
-    const booking = bookingResult.rows[0];
+    const booking = bookingResult.rows[0] as any;
     const dbStatus = booking.payment_status as PaymentStatus | null;
     let stripeStatus: string | null = null;
     let inSync = true;

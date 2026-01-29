@@ -35,7 +35,7 @@ export default function KitchenPreferenceForm() {
 
   const { mutate, isPending } = useMutation({
     mutationFn: async (data: ApplicationFormData) => {
-      const response = await apiRequest("POST", "/api/applications", data);
+      const response = await apiRequest("POST", "/api/firebase/applications", data);
       return response.json();
     },
     onSuccess: () => {
@@ -75,23 +75,21 @@ export default function KitchenPreferenceForm() {
         {/* Kitchen Preference Options - Horizontal Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Commercial Kitchen Option */}
-          <div 
-            className={`relative cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${
-              form.watch("kitchenPreference") === "commercial" 
-                ? 'ring-2 ring-primary shadow-lg shadow-primary/20' 
+          <div
+            className={`relative cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${form.watch("kitchenPreference") === "commercial"
+                ? 'ring-2 ring-primary shadow-lg shadow-primary/20'
                 : 'ring-1 ring-gray-200 hover:ring-gray-300 hover:shadow-md'
-            }`}
+              }`}
             onClick={() => form.setValue("kitchenPreference", "commercial")}
           >
             <div className="bg-white rounded-xl p-6 h-full">
               {/* Selection Indicator */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-3">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    form.watch("kitchenPreference") === "commercial" 
-                      ? 'bg-primary text-white' 
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${form.watch("kitchenPreference") === "commercial"
+                      ? 'bg-primary text-white'
                       : 'bg-blue-50 text-blue-600'
-                  }`}>
+                    }`}>
                     <Building className="h-6 w-6" />
                   </div>
                   <div>
@@ -99,17 +97,16 @@ export default function KitchenPreferenceForm() {
                     <p className="text-sm text-gray-600">Commercial-grade facilities</p>
                   </div>
                 </div>
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                  form.watch("kitchenPreference") === "commercial" 
-                    ? 'border-primary bg-primary' 
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${form.watch("kitchenPreference") === "commercial"
+                    ? 'border-primary bg-primary'
                     : 'border-gray-300'
-                }`}>
+                  }`}>
                   {form.watch("kitchenPreference") === "commercial" && (
                     <div className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </div>
               </div>
-              
+
               {/* Benefits List */}
               <div className="space-y-3 mb-4">
                 <div className="flex items-center space-x-3">
@@ -138,23 +135,21 @@ export default function KitchenPreferenceForm() {
           </div>
 
           {/* Home Kitchen Option */}
-          <div 
-            className={`relative cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${
-              form.watch("kitchenPreference") === "home" 
-                ? 'ring-2 ring-primary shadow-lg shadow-primary/20' 
+          <div
+            className={`relative cursor-pointer transition-all duration-300 transform hover:scale-[1.02] ${form.watch("kitchenPreference") === "home"
+                ? 'ring-2 ring-primary shadow-lg shadow-primary/20'
                 : 'ring-1 ring-gray-200 hover:ring-gray-300 hover:shadow-md'
-            }`}
+              }`}
             onClick={() => form.setValue("kitchenPreference", "home")}
           >
             <div className="bg-white rounded-xl p-6 h-full">
               {/* Selection Indicator */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-3">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    form.watch("kitchenPreference") === "home" 
-                      ? 'bg-primary text-white' 
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${form.watch("kitchenPreference") === "home"
+                      ? 'bg-primary text-white'
                       : 'bg-green-50 text-green-600'
-                  }`}>
+                    }`}>
                     <HomeIcon className="h-6 w-6" />
                   </div>
                   <div>
@@ -162,17 +157,16 @@ export default function KitchenPreferenceForm() {
                     <p className="text-sm text-gray-600">Cook from your own space</p>
                   </div>
                 </div>
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                  form.watch("kitchenPreference") === "home" 
-                    ? 'border-primary bg-primary' 
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${form.watch("kitchenPreference") === "home"
+                    ? 'border-primary bg-primary'
                     : 'border-gray-300'
-                }`}>
+                  }`}>
                   {form.watch("kitchenPreference") === "home" && (
                     <div className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </div>
               </div>
-              
+
               {/* Benefits List */}
               <div className="space-y-3 mb-4">
                 <div className="flex items-center space-x-3">
@@ -202,22 +196,20 @@ export default function KitchenPreferenceForm() {
         </div>
 
         {/* Not Sure Option - Full Width */}
-        <div 
-          className={`cursor-pointer transition-all duration-300 transform hover:scale-[1.01] ${
-            form.watch("kitchenPreference") === "notSure" 
-              ? 'ring-2 ring-primary shadow-lg shadow-primary/20' 
+        <div
+          className={`cursor-pointer transition-all duration-300 transform hover:scale-[1.01] ${form.watch("kitchenPreference") === "notSure"
+              ? 'ring-2 ring-primary shadow-lg shadow-primary/20'
               : 'ring-1 ring-gray-200 hover:ring-gray-300 hover:shadow-md'
-          }`}
+            }`}
           onClick={() => form.setValue("kitchenPreference", "notSure")}
         >
           <div className="bg-white rounded-xl p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  form.watch("kitchenPreference") === "notSure" 
-                    ? 'bg-primary text-white' 
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${form.watch("kitchenPreference") === "notSure"
+                    ? 'bg-primary text-white'
                     : 'bg-orange-50 text-orange-600'
-                }`}>
+                  }`}>
                   <HelpCircle className="h-6 w-6" />
                 </div>
                 <div>
@@ -225,11 +217,10 @@ export default function KitchenPreferenceForm() {
                   <p className="text-sm text-gray-600">Let's discuss what works best for your situation</p>
                 </div>
               </div>
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                form.watch("kitchenPreference") === "notSure" 
-                  ? 'border-primary bg-primary' 
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${form.watch("kitchenPreference") === "notSure"
+                  ? 'border-primary bg-primary'
                   : 'border-gray-300'
-              }`}>
+                }`}>
                 {form.watch("kitchenPreference") === "notSure" && (
                   <div className="w-2 h-2 rounded-full bg-white" />
                 )}

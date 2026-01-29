@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express, { NextFunction, type Request, Response } from "express";
-import { initializeFirebaseAdmin } from "./firebase-admin.js";
+import { initializeFirebaseAdmin } from "./firebase-setup.js";
 import { registerFirebaseRoutes } from "./firebase-routes.js";
 import { registerRoutes } from "./routes.js";
 import { log, serveStatic, setupVite } from "./vite.js";
@@ -51,13 +51,13 @@ let routesInitialized = false;
 // Initialize routes immediately (top-level await)
 const initPromise = (async () => {
   if (routesInitialized) return;
-  
+
   try {
     log('[INIT] Starting route registration...');
-    
+
     // Register traditional routes FIRST (includes admin PUT routes that must come before any catch-all)
     await registerRoutes(app);
-    
+
     // ✅ FIREBASE AUTH ONLY - Modern JWT-based authentication (registered after specific routes)
     registerFirebaseRoutes(app);
 
@@ -82,14 +82,14 @@ const initPromise = (async () => {
       const { createServer } = await import('http');
       const server = createServer(app);
       const port = process.env.PORT || (app.get("env") === "development" ? 5001 : 5000);
-      
+
       // Setup Vite for hot reloading in development
       if (app.get("env") === "development") {
         await setupVite(app, server);
       } else {
         serveStatic(app);
       }
-      
+
       server.listen(port, () => {
         log(`[LOCAL] Server running on http://localhost:${port}`);
       });

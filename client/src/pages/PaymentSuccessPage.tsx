@@ -17,10 +17,10 @@ export default function PaymentSuccessPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Get booking ID from URL
+  // Get booking ID from URL (supports both bookingId and booking_id params)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const bookingId = params.get('bookingId');
+    const bookingId = params.get('bookingId') || params.get('booking_id');
 
     if (!bookingId) {
       setError('No booking ID provided');
@@ -60,6 +60,7 @@ export default function PaymentSuccessPage() {
           bookingDate: bookingData.bookingDate || bookingData.booking_date,
           startTime: bookingData.startTime || bookingData.start_time,
           endTime: bookingData.endTime || bookingData.end_time,
+          selectedSlots: bookingData.selectedSlots || bookingData.selected_slots,
           status: bookingData.status,
         };
         setBooking(normalizedBooking);
@@ -142,6 +143,48 @@ export default function PaymentSuccessPage() {
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
+  // Helper to format discrete time slots for display
+  const formatBookingTimeSlots = (): string => {
+    if (!booking) return '';
+    const rawSlots = booking.selectedSlots;
+    
+    // If no slots or empty, fall back to startTime - endTime
+    if (!rawSlots || rawSlots.length === 0) {
+      return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`;
+    }
+    
+    // Normalize slots to {startTime, endTime} format
+    const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
+      if (typeof slot === 'string') {
+        const [h, m] = slot.split(':').map(Number);
+        const endMins = h * 60 + m + 60;
+        const endH = Math.floor(endMins / 60);
+        const endM = endMins % 60;
+        return { startTime: slot, endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}` };
+      }
+      return slot;
+    };
+    
+    const normalized = rawSlots.map(normalizeSlot).filter((s: { startTime: string; endTime: string }) => s.startTime && s.endTime);
+    const sorted = [...normalized].sort((a: { startTime: string }, b: { startTime: string }) => a.startTime.localeCompare(b.startTime));
+    
+    // Check if contiguous
+    let isContiguous = true;
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i - 1].endTime !== sorted[i].startTime) {
+        isContiguous = false;
+        break;
+      }
+    }
+    
+    if (isContiguous) {
+      return `${formatTime(booking.startTime)} - ${formatTime(booking.endTime)}`;
+    }
+    
+    // Non-contiguous: show each slot
+    return sorted.map((s: { startTime: string; endTime: string }) => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ');
+  };
+
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
     const date = new Date(dateStr);
@@ -208,9 +251,23 @@ export default function PaymentSuccessPage() {
                 </div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Confirmed!</h1>
                 <p className="text-lg text-gray-600">
-                  Your booking has been successfully created and payment has been processed.
+                  Your payment has been processed successfully. Your booking is now pending manager approval.
                 </p>
               </div>
+
+              {/* Pending Approval Notice */}
+              {booking.status === 'pending' && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-yellow-900 mb-2 flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+                    Awaiting Manager Approval
+                  </h3>
+                  <p className="text-sm text-yellow-800">
+                    Your booking request has been submitted and is pending approval from the kitchen manager. 
+                    You will receive an email confirmation once your booking is approved.
+                  </p>
+                </div>
+              )}
 
               {/* Booking Details */}
               <div className="bg-gray-50 rounded-lg p-6 mb-6">
@@ -236,7 +293,7 @@ export default function PaymentSuccessPage() {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Time:</span>
                       <span className="font-medium text-gray-900">
-                        {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
+                        {formatBookingTimeSlots()}
                       </span>
                     </div>
                   )}

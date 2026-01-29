@@ -3,13 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, useLocation } from "wouter";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import ManagerOnboardingWizard from "./ManagerOnboardingWizard";
 
 interface ManagerProtectedRouteProps {
   children: React.ReactNode;
 }
 
 export default function ManagerProtectedRoute({ children }: ManagerProtectedRouteProps) {
-  const [, setLocation] = useLocation();
+  useLocation();
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
   
   // Try Firebase auth first
@@ -116,6 +117,10 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
 
   // Managers go to dashboard - ManagerOnboardingWizard will show if onboarding is needed
   // No password change redirect - managers use onboarding wizard for setup
-  return <>{children}</>;
+  return (
+    <ManagerOnboardingWizard>
+      {children}
+    </ManagerOnboardingWizard>
+  );
 }
 

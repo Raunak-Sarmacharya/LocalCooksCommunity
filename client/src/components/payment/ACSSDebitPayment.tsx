@@ -197,9 +197,10 @@ function PaymentForm({ clientSecret, amount, currency, onSuccess, onError }: Cus
   };
 
   const formatAmount = (cents: number, curr: string) => {
+    const safeCurrency = curr?.toUpperCase() || 'CAD';
     return new Intl.NumberFormat('en-CA', {
       style: 'currency',
-      currency: curr.toUpperCase(),
+      currency: safeCurrency,
     }).format(cents / 100);
   };
 

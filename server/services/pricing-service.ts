@@ -5,26 +5,15 @@
  * All prices are calculated in cents (integers) to avoid floating-point precision issues.
  */
 
-import type { Pool } from '@neondatabase/serverless';
-
-// Try to import pool, but make it optional for production compatibility
-// In production (Vercel), the pool will be passed as a parameter to functions
-let pool: Pool | null = null;
-try {
-  // Try importing pool - works in development
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const dbModule = require("../db");
-  pool = dbModule.pool || null;
-} catch (e) {
-  // In production (Vercel), pool will be passed as parameter
-  // This is expected and not an error
-  pool = null;
-}
+import { db } from "../db";
+import { kitchens, platformSettings } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export interface KitchenPricingInfo {
   hourlyRate: number; // in cents
   currency: string;
   minimumBookingHours: number;
+  taxRatePercent?: number | null;
 }
 
 export interface BookingDuration {
@@ -40,49 +29,44 @@ export interface BookingDuration {
 export function calculateDurationHours(startTime: string, endTime: string): number {
   const [startHours, startMinutes] = startTime.split(':').map(Number);
   const [endHours, endMinutes] = endTime.split(':').map(Number);
-  
+
   const startTotalMinutes = startHours * 60 + startMinutes;
   const endTotalMinutes = endHours * 60 + endMinutes;
-  
+
   const durationMinutes = endTotalMinutes - startTotalMinutes;
   const durationHours = durationMinutes / 60;
-  
+
   return Math.max(0, durationHours); // Ensure non-negative
 }
 
 /**
  * Get kitchen pricing information
  * @param kitchenId - Kitchen ID
- * @param dbPool - Optional database pool (required in production)
  * @returns Kitchen pricing info or null if not found
  */
-export async function getKitchenPricing(kitchenId: number, dbPool?: Pool | null): Promise<KitchenPricingInfo | null> {
+export async function getKitchenPricing(kitchenId: number): Promise<KitchenPricingInfo | null> {
   try {
-    const activePool = dbPool || pool;
-    if (!activePool) {
-      throw new Error("Database pool not initialized");
-    }
+    const [kitchen] = await db
+      .select({
+        hourlyRate: kitchens.hourlyRate,
+        currency: kitchens.currency,
+        minimumBookingHours: kitchens.minimumBookingHours,
+        taxRatePercent: kitchens.taxRatePercent,
+      })
+      .from(kitchens)
+      .where(eq(kitchens.id, kitchenId));
 
-    const result = await activePool.query(`
-      SELECT 
-        hourly_rate::text as hourly_rate,
-        currency,
-        minimum_booking_hours
-      FROM kitchens
-      WHERE id = $1
-    `, [kitchenId]);
-
-    if (result.rows.length === 0) {
+    if (!kitchen) {
       return null;
     }
 
-    const row = result.rows[0];
-    const hourlyRateCents = row.hourly_rate ? parseFloat(row.hourly_rate) : 0;
+    const hourlyRateCents = kitchen.hourlyRate ? parseFloat(kitchen.hourlyRate) : 0;
 
     return {
       hourlyRate: hourlyRateCents,
-      currency: row.currency || 'CAD',
-      minimumBookingHours: row.minimum_booking_hours || 1,
+      currency: kitchen.currency || 'CAD',
+      minimumBookingHours: kitchen.minimumBookingHours || 1,
+      taxRatePercent: kitchen.taxRatePercent ? parseFloat(kitchen.taxRatePercent) : null,
     };
   } catch (error) {
     console.error('Error getting kitchen pricing:', error);
@@ -95,24 +79,24 @@ export async function getKitchenPricing(kitchenId: number, dbPool?: Pool | null)
  * @param kitchenId - Kitchen ID
  * @param startTime - HH:MM format
  * @param endTime - HH:MM format
- * @param dbPool - Optional database pool (required in production)
  * @returns Object with price in cents, duration in hours, and hourly rate
  */
 export async function calculateKitchenBookingPrice(
   kitchenId: number,
   startTime: string,
-  endTime: string,
-  dbPool?: Pool | null
+  endTime: string
 ): Promise<{
   totalPriceCents: number;
   durationHours: number;
   hourlyRateCents: number;
   currency: string;
+  taxRatePercent: number | null;
+  taxAmountCents: number;
 }> {
   try {
     // Get kitchen pricing
-    const pricing = await getKitchenPricing(kitchenId, dbPool);
-    
+    const pricing = await getKitchenPricing(kitchenId);
+
     if (!pricing || !pricing.hourlyRate || pricing.hourlyRate <= 0) {
       // No pricing set - return zero price
       const durationHours = calculateDurationHours(startTime, endTime);
@@ -121,23 +105,37 @@ export async function calculateKitchenBookingPrice(
         durationHours,
         hourlyRateCents: 0,
         currency: pricing?.currency || 'CAD',
+        taxRatePercent: pricing?.taxRatePercent ?? null,
+        taxAmountCents: 0,
       };
     }
 
     // Calculate duration
     const durationHours = calculateDurationHours(startTime, endTime);
-    
+
     // Enforce minimum booking hours
     const effectiveDuration = Math.max(durationHours, pricing.minimumBookingHours);
-    
+
     // Calculate total price (hourly rate × duration)
-    const totalPriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
+    // Note: This is the SUB-TOTAL before fees and taxes
+    const basePriceCents = Math.round(pricing.hourlyRate * effectiveDuration);
+
+    // Calculate Tax
+    const taxAmountCents = calculateTax(basePriceCents, pricing.taxRatePercent ?? null);
+
+    // Note: calculateKitchenBookingPrice traditionally returned just the base price for the booking
+    // But to be enterprise-grade, we should probably return the components.
+    // However, existing callers might expect 'totalPriceCents' to be the base booking cost.
+    // Let's check callers. Most callers seem to take this result and then call calculateTotalWithFees.
+    // So we should return the components needed for that.
 
     return {
-      totalPriceCents,
+      totalPriceCents: basePriceCents, // This is the subtotal
       durationHours: effectiveDuration,
       hourlyRateCents: pricing.hourlyRate,
       currency: pricing.currency,
+      taxRatePercent: pricing.taxRatePercent ?? null,
+      taxAmountCents, // New field
     };
   } catch (error) {
     console.error('Error calculating kitchen booking price:', error);
@@ -147,32 +145,23 @@ export async function calculateKitchenBookingPrice(
 
 /**
  * Get service fee rate from platform settings
- * @param dbPool - Database pool (required)
  * @returns Service fee rate as decimal (e.g., 0.05 for 5%), defaults to 0.05 if not found
  */
-export async function getServiceFeeRate(dbPool?: Pool | null): Promise<number> {
+export async function getServiceFeeRate(): Promise<number> {
   try {
-    const activePool = dbPool || pool;
-    if (!activePool) {
-      console.warn('Database pool not available, using default service fee rate of 5%');
+    const [setting] = await db
+      .select({ value: platformSettings.value })
+      .from(platformSettings)
+      .where(eq(platformSettings.key, 'service_fee_rate'));
+
+    if (!setting) {
       return 0.05; // Default 5%
     }
 
-    const result = await activePool.query(
-      'SELECT value FROM platform_settings WHERE key = $1',
-      ['service_fee_rate']
-    );
+    const rate = parseFloat(setting.value);
 
-    if (result.rows.length === 0) {
-      console.warn('Service fee rate not found in platform_settings, using default 5%');
-      return 0.05; // Default 5%
-    }
-
-    const rate = parseFloat(result.rows[0].value);
-    
     // Validate rate is between 0 and 1
     if (isNaN(rate) || rate < 0 || rate > 1) {
-      console.warn(`Invalid service fee rate: ${rate}, using default 5%`);
       return 0.05;
     }
 
@@ -196,15 +185,30 @@ export function calculatePlatformFee(basePriceCents: number, commissionRate: num
 /**
  * Calculate platform service fee with dynamic rate from database
  * @param basePriceCents - Base price in cents
- * @param dbPool - Database pool (required to fetch rate)
  * @returns Service fee in cents
  */
 export async function calculatePlatformFeeDynamic(
-  basePriceCents: number,
-  dbPool?: Pool | null
+  basePriceCents: number
 ): Promise<number> {
-  const rate = await getServiceFeeRate(dbPool);
+  // NOTE: The instruction provided `dbPool` here, but `db` is the imported Drizzle instance.
+  // Assuming `dbPool` was a typo and `db` should be used, or `getServiceFeeRate`
+  // would need to be updated to accept a parameter. Sticking to existing `getServiceFeeRate` signature.
+  const rate = await getServiceFeeRate();
   return calculatePlatformFee(basePriceCents, rate);
+}
+
+/**
+ * Calculate tax amount
+ * @param basePriceCents - Base price in cents
+ * @param taxRatePercent - Tax rate as percentage (e.g., 13 for 13%)
+ * @returns Tax amount in cents
+ */
+export function calculateTax(basePriceCents: number, taxRatePercent: number | null): number {
+  if (!taxRatePercent || taxRatePercent <= 0) {
+    return 0;
+  }
+  // Formula: Base * (Rate / 100)
+  return Math.round(basePriceCents * (taxRatePercent / 100));
 }
 
 /**
@@ -217,9 +221,8 @@ export async function calculatePlatformFeeDynamic(
 export function calculateTotalWithFees(
   basePriceCents: number,
   serviceFeeCents: number = 0,
-  damageDepositCents: number = 0
+  damageDepositCents: number = 0,
+  taxAmountCents: number = 0
 ): number {
-  return basePriceCents + serviceFeeCents + damageDepositCents;
+  return basePriceCents + serviceFeeCents + damageDepositCents + taxAmountCents;
 }
-
-

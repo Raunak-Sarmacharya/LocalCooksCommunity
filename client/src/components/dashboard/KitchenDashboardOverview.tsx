@@ -55,6 +55,7 @@ import {
   Cell,
 } from "recharts";
 import BookingCalendarWidget from "./BookingCalendarWidget";
+import { formatCurrency } from "@/lib/formatters";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // KITCHEN DASHBOARD OVERVIEW - Award-Winning Design
@@ -796,14 +797,9 @@ export default function KitchenDashboardOverview({
                     {isLoadingRevenue ? (
                       <span className="text-emerald-100">...</span>
                     ) : revenueMetrics ? (
-                      new Intl.NumberFormat('en-CA', {
-                        style: 'currency',
-                        currency: 'CAD',
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(revenueMetrics.totalRevenue || 0)
+                      formatCurrency(revenueMetrics.totalRevenue || 0)
                     ) : (
-                      '$0'
+                      '$0.00'
                     )}
                   </p>
                   <p className="text-emerald-100 text-xs mt-1">Total revenue</p>
@@ -833,14 +829,9 @@ export default function KitchenDashboardOverview({
                     {isLoadingRevenue ? (
                       <span className="text-blue-100">...</span>
                     ) : revenueMetrics ? (
-                      new Intl.NumberFormat('en-CA', {
-                        style: 'currency',
-                        currency: 'CAD',
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format(revenueMetrics.depositedManagerRevenue || revenueMetrics.managerRevenue || 0)
+                      formatCurrency(revenueMetrics.depositedManagerRevenue || revenueMetrics.managerRevenue || 0)
                     ) : (
-                      '$0'
+                      '$0.00'
                     )}
                   </p>
                   <p className="text-blue-100 text-xs mt-1">Deposited in bank</p>
@@ -878,14 +869,9 @@ export default function KitchenDashboardOverview({
                     {isLoadingRevenue ? (
                       <span className={revenueMetrics && (revenueMetrics as any).pendingPayments > 0 ? 'text-amber-100' : 'text-gray-500'}>...</span>
                     ) : revenueMetrics ? (
-                      new Intl.NumberFormat('en-CA', {
-                        style: 'currency',
-                        currency: 'CAD',
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0,
-                      }).format((revenueMetrics as any).pendingPayments || 0)
+                      formatCurrency((revenueMetrics as any).pendingPayments || 0)
                     ) : (
-                      '$0'
+                      '$0.00'
                     )}
                   </p>
                   <p className={`text-xs mt-1 ${

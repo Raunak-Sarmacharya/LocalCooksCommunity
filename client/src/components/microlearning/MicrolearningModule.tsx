@@ -936,7 +936,7 @@ export default function MicrolearningModule({
                     if (isLimitedAccess && applicationInfo?.canApply) {
                       return (
                         <Button asChild className="bg-gradient-to-r from-emerald-500 to-blue-500 hover:from-emerald-600 hover:to-blue-600">
-                          <Link href="/apply">
+                          <Link href="/dashboard?view=applications&action=new">
                             Submit Application
                             <ArrowRight className="h-4 w-4 ml-2" />
                           </Link>
@@ -1243,7 +1243,7 @@ export default function MicrolearningModule({
                           : 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'
                       } text-white`}
                     >
-                      <Link href="/apply">
+                      <Link href="/dashboard?view=applications&action=new">
                         <FileText className="h-4 w-4 mr-2" />
                         {applicationInfo.hasRejected || applicationInfo.hasCancelled
                           ? 'Submit New Application'

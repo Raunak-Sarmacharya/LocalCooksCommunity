@@ -1,6 +1,6 @@
 import { Building, Plus, Settings, Users, Edit, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "../hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +32,7 @@ export default function AdminManageLocations() {
     name: "",
     description: "",
     isActive: true,
+    taxRatePercent: "",
   });
 
   const [managerForm, setManagerForm] = useState({
@@ -75,10 +76,8 @@ export default function AdminManageLocations() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("❌ Failed to load locations:", response.status, response.statusText, errorText);
-        toast({
-          title: "Error",
-          description: `Failed to load locations: ${response.status} ${response.statusText}`,
-          variant: "destructive"
+        toast.error("Error", {
+          description: `Failed to load locations: ${response.status} ${response.statusText}`
         });
         return;
       }
@@ -95,10 +94,8 @@ export default function AdminManageLocations() {
           data = JSON.parse(text);
         } catch (e) {
           console.error('📍 Failed to parse response as JSON:', e);
-          toast({
-            title: "Error",
-            description: "Invalid response format from server",
-            variant: "destructive"
+          toast.error("Error", {
+            description: "Invalid response format from server"
           });
           return;
         }
@@ -110,10 +107,8 @@ export default function AdminManageLocations() {
 
       if (!Array.isArray(data)) {
         console.error('📍 Response is not an array! Got:', typeof data, data);
-        toast({
-          title: "Error",
-          description: "Server returned invalid data format",
-          variant: "destructive"
+        toast.error("Error", {
+          description: "Server returned invalid data format"
         });
         return;
       }
@@ -122,10 +117,8 @@ export default function AdminManageLocations() {
       setLocations(data);
     } catch (error: any) {
       console.error("❌ Error loading locations:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load locations",
-        variant: "destructive"
+      toast.error("Error", {
+        description: error.message || "Failed to load locations"
       });
     } finally {
       setLoading(false);
@@ -146,10 +139,8 @@ export default function AdminManageLocations() {
         console.error("❌ Failed to load managers:", response.status, response.statusText);
         const errorText = await response.text();
         console.error("❌ Error response:", errorText);
-        toast({
-          title: "Error",
-          description: `Failed to load managers: ${response.status} ${response.statusText}`,
-          variant: "destructive"
+        toast.error("Error", {
+          description: `Failed to load managers: ${response.status} ${response.statusText}`
         });
         return;
       }
@@ -253,10 +244,8 @@ export default function AdminManageLocations() {
       }
     } catch (error: any) {
       console.error("❌ Error loading managers:", error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load managers",
-        variant: "destructive"
+      toast.error("Error", {
+        description: error.message || "Failed to load managers"
       });
     }
   };
@@ -277,7 +266,7 @@ export default function AdminManageLocations() {
       setKitchens(data);
     } catch (error) {
       console.error("Error loading kitchens:", error);
-      toast({ title: "Error", description: "Failed to load kitchens" });
+      toast.error("Error", { description: "Failed to load kitchens" });
     } finally {
       setLoading(false);
     }
@@ -299,16 +288,16 @@ export default function AdminManageLocations() {
         }),
       });
       if (response.ok) {
-        toast({ title: "Success", description: "Location created successfully" });
+        toast.success("Success", { description: "Location created successfully" });
         setShowLocationForm(false);
         setLocationForm({ name: "", address: "", managerId: "" });
         loadLocations();
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to create location" });
+        toast.error("Error", { description: error.error || "Failed to create location" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to create location" });
+      toast.error("Error", { description: "Failed to create location" });
     } finally {
       setLoading(false);
     }
@@ -341,7 +330,7 @@ export default function AdminManageLocations() {
       if (response.ok) {
         const updatedLocation = await response.json();
         console.log('✅ Location updated successfully:', updatedLocation);
-        toast({ title: "Success", description: "Location updated successfully" });
+        toast.success("Success", { description: "Location updated successfully" });
         setShowLocationForm(false);
         setEditingLocation(null);
         setLocationForm({ name: "", address: "", managerId: "" });
@@ -351,11 +340,11 @@ export default function AdminManageLocations() {
       } else {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         console.error('❌ Failed to update location:', errorData);
-        toast({ title: "Error", description: errorData.error || "Failed to update location" });
+        toast.error("Error", { description: errorData.error || "Failed to update location" });
       }
     } catch (error: any) {
       console.error('❌ Error updating location:', error);
-      toast({ title: "Error", description: error.message || "Failed to update location" });
+      toast.error("Error", { description: error.message || "Failed to update location" });
     } finally {
       setLoading(false);
     }
@@ -373,7 +362,7 @@ export default function AdminManageLocations() {
         headers,
       });
       if (response.ok) {
-        toast({ title: "Success", description: "Location deleted successfully" });
+        toast.success("Success", { description: "Location deleted successfully" });
         setDeletingItem(null);
         loadLocations();
         if (selectedLocationId === deletingItem.id) {
@@ -382,10 +371,10 @@ export default function AdminManageLocations() {
         }
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to delete location" });
+        toast.error("Error", { description: error.error || "Failed to delete location" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to delete location" });
+      toast.error("Error", { description: "Failed to delete location" });
     } finally {
       setLoading(false);
     }
@@ -414,21 +403,22 @@ export default function AdminManageLocations() {
           locationId: parseInt(kitchenForm.locationId),
           name: kitchenForm.name,
           description: kitchenForm.description,
+          taxRatePercent: kitchenForm.taxRatePercent,
         }),
       });
       if (response.ok) {
-        toast({ title: "Success", description: "Kitchen created successfully" });
+        toast.success("Success", { description: "Kitchen created successfully" });
         setShowKitchenForm(false);
-        setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
+        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
         if (kitchenForm.locationId) {
           loadKitchens(parseInt(kitchenForm.locationId));
         }
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to create kitchen" });
+        toast.error("Error", { description: error.error || "Failed to create kitchen" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to create kitchen" });
+      toast.error("Error", { description: "Failed to create kitchen" });
     } finally {
       setLoading(false);
     }
@@ -447,25 +437,25 @@ export default function AdminManageLocations() {
         credentials: "include",
         body: JSON.stringify({
           name: kitchenForm.name,
-          description: kitchenForm.description,
           isActive: kitchenForm.isActive,
           locationId: parseInt(kitchenForm.locationId),
+          taxRatePercent: kitchenForm.taxRatePercent,
         }),
       });
       if (response.ok) {
-        toast({ title: "Success", description: "Kitchen updated successfully" });
+        toast.success("Success", { description: "Kitchen updated successfully" });
         setShowKitchenForm(false);
         setEditingKitchen(null);
-        setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
+        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
         if (kitchenForm.locationId) {
           loadKitchens(parseInt(kitchenForm.locationId));
         }
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to update kitchen" });
+        toast.error("Error", { description: error.error || "Failed to update kitchen" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to update kitchen" });
+      toast.error("Error", { description: "Failed to update kitchen" });
     } finally {
       setLoading(false);
     }
@@ -483,17 +473,17 @@ export default function AdminManageLocations() {
         headers,
       });
       if (response.ok) {
-        toast({ title: "Success", description: "Kitchen deleted successfully" });
+        toast.success("Success", { description: "Kitchen deleted successfully" });
         setDeletingItem(null);
         if (selectedLocationId) {
           loadKitchens(selectedLocationId);
         }
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to delete kitchen" });
+        toast.error("Error", { description: error.error || "Failed to delete kitchen" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to delete kitchen" });
+      toast.error("Error", { description: "Failed to delete kitchen" });
     } finally {
       setLoading(false);
     }
@@ -506,6 +496,7 @@ export default function AdminManageLocations() {
       name: kitchen.name || "",
       description: kitchen.description || "",
       isActive: kitchen.isActive !== undefined ? kitchen.isActive : kitchen.is_active !== undefined ? kitchen.is_active : true,
+      taxRatePercent: kitchen.taxRatePercent !== undefined && kitchen.taxRatePercent !== null ? kitchen.taxRatePercent.toString() : "",
     });
     setShowKitchenForm(true);
   };
@@ -522,16 +513,16 @@ export default function AdminManageLocations() {
         body: JSON.stringify(managerForm),
       });
       if (response.ok) {
-        toast({ title: "Success", description: "Manager created successfully" });
+        toast.success("Success", { description: "Manager created successfully" });
         setShowManagerForm(false);
         setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
         loadManagers();
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to create manager" });
+        toast.error("Error", { description: error.error || "Failed to create manager" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to create manager" });
+      toast.error("Error", { description: "Failed to create manager" });
     } finally {
       setLoading(false);
     }
@@ -562,7 +553,7 @@ export default function AdminManageLocations() {
       if (response.ok) {
         const updatedManager = await response.json();
         console.log('✅ Manager updated successfully:', updatedManager);
-        toast({ title: "Success", description: "Manager updated successfully" });
+        toast.success("Success", { description: "Manager updated successfully" });
         setShowManagerForm(false);
         setEditingManager(null);
         setManagerForm({ username: "", password: "", email: "", name: "", locationNotificationEmails: [] });
@@ -572,11 +563,11 @@ export default function AdminManageLocations() {
       } else {
         const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
         console.error('❌ Failed to update manager:', errorData);
-        toast({ title: "Error", description: errorData.error || "Failed to update manager" });
+        toast.error("Error", { description: errorData.error || "Failed to update manager" });
       }
     } catch (error: any) {
       console.error('❌ Error updating manager:', error);
-      toast({ title: "Error", description: error.message || "Failed to update manager" });
+      toast.error("Error", { description: error.message || "Failed to update manager" });
     } finally {
       setLoading(false);
     }
@@ -594,16 +585,16 @@ export default function AdminManageLocations() {
         headers,
       });
       if (response.ok) {
-        toast({ title: "Success", description: "Manager deleted successfully" });
+        toast.success("Success", { description: "Manager deleted successfully" });
         setDeletingItem(null);
         loadManagers();
         loadLocations(); // Reload locations in case manager was assigned
       } else {
         const error = await response.json();
-        toast({ title: "Error", description: error.error || "Failed to delete manager" });
+        toast.error("Error", { description: error.error || "Failed to delete manager" });
       }
     } catch (error) {
-      toast({ title: "Error", description: "Failed to delete manager" });
+      toast.error("Error", { description: "Failed to delete manager" });
     } finally {
       setLoading(false);
     }
@@ -780,7 +771,7 @@ export default function AdminManageLocations() {
                 <button
                   onClick={() => {
                     setEditingKitchen(null);
-                    setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true });
+                    setKitchenForm({ locationId: selectedLocationId?.toString() || "", name: "", description: "", isActive: true, taxRatePercent: "" });
                     setShowKitchenForm(true);
                   }}
                   className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 min-h-[44px] text-sm sm:text-base mobile-touch-target"
@@ -1040,7 +1031,7 @@ export default function AdminManageLocations() {
                     onClick={() => {
                       setShowKitchenForm(false);
                       setEditingKitchen(null);
-                      setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
+                      setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
                     }}
                     className="text-gray-400 hover:text-gray-600 mobile-touch-target p-1"
                   >
@@ -1091,6 +1082,21 @@ export default function AdminManageLocations() {
                       rows={3}
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Tax Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={kitchenForm.taxRatePercent}
+                      onChange={(e) => setKitchenForm({ ...kitchenForm, taxRatePercent: e.target.value })}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 sm:py-2 min-h-[44px] text-base sm:text-sm"
+                      placeholder="e.g. 13"
+                    />
+                  </div>
                   {editingKitchen && (
                     <div>
                       <div className="flex items-center gap-3">
@@ -1115,7 +1121,7 @@ export default function AdminManageLocations() {
                       onClick={() => {
                         setShowKitchenForm(false);
                         setEditingKitchen(null);
-                        setKitchenForm({ locationId: "", name: "", description: "", isActive: true });
+                        setKitchenForm({ locationId: "", name: "", description: "", isActive: true, taxRatePercent: "" });
                       }}
                       className="flex-1 px-4 py-2.5 sm:py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 min-h-[44px] text-sm sm:text-base"
                     >

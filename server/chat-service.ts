@@ -1,21 +1,23 @@
-import admin from 'firebase-admin';
-import { initializeFirebaseAdmin } from './firebase-admin';
-import { db, pool } from './db';
-import { chefKitchenApplications } from '@shared/schema';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { initializeFirebaseAdmin } from './firebase-setup';
+import { db } from './db';
+import { chefKitchenApplications, locations } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
-let adminDb: any = null;
+let adminDb: FirebaseFirestore.Firestore | null = null;
 
 /**
  * Initialize Firebase Admin for server-side chat operations
  */
 async function getAdminDb() {
   if (!adminDb) {
-    const admin = await initializeFirebaseAdmin();
-    if (!admin) {
+    const app = initializeFirebaseAdmin();
+    if (!app) {
       throw new Error('Failed to initialize Firebase Admin');
     }
-    adminDb = admin.firestore();
+    adminDb = getFirestore(app);
+    // Explicitly set settings to ignore undefined values globally for this instance
+    adminDb.settings({ ignoreUndefinedProperties: true });
   }
   return adminDb;
 }
@@ -37,21 +39,19 @@ export async function initializeConversation(applicationData: {
   try {
     const adminDb = await getAdminDb();
 
-    // Get manager ID from location
-    if (!pool || !('query' in pool)) {
-      throw new Error('Database pool not available');
-    }
-    const locationResult = await pool.query(
-      `SELECT manager_id FROM locations WHERE id = $1`,
-      [applicationData.locationId]
-    );
-    const location = locationResult.rows[0] as any;
-    if (!location || !location.manager_id) {
+    // Get manager ID from location using Drizzle ORM
+    const [location] = await db
+      .select({ managerId: locations.managerId })
+      .from(locations)
+      .where(eq(locations.id, applicationData.locationId))
+      .limit(1);
+
+    if (!location || !location.managerId) {
       console.error('Location not found or has no manager');
       return null;
     }
 
-    const managerId = location.manager_id;
+    const managerId = location.managerId;
 
     // Check if conversation already exists
     const existingQuery = await adminDb
@@ -70,8 +70,8 @@ export async function initializeConversation(applicationData: {
       chefId: applicationData.chefId,
       managerId: managerId,
       locationId: applicationData.locationId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      lastMessageAt: FieldValue.serverTimestamp(),
       unreadChefCount: 0,
       unreadManagerCount: 0,
     });
@@ -162,7 +162,7 @@ export async function sendSystemNotification(
         senderRole: 'system',
         content,
         type: 'system',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
         readAt: null,
       });
 
@@ -171,7 +171,7 @@ export async function sendSystemNotification(
       .collection('conversations')
       .doc(conversationId)
       .update({
-        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageAt: FieldValue.serverTimestamp(),
       });
   } catch (error) {
     console.error('Error sending system notification:', error);
@@ -190,18 +190,23 @@ export async function getUnreadCounts(
     const field = role === 'chef' ? 'chefId' : 'managerId';
     const unreadField = role === 'chef' ? 'unreadChefCount' : 'unreadManagerCount';
 
-    const querySnapshot = await adminDb
+    // Use aggregation to count total unread messages across all conversations
+    // efficient: O(1) document reads (billed as 1 read per 1000 index entries)
+    // Note: Depends on firebase-admin >= 11.?, we are on 13.4.0 so it is supported.
+    // However, if strict types fail, we can fallback to old method or cast.
+
+    // Check if AggregateField is supported (runtime check not needed if types pass)
+    const { AggregateField } = await import('firebase-admin/firestore');
+
+    const snapshot = await adminDb
       .collection('conversations')
       .where(field, '==', userId)
+      .aggregate({
+        totalUnread: AggregateField.sum(unreadField)
+      })
       .get();
 
-    let totalUnread = 0;
-    querySnapshot.docs.forEach((doc: any) => {
-      const data = doc.data();
-      totalUnread += data[unreadField] || 0;
-    });
-
-    return totalUnread;
+    return snapshot.data().totalUnread || 0;
   } catch (error) {
     console.error('Error getting unread counts:', error);
     return 0;

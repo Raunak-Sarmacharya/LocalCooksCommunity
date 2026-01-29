@@ -36,42 +36,23 @@ export async function apiRequest(
   // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
   // This prevents using stale user IDs while maintaining functionality
   const defaultHeaders: Record<string, string> = {};
-  
+
   try {
     const { auth } = await import('@/lib/firebase');
     const currentUser = auth.currentUser;
-    if (currentUser?.uid) {
-      defaultHeaders['X-User-ID'] = currentUser.uid;
-      console.log('Including current Firebase UID in request headers:', currentUser.uid);
-      
-      // CRITICAL FIX: Also include Authorization header for backend auto-sync
+    if (currentUser) {
+      // Always include Authorization header for backend auto-sync and security
       try {
         const token = await currentUser.getIdToken();
         if (token) {
           defaultHeaders['Authorization'] = `Bearer ${token}`;
-          console.log('Including Firebase token in request headers for auto-sync');
         }
       } catch (tokenError) {
         console.error('Failed to get Firebase token for request:', tokenError);
       }
-    } else {
-      // Fallback to localStorage only if Firebase auth is not ready yet
-      const storedUserId = localStorage.getItem('userId');
-      if (storedUserId) {
-        console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
-        defaultHeaders['X-User-ID'] = storedUserId;
-      } else {
-        console.log('No current Firebase user and no stored userId - not including X-User-ID header');
-      }
     }
   } catch (error) {
     console.error('Error getting current Firebase user:', error);
-    // Fallback to localStorage if Firebase import fails
-    const storedUserId = localStorage.getItem('userId');
-    if (storedUserId) {
-      console.log('Firebase error, using stored userId as fallback:', storedUserId);
-      defaultHeaders['X-User-ID'] = storedUserId;
-    }
   }
 
   const headers: Record<string, string> = {
@@ -115,42 +96,23 @@ export const getQueryFn: <T>(options: {
       // SECURITY FIX: Get user ID from current Firebase auth with localStorage fallback
       // This prevents using stale user IDs while maintaining functionality
       const defaultHeaders: Record<string, string> = {};
-      
+
       try {
         const { auth } = await import('@/lib/firebase');
         const currentUser = auth.currentUser;
-        if (currentUser?.uid) {
-          defaultHeaders['X-User-ID'] = currentUser.uid;
-          console.log('Including current Firebase UID in query headers:', currentUser.uid);
-          
-          // CRITICAL FIX: Also include Authorization header for backend auto-sync
+        if (currentUser) {
           try {
             const token = await currentUser.getIdToken();
             if (token) {
               defaultHeaders['Authorization'] = `Bearer ${token}`;
-              console.log('Including Firebase token in query headers for auto-sync');
             }
           } catch (tokenError) {
             console.error('Failed to get Firebase token for query:', tokenError);
           }
-        } else {
-          // Fallback to localStorage only if Firebase auth is not ready yet
-          const storedUserId = localStorage.getItem('userId');
-          if (storedUserId) {
-            console.log('Firebase user not ready, using stored userId as fallback:', storedUserId);
-            defaultHeaders['X-User-ID'] = storedUserId;
-          } else {
-            console.log('No current Firebase user and no stored userId - not including X-User-ID header');
-          }
         }
+        // Removed insecure X-User-ID fallback
       } catch (error) {
         console.error('Error getting current Firebase user:', error);
-        // Fallback to localStorage if Firebase import fails
-        const storedUserId = localStorage.getItem('userId');
-        if (storedUserId) {
-          console.log('Firebase error, using stored userId as fallback:', storedUserId);
-          defaultHeaders['X-User-ID'] = storedUserId;
-        }
       }
 
       const res = await fetch(queryKey[0] as string, {

@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { 
-  HelpCircle, 
-  BookOpen, 
-  FileText, 
-  Settings, 
-  Building2, 
-  Package, 
+import {
+  HelpCircle,
+  BookOpen,
+  FileText,
+  Settings,
+  Building2,
+  Package,
   Wrench,
   CheckCircle,
   X,
@@ -38,12 +38,15 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
           <p className="text-sm text-gray-700">
             The onboarding wizard will walk you through everything you need to get your kitchen ready for bookings, including location setup, kitchen license upload, and creating your first kitchen.
           </p>
-          <Button 
+          <Button
             onClick={() => {
               // Trigger onboarding wizard to open
-              const event = new CustomEvent('open-onboarding-from-help');
-              window.dispatchEvent(event);
-            }} 
+              onClose(); // Close the help dialog first
+              // We use window.location for now as wouter hook might trigger re-render issues inside this dialog content
+              // if not carefully handled. Or we pass navigate function.
+              // Ideally use useLocation from wouter if this component is inside Router
+              window.location.href = '/manager/setup';
+            }}
             className="w-full"
           >
             <BookOpen className="h-4 w-4 mr-2" />
@@ -203,25 +206,22 @@ export default function ManagerHelpCenter({ isOpen, onClose }: HelpCenterProps) 
               <button
                 key={section.id}
                 onClick={() => setActiveSection(activeSection === section.id ? null : section.id)}
-                className={`text-left p-4 rounded-lg border-2 transition-all ${
-                  activeSection === section.id
-                    ? "border-blue-500 bg-blue-50"
-                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                }`}
+                className={`text-left p-4 rounded-lg border-2 transition-all ${activeSection === section.id
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                  }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className={`p-2 rounded-lg ${
-                    activeSection === section.id ? "bg-blue-100" : "bg-gray-100"
-                  }`}>
+                  <div className={`p-2 rounded-lg ${activeSection === section.id ? "bg-blue-100" : "bg-gray-100"
+                    }`}>
                     {section.icon}
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900 mb-1">{section.title}</h3>
                     <p className="text-xs text-gray-600">{section.description}</p>
                   </div>
-                  <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${
-                    activeSection === section.id ? "rotate-90" : ""
-                  }`} />
+                  <ChevronRight className={`h-5 w-5 text-gray-400 transition-transform ${activeSection === section.id ? "rotate-90" : ""
+                    }`} />
                 </div>
               </button>
             ))}

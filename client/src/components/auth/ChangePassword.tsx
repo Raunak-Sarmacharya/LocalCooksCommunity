@@ -86,8 +86,7 @@ export default function ChangePassword({ role = 'manager', onSuccess }: ChangePa
         throw new Error(errorData.error || 'Failed to change password');
       }
       
-      toast({ 
-        title: "Success", 
+      toast.success("Success", { 
         description: "Password changed successfully" 
       });
       
@@ -101,10 +100,8 @@ export default function ChangePassword({ role = 'manager', onSuccess }: ChangePa
       
     } catch (error: any) {
       console.error('Password change error:', error);
-      toast({ 
-        title: "Error", 
-        description: error.message || 'Failed to change password',
-        variant: "destructive"
+      toast.error("Error", { 
+        description: error.message || 'Failed to change password'
       });
     } finally {
       setIsSubmitting(false);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/hooks/use-toast';
 import { Upload, X, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useSessionFileUpload } from '@/hooks/useSessionFileUpload';
 import { cn } from '@/lib/utils';
@@ -36,8 +36,7 @@ export function ImageWithReplace({
   fieldName = 'image',
   aspectRatio,
 }: ImageWithReplaceProps) {
-  const { toast } = useToast();
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+    const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,16 +45,13 @@ export function ImageWithReplace({
     allowedTypes,
     onSuccess: (response) => {
       onImageChange(response.url);
-      toast({
-        title: 'Image uploaded',
-        description: 'Image has been successfully uploaded.',
+      toast.success('Image uploaded', {
+        description: 'Image has been successfully uploaded.'
       });
     },
     onError: (error) => {
-      toast({
-        title: 'Upload failed',
-        description: error,
-        variant: 'destructive',
+      toast.error('Upload failed', {
+        description: error
       });
     },
   });

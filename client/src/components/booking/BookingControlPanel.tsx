@@ -1,11 +1,12 @@
 import { useState, useMemo, useEffect } from "react";
 import { Calendar, Clock, MapPin, X, CheckCircle, XCircle, AlertCircle, Building, ChevronDown, ChevronUp, Filter, Package, CalendarPlus, Search, ArrowUpDown, Download, Loader2, FileText } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/timezone-utils";
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
+import { ExpiringStorageNotification } from "./ExpiringStorageNotification";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks, isSameWeek } from "date-fns";
@@ -66,7 +67,6 @@ export default function BookingControlPanel({
   onCancelBooking,
   kitchens = [],
 }: BookingControlPanelProps) {
-  const { toast } = useToast();
   const [statusFilter, setStatusFilter] = useState<FilterType>("all");
   const [viewType, setViewType] = useState<ViewType>("upcoming");
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
@@ -473,10 +473,8 @@ export default function BookingControlPanel({
       
       if (!currentUser) {
         console.error('No current user found for invoice download');
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to download invoice",
-          variant: "destructive",
+        toast.error("Authentication Required", {
+          description: "Please log in to download invoice"
         });
         setDownloadingInvoiceId(null);
         return;
@@ -487,10 +485,8 @@ export default function BookingControlPanel({
       
       if (!token) {
         console.error('Failed to get Firebase token');
-        toast({
-          title: "Authentication Error",
-          description: "Failed to get authentication token. Please try again.",
-          variant: "destructive",
+        toast.error("Authentication Error", {
+          description: "Failed to get authentication token. Please try again."
         });
         setDownloadingInvoiceId(null);
         return;
@@ -557,16 +553,13 @@ export default function BookingControlPanel({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      toast({
-        title: "Invoice Downloaded",
-        description: "Your invoice has been downloaded successfully!",
+      toast.success("Invoice Downloaded", {
+        description: "Your invoice has been downloaded successfully!"
       });
     } catch (err: any) {
       console.error('Error downloading invoice:', err);
-      toast({
-        title: "Download Failed",
-        description: err.message || "Failed to download invoice. Please try again.",
-        variant: "destructive",
+      toast.error("Download Failed", {
+        description: err.message || "Failed to download invoice. Please try again."
       });
     } finally {
       setDownloadingInvoiceId(null);
@@ -579,10 +572,8 @@ export default function BookingControlPanel({
       const bookingDateTime = new Date(`${dateStr}T${startTime}`);
       
       if (isNaN(bookingDateTime.getTime())) {
-        toast({
-          title: "Error",
-          description: "Invalid booking date format.",
-          variant: "destructive",
+        toast.error("Error", {
+          description: "Invalid booking date format."
         });
         return;
       }
@@ -597,10 +588,8 @@ export default function BookingControlPanel({
 
       // Don't allow cancellation if booking time has passed
       if (hoursUntilBooking < 0) {
-        toast({
-          title: "Cannot Cancel",
-          description: "This booking has already started or passed. Cancellation is no longer available.",
-          variant: "destructive",
+        toast.error("Cannot Cancel", {
+          description: "This booking has already started or passed. Cancellation is no longer available."
         });
         return;
       }
@@ -608,10 +597,8 @@ export default function BookingControlPanel({
       // Only apply cancellation policy to future bookings
       // Past bookings cannot be cancelled - only upcoming bookings outside cancellation window can be cancelled
       if (hoursUntilBooking >= 0 && hoursUntilBooking < cancellationHours) {
-        toast({
-          title: "Cancellation Policy",
-          description: policyMessage,
-          variant: "destructive",
+        toast.error("Cancellation Policy", {
+          description: policyMessage
         });
         return;
       }
@@ -621,16 +608,17 @@ export default function BookingControlPanel({
       }
     } catch (error) {
       console.error('Error in handleCancel:', error);
-      toast({
-        title: "Error",
-        description: "Failed to process cancellation. Please try again.",
-        variant: "destructive",
+      toast.error("Error", {
+        description: "Failed to process cancellation. Please try again."
       });
     }
   };
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sticky top-4 h-fit max-h-[calc(100vh-2rem)] flex flex-col">
+      {/* Expiring Storage Notifications */}
+      <ExpiringStorageNotification />
+      
       {/* Header */}
       <div className="mb-6 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
@@ -745,22 +733,26 @@ export default function BookingControlPanel({
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           <p className="text-gray-500 mt-3 text-sm">Loading bookings...</p>
         </div>
-      ) : filteredBookings.length === 0 ? (
-        <div className="text-center py-12">
-          <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium mb-1">
-            {viewType === "upcoming"
-              ? "No upcoming bookings"
-              : viewType === "past"
-              ? "No past bookings"
-              : "No bookings found"}
-          </p>
-          <p className="text-sm text-gray-400">
-            {statusFilter !== "all" && `No ${statusFilter} bookings`}
-          </p>
-        </div>
       ) : (
         <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
+          {/* Empty State for Kitchen Bookings */}
+          {filteredBookings.length === 0 ? (
+            <div className="text-center py-8">
+              <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-medium mb-1">
+                {viewType === "upcoming"
+                  ? "No upcoming bookings"
+                  : viewType === "past"
+                  ? "No past bookings"
+                  : "No bookings found"}
+              </p>
+              <p className="text-sm text-gray-400">
+                {statusFilter !== "all" && `No ${statusFilter} bookings`}
+              </p>
+            </div>
+          ) : (
+          /* Kitchen Bookings */
+          <div className="space-y-4">
           {Object.entries(groupedBookings).map(([groupKey, groupBookings]) => {
             if (groupBookings.length === 0) return null;
             
@@ -1010,12 +1002,12 @@ export default function BookingControlPanel({
               </div>
             );
           })}
-        </div>
-      )}
+          </div>
+          )}
 
-      {/* Storage Bookings Section - Separate Group */}
-      {!isLoadingStorage && storageBookings.length > 0 && (
-        <div className="mt-6 pt-6 border-t-2 border-purple-200">
+          {/* Storage Bookings Section - Inside scrollable area */}
+          {!isLoadingStorage && storageBookings.length > 0 && (
+            <div className="mt-6 pt-6 border-t-2 border-purple-200 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-purple-900 flex items-center gap-2">
               <Package className="h-5 w-5 text-purple-600" />
@@ -1154,10 +1146,10 @@ export default function BookingControlPanel({
                             <div>
                               <p className="text-xs text-gray-500 mb-0.5">Total Cost</p>
                               <p className="text-gray-900">
-                                ${storageBooking.totalPrice.toFixed(2)} CAD
+                                ${(storageBooking.totalPrice || 0).toFixed(2)} CAD
                                 {storageBooking.serviceFee > 0 && (
                                   <span className="text-xs text-gray-500 ml-1">
-                                    (includes ${storageBooking.serviceFee.toFixed(2)} service fee)
+                                    (includes ${(storageBooking.serviceFee || 0).toFixed(2)} service fee)
                                   </span>
                                 )}
                               </p>
@@ -1201,6 +1193,8 @@ export default function BookingControlPanel({
             setExtendDialogOpen(null);
           }}
         />
+      )}
+        </div>
       )}
     </div>
   );

@@ -59,10 +59,10 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
   const fetchUsers = async (search: string = '') => {
     setIsLoading(true);
     try {
-      const url = search 
-        ? `/api/get-users?search=${encodeURIComponent(search)}`
-        : '/api/get-users';
-      
+      const url = search
+        ? `/api/admin/users?search=${encodeURIComponent(search)}`
+        : '/api/admin/users';
+
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -118,13 +118,13 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
   // Handle custom email addition
   const handleCustomEmailAdd = () => {
     if (!allowCustomEmails) return;
-    
+
     const email = searchTerm.trim();
     if (isValidEmail(email)) {
       // Check if email is already selected (either as database user or custom email)
       const isAlreadySelected = selectedUsers.some(user => user.email === email) ||
-                               selectedRecipients.some(recipient => recipient.email === email);
-      
+        selectedRecipients.some(recipient => recipient.email === email);
+
       if (!isAlreadySelected) {
         const customRecipient: Recipient = {
           id: email, // Use email as ID for custom emails
@@ -132,7 +132,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
           name: 'Valued Customer',
           isCustomEmail: true
         };
-        
+
         if (onRecipientsChange) {
           onRecipientsChange([...selectedRecipients, customRecipient]);
         }
@@ -146,13 +146,13 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      
+
       // If dropdown is open and there are available users, select the first one
       if (isDropdownOpen && availableUsers.length > 0) {
         handleUserSelect(availableUsers[0]);
         return;
       }
-      
+
       // If it looks like an email and custom emails are allowed, add as custom email
       if (allowCustomEmails && isValidEmail(searchTerm.trim())) {
         handleCustomEmailAdd();
@@ -189,12 +189,12 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
   }, [isDropdownOpen]);
 
   // Determine if we should show custom email option
-  const showCustomEmailOption = allowCustomEmails && 
-                               searchTerm.trim() && 
-                               isValidEmail(searchTerm.trim()) &&
-                               !availableUsers.some(user => user.email === searchTerm.trim()) &&
-                               !selectedUsers.some(user => user.email === searchTerm.trim()) &&
-                               !selectedRecipients.some(recipient => recipient.email === searchTerm.trim());
+  const showCustomEmailOption = allowCustomEmails &&
+    searchTerm.trim() &&
+    isValidEmail(searchTerm.trim()) &&
+    !availableUsers.some(user => user.email === searchTerm.trim()) &&
+    !selectedUsers.some(user => user.email === searchTerm.trim()) &&
+    !selectedRecipients.some(recipient => recipient.email === searchTerm.trim());
 
   return (
     <div className={`relative simple-user-selector ${className}`}>
@@ -221,7 +221,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
               </Button>
             </Badge>
           ))}
-          
+
           {/* Custom Email Recipients */}
           {selectedRecipients.map((recipient) => (
             <Badge
@@ -261,7 +261,7 @@ export const SimpleUserSelector: React.FC<SimpleUserSelectorProps> = ({
 
       {/* Dropdown */}
       {isDropdownOpen && (
-        <div 
+        <div
           className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >

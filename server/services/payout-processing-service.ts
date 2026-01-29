@@ -5,7 +5,7 @@
  * Processes pending earnings and creates payouts to connected accounts.
  */
 
-import type { Pool } from '@neondatabase/serverless';
+import { sql } from "drizzle-orm";
 import Stripe from 'stripe';
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -26,13 +26,13 @@ export interface PayoutProcessingResult {
  * Process weekly payout for a single manager
  * 
  * @param managerId - Manager user ID
- * @param dbPool - Database pool
+ * @param db - Database instance (Drizzle)
  * @param dryRun - If true, only calculate without creating payout
  * @returns Payout processing result
  */
 export async function processManagerPayout(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   dryRun: boolean = false
 ): Promise<PayoutProcessingResult> {
   if (!stripe) {
@@ -46,10 +46,11 @@ export async function processManagerPayout(
 
   try {
     // Get manager's Stripe Connect account
-    const userResult = await dbPool.query(
-      'SELECT id, email, stripe_connect_account_id, stripe_connect_onboarding_status FROM users WHERE id = $1 AND role = $2',
-      [managerId, 'manager']
-    );
+    const userResult = await db.execute(sql`
+      SELECT id, email, stripe_connect_account_id, stripe_connect_onboarding_status
+      FROM users
+      WHERE id = ${managerId} AND role = 'manager'
+    `);
 
     if (userResult.rows.length === 0) {
       return {
@@ -60,7 +61,7 @@ export async function processManagerPayout(
       };
     }
 
-    const manager = userResult.rows[0];
+    const manager = userResult.rows[0] as any;
     const accountId = manager.stripe_connect_account_id;
 
     if (!accountId) {
@@ -125,14 +126,14 @@ export async function processManagerPayout(
     // Note: Stripe automatically handles weekly payouts for Express accounts
     // This function can be used for manual payouts or to trigger immediate payouts
     // For automatic weekly payouts, Stripe handles it based on account settings
-    
+
     // Get pending balance (amount that will be available soon)
     const pendingBalance = balance.pending[0]?.amount || 0;
 
     // For now, we'll just log the available balance
     // Actual payout creation should be done through Stripe Dashboard or API
     // when you want to trigger immediate payouts
-    
+
     console.log(`Manager ${managerId} has $${availableBalance / 100} available for payout`);
 
     return {
@@ -155,17 +156,17 @@ export async function processManagerPayout(
 /**
  * Process weekly payouts for all eligible managers
  * 
- * @param dbPool - Database pool
+ * @param db - Database instance (Drizzle)
  * @param dryRun - If true, only calculate without creating payouts
  * @returns Array of payout processing results
  */
 export async function processWeeklyPayouts(
-  dbPool: Pool,
+  db: any,
   dryRun: boolean = false
 ): Promise<PayoutProcessingResult[]> {
   try {
     // Get all managers with completed Stripe Connect accounts
-    const managersResult = await dbPool.query(`
+    const managersResult = await db.execute(sql`
       SELECT id, email, stripe_connect_account_id
       FROM users
       WHERE role = 'manager'
@@ -175,10 +176,10 @@ export async function processWeeklyPayouts(
 
     const results: PayoutProcessingResult[] = [];
 
-    for (const manager of managersResult.rows) {
+    for (const manager of (managersResult.rows as any[])) {
       const result = await processManagerPayout(
         manager.id,
-        dbPool,
+        db,
         dryRun
       );
       results.push(result);
@@ -195,7 +196,7 @@ export async function processWeeklyPayouts(
  * Get payout summary for all managers
  * Useful for admin dashboard
  */
-export async function getPayoutSummary(dbPool: Pool): Promise<{
+export async function getPayoutSummary(db: any): Promise<{
   totalManagers: number;
   eligibleManagers: number;
   totalAvailableBalance: number;
@@ -211,7 +212,7 @@ export async function getPayoutSummary(dbPool: Pool): Promise<{
   }
 
   try {
-    const managersResult = await dbPool.query(`
+    const managersResult = await db.execute(sql`
       SELECT id, stripe_connect_account_id
       FROM users
       WHERE role = 'manager'
@@ -224,7 +225,7 @@ export async function getPayoutSummary(dbPool: Pool): Promise<{
 
     const { getAccountBalance } = await import('./stripe-connect-service.js');
 
-    for (const manager of managersResult.rows) {
+    for (const manager of (managersResult.rows as any[])) {
       try {
         const balance = await getAccountBalance(manager.stripe_connect_account_id);
         const available = balance.available[0]?.amount || 0;
@@ -237,14 +238,14 @@ export async function getPayoutSummary(dbPool: Pool): Promise<{
       }
     }
 
-    const allManagersResult = await dbPool.query(`
+    const allManagersResult = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM users
       WHERE role = 'manager'
     `);
 
     return {
-      totalManagers: parseInt(allManagersResult.rows[0]?.count || '0'),
+      totalManagers: parseInt((allManagersResult.rows[0] as any)?.count || '0'),
       eligibleManagers: managersResult.rows.length,
       totalAvailableBalance: totalAvailableBalance / 100, // Convert to dollars
       managersWithBalance,

@@ -33,7 +33,7 @@ export const UserSelector: React.FC<UserSelectorProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  
+
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -41,10 +41,10 @@ export const UserSelector: React.FC<UserSelectorProps> = ({
   const fetchUsers = async (search: string = '') => {
     setIsLoading(true);
     try {
-      const url = search 
-        ? `/api/get-users?search=${encodeURIComponent(search)}`
-        : '/api/get-users';
-      
+      const url = search
+        ? `/api/admin/users?search=${encodeURIComponent(search)}`
+        : '/api/admin/users';
+
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
@@ -110,13 +110,13 @@ export const UserSelector: React.FC<UserSelectorProps> = ({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setHighlightedIndex(prev => 
+        setHighlightedIndex(prev =>
           prev < availableUsers.length - 1 ? prev + 1 : 0
         );
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setHighlightedIndex(prev => 
+        setHighlightedIndex(prev =>
           prev > 0 ? prev - 1 : availableUsers.length - 1
         );
         break;
@@ -186,10 +186,9 @@ export const UserSelector: React.FC<UserSelectorProps> = ({
           className="pr-8"
           disabled={selectedUsers.length >= maxUsers}
         />
-        <ChevronDown 
-          className={`absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 transition-transform ${
-            isDropdownOpen ? 'rotate-180' : ''
-          }`}
+        <ChevronDown
+          className={`absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''
+            }`}
         />
       </div>
 
@@ -209,9 +208,8 @@ export const UserSelector: React.FC<UserSelectorProps> = ({
             availableUsers.map((user, index) => (
               <div
                 key={user.id}
-                className={`p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
-                  index === highlightedIndex ? 'bg-blue-50' : ''
-                }`}
+                className={`p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${index === highlightedIndex ? 'bg-blue-50' : ''
+                  }`}
                 onClick={() => handleUserSelect(user)}
               >
                 <div className="flex items-center gap-3">

@@ -1,4 +1,5 @@
 import { Calendar as CalendarIcon, Clock, MapPin, X, AlertCircle, Building, ChevronLeft, ChevronRight, Check, Info, Package, Wrench, DollarSign, ChefHat, ArrowLeft, CreditCard } from "lucide-react";
+import { formatCurrency } from "@/lib/formatters";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useKitchenBookings } from "../hooks/use-kitchen-bookings";
 import Header from "@/components/layout/Header";
@@ -6,7 +7,6 @@ import Footer from "@/components/layout/Footer";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
-import ACSSDebitPayment from "@/components/payment/ACSSDebitPayment";
 import { useQuery } from "@tanstack/react-query";
 
 export default function BookingConfirmationPage() {
@@ -14,28 +14,7 @@ export default function BookingConfirmationPage() {
   const { kitchens, createBooking } = useKitchenBookings();
   const { toast } = useToast();
 
-  // Fetch service fee rate (public endpoint - no auth required)
-  const { data: serviceFeeRateData } = useQuery({
-    queryKey: ['/api/platform-settings/service-fee-rate'],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/platform-settings/service-fee-rate');
-        if (response.ok) {
-          return response.json();
-        }
-      } catch (error) {
-        console.error('Error fetching service fee rate:', error);
-      }
-      // Default to 5% if unable to fetch
-      return { rate: 0.05, percentage: '5.00' };
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
 
-  const serviceFeeRate = serviceFeeRateData?.rate ;
-  const serviceFeePercentage = serviceFeeRateData?.percentage ;
-  const flatFeeCents = 30;
-  const flatFeeDollars = (flatFeeCents / 100).toFixed(2);
   
   // Get query parameters from URL
   const searchParams = new URLSearchParams(window.location.search);
@@ -68,19 +47,14 @@ export default function BookingConfirmationPage() {
     hourlyRate: number | null;
     currency: string;
     minimumBookingHours: number;
+    taxRatePercent?: number;
   } | null>(null);
 
   // Payment state
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
-  const [isCreatingPaymentIntent, setIsCreatingPaymentIntent] = useState(false);
-  const [paymentCurrency, setPaymentCurrency] = useState<string>('CAD');
-  const [isProcessingBooking, setIsProcessingBooking] = useState(false);
+  const [isRedirectingToCheckout, setIsRedirectingToCheckout] = useState(false);
   const [estimatedPrice, setEstimatedPrice] = useState<{
     basePrice: number;
-    serviceFee: number;
+    tax: number;
     totalPrice: number;
     durationHours: number;
   } | null>(null);
@@ -141,31 +115,33 @@ export default function BookingConfirmationPage() {
 
         if (pricingRes.ok) {
           const pricing = await pricingRes.json();
-          let hourlyRate = pricing.hourlyRate;
-          if (typeof hourlyRate === 'string') {
-            hourlyRate = parseFloat(hourlyRate);
+          // API returns cents
+          let hourlyRateCents = pricing.hourlyRate;
+          if (typeof hourlyRateCents === 'string') {
+            hourlyRateCents = parseFloat(hourlyRateCents);
           }
-          if (hourlyRate > 100) {
-            hourlyRate = hourlyRate / 100;
-          }
+          const hourlyRate = hourlyRateCents || null;
           
           if (!isCancelled) {
             setKitchenPricing({
               hourlyRate,
               currency: pricing.currency || 'CAD',
               minimumBookingHours: pricing.minimumBookingHours || 1,
+              taxRatePercent: pricing.taxRatePercent || 0,
             });
 
-            // Calculate estimated price
+            // Calculate estimated price in CENTS
             if (hourlyRate && selectedSlots.length > 0) {
               const basePrice = hourlyRate * selectedSlots.length;
-              const baseCents = Math.round(basePrice * 100);
-              const percentageFeeCents = Math.round(baseCents * serviceFeeRate);
-              const serviceFee = baseCents > 0 ? (percentageFeeCents + flatFeeCents) / 100 : 0;
+              // basePrice is already in cents
+              
+              const taxRatePercent = pricing.taxRatePercent || 0;
+              const tax = Math.round((basePrice * taxRatePercent) / 100);
+              
               setEstimatedPrice({
                 basePrice,
-                serviceFee,
-                totalPrice: basePrice + serviceFee,
+                tax,
+                totalPrice: basePrice + tax,
                 durationHours: selectedSlots.length,
               });
             }
@@ -182,7 +158,8 @@ export default function BookingConfirmationPage() {
         if (storageRes.ok) {
           const storageData = await storageRes.json();
           if (!isCancelled) {
-            setStorageListings(storageData);
+            // Keep values in cents - formatCurrency and useStoragePricing expect cents
+            setStorageListings(storageData || []);
           }
         } else {
           if (!isCancelled) {
@@ -260,26 +237,34 @@ export default function BookingConfirmationPage() {
     };
   }, [selectedEquipmentIds, equipmentListings.rental]);
 
-  // Calculate combined subtotal
+  // Calculate combined subtotal (in CENTS)
+  // All values are in CENTS for consistency with formatCurrency
   const combinedSubtotal = useMemo(() => {
-    const kitchenBase = estimatedPrice?.basePrice || 0;
-    const storageBase = storagePricing.subtotal || 0;
-    const equipmentBase = equipmentPricing.subtotal || 0;
-    return kitchenBase + storageBase + equipmentBase;
+    const kitchenBase = estimatedPrice?.basePrice || 0; // Already in cents
+    // Storage and equipment pricing are already in cents from the API
+    const storageBaseCents = storagePricing.subtotal || 0;
+    const equipmentBaseCents = equipmentPricing.subtotal || 0;
+    return kitchenBase + storageBaseCents + equipmentBaseCents;
   }, [estimatedPrice?.basePrice, storagePricing.subtotal, equipmentPricing.subtotal]);
 
-  // Calculate service fee (dynamic rate + $0.30 flat fee)
-  const serviceFee = useMemo(() => {
-    const subtotalCents = Math.round(combinedSubtotal * 100);
+  // Calculate tax on combined subtotal
+  const tax = useMemo(() => {
+    const subtotalCents = combinedSubtotal;
     if (subtotalCents <= 0) return 0;
-    const percentageFeeCents = Math.round(subtotalCents * serviceFeeRate);
-    return (percentageFeeCents + flatFeeCents) / 100;
-  }, [combinedSubtotal, serviceFeeRate, flatFeeCents]);
+    
+    // Tax rate is stored as a percentage
+    // If not set, default to 0
+    const taxRatePercent = selectedKitchen?.taxRatePercent || 0;
+    
+    // Calculate tax: (subtotal * taxRate) / 100
+    // Result is in cents
+    return Math.round((subtotalCents * taxRatePercent) / 100);
+  }, [combinedSubtotal, selectedKitchen?.taxRatePercent]);
 
   // Calculate grand total
   const grandTotal = useMemo(() => {
-    return combinedSubtotal + serviceFee ;
-  }, [combinedSubtotal, serviceFee]);
+    return combinedSubtotal + tax;
+  }, [combinedSubtotal, tax]);
 
   // Helper functions
   const formatTime = (timeStr: string) => {
@@ -323,17 +308,18 @@ export default function BookingConfirmationPage() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // Create payment intent
-  const createPaymentIntent = async () => {
+  // Redirect to Stripe Checkout
+  const redirectToStripeCheckout = async () => {
     if (!selectedKitchen || !selectedDate || selectedSlots.length === 0) return;
 
-    setIsCreatingPaymentIntent(true);
+    setIsRedirectingToCheckout(true);
     try {
       const sortedSlots = [...selectedSlots].sort();
       const startTime = sortedSlots[0];
-      const [startHours, startMins] = startTime.split(':').map(Number);
-      const totalDurationMins = selectedSlots.length * 60;
-      const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+      // Calculate endTime from the last slot (each slot is 1 hour)
+      const lastSlot = sortedSlots[sortedSlots.length - 1];
+      const [lastH, lastM] = lastSlot.split(':').map(Number);
+      const endTotalMins = lastH * 60 + lastM + 60; // Add 1 hour to last slot start
       const endHours = Math.floor(endTotalMins / 60);
       const endMins = endTotalMins % 60;
       const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
@@ -348,10 +334,7 @@ export default function BookingConfirmationPage() {
       const currentUser = auth.currentUser;
       const token = currentUser ? await currentUser.getIdToken() : '';
 
-      // Calculate expected amount in cents from frontend calculation
-      const expectedAmountCents = Math.round(grandTotal * 100);
-
-      const response = await fetch('/api/payments/create-intent', {
+      const response = await fetch('/api/chef/bookings/checkout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -363,122 +346,49 @@ export default function BookingConfirmationPage() {
           bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
+          selectedSlots: [...selectedSlots].sort().map(slot => {
+            const [h, m] = slot.split(':').map(Number);
+            const endMins = h * 60 + m + 60;
+            const endH = Math.floor(endMins / 60);
+            const endM = endMins % 60;
+            return {
+              startTime: slot,
+              endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+            };
+          }), // Pass discrete time slots with start and end times
+          specialNotes: notes,
           selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
             storageListingId: s.storageListingId,
             startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
             endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
           })) : undefined,
           selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
-          expectedAmountCents, // Send frontend-calculated amount for consistency
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create payment intent');
+        throw new Error(errorData.error || 'Failed to create checkout session');
       }
 
       const data = await response.json();
-      setPaymentIntentId(data.paymentIntentId);
-      setClientSecret(data.clientSecret);
-      // Debug: Log both frontend and backend amounts to identify calculation mismatch
-      const frontendCents = Math.round(grandTotal * 100);
-      console.log('Payment amount debug:', {
-        frontendGrandTotal: grandTotal,
-        frontendCents: frontendCents,
-        backendAmount: data.amount,
-        backendAmountDollars: data.amount / 100,
-        difference: data.amount - frontendCents,
-        ratio: data.amount / frontendCents
-      });
-      // Use backend amount (it's what the PaymentIntent was created with)
-      // But log the mismatch so we can fix the backend calculation
-      setPaymentAmount(data.amount);
-      setPaymentCurrency(data.currency);
-      setShowPayment(true);
+      
+      // Redirect to Stripe Checkout
+      if (data.sessionUrl) {
+        window.location.href = data.sessionUrl;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
     } catch (error: any) {
       toast({
-        title: "Payment Setup Failed",
-        description: error.message || "Failed to initialize payment. Please try again.",
+        title: "Checkout Failed",
+        description: error.message || "Failed to start checkout. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsCreatingPaymentIntent(false);
+      setIsRedirectingToCheckout(false);
     }
   };
 
-  // Handle payment success
-  const handlePaymentSuccess = async (paymentIntentId: string, paymentMethodId: string) => {
-    if (!selectedKitchen || !selectedDate || selectedSlots.length === 0 || isProcessingBooking) {
-      return;
-    }
-
-    setIsProcessingBooking(true);
-
-    const sortedSlots = [...selectedSlots].sort();
-    const startTime = sortedSlots[0];
-    const [startHours, startMins] = startTime.split(':').map(Number);
-    const totalDurationMins = selectedSlots.length * 60;
-    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
-    const endHours = Math.floor(endTotalMins / 60);
-    const endMins = endTotalMins % 60;
-    const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
-
-    // Use dateStr directly from URL to avoid timezone issues
-    const bookingDateStr = dateStr || toLocalDateString(selectedDate);
-    const [year, month, day] = bookingDateStr.split('-').map(Number);
-    const bookingDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-
-    createBooking.mutate(
-      {
-        kitchenId: selectedKitchen.id,
-        bookingDate: bookingDate.toISOString(),
-        startTime,
-        endTime,
-        specialNotes: notes,
-        paymentIntentId,
-        selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
-          storageListingId: s.storageListingId,
-          startDate: s.startDate instanceof Date ? s.startDate.toISOString() : s.startDate,
-          endDate: s.endDate instanceof Date ? s.endDate.toISOString() : s.endDate,
-        })) : undefined,
-        selectedEquipmentIds: selectedEquipmentIds.length > 0 ? selectedEquipmentIds : undefined,
-      },
-      {
-        onSuccess: (bookingData: any) => {
-          // Redirect to payment success page with booking ID
-          const bookingId = bookingData?.id || bookingData?.booking?.id;
-          if (bookingId) {
-            setLocation(`/payment-success?bookingId=${bookingId}`);
-          } else {
-            // Fallback to dashboard if booking ID not available
-            const addonsCount = selectedEquipmentIds.length;
-            const addonsMsg = addonsCount > 0 ? ` with ${addonsCount} equipment add-on${addonsCount > 1 ? 's' : ''}` : '';
-            toast({
-              title: "Booking Created!",
-              description: `Your ${selectedSlots.length} hour${selectedSlots.length > 1 ? 's' : ''} kitchen booking${addonsMsg} has been submitted successfully.`,
-            });
-            setLocation('/dashboard');
-          }
-        },
-        onError: (error: any) => {
-          toast({
-            title: "Booking Failed",
-            description: error.message || "Failed to create booking. Please try again.",
-            variant: "destructive",
-          });
-        },
-      }
-    );
-  };
-
-  const handlePaymentError = (error: string) => {
-    toast({
-      title: "Payment Failed",
-      description: error,
-      variant: "destructive",
-    });
-  };
 
   // Handle booking submission for free bookings (no payment required)
   const handleBookingSubmit = async () => {
@@ -486,9 +396,10 @@ export default function BookingConfirmationPage() {
 
     const sortedSlots = [...selectedSlots].sort();
     const startTime = sortedSlots[0];
-    const [startHours, startMins] = startTime.split(':').map(Number);
-    const totalDurationMins = selectedSlots.length * 60;
-    const endTotalMins = startHours * 60 + startMins + totalDurationMins;
+    // Calculate endTime from the last slot (each slot is 1 hour)
+    const lastSlot = sortedSlots[sortedSlots.length - 1];
+    const [lastH, lastM] = lastSlot.split(':').map(Number);
+    const endTotalMins = lastH * 60 + lastM + 60; // Add 1 hour to last slot start
     const endHours = Math.floor(endTotalMins / 60);
     const endMins = endTotalMins % 60;
     const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`;
@@ -504,6 +415,16 @@ export default function BookingConfirmationPage() {
         bookingDate: bookingDate.toISOString(),
         startTime,
         endTime,
+        selectedSlots: [...selectedSlots].sort().map(slot => {
+          const [h, m] = slot.split(':').map(Number);
+          const endMins = h * 60 + m + 60;
+          const endH = Math.floor(endMins / 60);
+          const endM = endMins % 60;
+          return {
+            startTime: slot,
+            endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`
+          };
+        }), // Pass discrete time slots with start and end times
         specialNotes: notes,
         selectedStorage: selectedStorage.length > 0 ? selectedStorage.map((s: any) => ({
           storageListingId: s.storageListingId,
@@ -686,8 +607,8 @@ export default function BookingConfirmationPage() {
                             <h4 className="text-sm font-semibold text-gray-800 mb-2">Kitchen Booking</h4>
                             <div className="space-y-1.5 text-sm">
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × ${(kitchenPricing.hourlyRate > 100 ? kitchenPricing.hourlyRate / 100 : kitchenPricing.hourlyRate).toFixed(2)}/hour):</span>
-                                <span className="font-medium text-gray-900">${estimatedPrice.basePrice.toFixed(2)} {kitchenPricing.currency}</span>
+                                <span className="text-gray-600">Base Price ({selectedSlots.length} hour{selectedSlots.length !== 1 ? 's' : ''} × {formatCurrency(kitchenPricing.hourlyRate)}/hour):</span>
+                                <span className="font-medium text-gray-900">{formatCurrency(estimatedPrice.basePrice)} {kitchenPricing.currency}</span>
                               </div>
                             </div>
                           </div>
@@ -747,13 +668,13 @@ export default function BookingConfirmationPage() {
                                         {item.name}
                                       </span>
                                     </div>
-                                    <span className="font-medium text-amber-700 flex-shrink-0">${item.rate.toFixed(2)}</span>
+                                    <span className="font-medium text-amber-700 flex-shrink-0">{formatCurrency(item.rate)}</span>
                                   </div>
                                 );
                               })}
                               <div className="pt-2 mt-2 border-t border-amber-200 flex justify-between">
                                 <span className="font-semibold text-amber-800">Equipment Subtotal (base price only):</span>
-                                <span className="font-bold text-amber-900">${equipmentPricing.subtotal.toFixed(2)}</span>
+                                <span className="font-bold text-amber-900">{formatCurrency(equipmentPricing.subtotal)}</span>
                               </div>
                             </div>
                           </div>
@@ -792,16 +713,16 @@ export default function BookingConfirmationPage() {
                                       {item.listing.name}
                                     </span>
                                   </div>
-                                  <span className="font-medium text-purple-700 flex-shrink-0">${item.basePrice.toFixed(2)}</span>
+                                  <span className="font-medium text-purple-700 flex-shrink-0">{formatCurrency(item.basePrice)}</span>
                                 </div>
                                 <div className="text-xs text-gray-600 ml-4">
-                                  {item.days} day{item.days > 1 ? 's' : ''} × ${item.listing.basePrice.toFixed(2)}/day
+                                  {item.days} day{item.days > 1 ? 's' : ''} × {formatCurrency(item.listing.basePrice)}/day
                                 </div>
                               </div>
                             ))}
                             <div className="pt-2 mt-2 border-t border-purple-200 flex justify-between">
                               <span className="font-semibold text-purple-800">Storage Subtotal (base price only):</span>
-                              <span className="font-bold text-purple-900">${storagePricing.subtotal.toFixed(2)}</span>
+                              <span className="font-bold text-purple-900">{formatCurrency(storagePricing.subtotal)}</span>
                             </div>
                           </div>
                         </div>
@@ -814,17 +735,16 @@ export default function BookingConfirmationPage() {
                         <div className="space-y-2 text-sm">
                           <div className="flex justify-between">
                             <span className="font-semibold text-gray-900">Combined Subtotal (Kitchen + Equipment + Storage):</span>
-                            <span className="font-bold text-gray-900">${combinedSubtotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
+                            <span className="font-bold text-gray-900">{formatCurrency(combinedSubtotal)} {kitchenPricing?.currency || 'CAD'}</span>
                           </div>
-                          <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
-                            <span className="text-gray-600">
-                              {`Service Fee:`}
-                            </span>
-                            <span className="font-medium text-gray-900">${serviceFee.toFixed(2)} {kitchenPricing?.currency || 'CAD'}</span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1 italic">
-                            {`* Service fee is calculated once on the combined total`}
-                          </p>
+                          {tax > 0 && (
+                            <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                              <span className="text-gray-600">
+                                {`Tax ${kitchenPricing?.taxRatePercent ? `(${kitchenPricing.taxRatePercent}%)` : ''}:`}
+                              </span>
+                              <span className="font-medium text-gray-900">{formatCurrency(tax)} {kitchenPricing?.currency || 'CAD'}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -835,7 +755,7 @@ export default function BookingConfirmationPage() {
                         <div className="flex justify-between items-center">
                           <span className="text-lg font-bold text-white">Grand Total:</span>
                           <span className="text-2xl font-extrabold text-white">
-                            ${grandTotal.toFixed(2)} {kitchenPricing?.currency || 'CAD'}
+                            {formatCurrency(grandTotal)} {kitchenPricing?.currency || 'CAD'}
                           </span>
                         </div>
                         {(storagePricing.subtotal > 0 || equipmentPricing.subtotal > 0) && (
@@ -867,62 +787,35 @@ export default function BookingConfirmationPage() {
                 )}
               </div>
 
-              {/* Payment Section */}
-              {showPayment && clientSecret ? (
-                <div className="pt-6 border-t">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
-                    Payment
-                  </h3>
-                  <ACSSDebitPayment
-                    clientSecret={clientSecret}
-                    amount={paymentAmount}
-                    currency={paymentCurrency}
-                    onSuccess={handlePaymentSuccess}
-                    onError={handlePaymentError}
-                  />
-                  <button
-                    onClick={() => {
-                      setShowPayment(false);
-                      setClientSecret(null);
-                      setPaymentIntentId(null);
-                    }}
-                    className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors text-gray-700"
-                  >
-                    Cancel Payment
-                  </button>
-                </div>
-              ) : (
-                /* Action Buttons */
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={handleBack}
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back
-                  </button>
-                  <button
-                    onClick={grandTotal > 0 ? createPaymentIntent : handleBookingSubmit}
-                    disabled={createBooking.isPending || isCreatingPaymentIntent}
-                    className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    {createBooking.isPending || isCreatingPaymentIntent ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        {isCreatingPaymentIntent ? 'Preparing Payment...' : 'Booking...'}
-                      </span>
-                    ) : grandTotal > 0 ? (
-                      <>
-                        <CreditCard className="h-4 w-4" />
-                        Proceed to Payment
-                      </>
-                    ) : (
-                      "Confirm Booking"
-                    )}
-                  </button>
-                </div>
-              )}
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={handleBack}
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back
+                </button>
+                <button
+                  onClick={grandTotal > 0 ? redirectToStripeCheckout : handleBookingSubmit}
+                  disabled={createBooking.isPending || isRedirectingToCheckout}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  {createBooking.isPending || isRedirectingToCheckout ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      {isRedirectingToCheckout ? 'Redirecting to checkout...' : 'Booking...'}
+                    </span>
+                  ) : grandTotal > 0 ? (
+                    <>
+                      <CreditCard className="h-4 w-4" />
+                      Proceed to Checkout
+                    </>
+                  ) : (
+                    "Confirm Booking"
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

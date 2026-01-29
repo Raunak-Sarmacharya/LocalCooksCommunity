@@ -5,7 +5,7 @@
  * All amounts are stored as integers in cents.
  */
 
-import type { Pool } from '@neondatabase/serverless';
+import { sql } from "drizzle-orm";
 
 export interface CreateTransactionParams {
   bookingId: number;
@@ -53,12 +53,12 @@ export interface UpdateTransactionParams {
  * Create a new transaction record in the database
  * 
  * @param params - Transaction parameters
- * @param dbPool - Database connection pool
+ * @param db - Database instance (Drizzle)
  * @returns Created transaction record
  */
 export async function createTransaction(
   params: CreateTransactionParams,
-  dbPool: Pool
+  db: any
 ): Promise<TransactionRecord> {
   const {
     bookingId,
@@ -73,8 +73,8 @@ export async function createTransaction(
     metadata = {},
   } = params;
 
-  const result = await dbPool.query(
-    `INSERT INTO transactions (
+  const result = await db.execute(sql`
+    INSERT INTO transactions (
       booking_id,
       stripe_session_id,
       customer_email,
@@ -86,22 +86,21 @@ export async function createTransaction(
       manager_receives_cents,
       status,
       metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    RETURNING *`,
-    [
-      bookingId,
-      stripeSessionId,
-      customerEmail,
-      bookingAmountCents,
-      platformFeePercentageCents,
-      platformFeeFlatCents,
-      totalPlatformFeeCents,
-      totalCustomerChargedCents,
-      managerReceivesCents,
-      'pending',
-      JSON.stringify(metadata),
-    ]
-  );
+    ) VALUES (
+      ${bookingId},
+      ${stripeSessionId},
+      ${customerEmail},
+      ${bookingAmountCents},
+      ${platformFeePercentageCents},
+      ${platformFeeFlatCents},
+      ${totalPlatformFeeCents},
+      ${totalCustomerChargedCents},
+      ${managerReceivesCents},
+      ${'pending'},
+      ${JSON.stringify(metadata)}
+    )
+    RETURNING *
+  `);
 
   if (result.rows.length === 0) {
     throw new Error('Failed to create transaction record');
@@ -115,68 +114,51 @@ export async function createTransaction(
  * 
  * @param sessionId - Stripe Checkout session ID
  * @param params - Update parameters
- * @param dbPool - Database connection pool
+ * @param db - Database instance (Drizzle)
  * @returns Updated transaction record or null if not found
  */
 export async function updateTransactionBySessionId(
   sessionId: string,
   params: UpdateTransactionParams,
-  dbPool: Pool
+  db: any
 ): Promise<TransactionRecord | null> {
-  const updates: string[] = [];
-  const values: any[] = [];
-  let paramIndex = 1;
+  const updates: any[] = [];
 
   if (params.status !== undefined) {
-    updates.push(`status = $${paramIndex}`);
-    values.push(params.status);
-    paramIndex++;
+    updates.push(sql`status = ${params.status}`);
   }
 
   if (params.stripePaymentIntentId !== undefined) {
-    updates.push(`stripe_payment_intent_id = $${paramIndex}`);
-    values.push(params.stripePaymentIntentId);
-    paramIndex++;
+    updates.push(sql`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
   }
 
   if (params.stripeChargeId !== undefined) {
-    updates.push(`stripe_charge_id = $${paramIndex}`);
-    values.push(params.stripeChargeId);
-    paramIndex++;
+    updates.push(sql`stripe_charge_id = ${params.stripeChargeId}`);
   }
 
   if (params.completedAt !== undefined) {
-    updates.push(`completed_at = $${paramIndex}`);
-    values.push(params.completedAt);
-    paramIndex++;
+    updates.push(sql`completed_at = ${params.completedAt}`);
   }
 
   if (params.refundedAt !== undefined) {
-    updates.push(`refunded_at = $${paramIndex}`);
-    values.push(params.refundedAt);
-    paramIndex++;
+    updates.push(sql`refunded_at = ${params.refundedAt}`);
   }
 
   if (params.metadata !== undefined) {
-    updates.push(`metadata = $${paramIndex}`);
-    values.push(JSON.stringify(params.metadata));
-    paramIndex++;
+    updates.push(sql`metadata = ${JSON.stringify(params.metadata)}`);
   }
 
   if (updates.length === 0) {
     // No updates to make
-    return getTransactionBySessionId(sessionId, dbPool);
+    return getTransactionBySessionId(sessionId, db);
   }
 
-  values.push(sessionId);
-  const query = `
+  const result = await db.execute(sql`
     UPDATE transactions
-    SET ${updates.join(', ')}
-    WHERE stripe_session_id = $${paramIndex}
+    SET ${sql.join(updates, sql`, `)}
+    WHERE stripe_session_id = ${sessionId}
     RETURNING *
-  `;
-
-  const result = await dbPool.query(query, values);
+  `);
 
   if (result.rows.length === 0) {
     return null;
@@ -189,17 +171,16 @@ export async function updateTransactionBySessionId(
  * Get a transaction by Stripe session ID
  * 
  * @param sessionId - Stripe Checkout session ID
- * @param dbPool - Database connection pool
+ * @param db - Database instance (Drizzle)
  * @returns Transaction record or null if not found
  */
 export async function getTransactionBySessionId(
   sessionId: string,
-  dbPool: Pool
+  db: any
 ): Promise<TransactionRecord | null> {
-  const result = await dbPool.query(
-    `SELECT * FROM transactions WHERE stripe_session_id = $1`,
-    [sessionId]
-  );
+  const result = await db.execute(sql`
+    SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
+  `);
 
   if (result.rows.length === 0) {
     return null;

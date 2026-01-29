@@ -1,5 +1,5 @@
 import { CustomAlertsProvider, useCustomAlerts } from "@/components/ui/custom-alerts";
-import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -59,9 +59,12 @@ const ApplyToKitchen = lazy(() => import("@/pages/ApplyToKitchen"));
 const AdminManageLocations = lazy(() => import("@/pages/AdminManageLocations"));
 const ManagerLanding = lazy(() => import("@/pages/ManagerLanding"));
 const ManagerKitchenApplications = lazy(() => import("@/pages/ManagerKitchenApplications"));
+const ManagerSetupPage = lazy(() => import("@/pages/ManagerSetupPage")); // [NEW]
+const ChefSetupPage = lazy(() => import("@/pages/ChefSetupPage"));
 const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
+const StripeConnectReturn = lazy(() => import("@/pages/StripeConnectReturn"));
 
 
 // Loading component
@@ -268,6 +271,7 @@ function Router() {
           </div>
         </Route>
         <SubdomainRoute path="/dashboard" component={ApplicantDashboard} subdomain={subdomain} />
+        <SubdomainRoute path="/chef-setup" component={ChefSetupPage} subdomain={subdomain} />
         <ProtectedRoute path="/document-verification" component={DocumentVerification} />
         <ProtectedRoute path="/microlearning/overview" component={MicrolearningOverview} />
         <ProtectedRoute path="/microlearning/player" component={MicrolearningPlayer} />
@@ -321,6 +325,14 @@ function Router() {
             </ManagerProtectedRoute>
           ) : null}
         </Route>
+        <Route path="/manager/setup"> {/* [NEW] Full-screen onboarding */}
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              {/* Reset layout to full screen without header/sidebar from dashboard */}
+              <ManagerSetupPage />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
         <Route path="/manager/availability">
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
@@ -350,18 +362,16 @@ function Router() {
           ) : null}
         </Route>
         <Route path="/manager/stripe-connect/return">
-          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
-            <ManagerProtectedRoute>
-              <ManagerBookingDashboard />
-            </ManagerProtectedRoute>
-          ) : null}
+          <StripeConnectReturn />
         </Route>
         <Route path="/manager/stripe-connect/refresh">
-          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
-            <ManagerProtectedRoute>
-              <ManagerBookingDashboard />
-            </ManagerProtectedRoute>
-          ) : null}
+          <StripeConnectReturn />
+        </Route>
+        <Route path="/chef/stripe-connect/return">
+          <StripeConnectReturn />
+        </Route>
+        <Route path="/chef/stripe-connect/refresh">
+          <StripeConnectReturn />
         </Route>
 
         {/* Kitchen Preview Page - Public, no auth required */}
@@ -564,7 +574,7 @@ function App() {
       <AuthProvider>
         <CustomAlertsProvider>
           <TooltipProvider>
-            <Toaster />
+            <SonnerToaster />
             <Router />
           </TooltipProvider>
         </CustomAlertsProvider>

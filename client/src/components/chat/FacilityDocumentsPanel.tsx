@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Paperclip, Loader2, Eye, Send, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileText, Paperclip, Loader2, Eye, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { Separator } from "@/components/ui/separator"
 
 interface FacilityDocument {
   id: string;
@@ -16,7 +21,7 @@ interface FacilityDocument {
 
 interface FacilityDocumentsPanelProps {
   locationId: number;
-  onAttachDocument: (document: FacilityDocument) => void;
+  onAttachDocuments: (documents: FacilityDocument[]) => void;
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -31,9 +36,10 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   };
 }
 
-export default function FacilityDocumentsPanel({ locationId, onAttachDocument }: FacilityDocumentsPanelProps) {
+export default function FacilityDocumentsPanel({ locationId, onAttachDocuments }: FacilityDocumentsPanelProps) {
   const { toast } = useToast();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
 
   // Fetch facility documents for this location
   const { data: facilityDocuments = [], isLoading, error } = useQuery({
@@ -48,15 +54,9 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocument }:
         if (!response.ok) throw new Error('Failed to fetch facility documents');
         const data = await response.json();
 
-        // Ensure data is an object
-        if (!data || typeof data !== 'object') {
-          console.warn('Unexpected API response format:', data);
-          return [];
-        }
+        if (!data || typeof data !== 'object') return [];
 
-        // Transform the data into our document format
         const documents: FacilityDocument[] = [];
-
         if (data.floor_plans_url) {
           documents.push({
             id: 'floor_plans',
@@ -66,7 +66,6 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocument }:
             description: 'Kitchen layout and floor plans',
           });
         }
-
         if (data.ventilation_specs_url) {
           documents.push({
             id: 'ventilation_specs',
@@ -76,7 +75,6 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocument }:
             description: data.ventilation_specs || 'Ventilation system specifications and details',
           });
         }
-
         return documents;
       } catch (error) {
         console.error('Error fetching facility documents:', error);
@@ -90,107 +88,133 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocument }:
     window.open(document.url, '_blank');
   };
 
-  const handleAttachDocument = (document: FacilityDocument) => {
-    onAttachDocument(document);
-    toast({
-      title: "Document attached",
-      description: `${document.name} has been attached to your message.`,
-    });
+  const toggleSelection = (docId: string) => {
+      setSelectedDocIds(prev => 
+          prev.includes(docId) 
+          ? prev.filter(id => id !== docId)
+          : [...prev, docId]
+      );
+  };
+
+  const handleAttachSelected = () => {
+      const selectedDocs = facilityDocuments.filter(doc => selectedDocIds.includes(doc.id));
+      if (selectedDocs.length > 0) {
+          onAttachDocuments(selectedDocs);
+          setSelectedDocIds([]);
+          toast({
+              title: "Documents attached",
+              description: `${selectedDocs.length} document(s) attached to message.`,
+          });
+          setIsOpen(false);
+      }
   };
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-4">
-        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-        <span className="ml-2 text-sm text-gray-500">Loading facility documents...</span>
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <span className="ml-2 text-sm text-muted-foreground">Loading documents...</span>
       </div>
     );
   }
 
   if (error) {
-    return (
-      <div className="text-center py-4">
-        <p className="text-sm text-red-600">Failed to load facility documents</p>
-      </div>
-    );
+    return <div className="text-center py-4 text-sm text-destructive">Failed to load documents</div>;
   }
 
   if (!Array.isArray(facilityDocuments) || facilityDocuments.length === 0) {
     return (
-      <div className="text-center py-4">
-        <p className="text-sm text-gray-500">No facility documents available</p>
-        <p className="text-xs text-gray-400 mt-1">
-          Upload floor plans and ventilation specs in your location settings
-        </p>
+      <div className="text-center py-4 px-2">
+         <p className="text-sm text-muted-foreground">No documents found.</p>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-2">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between w-full text-left hover:bg-gray-50 rounded-md px-2 py-1 -mx-2 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-900">Facility Documents</span>
-          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-            {facilityDocuments.length}
-          </span>
-        </div>
-        {isExpanded ? (
-          <ChevronUp className="h-4 w-4 text-gray-400" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-gray-400" />
-        )}
-      </button>
+  const selectedCount = selectedDocIds.length;
 
-      {isExpanded && (
-        <div className="space-y-2 mt-3">
-          {facilityDocuments.map((document) => (
-            <Card key={document.id} className="border border-gray-200 hover:border-blue-300 transition-colors">
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Paperclip className="h-3 w-3 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {document.name}
-                      </span>
+  return (
+    <Collapsible
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      className="w-full space-y-2 px-1"
+    >
+      <div className="flex items-center justify-between space-x-4 px-1 py-1">
+        <div className="flex items-center gap-2">
+            <div className="bg-primary/10 p-1.5 rounded-md">
+                <FileText className="h-4 w-4 text-primary" />
+            </div>
+            <h4 className="text-sm font-semibold">
+                Facility Documents
+            </h4>
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full border">
+                {facilityDocuments.length}
+            </span>
+        </div>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="w-9 p-0 hover:bg-muted">
+            <ChevronsUpDown className="h-4 w-4" />
+            <span className="sr-only">Toggle</span>
+          </Button>
+        </CollapsibleTrigger>
+      </div>
+      
+      <CollapsibleContent className="space-y-2">
+        <div className="rounded-md border px-2 py-2 mt-2 bg-background/50">
+            {facilityDocuments.map((document) => {
+             const isSelected = selectedDocIds.includes(document.id);
+             return (
+              <div 
+                key={document.id} 
+                className={`
+                    relative flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer mb-2 last:mb-0
+                    ${isSelected ? 'border-primary bg-primary/5' : 'border-border/50 hover:border-border hover:bg-muted/50'}
+                `}
+                onClick={() => toggleSelection(document.id)}
+              >
+                <div className={`mt-0.5 h-4 w-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-muted-foreground'}`}>
+                    {isSelected && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium leading-none">{document.name}</span>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 -mt-1 -mr-2 text-muted-foreground hover:text-foreground"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewDocument(document);
+                            }}
+                        >
+                            <Eye className="h-4 w-4" />
+                        </Button>
                     </div>
                     {document.description && (
-                      <p className="text-xs text-gray-500 truncate">
-                        {document.description}
-                      </p>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                            {document.description}
+                        </p>
                     )}
-                  </div>
-                  <div className="flex items-center gap-1 ml-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewDocument(document)}
-                      className="h-7 px-2 text-xs"
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      View
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleAttachDocument(document)}
-                      className="h-7 px-2 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700"
-                    >
-                      <Send className="h-3 w-3 mr-1" />
-                      Attach
-                    </Button>
-                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            );
+          })}
+          
+          <Separator className="my-2" />
+          
+          <div className="flex justify-end pt-2 pb-4">
+              <Button 
+                size="sm" 
+                onClick={handleAttachSelected}
+                disabled={selectedCount === 0}
+                className="w-full sm:w-auto"
+              >
+                 <Paperclip className="h-3.5 w-3.5 mr-2" />
+                 Attach {selectedCount > 0 ? `(${selectedCount})` : ''}
+              </Button>
+          </div>
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

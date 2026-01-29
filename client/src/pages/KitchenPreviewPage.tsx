@@ -47,6 +47,8 @@ interface PublicLocation {
   logoUrl?: string | null;
   brandImageUrl?: string | null;
   kitchenLicenseStatus?: string | null;
+  description?: string | null;
+  customOnboardingLink?: string | null;
 }
 
 interface EquipmentListing {
@@ -587,12 +589,12 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                         <div className="text-right">
                           {eq.hourlyRate && (
                             <p className="text-sm font-semibold text-blue-700">
-                              ${eq.hourlyRate.toFixed(2)}/hr
+                              ${(eq.hourlyRate || 0).toFixed(2)}/hr
                             </p>
                           )}
                           {eq.dailyRate && !eq.hourlyRate && (
                             <p className="text-sm font-semibold text-blue-700">
-                              ${eq.dailyRate.toFixed(2)}/day
+                              ${(eq.dailyRate || 0).toFixed(2)}/day
                             </p>
                           )}
                           {eq.currency && eq.currency !== 'CAD' && (
@@ -637,7 +639,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                           <div className="mt-2 text-xs text-purple-600">
                             {storage.dimensionsLength && storage.dimensionsWidth && storage.dimensionsHeight && (
                               <span>
-                                {storage.dimensionsLength}" × {storage.dimensionsWidth}" × {storage.dimensionsHeight}"
+                                {storage.dimensionsLength}&quot; &times; {storage.dimensionsWidth}&quot; &times; {storage.dimensionsHeight}&quot;
                               </span>
                             )}
                             {storage.totalVolume && (
@@ -651,10 +653,10 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
                       {storage.basePrice && (
                         <div className="text-right ml-4">
                           <p className="text-sm sm:text-base font-semibold text-purple-700">
-                            ${storage.basePrice.toFixed(2)}
+                            ${(storage.basePrice || 0).toFixed(2)}
                             {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
                               <span className="text-xs ml-1">
-                                + ${storage.pricePerCubicFoot.toFixed(2)}/ft³
+                                + ${(storage.pricePerCubicFoot || 0).toFixed(2)}/ft³
                               </span>
                             )}
                           </p>
@@ -710,10 +712,7 @@ export default function KitchenPreviewPage() {
     }
   }, [isAuthenticated, locationId, hasApplication, canBook, application?.status, applicationLoading]);
 
-  const { data: locationData, isLoading, error } = useQuery<{
-    location: PublicLocation;
-    kitchens: PublicKitchen[];
-  }>({
+  const { data: locationData, isLoading, error } = useQuery<PublicLocation & { kitchens: PublicKitchen[] }>({
     queryKey: [`/api/public/locations/${locationId}/details`],
     queryFn: async () => {
       const response = await fetch(`/api/public/locations/${locationId}/details`);
@@ -774,8 +773,8 @@ export default function KitchenPreviewPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
               rental: (equipmentData.rental || []).map((e: any) => ({
@@ -785,8 +784,8 @@ export default function KitchenPreviewPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
             });
@@ -811,8 +810,8 @@ export default function KitchenPreviewPage() {
               storageType: s.storageType,
               name: s.name,
               description: s.description,
-              basePrice: s.basePrice,
-              pricePerCubicFoot: s.pricePerCubicFoot,
+              basePrice: s.basePrice ? s.basePrice / 100 : undefined,
+              pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : undefined,
               pricingModel: s.pricingModel,
               dimensionsLength: s.dimensionsLength,
               dimensionsWidth: s.dimensionsWidth,
@@ -846,12 +845,24 @@ export default function KitchenPreviewPage() {
         // Navigate to booking page with location filter
         navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
       } else {
-        // Navigate to application page
-        navigate(`/kitchen-requirements/${locationId}`);
+        // Navigate to application page or custom link
+        if (locationData?.customOnboardingLink) {
+          window.location.href = locationData.customOnboardingLink;
+        } else {
+          navigate(`/kitchen-requirements/${locationId}`);
+        }
       }
     } else {
-      // Navigate to auth page with redirect
-      navigate(`/auth?redirect=/kitchen-preview/${locationId}`);
+      // If there's a custom link, we might want to go there directly even if not logged in
+      // But typically we want them to sign in first to LocalCooks
+      // HOWEVER, if the manager wants to bypass our application form, they might want to bypass auth too
+      // Let's stick to the custom link if provided
+      if (locationData?.customOnboardingLink) {
+        window.location.href = locationData.customOnboardingLink;
+      } else {
+        // Navigate to auth page with redirect
+        navigate(`/auth?redirect=/kitchen-preview/${locationId}`);
+      }
     }
   };
 
@@ -859,12 +870,20 @@ export default function KitchenPreviewPage() {
     if (canBook) {
       navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
     } else {
-      navigate(`/kitchen-requirements/${locationId}`);
+      if (locationData?.customOnboardingLink) {
+        window.location.href = locationData.customOnboardingLink;
+      } else {
+        navigate(`/kitchen-requirements/${locationId}`);
+      }
     }
   };
 
   const handleApplyClick = () => {
-    navigate(`/kitchen-requirements/${locationId}`);
+    if (locationData?.customOnboardingLink) {
+      window.location.href = locationData.customOnboardingLink;
+    } else {
+      navigate(`/kitchen-requirements/${locationId}`);
+    }
   };
 
   if (isLoading) {
@@ -886,7 +905,7 @@ export default function KitchenPreviewPage() {
           <div className="text-center max-w-md mx-auto w-full">
             <ImageOff className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Location Not Found</h1>
-            <p className="text-sm sm:text-base text-gray-600 mb-6">This kitchen location doesn't exist or has been removed.</p>
+            <p className="text-sm sm:text-base text-gray-600 mb-6">This kitchen location doesn&apos;t exist or has been removed.</p>
             <Button
               onClick={() => navigate('/')}
               className="bg-[#F51042] hover:bg-[#D90E3A] w-full sm:w-auto"
@@ -900,7 +919,7 @@ export default function KitchenPreviewPage() {
     );
   }
 
-  const { location, kitchens } = locationData;
+  const { kitchens, ...location } = locationData;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -926,6 +945,11 @@ export default function KitchenPreviewPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{location.name}</h1>
+                    {location.description && (
+                      <p className="w-full text-sm sm:text-base text-gray-600 mt-2 leading-relaxed">
+                        {location.description}
+                      </p>
+                    )}
                     {location.kitchenLicenseStatus === 'pending' && (
                       <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
                         <Clock className="h-3 w-3 mr-1" />
@@ -946,26 +970,40 @@ export default function KitchenPreviewPage() {
                 </div>
               </div>
 
-              <Button
-                onClick={handleGetStarted}
-                className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
-                size="sm"
-                disabled={isAuthenticated && applicationLoading}
-              >
-                {applicationLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
-                    Checking...
-                  </>
-                ) : isAuthenticated && canBook ? (
-                  'Book Now'
-                ) : isAuthenticated ? (
-                  'Apply to Kitchen'
-                ) : (
-                  'Sign In to Book'
-                )}
-                {!applicationLoading && <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />}
-              </Button>
+                <div className="flex flex-col gap-2 w-full sm:w-auto">
+                  <Button
+                    onClick={handleGetStarted}
+                    className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
+                    size="sm"
+                    disabled={isAuthenticated && applicationLoading}
+                  >
+                    {applicationLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
+                        Checking...
+                      </>
+                    ) : isAuthenticated && canBook ? (
+                      'Book Now'
+                    ) : isAuthenticated && application?.status === 'approved' && ((application as any)?.current_tier ?? 1) < 3 ? (
+                      'Continue Application'
+                    ) : isAuthenticated ? (
+                      'Apply to Kitchen'
+                    ) : (
+                      'Sign In to Book'
+                    )}
+                    {!applicationLoading && <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                  </Button>
+                  {location.customOnboardingLink && (
+                    <a
+                      href={location.customOnboardingLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] sm:text-xs text-[#F51042] hover:underline text-center sm:text-right font-medium flex items-center justify-center sm:justify-end gap-1"
+                    >
+                      External Application <ArrowRight className="h-2.5 w-2.5" />
+                    </a>
+                  )}
+                </div>
             </div>
           </div>
         </div>
@@ -1009,7 +1047,7 @@ export default function KitchenPreviewPage() {
                           License Pending Approval
                         </h3>
                         <p className="text-xs text-yellow-700">
-                          This location's kitchen license is pending admin approval. Bookings will be available once approved.
+                          This location&apos;s kitchen license is pending admin approval. Bookings will be available once approved.
                         </p>
                       </div>
                     </div>
@@ -1059,6 +1097,16 @@ export default function KitchenPreviewPage() {
                       Book This Kitchen
                       <ArrowRight className="ml-2 h-3.5 w-3.5" />
                     </Button>
+                  ) : isAuthenticated && application?.status === 'approved' && ((application as any)?.current_tier ?? 1) < 3 ? (
+                    <Button
+                      onClick={handleApplyClick}
+                      className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
+                      size="sm"
+                    >
+                      <FileText className="mr-2 h-3.5 w-3.5" />
+                      Continue Application
+                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                    </Button>
                   ) : isAuthenticated ? (
                     <Button
                       onClick={handleApplyClick}
@@ -1088,6 +1136,20 @@ export default function KitchenPreviewPage() {
                           Log in
                         </button>
                       </p>
+                      {location.customOnboardingLink && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                          <p className="text-[10px] text-gray-500 text-center mb-2 uppercase tracking-wider font-semibold">Prefer to apply directly?</p>
+                          <a
+                            href={location.customOnboardingLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-[#F51042]/20 text-[#F51042] hover:bg-[#F51042]/5 text-xs font-bold transition-all"
+                          >
+                            External Application
+                            <ArrowRight className="h-3 w-3" />
+                          </a>
+                        </div>
+                      )}
                     </>
                   )}
                 </CardContent>

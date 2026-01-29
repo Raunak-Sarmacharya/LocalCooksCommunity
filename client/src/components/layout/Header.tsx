@@ -24,7 +24,7 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [location, setLocation] = useLocation();
   const firebaseAuth = useFirebaseAuth();
-  
+
   // Get current subdomain
   const currentSubdomain = useMemo(() => {
     if (typeof window !== 'undefined') {
@@ -32,15 +32,15 @@ export default function Header() {
     }
     return null;
   }, []);
-  
+
   // Check if Partner Login should be shown (only for kitchen.* subdomain, not chef.*)
   const showPartnerLogin = useMemo(() => {
     return currentSubdomain === 'kitchen';
   }, [currentSubdomain]);
-  
+
   // Use Firebase auth (session auth removed)
   const { user: firebaseUser } = useFirebaseAuth();
-  
+
   const { data: profileUser } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
@@ -55,14 +55,14 @@ export default function Header() {
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (!response.ok) {
           if (response.status === 401) {
             return null; // Not authenticated
           }
           throw new Error(`Firebase auth failed: ${response.status}`);
         }
-        
+
         const userData = await response.json();
         return userData;
       } catch (error) {
@@ -79,13 +79,13 @@ export default function Header() {
 
   // Use profileUser (from Firebase auth) as the primary user source
   const user = profileUser || firebaseAuth.user;
-  
+
   const logout = async () => {
     // Firebase logout (session auth removed)
     console.log('Performing Firebase logout...');
     firebaseAuth.logout();
   };
-  
+
   // Debug logging for header state
   console.log('Header component state:', {
     profileUser,
@@ -96,14 +96,22 @@ export default function Header() {
 
   // Fetch applicant's applications if they are logged in
   const { data: applications } = useQuery<Application[]>({
-    queryKey: ["/api/applications/my-applications"],
+    queryKey: ["/api/firebase/applications/my"],
     queryFn: async ({ queryKey }) => {
       if (!user || (!user.uid && !user.id)) {
         throw new Error("User not authenticated");
       }
 
+      const { auth } = await import('@/lib/firebase');
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        throw new Error("User not authenticated");
+      }
+
+      const token = await currentUser.getIdToken();
       const headers: Record<string, string> = {
-        'X-User-ID': (user.uid || user.id).toString()
+        'Authorization': `Bearer ${token}`
       };
 
       const response = await fetch(queryKey[0] as string, {
@@ -233,7 +241,7 @@ export default function Header() {
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b border-gray-200/50" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
+    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area transition-all duration-300 shadow-md border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center">
         <Link href="/" className="flex items-center gap-2 sm:gap-3 md:gap-4 transition-all duration-300 hover:scale-[1.02] group">
           <Logo variant="brand" className="h-8 sm:h-10 md:h-12 lg:h-14 w-auto transition-transform duration-300 group-hover:scale-110 flex-shrink-0" />
@@ -294,8 +302,8 @@ export default function Header() {
             </li>
             {user && user.role !== 'admin' && (user as any).isChef && (
               <li>
-                <Link 
-                  href="/microlearning/overview" 
+                <Link
+                  href="/microlearning/overview"
                   className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
                 >
                   <GraduationCap className="h-4 w-4" />
@@ -322,7 +330,7 @@ export default function Header() {
             {user && (
               <>
                 <li>
-                  <Link 
+                  <Link
                     href={getDashboardInfo().href}
                     className="flex items-center gap-2 hover:text-primary hover-text cursor-pointer px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium hover:bg-gray-50/80"
                   >
@@ -349,13 +357,13 @@ export default function Header() {
         <div className="flex items-center gap-2 md:hidden">
           {user && (
             <>
-                              <Link 
-                  href={getDashboardInfo().href}
-                  className="flex items-center gap-1 text-sm hover:text-primary hover-text px-2 py-1 rounded transition-colors"
-                >
-                  <User className="h-4 w-4" />
-                  {getUserDisplayName()}
-                </Link>
+              <Link
+                href={getDashboardInfo().href}
+                className="flex items-center gap-1 text-sm hover:text-primary hover-text px-2 py-1 rounded transition-colors"
+              >
+                <User className="h-4 w-4" />
+                {getUserDisplayName()}
+              </Link>
               <Button
                 variant="ghost"
                 size="sm"
@@ -387,108 +395,108 @@ export default function Header() {
         <div className="md:hidden border-t border-gray-200/50 shadow-xl mobile-momentum-scroll" style={{ backgroundColor: 'rgba(255, 255, 255, 0.98)', backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}>
           <div className="container mx-auto px-4 sm:px-6 py-5">
             <ul className="space-y-3">
-            <li>
-              <a
-                href="#revenue-streams"
-                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                onClick={(e) => {
-                  scrollToSection("revenue-streams", e);
-                  closeMenu();
-                }}
-              >
-                Revenue Streams
-              </a>
-            </li>
-            <li>
-              <a
-                href="#how-it-works"
-                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                onClick={(e) => {
-                  scrollToSection("how-it-works", e);
-                  closeMenu();
-                }}
-              >
-                How It Works
-              </a>
-            </li>
-            <li>
-              <a
-                href="#everything-included"
-                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                onClick={(e) => {
-                  scrollToSection("everything-included", e);
-                  closeMenu();
-                }}
-              >
-                Everything Included
-              </a>
-            </li>
-            <li>
-              <a
-                href="#faq"
-                className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
-                onClick={(e) => {
-                  scrollToSection("faq", e);
-                  closeMenu();
-                }}
-              >
-                FAQ
-              </a>
-            </li>
-            {user && (
-              <>
-                {user.role !== 'admin' && (user as any).isChef && (
+              <li>
+                <a
+                  href="#revenue-streams"
+                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                  onClick={(e) => {
+                    scrollToSection("revenue-streams", e);
+                    closeMenu();
+                  }}
+                >
+                  Revenue Streams
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#how-it-works"
+                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                  onClick={(e) => {
+                    scrollToSection("how-it-works", e);
+                    closeMenu();
+                  }}
+                >
+                  How It Works
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#everything-included"
+                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                  onClick={(e) => {
+                    scrollToSection("everything-included", e);
+                    closeMenu();
+                  }}
+                >
+                  Everything Included
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#faq"
+                  className="block py-3 px-2 rounded-lg hover:text-primary hover:bg-primary/5 transition-colors mobile-touch-target mobile-no-tap-highlight"
+                  onClick={(e) => {
+                    scrollToSection("faq", e);
+                    closeMenu();
+                  }}
+                >
+                  FAQ
+                </a>
+              </li>
+              {user && (
+                <>
+                  {user.role !== 'admin' && (user as any).isChef && (
+                    <li>
+                      <Link
+                        href="/microlearning"
+                        className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
+                        onClick={closeMenu}
+                      >
+                        <GraduationCap className="h-4 w-4" />
+                        Food Safety Training
+                      </Link>
+                    </li>
+                  )}
                   <li>
-                    <Link 
-                      href="/microlearning" 
+                    <Link
+                      href={getDashboardInfo().href}
                       className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
                       onClick={closeMenu}
                     >
-                      <GraduationCap className="h-4 w-4" />
-                      Food Safety Training
+                      <User className="h-4 w-4" />
+                      {getUserDisplayName()}
                     </Link>
                   </li>
-                )}
-                <li>
-                  <Link 
-                    href={getDashboardInfo().href}
-                    className="flex items-center gap-2 py-2 hover:text-primary hover-text cursor-pointer"
-                    onClick={closeMenu}
-                  >
-                    <User className="h-4 w-4" />
-                    {getUserDisplayName()}
-                  </Link>
-                </li>
-                <li>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      handleLogout();
-                      closeMenu();
-                    }}
-                    className="w-full gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </Button>
-                </li>
-              </>
-            )}
-            {!user && (
-              <>
-                <li className="pt-2">
-                  <Button
-                    asChild
-                    className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
-                  >
-                    <Link href={showPartnerLogin ? "/manager/login" : "/auth"} onClick={closeMenu}>
-                      {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
-                    </Link>
-                  </Button>
-                </li>
-              </>
-            )}
+                  <li>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        handleLogout();
+                        closeMenu();
+                      }}
+                      className="w-full gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
+                  </li>
+                </>
+              )}
+              {!user && (
+                <>
+                  <li className="pt-2">
+                    <Button
+                      asChild
+                      className="w-full bg-primary hover:bg-opacity-90 hover-standard text-white"
+                    >
+                      <Link href={showPartnerLogin ? "/manager/login" : "/auth"} onClick={closeMenu}>
+                        {showPartnerLogin ? "Partner Login / Register" : "Login / Register"}
+                      </Link>
+                    </Button>
+                  </li>
+                </>
+              )}
             </ul>
           </div>
         </div>
