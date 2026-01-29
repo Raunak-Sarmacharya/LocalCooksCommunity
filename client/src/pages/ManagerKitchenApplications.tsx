@@ -1,10 +1,10 @@
 import { useManagerKitchenApplications } from "@/hooks/use-manager-kitchen-applications";
-import ManagerHeader from "@/components/layout/ManagerHeader";
+import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import {
   User,
-  MapPin,
   CheckCircle,
   XCircle,
   Clock,
@@ -25,7 +25,8 @@ import {
   ExternalLink,
   MessageCircle
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Separator } from "@/components/ui/separator";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -38,12 +39,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ChatPanel from "@/components/chat/ChatPanel";
+import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { getConversationForApplication, createConversation } from "@/services/chat-service";
 
-interface ManagerKitchenApplicationsProps {
-  embedded?: boolean;
-}
+
+import { useLocation } from "wouter";
+import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 
 /**
  * Manager Kitchen Applications Page
@@ -52,31 +53,110 @@ interface ManagerKitchenApplicationsProps {
  * Chefs apply directly to kitchens via the KitchenApplicationForm.
  * Managers can approve/reject applications and view chef documents.
  */
-export default function ManagerKitchenApplications({ embedded = false }: ManagerKitchenApplicationsProps) {
+export default function ManagerKitchenApplications() {
+  const [, setLocation] = useLocation();
+  return (
+    <ManagerPageLayout
+      title="Chef Applications"
+      description="Review and manage chef applications to your kitchen locations."
+      showKitchenSelector={false} // Applications are currently location-based, so kitchen filter is not needed. [BUSINESS LOGIC]
+    >
+      {({ selectedLocationId, isLoading: isLayoutLoading }) => (
+        <ManagerKitchenApplicationsContent
+          selectedLocationId={selectedLocationId}
+          isLayoutLoading={isLayoutLoading}
+          setLocation={setLocation}
+        />
+      )}
+    </ManagerPageLayout>
+  );
+}
+
+export function ManagerKitchenApplicationsContent({
+  selectedLocationId,
+  isLayoutLoading,
+  setLocation
+}: {
+  selectedLocationId: number | null,
+  isLayoutLoading: boolean,
+  setLocation: (path: string) => void
+}) {
   const {
     applications,
-    pendingApplications,
-    approvedApplications,
-    rejectedApplications,
-    pendingCount,
-    approvedCount,
-    rejectedCount,
     isLoading,
     updateApplicationStatus,
-    verifyDocuments,
     revokeAccess
   } = useManagerKitchenApplications();
+
   const { toast } = useToast();
   const [selectedApplication, setSelectedApplication] = useState<any | null>(null);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
-  const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
-  const [loadingUrls, setLoadingUrls] = useState<Set<string>>(new Set());
+
   const [showChatDialog, setShowChatDialog] = useState(false);
-  const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({});
-  const [chatLocationName, setChatLocationName] = useState<string | null>(null);
+
+  // Business Logic: Filter applications by location if selected
+  // Memoize to prevent unnecessary re-renders and infinite loops
+  const filteredApplications = useMemo(() => {
+    return selectedLocationId
+      ? applications.filter(a => a.locationId === selectedLocationId)
+      : applications;
+  }, [applications, selectedLocationId]);
+
+  // Re-derive filtered sets for tabs based on location filter
+  // Memoize these as well to prevent re-creation on every render
+  //
+  // Application lifecycle (2 steps):
+  // 1. Chef submits application -> status='inReview', current_tier=1
+  // 2. Manager approves Step 1 -> status='approved', current_tier=1 (Step 1 Approved, awaiting chef Step 2 submission)
+  // 3. Chef submits Step 2 docs -> status='approved', current_tier=2, tier2_completed_at set (Step 2 Needs Review)
+  // 4. Manager approves Step 2 -> status='approved', current_tier=3 (Fully Approved, can book)
+  //
+  const isStep2NeedsReview = useCallback(
+    (a: any) => a.status === 'approved' && a.current_tier === 2 && !!a.tier2_completed_at,
+    []
+  );
+
+  const isStep1ApprovedAwaitingStep2 = useCallback(
+    (a: any) => a.status === 'approved' && (a.current_tier ?? 1) === 1,
+    []
+  );
+
+  const isFullyApproved = useCallback(
+    (a: any) => a.status === 'approved' && (a.current_tier ?? 1) >= 3,
+    []
+  );
+
+  const { pendingApplications, awaitingStep2Applications, fullyApprovedApplications, rejectedApplications } = useMemo(() => {
+    // Pending Review: New applications OR Step 2 submitted needing manager review
+    const pending = filteredApplications.filter(
+      (a) => a.status === "inReview" || isStep2NeedsReview(a)
+    );
+
+    // Awaiting Step 2: Manager approved Step 1, waiting for chef to submit Step 2
+    const awaitingStep2 = filteredApplications.filter((a) => isStep1ApprovedAwaitingStep2(a));
+
+    // Fully Approved: Both steps complete, can book kitchens
+    const fullyApproved = filteredApplications.filter((a) => isFullyApproved(a));
+
+    const rejected = filteredApplications.filter(
+      (a) => a.status === "rejected"
+    );
+
+    return {
+      pendingApplications: pending,
+      awaitingStep2Applications: awaitingStep2,
+      fullyApprovedApplications: fullyApproved,
+      rejectedApplications: rejected,
+    };
+  }, [filteredApplications, isStep2NeedsReview, isStep1ApprovedAwaitingStep2, isFullyApproved]);
+
+  const pendingCount = pendingApplications.length;
+  const awaitingStep2Count = awaitingStep2Applications.length;
+  const fullyApprovedCount = fullyApprovedApplications.length;
+  const rejectedCount = rejectedApplications.length;
 
   // Get manager ID from API
   const { data: managerInfo } = useQuery({
@@ -97,42 +177,103 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
 
   const managerId = managerInfo?.id || null;
 
+  // Create a stable key for applications to prevent infinite re-renders
+  // Only re-fetch when the actual application IDs or their conversation IDs change
+  const applicationIdsKey = useMemo(() => {
+    return filteredApplications
+      .map(app => `${app.id}:${app.chat_conversation_id || 'none'}`)
+      .sort()
+      .join(',');
+  }, [filteredApplications]);
+
+  // Track if we're currently fetching to prevent concurrent fetches
+  const isFetchingRef = useRef(false);
+  const lastFetchKeyRef = useRef<string>('');
+  
+  // Use ref to access current filteredApplications without adding to dependencies
+  const filteredApplicationsRef = useRef(filteredApplications);
+  filteredApplicationsRef.current = filteredApplications;
+
   // Fetch unread counts for all applications with conversations
   useEffect(() => {
     if (!managerId) return;
-
-    // Combine all applications from different tabs
-    const allApplications = [
-      ...pendingApplications,
-      ...approvedApplications,
-      ...rejectedApplications,
-    ];
-
-    if (allApplications.length === 0) return;
+    if (!applicationIdsKey) return; // No applications
+    
+    // Prevent duplicate fetches for the same data
+    const currentKey = `${managerId}:${applicationIdsKey}`;
+    if (currentKey === lastFetchKeyRef.current && isFetchingRef.current) {
+      return;
+    }
 
     const fetchUnreadCounts = async () => {
-      const counts: Record<number, number> = {};
-      for (const app of allApplications) {
-        if (app.chat_conversation_id) {
-          try {
-            // Get conversation and check unread count
-            const conversation = await getConversationForApplication(app.id);
-            if (conversation) {
-              counts[app.id] = conversation.unreadManagerCount || 0;
-            }
-          } catch (error) {
-            console.error('Error fetching unread count for application', app.id, ':', error);
-          }
+      // Prevent concurrent fetches
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      lastFetchKeyRef.current = currentKey;
+
+      try {
+        const counts: Record<number, number> = {};
+        
+        // Access current applications via ref to avoid dependency issues
+        const currentApps = filteredApplicationsRef.current;
+        
+        // Only fetch for applications that have conversations
+        const appsWithConversations = currentApps.filter(app => app.chat_conversation_id);
+        
+        if (appsWithConversations.length === 0) {
+          isFetchingRef.current = false;
+          return;
         }
+        
+        // Use Promise.allSettled for better error handling and parallel fetching
+        const results = await Promise.allSettled(
+          appsWithConversations.map(async (app) => {
+            try {
+              const conversation = await getConversationForApplication(app.id);
+              return { appId: app.id, count: conversation?.unreadManagerCount || 0 };
+            } catch (error) {
+              console.error('Error fetching unread count for application', app.id, ':', error);
+              return { appId: app.id, count: 0 };
+            }
+          })
+        );
+
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            counts[result.value.appId] = result.value.count;
+          }
+        });
+
+        // Only update state if counts actually changed to prevent unnecessary re-renders
+        setUnreadCounts(prevCounts => {
+          const prevKeys = Object.keys(prevCounts);
+          const newKeys = Object.keys(counts);
+          
+          // Check if counts actually changed
+          if (prevKeys.length !== newKeys.length) {
+            return counts;
+          }
+          
+          const hasChanges = newKeys.some(
+            key => prevCounts[Number(key)] !== counts[Number(key)]
+          );
+          
+          return hasChanges ? counts : prevCounts;
+        });
+      } finally {
+        isFetchingRef.current = false;
       }
-      setUnreadCounts(counts);
     };
 
     fetchUnreadCounts();
+    
     // Refresh every 30 seconds
     const interval = setInterval(fetchUnreadCounts, 30000);
-    return () => clearInterval(interval);
-  }, [pendingApplications, approvedApplications, rejectedApplications, managerId]);
+    return () => {
+      clearInterval(interval);
+      isFetchingRef.current = false;
+    };
+  }, [managerId, applicationIdsKey]); // Only depend on stable values
 
   const openChat = async (application: any) => {
     if (!managerId) {
@@ -144,42 +285,30 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
       return;
     }
 
-    setChatApplication(application);
-
-    // Fetch location name if not available in application
-    let locationName = application.location?.name;
-    if (!locationName && application.locationId) {
-      try {
-        const locationResponse = await fetch(`/api/public/locations/${application.locationId}/details`, {
-          credentials: 'include',
-        });
-        if (locationResponse.ok) {
-          const locationData = await locationResponse.json();
-          locationName = locationData?.name || null;
-        }
-      } catch (error) {
-        console.error(`Error fetching location ${application.locationId}:`, error);
-      }
-    }
-    setChatLocationName(locationName || null);
-
     // Get or create conversation
     let conversationId = application.chat_conversation_id;
+
+    // Check service if local state is missing it
     if (!conversationId) {
       try {
-        // Try to get existing conversation
         const existing = await getConversationForApplication(application.id);
         if (existing) {
           conversationId = existing.id;
-        } else {
-          // Create new conversation
-          conversationId = await createConversation(
-            application.id,
-            application.chefId,
-            managerId,
-            application.locationId
-          );
         }
+      } catch (e) {
+        console.error("Error looking up conversation:", e);
+      }
+    }
+
+    if (!conversationId) {
+      try {
+        // Create new conversation (now safe/idempotent)
+        conversationId = await createConversation(
+          application.id,
+          application.chefId,
+          managerId,
+          application.locationId
+        );
       } catch (error) {
         console.error('Error initializing chat:', error);
         toast({
@@ -195,82 +324,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     setShowChatDialog(true);
   };
 
-  // Function to get presigned URL for R2 files
-  const getPresignedUrl = async (fileUrl: string): Promise<string> => {
-    // Check if we already have a presigned URL cached
-    if (presignedUrls[fileUrl]) {
-      return presignedUrls[fileUrl];
-    }
 
-    // Check if URL is already being loaded
-    if (loadingUrls.has(fileUrl)) {
-      // Wait a bit and try again
-      await new Promise(resolve => setTimeout(resolve, 100));
-      return getPresignedUrl(fileUrl);
-    }
-
-    // Check if it's a public R2 URL - these don't need presigning
-    if (fileUrl.includes('.r2.dev/')) {
-      return fileUrl;
-    }
-
-    // Check if it's a private R2 URL (needs presigning)
-    const isR2Url = fileUrl.includes('r2.cloudflarestorage.com') ||
-      fileUrl.includes('files.localcooks.ca');
-
-    if (!isR2Url) {
-      // Not an R2 URL, return as-is
-      return fileUrl;
-    }
-
-    try {
-      setLoadingUrls(prev => new Set(prev).add(fileUrl));
-
-      // Get auth token
-      const { auth } = await import('@/lib/firebase');
-      const currentUser = auth.currentUser;
-      const token = currentUser ? await currentUser.getIdToken() : null;
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      if (currentUser?.uid) {
-        headers['X-User-ID'] = currentUser.uid;
-      }
-
-      const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(fileUrl)}`, {
-        method: 'GET',
-        headers,
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to get presigned URL: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const presignedUrl = data.url || fileUrl;
-
-      // Cache the presigned URL
-      setPresignedUrls(prev => ({ ...prev, [fileUrl]: presignedUrl }));
-      return presignedUrl;
-    } catch (error) {
-      console.error('Error getting presigned URL:', error);
-      // Fallback to original URL
-      return fileUrl;
-    } finally {
-      setLoadingUrls(prev => {
-        const next = new Set(prev);
-        next.delete(fileUrl);
-        return next;
-      });
-    }
-  };
 
   const handleApprove = async (applicationId: number) => {
     try {
@@ -391,6 +445,34 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     setReviewFeedback(application.feedback || "");
   };
 
+  // Fetch location requirements for the selected application to display custom fields
+  const { data: locationRequirements } = useQuery({
+    queryKey: [`/api/public/locations/${selectedApplication?.locationId}/requirements`],
+    queryFn: async () => {
+      if (!selectedApplication?.locationId) return null;
+      const response = await fetch(`/api/public/locations/${selectedApplication.locationId}/requirements`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!selectedApplication?.locationId && showReviewDialog,
+  });
+
+  // Helper to render custom field value based on type
+  const renderCustomFieldValue = (field: any, value: any) => {
+    if (value === undefined || value === null || value === '') return <span className="text-gray-400 italic">Not provided</span>;
+    
+    if (field.type === 'checkbox') {
+      if (Array.isArray(value)) {
+        return <span className="font-medium">{value.join(', ')}</span>;
+      }
+      return <span className="font-medium">{value ? 'Yes' : 'No'}</span>;
+    }
+    if (field.type === 'date') {
+      return <span className="font-medium">{new Date(value).toLocaleDateString()}</span>;
+    }
+    return <span className="font-medium">{String(value)}</span>;
+  };
+
   // Parse business description JSON
   const parseBusinessInfo = (description: string | null | undefined) => {
     if (!description) return null;
@@ -401,12 +483,21 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isLayoutLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#208D80] mx-auto mb-4" />
-          <p className="text-gray-600">Loading applications...</p>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
+          ))}
+        </div>
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-64" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} className="h-48 w-full rounded-xl" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -427,11 +518,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
             variant="outline"
             onClick={() => {
               // Navigate to settings with application requirements tab
-              const url = new URL(window.location.href);
-              url.pathname = '/manager/booking-dashboard';
-              url.searchParams.set('view', 'settings');
-              url.searchParams.set('tab', 'application-requirements');
-              window.location.href = url.toString();
+              setLocation('/manager/dashboard?view=settings&tab=application-requirements');
             }}
             className="flex items-center gap-2"
           >
@@ -440,12 +527,12 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
             <ExternalLink className="h-3 w-3" />
           </Button>
         </div>
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mt-4 p-3 bg-primary/5 border border-primary/10 rounded-lg">
           <div className="flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <p className="text-sm text-blue-900 font-medium mb-1">Customize Application Requirements</p>
-              <p className="text-xs text-blue-700">
+              <p className="text-sm text-foreground font-medium mb-1">Customize Application Requirements</p>
+              <p className="text-xs text-muted-foreground">
                 Control which fields are required when chefs apply to your kitchens. You can make fields optional to streamline the application process.
               </p>
             </div>
@@ -454,27 +541,36 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="border-l-4 border-l-yellow-500">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Pending Review</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Review</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-yellow-600">{pendingCount}</div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-green-500">
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Awaiting Step 2</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600">{approvedCount}</div>
+            <div className="text-3xl font-bold text-blue-600">{awaitingStep2Count}</div>
+            <p className="text-xs text-gray-500 mt-1">Chat enabled</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Approved</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-green-600">{fullyApprovedCount}</div>
             <p className="text-xs text-gray-500 mt-1">Can book kitchens</p>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-red-500">
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Rejected</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Rejected</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-600">{rejectedCount}</div>
@@ -489,9 +585,13 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
             <Clock className="h-4 w-4" />
             Pending ({pendingCount})
           </TabsTrigger>
+          <TabsTrigger value="awaiting-tier2" className="gap-2">
+            <Clock className="h-4 w-4" />
+            Awaiting Step 2 ({awaitingStep2Count})
+          </TabsTrigger>
           <TabsTrigger value="approved" className="gap-2">
             <CheckCircle className="h-4 w-4" />
-            Approved ({approvedCount})
+            Approved ({fullyApprovedCount})
           </TabsTrigger>
           <TabsTrigger value="rejected" className="gap-2">
             <XCircle className="h-4 w-4" />
@@ -518,16 +618,41 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
               <CardContent className="py-12 text-center">
                 <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">All Caught Up!</h3>
-                <p className="text-gray-600">No pending applications to review.</p>
+                <p className="text-muted-foreground">No pending applications to review.</p>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="awaiting-tier2">
+          {awaitingStep2Applications.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {awaitingStep2Applications.map((application) => (
+                <ApplicationCard
+                  key={application.id}
+                  application={application}
+                  onReview={() => openReviewDialog(application)}
+                  onOpenChat={() => openChat(application)}
+                  unreadCount={unreadCounts[application.id] || 0}
+                  parseBusinessInfo={parseBusinessInfo}
+                />
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Applications Awaiting Step 2</h3>
+                <p className="text-muted-foreground">Chefs who passed Step 1 and still need to submit Step 2 will appear here.</p>
               </CardContent>
             </Card>
           )}
         </TabsContent>
 
         <TabsContent value="approved">
-          {approvedApplications.length > 0 ? (
+          {fullyApprovedApplications.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {approvedApplications.map((application) => (
+              {fullyApprovedApplications.map((application) => (
                 <ApplicationCard
                   key={application.id}
                   application={application}
@@ -543,7 +668,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Approved Applications</h3>
-                <p className="text-gray-600">Approved chef applications will appear here.</p>
+                <p className="text-muted-foreground">Fully approved chef applications will appear here.</p>
               </CardContent>
             </Card>
           )}
@@ -568,7 +693,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
               <CardContent className="py-12 text-center">
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No Rejected Applications</h3>
-                <p className="text-gray-600">Rejected applications will appear here.</p>
+                <p className="text-muted-foreground">Rejected applications will appear here.</p>
               </CardContent>
             </Card>
           )}
@@ -580,11 +705,11 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <ChefHat className="h-5 w-5 text-[#208D80]" />
+              <ChefHat className="h-5 w-5 text-primary" />
               Review Chef Application
             </DialogTitle>
             <DialogDescription>
-              Review the chef's application details and documents.
+              Review the chef&apos;s application details and documents.
             </DialogDescription>
           </DialogHeader>
 
@@ -641,7 +766,7 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                     <Briefcase className="h-4 w-4" />
                     Business Information
                   </h3>
-                  <div className="p-4 bg-[#208D80]/5 rounded-lg border border-[#208D80]/20">
+                  <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                     {(() => {
                       const info = parseBusinessInfo(selectedApplication.businessDescription);
                       if (!info) return <p className="text-gray-600">No business information provided.</p>;
@@ -691,336 +816,186 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
                 </div>
               )}
 
-              {/* Documents */}
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <Shield className="h-4 w-4" />
-                  Food Safety Documents
-                </h3>
-                <div className="space-y-3">
-                  {/* Food Safety License */}
-                  <div className={`flex items-center justify-between p-4 rounded-lg border ${selectedApplication.foodSafetyLicenseUrl
-                    ? 'bg-green-50 border-green-200'
-                    : 'bg-gray-50 border-gray-200'
-                    }`}>
-                    <div className="flex items-center gap-3">
-                      <FileText className={`h-5 w-5 ${selectedApplication.foodSafetyLicenseUrl ? 'text-green-600' : 'text-gray-400'}`} />
-                      <div>
-                        <p className="font-medium text-gray-900">Food Handler Certificate</p>
-                        <p className="text-xs text-gray-500">
-                          {selectedApplication.foodSafetyLicense === 'yes' ? 'Has certificate' : 'Certificate status: ' + selectedApplication.foodSafetyLicense}
-                        </p>
-                      </div>
-                    </div>
-                    {selectedApplication.foodSafetyLicenseUrl && (
-                      <div className="flex gap-2">
-                        <a
-                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] ||
-                            ((selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') || selectedApplication.foodSafetyLicenseUrl?.includes('files.localcooks.ca'))
-                              ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodSafetyLicenseUrl)}`
-                              : selectedApplication.foodSafetyLicenseUrl)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 hover:bg-green-100 rounded-lg transition-colors"
-                          title="View document"
-                          onClick={async (e) => {
-                            e.preventDefault();
-                            const url = selectedApplication.foodSafetyLicenseUrl;
-                            if (!url) return;
-
-                            // Open window immediately to prevent popup blocker
-                            const newWindow = window.open('', '_blank');
-
-                            try {
-                              // If it's a local file URL, add token
-                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                                if (newWindow) newWindow.location.href = authenticatedUrl;
-                                return;
-                              }
-
-                              // If it's an R2 URL, get presigned URL
-                              if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
-                                const presignedUrl = await getPresignedUrl(url);
-                                if (newWindow) newWindow.location.href = presignedUrl;
-                                return;
-                              }
-
-                              // Fallback
-                              if (newWindow) {
-                                newWindow.location.href = presignedUrls[url] ||
-                                  ((url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))
-                                    ? `/api/files/r2-proxy?url=${encodeURIComponent(url)}`
-                                    : url);
-                              }
-                            } catch (error) {
-                              console.error('Error opening document:', error);
-                              if (newWindow) newWindow.close();
-                              toast({
-                                title: "Error",
-                                description: "Failed to open document",
-                                variant: "destructive"
-                              });
-                            }
-                          }}
-                        >
-                          {loadingUrls.has(selectedApplication.foodSafetyLicenseUrl) ? (
-                            <Loader2 className="h-4 w-4 text-green-600 animate-spin" />
-                          ) : (
-                            <Eye className="h-4 w-4 text-green-600" />
-                          )}
-                        </a>
-                        <a
-                          href={presignedUrls[selectedApplication.foodSafetyLicenseUrl] ||
-                            ((selectedApplication.foodSafetyLicenseUrl?.includes('r2.cloudflarestorage.com') || selectedApplication.foodSafetyLicenseUrl?.includes('files.localcooks.ca'))
-                              ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodSafetyLicenseUrl)}`
-                              : selectedApplication.foodSafetyLicenseUrl)}
-                          download
-                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Download document"
-                          onClick={async (e) => {
-                            e.preventDefault();
-                            const url = selectedApplication.foodSafetyLicenseUrl;
-                            if (!url) return;
-
-                            // Open window immediately
-                            const a = document.createElement('a');
-
-                            try {
-                              // If it's a local file URL, add token
-                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                                a.href = authenticatedUrl;
-                                a.download = '';
-                                a.click();
-                                return;
-                              }
-
-                              // If it's an R2 URL, get presigned URL
-                              if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
-                                const presignedUrl = await getPresignedUrl(url);
-                                a.href = presignedUrl;
-                                a.download = '';
-                                a.click();
-                                return;
-                              }
-
-                              // Fallback
-                              a.href = presignedUrls[url] ||
-                                ((url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))
-                                  ? `/api/files/r2-proxy?url=${encodeURIComponent(url)}`
-                                  : url);
-                              a.download = '';
-                              a.click();
-                            } catch (error) {
-                              console.error('Error downloading document:', error);
-                              toast({
-                                title: "Error",
-                                description: "Failed to download document",
-                                variant: "destructive"
-                              });
-                            }
-                          }}
-                        >
-                          {loadingUrls.has(selectedApplication.foodSafetyLicenseUrl) ? (
-                            <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
-                          ) : (
-                            <Download className="h-4 w-4 text-gray-600" />
-                          )}
-                        </a>
-                      </div>
-                    )}
-                  </div>
-
-
+              {/* ========== STEP 1 SECTION ========== */}
+              <div className="border-2 border-blue-200 rounded-lg p-4 bg-blue-50/30">
+                <div className="flex items-center gap-2 mb-4">
+                  <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                    Step 1: Initial Application
+                  </Badge>
+                  {selectedApplication.tier1_completed_at && (
+                    <span className="text-xs text-gray-500">
+                      Submitted: {new Date(selectedApplication.createdAt).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
+
+                {/* Step 1 Documents */}
+                <div className="mb-4">
+                  <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Food Safety Documents
+                  </h4>
+                  <div className="space-y-2">
+                    {/* Food Safety License */}
+                    <div className={`flex items-center justify-between p-3 rounded-lg border ${selectedApplication.foodSafetyLicenseUrl
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-gray-50 border-gray-200'
+                      }`}>
+                      <div className="flex items-center gap-3">
+                        <FileText className={`h-4 w-4 ${selectedApplication.foodSafetyLicenseUrl ? 'text-green-600' : 'text-gray-400'}`} />
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">Food Handler Certificate</p>
+                          <p className="text-xs text-gray-500">
+                            {selectedApplication.foodSafetyLicense === 'yes' ? 'Has certificate' : 'Certificate status: ' + selectedApplication.foodSafetyLicense}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedApplication.foodSafetyLicenseUrl && (
+                        <SecureDocumentLink
+                          url={selectedApplication.foodSafetyLicenseUrl}
+                          fileName="Food Handler Certificate"
+                          label="Download"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 1 Custom Fields */}
+                {locationRequirements?.tier1_custom_fields && 
+                 Array.isArray(locationRequirements.tier1_custom_fields) && 
+                 locationRequirements.tier1_custom_fields.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Additional Step 1 Information
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {locationRequirements.tier1_custom_fields.map((field: any) => {
+                        const customData = selectedApplication.customFieldsData || {};
+                        const value = customData[field.id];
+                        return (
+                          <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
+                            <div className="text-xs text-gray-500 mb-1">{field.label}</div>
+                            {renderCustomFieldValue(field, value)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Tier 2 Documents Section - Show when Tier 2 is completed */}
+              {/* ========== STEP 2 SECTION ========== */}
               {selectedApplication.tier2_completed_at && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Step 2 Documents
+                <div className="border-2 border-orange-200 rounded-lg p-4 bg-orange-50/30">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-300">
+                      Step 2: Kitchen Coordination
+                    </Badge>
                     {selectedApplication.current_tier === 2 && (
-                      <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300 ml-2">
+                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
                         Awaiting Review
                       </Badge>
                     )}
                     {selectedApplication.current_tier >= 3 && (
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 ml-2">
+                      <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
                         Approved
                       </Badge>
                     )}
-                  </h3>
-                  <div className="space-y-3">
-                    <div className="text-xs text-gray-500 mb-2">
+                    <span className="text-xs text-gray-500 ml-auto">
                       Submitted: {new Date(selectedApplication.tier2_completed_at).toLocaleDateString()}
-                    </div>
+                    </span>
+                  </div>
 
-                    {/* Insurance Document */}
-                    {(() => {
-                      const tierData = selectedApplication.tier_data || {};
-                      const tierFiles = tierData.tierFiles || {};
-                      const insuranceUrl = tierFiles.tier2_insurance_document;
+                  {/* Step 2 Documents */}
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Step 2 Documents
+                    </h4>
+                    <div className="space-y-2">
+                      {/* Insurance Document */}
+                      {(() => {
+                        const tierData = selectedApplication.tier_data || {};
+                        const tierFiles = tierData.tierFiles || {};
+                        const insuranceUrl = tierFiles.tier2_insurance_document;
 
-                      return insuranceUrl ? (
-                        <div className="flex items-center justify-between p-4 rounded-lg border bg-purple-50 border-purple-200">
-                          <div className="flex items-center gap-3">
-                            <FileText className="h-5 w-5 text-purple-600" />
+                        return insuranceUrl ? (
+                          <div className="flex items-center justify-between p-3 rounded-lg border bg-purple-50 border-purple-200">
+                            <div className="flex items-center gap-3">
+                              <FileText className="h-4 w-4 text-purple-600" />
+                              <div>
+                                <p className="font-medium text-gray-900 text-sm">Insurance Document</p>
+                                <p className="text-xs text-gray-500">Uploaded with Step 2 submission</p>
+                              </div>
+                            </div>
+                            <SecureDocumentLink
+                              url={insuranceUrl}
+                              fileName="Insurance Document"
+                              label="Download"
+                            />
+                          </div>
+                        ) : locationRequirements?.tier2_insurance_document_required ? (
+                          <div className="flex items-center p-3 rounded-lg border bg-red-50 border-red-200">
+                            <FileText className="h-4 w-4 text-red-400 mr-3" />
                             <div>
-                              <p className="font-medium text-gray-900">Insurance Document</p>
-                              <p className="text-xs text-gray-500">Uploaded with Step 2 submission</p>
+                              <p className="font-medium text-red-900 text-sm">Insurance Document</p>
+                              <p className="text-xs text-red-600">Required but not uploaded</p>
                             </div>
                           </div>
-                          <div className="flex gap-2">
-                            <a
-                              href={presignedUrls[insuranceUrl] ||
-                                ((insuranceUrl.includes('r2.cloudflarestorage.com') || insuranceUrl.includes('files.localcooks.ca'))
-                                  ? `/api/files/r2-proxy?url=${encodeURIComponent(insuranceUrl)}`
-                                  : insuranceUrl)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-2 hover:bg-purple-100 rounded-lg transition-colors"
-                              title="View document"
-                              onClick={async (e) => {
-                                const url = insuranceUrl;
-                                if (!url) return;
+                        ) : null;
+                      })()}
 
-                                // If it's a local file URL, add token
-                                if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                                  e.preventDefault();
-                                  const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                                  const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                                  window.open(authenticatedUrl, '_blank');
-                                  return;
-                                }
-
-                                // If it's an R2 URL, get presigned URL
-                                if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
-                                  e.preventDefault();
-                                  const presignedUrl = await getPresignedUrl(url);
-                                  window.open(presignedUrl, '_blank');
-                                }
-                              }}
-                            >
-                              {loadingUrls.has(insuranceUrl) ? (
-                                <Loader2 className="h-4 w-4 text-purple-600 animate-spin" />
-                              ) : (
-                                <Eye className="h-4 w-4 text-purple-600" />
-                              )}
-                            </a>
-                            <a
-                              href={presignedUrls[insuranceUrl] ||
-                                ((insuranceUrl.includes('r2.cloudflarestorage.com') || insuranceUrl.includes('files.localcooks.ca'))
-                                  ? `/api/files/r2-proxy?url=${encodeURIComponent(insuranceUrl)}`
-                                  : insuranceUrl)}
-                              download
-                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="Download document"
-                              onClick={async (e) => {
-                                const url = insuranceUrl;
-                                if (!url) return;
-
-                                // If it's a local file URL, add token
-                                if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                                  e.preventDefault();
-                                  const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                                  const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                                  const a = document.createElement('a');
-                                  a.href = authenticatedUrl;
-                                  a.download = '';
-                                  a.click();
-                                  return;
-                                }
-
-                                // If it's an R2 URL, get presigned URL
-                                if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
-                                  e.preventDefault();
-                                  const presignedUrl = await getPresignedUrl(url);
-                                  const a = document.createElement('a');
-                                  a.href = presignedUrl;
-                                  a.download = '';
-                                  a.click();
-                                }
-                              }}
-                            >
-                              {loadingUrls.has(insuranceUrl) ? (
-                                <Loader2 className="h-4 w-4 text-gray-600 animate-spin" />
-                              ) : (
-                                <Download className="h-4 w-4 text-gray-600" />
-                              )}
-                            </a>
+                      {/* Food Establishment Certificate */}
+                      {selectedApplication.foodEstablishmentCertUrl && (
+                        <div className="flex items-center justify-between p-3 rounded-lg border bg-blue-50 border-blue-200">
+                          <div className="flex items-center gap-3">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">Food Establishment Certificate</p>
+                              <p className="text-xs text-gray-500">
+                                {selectedApplication.foodEstablishmentCertExpiry
+                                  ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
+                                  : 'Step 2 requirement'}
+                              </p>
+                            </div>
                           </div>
+                          <SecureDocumentLink
+                            url={selectedApplication.foodEstablishmentCertUrl}
+                            fileName="Establishment Certificate"
+                            label="Download"
+                          />
                         </div>
-                      ) : (
-                        <div className="flex items-center p-4 rounded-lg border bg-gray-50 border-gray-200">
-                          <FileText className="h-5 w-5 text-gray-400 mr-3" />
-                          <div>
-                            <p className="font-medium text-gray-900">Insurance Document</p>
-                            <p className="text-xs text-gray-500">Not uploaded</p>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Food Establishment Certificate from Tier 2 (if different from Tier 1) */}
-                    {selectedApplication.foodEstablishmentCertUrl && selectedApplication.current_tier >= 2 && (
-                      <div className="flex items-center justify-between p-4 rounded-lg border bg-blue-50 border-blue-200">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-5 w-5 text-blue-600" />
-                          <div>
-                            <p className="font-medium text-gray-900">Food Establishment Certificate</p>
-                            <p className="text-xs text-gray-500">
-                              {selectedApplication.foodEstablishmentCertExpiry
-                                ? `Expires: ${new Date(selectedApplication.foodEstablishmentCertExpiry).toLocaleDateString()}`
-                                : 'Step 2 requirement'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <a
-                            href={presignedUrls[selectedApplication.foodEstablishmentCertUrl] ||
-                              ((selectedApplication.foodEstablishmentCertUrl.includes('r2.cloudflarestorage.com') || selectedApplication.foodEstablishmentCertUrl.includes('files.localcooks.ca'))
-                                ? `/api/files/r2-proxy?url=${encodeURIComponent(selectedApplication.foodEstablishmentCertUrl)}`
-                                : selectedApplication.foodEstablishmentCertUrl)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 hover:bg-blue-100 rounded-lg transition-colors"
-                            title="View document"
-                            onClick={async (e) => {
-                              const url = selectedApplication.foodEstablishmentCertUrl;
-                              if (!url) return;
-
-                              // If it's a local file URL, add token
-                              if (url.startsWith('/api/files/documents/') && !presignedUrls[url]) {
-                                e.preventDefault();
-                                const { getAuthenticatedFileUrl } = await import('@/utils/r2-url-helper');
-                                const authenticatedUrl = await getAuthenticatedFileUrl(url);
-                                window.open(authenticatedUrl, '_blank');
-                                return;
-                              }
-
-                              // If it's an R2 URL, get presigned URL
-                              if (!presignedUrls[url] && (url.includes('r2.cloudflarestorage.com') || url.includes('files.localcooks.ca'))) {
-                                e.preventDefault();
-                                const presignedUrl = await getPresignedUrl(url);
-                                window.open(presignedUrl, '_blank');
-                              }
-                            }}
-                          >
-                            {loadingUrls.has(selectedApplication.foodEstablishmentCertUrl) ? (
-                              <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
-                            ) : (
-                              <Eye className="h-4 w-4 text-blue-600" />
-                            )}
-                          </a>
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
+
+                  {/* Step 2 Custom Fields - from tier_data.tier2_custom_fields_data */}
+                  {locationRequirements?.tier2_custom_fields && 
+                   Array.isArray(locationRequirements.tier2_custom_fields) && 
+                   locationRequirements.tier2_custom_fields.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Additional Step 2 Information
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {locationRequirements.tier2_custom_fields.map((field: any) => {
+                          // Step 2 custom fields are stored in tier_data.tier2_custom_fields_data
+                          const tierData = selectedApplication.tier_data || {};
+                          const tier2CustomData = tierData.tier2_custom_fields_data || {};
+                          const value = tier2CustomData[field.id];
+                          return (
+                            <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
+                              <div className="text-xs text-gray-500 mb-1">{field.label}</div>
+                              {renderCustomFieldValue(field, value)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1099,28 +1074,14 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
         </DialogContent>
       </Dialog>
 
-      {/* Chat Dialog */}
+      {/* Chat Dialog - Enterprise Grade UnifiedChatView */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
-          {chatApplication && chatConversationId && managerId && (
-            <ChatPanel
-              conversationId={chatConversationId}
-              applicationId={chatApplication.id}
-              chefId={chatApplication.chefId}
-              managerId={managerId}
-              locationId={chatApplication.locationId}
-              locationName={
-                chatApplication.location?.name ||
-                chatLocationName ||
-                (chatApplication.locationId ? `Location #${chatApplication.locationId}` : "Unknown Location")
-              }
-              onClose={() => {
-                setShowChatDialog(false);
-                setChatApplication(null);
-                setChatConversationId(null);
-                setChatLocationName(null);
-              }}
-              embedded={true}
+        <DialogContent className="max-w-6xl h-[85vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+          {managerId && (
+            <UnifiedChatView
+              userId={managerId}
+              role="manager"
+              initialConversationId={chatConversationId}
             />
           )}
         </DialogContent>
@@ -1128,18 +1089,9 @@ export default function ManagerKitchenApplications({ embedded = false }: Manager
     </>
   );
 
-  if (embedded) {
-    return content;
-  }
-
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <ManagerHeader />
-      <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
-        <div className="container mx-auto px-4 py-8 max-w-7xl">
-          {content}
-        </div>
-      </main>
+    <div className="space-y-6">
+      {content}
     </div>
   );
 }
@@ -1169,22 +1121,50 @@ function ApplicationCard({
             Pending
           </Badge>
         );
-      case 'approved':
-        // Check if Tier 2 is awaiting review (chef submitted but current_tier still 2)
-        if (application.current_tier === 2 && application.tier2_completed_at) {
+      case 'approved': {
+        const tier = application.current_tier ?? 1;
+        
+        // Case 1: Step 2 Needs Review (Chef submitted Step 2 docs, manager needs to review)
+        // current_tier=2 AND tier2_completed_at is set
+        if (tier === 2 && application.tier2_completed_at) {
           return (
             <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
               <Clock className="h-3 w-3 mr-1" />
-              Step 2 Pending
+              Step 2 Needs Review
             </Badge>
           );
         }
+
+        // Case 2: Step 1 Approved (Manager approved Step 1, waiting for Chef to submit Step 2)
+        // current_tier=1 (Step 1 complete, Step 2 not started)
+        if (tier === 1) {
+          return (
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+              <Clock className="h-3 w-3 mr-1" />
+              Step 1 Approved
+            </Badge>
+          );
+        }
+
+        // Case 3: Fully Approved (Both steps complete, can book kitchens)
+        // current_tier >= 3
+        if (tier >= 3) {
+          return (
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Fully Approved
+            </Badge>
+          );
+        }
+
+        // Fallback for any edge cases (e.g., tier=2 without tier2_completed_at)
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            Approved
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300">
+            <Clock className="h-3 w-3 mr-1" />
+            In Progress
           </Badge>
         );
+      }
       case 'rejected':
         return (
           <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300">

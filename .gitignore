@@ -58,6 +58,10 @@ secrets.json
 # Railway deployment
 .railway/
 
+# Build Artifacts & Backups (Clean Repo)
+api/
+
+
 # ===================================
 # Build Outputs & Distribution
 # ===================================
@@ -341,3 +345,36 @@ local-settings.json
 api/*.backup.*
 scripts/.sync-cache/
 .agent/rules/frontend-architect-protocol.md
+.agent/rules/seniorfrontend.md
+.agent/rules/seniorfrontemd.md
+.agent/skills/firebase-master/SKILL.md
+.agent/skills/firebase-master/references/app-check.md
+.agent/skills/firebase-master/references/authentication.md
+.agent/skills/firebase-master/references/cloud-functions-v2.md
+.agent/skills/firebase-master/references/firebase-admin-sdk.md
+.agent/skills/firebase-master/references/firestore-client.md
+.agent/skills/firebase-master/references/firestore-security-rules.md
+.agent/skills/firebase-master/references/push-notifications.md
+.agent/skills/firebase-master/references/storage.md
+.agent/skills/shadcn-ui-designer/SKILL.md
+.agent/skills/shadcn-ui-designer/assets/examples/todo-app.tsx
+.agent/skills/shadcn-ui-designer/references/component-catalog.md
+.agent/skills/shadcn-ui-designer/references/composition-patterns.md
+.agent/skills/shadcn-ui-designer/references/setup-guide.md
+.windsurf/skills/shadcn-ui/SKILL.md
+.windsurf/skills/shadcn-ui/assets/examples/todo-app.tsx
+.windsurf/skills/shadcn-ui/references/component-catalog.md
+.windsurf/skills/shadcn-ui/references/composition-patterns.md
+.windsurf/skills/shadcn-ui/references/setup-guide.md
+.windsurf/skills/stripe-best-practices/SKILL.md
+.windsurf/skills/stripe/SKILL.md
+.windsurf/skills/invoice-generator/SKILL.md
+.windsurf/skills/tailwind-react-guidelines/SKILL.md
+.windsurf/skills/tailwind-react-guidelines/resources/component-patterns.md
+.windsurf/skills/tailwind-react-guidelines/resources/file-organization.md
+.windsurf/skills/tailwind-react-guidelines/resources/forms.md
+.windsurf/skills/tailwind-react-guidelines/resources/loading-and-error-states.md
+.windsurf/skills/tailwind-react-guidelines/resources/performance.md
+.windsurf/skills/tailwind-react-guidelines/resources/styling-guide.md
+.windsurf/skills/tailwind-react-guidelines/resources/testing.md
+.windsurf/skills/tailwind-react-guidelines/resources/typescript-standards.md

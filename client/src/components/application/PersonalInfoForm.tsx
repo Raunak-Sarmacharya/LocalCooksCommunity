@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useApplicationForm } from "./ApplicationFormContext";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
@@ -60,6 +61,11 @@ type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
 
 export default function PersonalInfoForm() {
   const { formData, updateFormData, goToNextStep } = useApplicationForm();
+  const { user } = useFirebaseAuth();
+  
+  // Get email from authenticated user - they must be logged in to access this form
+  const userEmail = user?.email || "";
+  
   const [phoneValue, setPhoneValue] = useState(() => {
     // Initialize with +1 prefix if not already present
     const existing = formData.phone || "";
@@ -69,11 +75,21 @@ export default function PersonalInfoForm() {
   const form = useForm<PersonalInfoFormData>({
     resolver: zodResolver(personalInfoSchema),
     defaultValues: {
-      fullName: formData.fullName || "",
-      email: formData.email || "",
+      fullName: formData.fullName || user?.displayName || "",
+      email: userEmail,
       phone: phoneValue,
     },
   });
+  
+  // Update email field when user data loads
+  useEffect(() => {
+    if (userEmail && !form.getValues("email")) {
+      form.setValue("email", userEmail);
+    }
+    if (user?.displayName && !form.getValues("fullName")) {
+      form.setValue("fullName", user.displayName);
+    }
+  }, [userEmail, user?.displayName, form]);
 
   // Update form value when phoneValue changes
   useEffect(() => {
@@ -270,7 +286,7 @@ export default function PersonalInfoForm() {
             )}
           </div>
           
-          {/* Email Field */}
+          {/* Email Field - Auto-populated from account but editable */}
           <div className="group">
             <Label htmlFor="email" className="text-gray-800 font-semibold flex items-center gap-2 mb-3">
               <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
@@ -284,6 +300,7 @@ export default function PersonalInfoForm() {
                 type="email"
                 placeholder="your.email@example.com"
                 {...form.register("email")}
+                defaultValue={userEmail}
                 className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 rounded-xl"
               />
               <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-primary transition-colors" />
@@ -294,6 +311,9 @@ export default function PersonalInfoForm() {
                 {form.formState.errors.email.message}
               </p>
             )}
+            <p className="text-xs text-gray-500 mt-2">
+              Pre-filled from your account, but you can change it if needed
+            </p>
           </div>
           
           {/* Phone Field */}

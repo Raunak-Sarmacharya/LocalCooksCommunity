@@ -379,8 +379,7 @@ export default function CertificationsForm() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium cursor-pointer">Yes, I have a license</span>
-                    <p className="text-sm text-gray-500 mt-1">I've completed the food safety training course</p>
+                    <span className="font-medium cursor-pointer">Yes</span>
                     
                     {/* Document Upload Section for Food Safety License */}
                     {form.watch("foodSafetyLicense") === "yes" && (
@@ -461,8 +460,7 @@ export default function CertificationsForm() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium cursor-pointer">Not yet, but I'd like to learn</span>
-                    <p className="text-sm text-gray-500 mt-1">We'll guide you through the simple process</p>
+                    <span className="font-medium cursor-pointer">No</span>
                   </div>
                 </div>
               </div>
@@ -518,8 +516,7 @@ export default function CertificationsForm() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <span className="font-medium cursor-pointer">Yes, I have a certificate</span>
-                    <p className="text-sm text-gray-500 mt-1">My kitchen has been inspected and approved</p>
+                    <span className="font-medium cursor-pointer">Yes</span>
                     
                     {/* Document Upload Section for Food Establishment Certificate */}
                     {form.watch("foodEstablishmentCert") === "yes" && (
@@ -599,9 +596,8 @@ export default function CertificationsForm() {
                       )}
                     </div>
                   </div>
-                  <div>
-                    <span className="font-medium cursor-pointer">Not yet, I'm interested</span>
-                    <p className="text-sm text-gray-500 mt-1">We'll connect you with resources to get started</p>
+                  <div className="flex-1">
+                    <span className="font-medium cursor-pointer">No</span>
                   </div>
                 </div>
               </div>

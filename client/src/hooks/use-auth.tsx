@@ -1,27 +1,28 @@
 import { auth, db } from "@/lib/firebase";
 import { queryClient } from "@/lib/queryClient";
 import {
-    createUserWithEmailAndPassword,
-    GoogleAuthProvider,
-    isSignInWithEmailLink,
-    onAuthStateChanged,
-    sendEmailVerification,
-    sendSignInLinkToEmail,
-    signInWithEmailAndPassword,
-    signInWithEmailLink,
-    signInWithPopup,
-    signOut,
-    updateProfile
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  isSignInWithEmailLink,
+  onAuthStateChanged,
+  sendEmailVerification,
+  sendSignInLinkToEmail,
+  signInWithEmailAndPassword,
+  signInWithEmailLink,
+  signInWithPopup,
+  signOut,
+  updateProfile
 } from "firebase/auth";
 import {
-    doc,
-    serverTimestamp,
-    setDoc
+  doc,
+  serverTimestamp,
+  setDoc
 } from "firebase/firestore";
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { getSubdomainFromHostname } from "@shared/subdomain-utils";
+import { User, UserWithFlags } from "@shared/schema";
 
-interface AuthUser {
+interface AuthUser extends Partial<AuthUserLegacyFields> {
   uid: string;
   email: string | null;
   displayName: string | null;
@@ -29,12 +30,20 @@ interface AuthUser {
   emailVerified: boolean;
   providers: string[];
   role?: string;
-  application_type?: 'chef'; // DEPRECATED: kept for backward compatibility
   isChef?: boolean;
-  is_verified?: boolean;
-  has_seen_welcome?: boolean;
-  fullName?: string | null; // Optional full name for backward compatibility
-  username?: string | null; // Optional username for backward compatibility
+  isManager?: boolean;
+  isPortalUser?: boolean;
+  isVerified?: boolean;
+  hasSeenWelcome?: boolean;
+}
+
+// Added for backward compatibility during refactoring
+interface AuthUserLegacyFields {
+  is_verified: boolean;
+  has_seen_welcome: boolean;
+  fullName: string | null;
+  username: string | null;
+  application_type: 'chef';
 }
 
 interface AuthContextType {
@@ -47,11 +56,12 @@ interface AuthContextType {
   signInWithGoogle: (isRegistration?: boolean) => Promise<void>;
   sendEmailLink: (email: string) => Promise<void>;
   handleEmailLinkSignIn: () => Promise<void>;
-  isUserVerified: (user: any) => boolean;
+  isUserVerified: (user: AuthUser | null) => boolean;
   updateUserVerification: () => Promise<AuthUser | null>;
   sendVerificationEmail: (email: string, fullName: string) => Promise<boolean>;
   resendFirebaseVerification: () => Promise<boolean>;
   refreshUserData: () => Promise<void>;
+  syncUserWithBackend: (firebaseUser: any, role?: string, isRegistration?: boolean, password?: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -67,9 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const syncUserWithBackend = async (firebaseUser: any, role?: string, isRegistration = false, password?: string) => {
     try {
       console.log('🔥 SYNC DEBUG - Starting backend sync for:', firebaseUser.uid, isRegistration ? '(REGISTRATION)' : '(SIGN-IN)');
-      
+
       const token = await firebaseUser.getIdToken();
-      
+
       // Auto-determine role based on current URL path AND subdomain during registration
       let finalRole = role;
       if (isRegistration && !finalRole) {
@@ -77,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const hostname = window.location.hostname;
         const subdomain = getSubdomainFromHostname(hostname);
         console.log(`🔍 Role detection for registration - Current path: ${currentPath}, Subdomain: ${subdomain}, Provided role: ${role}`);
-        
+
         // CRITICAL: Check subdomain first (most reliable indicator)
         if (subdomain === 'admin') {
           finalRole = 'admin';
@@ -112,20 +122,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             finalRole = undefined; // Let backend determine or fail
           }
         }
-        
+
         console.log(`✅ Final role determined: ${finalRole || 'undefined (will be determined by backend)'}`);
       } else if (isRegistration && finalRole) {
         console.log(`✅ Using provided role for registration: ${finalRole}`);
       } else {
         console.log(`ℹ️ Not a registration, using provided role: ${finalRole || 'none'}`);
       }
-      
+
       // Use different endpoints based on whether this is registration or sign-in
       const endpoint = isRegistration ? "/api/firebase-register-user" : "/api/firebase-sync-user";
-      
+
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
@@ -139,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password: password // Include password for email/password registrations
         })
       });
-      
+
       console.log('📤 SYNC REQUEST DEBUG:', {
         endpoint,
         isRegistration,
@@ -168,16 +178,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         if (firebaseUser) {
           console.log('🔥 AUTH STATE CHANGE - User detected:', firebaseUser.uid);
-          
+
           // Check if this is a verification redirect from email
           const urlParams = new URLSearchParams(window.location.search);
           const isVerificationRedirect = urlParams.has('verified') || window.location.href.includes('continueUrl');
-          
+
           if (isVerificationRedirect) {
             console.log('📧 EMAIL VERIFICATION REDIRECT DETECTED - Reloading user data');
             await firebaseUser.reload(); // Refresh verification status
           }
-          
+
           // Get providers list
           const providers = firebaseUser.providerData.map(p => p.providerId);
           console.log('🔥 AUTH PROVIDERS:', providers);
@@ -194,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 'Content-Type': 'application/json'
               }
             });
-            
+
             if (response.ok) {
               const userData = await response.json();
               role = userData.role;
@@ -202,13 +212,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
                 isChef: userData.isChef || userData.is_chef || false,
                 is_verified: userData.is_verified,
-                has_seen_welcome: userData.has_seen_welcome
+                isVerified: userData.isVerified || userData.is_verified,
+                has_seen_welcome: userData.has_seen_welcome,
+                hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
+                isManager: userData.isManager || userData.is_manager || false,
+                isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
               };
               console.log('🔥 BACKEND USER DATA:', {
                 role,
-                application_type: userData.application_type,
                 is_verified: userData.is_verified,
-                has_seen_welcome: userData.has_seen_welcome
+                has_seen_welcome: userData.has_seen_welcome,
+                isManager: userData.isManager,
+                isPortalUser: userData.isPortalUser
               });
             } else {
               console.log('🔥 NEW USER - No backend profile found, will need to sync');
@@ -217,11 +232,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('❌ BACKEND USER FETCH ERROR:', error);
             // Continue without default role if backend fails
           }
-          
+
           // **IMPROVED SYNC LOGIC WITH VERIFICATION HANDLING**
           // Sync if this is the first initialization, pending sync is requested, pending registration, OR verification redirect
           const shouldSync = isInitializing || pendingSync || pendingRegistration || isVerificationRedirect;
-          
+
           if (shouldSync) {
             console.log('🔥 SYNCING USER - Conditions met:', {
               isInitializing,
@@ -231,13 +246,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               uid: firebaseUser.uid,
               emailVerified: firebaseUser.emailVerified
             });
-            
+
             const syncSuccess = await syncUserWithBackend(firebaseUser, role, pendingRegistration);
             if (syncSuccess) {
               setPendingSync(false);
               setPendingRegistration(false);
               console.log('✅ USER SYNCED - Backend sync complete');
-              
+
               // If this was a verification redirect, clean up the URL
               if (isVerificationRedirect) {
                 console.log('🧹 CLEANING UP VERIFICATION URL');
@@ -250,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else {
             console.log('ℹ️ SKIPPING SYNC - Session restoration or no sync needed');
           }
-          
+
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
@@ -261,8 +276,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role,
             application_type: applicationData?.application_type, // DEPRECATED: kept for backward compatibility
             isChef: applicationData?.isChef,
+            isManager: applicationData?.isManager,
+            isPortalUser: applicationData?.isPortalUser,
             is_verified: applicationData?.is_verified,
+            isVerified: applicationData?.isVerified,
             has_seen_welcome: applicationData?.has_seen_welcome,
+            hasSeenWelcome: applicationData?.hasSeenWelcome,
           });
         } else {
           console.log('🔥 AUTH STATE CHANGE - No user (logged out)');
@@ -281,7 +300,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
     });
-    
+
     return () => unsubscribe();
   }, [isInitializing, pendingSync, pendingRegistration]);
 
@@ -291,10 +310,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // First, sign in to Firebase to verify credentials
       const cred = await signInWithEmailAndPassword(auth, email, password);
-      
+
       // Get the user's ID token to check verification status
       const token = await cred.user.getIdToken();
-      
+
       // Check if user is verified in our database
       const response = await fetch('/api/user/profile', {
         headers: {
@@ -302,17 +321,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (response.ok) {
         const userData = await response.json();
-        
+
         // If user is not verified, check Firebase email verification
         if (!userData.is_verified) {
           console.log('❌ User not verified in database - checking Firebase verification');
-          
+
           // Reload user to get latest verification status
           await cred.user.reload();
-          
+
           if (cred.user.emailVerified) {
             // User verified in Firebase but not in our database - update our database
             console.log('✅ Firebase verified but database not updated - syncing...');
@@ -325,23 +344,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             throw new Error('Please verify your email before logging in. Check your inbox for a verification link from Firebase.');
           }
         }
-        
+
         // User is verified, allow login
         console.log('✅ User verified - login successful');
         setPendingSync(true);
-        
+
       } else {
         // User doesn't exist in our database
         await signOut(auth);
         throw new Error('Account not found. Please register first.');
       }
-      
+
     } catch (firebaseError: any) {
       console.error('Login failed:', firebaseError.message);
       // Don't set raw Firebase error - let the components handle user-friendly messages
       // setError(firebaseError.message);
       setPendingSync(false);
-      
+
       // Re-throw the error so components can handle it with user-friendly messages
       throw firebaseError;
     } finally {
@@ -356,18 +375,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPendingSync(true); // Force sync on new signup
       setPendingRegistration(true); // Mark as registration
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      
+
       // Update the Firebase profile with displayName
       if (displayName) {
         await updateProfile(cred.user, { displayName });
         console.log('📝 Updated Firebase profile with displayName:', displayName);
-        
+
         // Also update Firestore document with displayName and role (if detected)
         try {
           // Detect role from URL path
           const currentPath = window.location.pathname;
           let detectedRole: string | null = null;
-          
+
           if (currentPath === '/admin-register' || currentPath === '/admin/register' || currentPath === '/admin-login' || currentPath === '/admin/login') {
             detectedRole = 'admin';
           } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || currentPath === '/manager-login' || currentPath === '/manager/login') {
@@ -375,7 +394,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (currentPath === '/auth') {
             detectedRole = 'chef';
           }
-          
+
           const userDocRef = doc(db, "users", cred.user.uid);
           await setDoc(userDocRef, {
             email: cred.user.email,
@@ -398,37 +417,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // IMPORTANT: Manually sync the user before signing them out
       // Pass the updated user object and password for proper database storage
       console.log('📧 USER REGISTERED - Syncing to database with password and displayName');
-      
+
       // Get the updated user object with displayName
       await cred.user.reload(); // Refresh the user object
       const updatedUser = auth.currentUser || cred.user;
-      
+
       // Wait a moment for profile update to propagate
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // Detect role from URL path for registration
       const currentPath = window.location.pathname;
       const currentUrl = window.location.href;
       let detectedRole: string | undefined = undefined;
-      
+
       console.log('🔍 ROLE DETECTION DEBUG:', {
         pathname: currentPath,
         fullUrl: currentUrl,
         hash: window.location.hash,
         search: window.location.search
       });
-      
+
       // Check for admin paths first (most specific)
-      if (currentPath === '/admin-register' || currentPath === '/admin/register' || 
-          currentPath === '/admin-login' || currentPath === '/admin/login' ||
-          currentPath.startsWith('/admin-register') || currentPath.startsWith('/admin/register') ||
-          currentPath.startsWith('/admin-login') || currentPath.startsWith('/admin/login')) {
+      if (currentPath === '/admin-register' || currentPath === '/admin/register' ||
+        currentPath === '/admin-login' || currentPath === '/admin/login' ||
+        currentPath.startsWith('/admin-register') || currentPath.startsWith('/admin/register') ||
+        currentPath.startsWith('/admin-login') || currentPath.startsWith('/admin/login')) {
         detectedRole = 'admin';
         console.log('👑 Detected admin role from URL path during signup');
-      } else if (currentPath === '/manager-register' || currentPath === '/manager/register' || 
-                 currentPath === '/manager-login' || currentPath === '/manager/login' ||
-                 currentPath.startsWith('/manager-register') || currentPath.startsWith('/manager/register') ||
-                 currentPath.startsWith('/manager-login') || currentPath.startsWith('/manager/login')) {
+      } else if (currentPath === '/manager-register' || currentPath === '/manager/register' ||
+        currentPath === '/manager-login' || currentPath === '/manager/login' ||
+        currentPath.startsWith('/manager-register') || currentPath.startsWith('/manager/register') ||
+        currentPath.startsWith('/manager-login') || currentPath.startsWith('/manager/login')) {
         detectedRole = 'manager';
         console.log('🏢 Detected manager role from URL path during signup');
       } else if (currentPath === '/auth' || currentPath.startsWith('/auth')) {
@@ -438,9 +457,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn(`⚠️ No role detected from URL path "${currentPath}" during signup - role will be determined by backend`);
         console.warn(`   Full URL: ${currentUrl}`);
       }
-      
+
       console.log(`✅ Final detected role for registration: "${detectedRole || 'undefined'}"`);
-      
+
       // CRITICAL: Ensure role is set before syncing
       if (!detectedRole) {
         console.error(`❌ CRITICAL: No role detected during registration!`);
@@ -448,9 +467,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error(`   - Full URL: ${currentUrl}`);
         throw new Error('Role detection failed. Please register from the appropriate page (admin, manager, or chef).');
       }
-      
+
       const syncSuccess = await syncUserWithBackend(updatedUser, detectedRole, true, password);
-      
+
       if (syncSuccess) {
         console.log('✅ User synced successfully during registration');
       } else {
@@ -460,10 +479,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // CRITICAL: Send Firebase's built-in email verification
       console.log('📧 Sending Firebase email verification...');
       try {
-              await sendEmailVerification(updatedUser, {
-        url: `${window.location.origin}/email-action`,
-        handleCodeInApp: true,
-      });
+        await sendEmailVerification(updatedUser, {
+          url: `${window.location.origin}/email-action`,
+          handleCodeInApp: true,
+        });
         console.log('✅ Firebase email verification sent successfully');
       } catch (emailError) {
         console.error('❌ Failed to send Firebase verification email:', emailError);
@@ -474,17 +493,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // They need to verify their email before they can log in
       console.log('📧 USER REGISTERED - Signing out to require email verification');
       await signOut(auth);
-      
+
       // Reset states
       setPendingSync(false);
       setPendingRegistration(false);
-      
+
     } catch (e: any) {
       // Don't set raw Firebase error - let the components handle user-friendly messages
       // setError(e.message);
       setPendingSync(false);
       setPendingRegistration(false);
-      
+
       // Re-throw the error so components can handle it with user-friendly messages
       throw e;
     } finally {
@@ -498,15 +517,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setPendingSync(false);
       setPendingRegistration(false);
-      
+
       // SECURITY FIX: Clear all localStorage data to prevent cross-user data leakage
       localStorage.clear();
       console.log('🧹 LOGOUT: Cleared all localStorage data');
-      
+
       // SECURITY FIX: Clear all React Query cache to prevent cross-user data leakage
       queryClient.clear();
       console.log('🧹 LOGOUT: Cleared all React Query cache');
-      
+
       // SECURITY FIX: Destroy server session to prevent cross-user data leakage
       try {
         await fetch('/api/logout', {
@@ -518,7 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Failed to destroy server session:', sessionError);
         // Continue with Firebase logout even if session destruction fails
       }
-      
+
       await signOut(auth);
     } catch (e: any) {
       setError(e.message);
@@ -542,18 +561,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('🔥 GOOGLE REGISTRATION - Starting registration flow');
         setPendingSync(true);
         setPendingRegistration(true);
-        
+
         const result = await signInWithPopup(auth, provider);
         console.log('✅ GOOGLE REGISTRATION - Firebase sign-in complete:', result.user.uid);
-        
+
         // Auto-determine role from subdomain AND URL path before sync
         const currentPath = window.location.pathname;
         const hostname = window.location.hostname;
         const subdomain = getSubdomainFromHostname(hostname);
         let detectedRole: string | undefined = undefined;
-        
+
         console.log(`🔍 Role detection - Path: ${currentPath}, Subdomain: ${subdomain}`);
-        
+
         // CRITICAL: Check subdomain first (most reliable indicator)
         if (subdomain === 'admin') {
           detectedRole = 'admin';
@@ -588,10 +607,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             detectedRole = undefined; // Let backend determine or fail
           }
         }
-        
+
         // Manually trigger sync for registration with detected role
         const syncSuccess = await syncUserWithBackend(result.user, detectedRole, true);
-        
+
         // Create/update Firestore document with the correct role
         try {
           const userDocRef = doc(db, "users", result.user.uid);
@@ -622,18 +641,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         // For SIGN-IN: Check if user exists using a simple backend call first
         console.log('🔍 GOOGLE SIGN-IN - Checking user existence...');
-        
+
         // First, sign in to get the user's email/UID
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
-        
+
         if (!user.email) {
           await auth.signOut();
           throw new Error('No email found in Google account');
         }
-        
+
         console.log(`🔍 Checking if user exists in backend: ${user.email}`);
-        
+
         // Check if user exists in our backend system using /api/user/profile
         const token = await user.getIdToken();
         const response = await fetch('/api/user/profile', {
@@ -642,7 +661,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (response.ok) {
           // User exists in backend - sign in successful
           console.log('✅ GOOGLE SIGN-IN - User exists, completing sign-in');
@@ -665,7 +684,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clean up state on error
       setPendingSync(false);
       setPendingRegistration(false);
-      
+
       // Re-throw the error so components can handle it with user-friendly messages
       throw e;
     } finally {
@@ -711,8 +730,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Function to check if user is verified
-  const isUserVerified = (user: any) => {
-    return user && user.is_verified === true;
+  const isUserVerified = (user: AuthUser | null): boolean => {
+    return !!(user && (user.isVerified === true || user.is_verified === true || user.emailVerified === true));
   };
 
   // Send verification email to a user (Firebase only)
@@ -734,7 +753,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         url: `${window.location.origin}/email-action`,
         handleCodeInApp: true,
       });
-      
+
       console.log('✅ Firebase verification email sent successfully');
       return true;
     } catch (error) {
@@ -759,7 +778,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`   - Firebase emailVerified: ${currentUser.emailVerified}`);
 
       const token = await currentUser.getIdToken();
-      
+
       // **CRITICAL: Call the manual sync endpoint to update database verification status**
       try {
         console.log('🔄 CALLING MANUAL VERIFICATION SYNC');
@@ -770,7 +789,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (syncResponse.ok) {
           const syncResult = await syncResponse.json();
           console.log('✅ VERIFICATION SYNC SUCCESS:', syncResult);
@@ -784,7 +803,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (syncError) {
         console.error('❌ Error calling verification sync:', syncError);
       }
-      
+
       // Now fetch the updated user data from the API
       const response = await fetch('/api/user/profile', {
         headers: {
@@ -792,7 +811,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (response.ok) {
         const userData = await response.json();
         console.log('✅ UPDATED USER DATA FETCHED:', {
@@ -801,7 +820,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           is_verified: userData.is_verified,
           has_seen_welcome: userData.has_seen_welcome
         });
-        
+
         // Update the user state with fresh Firebase info + database data
         const updatedUser: AuthUser = {
           uid: currentUser.uid,
@@ -811,8 +830,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           emailVerified: currentUser.emailVerified,
           providers: currentUser.providerData.map((p: any) => p.providerId),
           role: userData.role,
+          isChef: userData.isChef || userData.is_chef || false,
+          isManager: userData.isManager || userData.is_manager || false,
+          isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
+          isVerified: userData.isVerified || userData.is_verified,
+          is_verified: userData.is_verified,
+          hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
+          has_seen_welcome: userData.has_seen_welcome,
         };
-        
+
         setUser(updatedUser);
         return updatedUser;
       } else {
@@ -821,7 +847,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error updating user verification:', error);
     }
-    
+
     return null;
   };
 
@@ -843,7 +869,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         url: `${window.location.origin}/email-action`,
         handleCodeInApp: true,
       });
-      
+
       console.log('✅ Firebase verification email resent successfully');
       return true;
     } catch (error) {
@@ -869,7 +895,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (response.ok) {
         const userData = await response.json();
         console.log('✅ User data refreshed from backend:', {
@@ -890,13 +916,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role: userData.role, // Don't set default role - let it be null if no role selected
           application_type: userData.application_type, // DEPRECATED: kept for backward compatibility
           isChef: userData.isChef || userData.is_chef || false,
+          isManager: userData.isManager || userData.is_manager || false,
+          isPortalUser: userData.isPortalUser || userData.is_portal_user || false,
           is_verified: userData.is_verified,
+          isVerified: userData.isVerified || userData.is_verified,
           has_seen_welcome: userData.has_seen_welcome,
+          hasSeenWelcome: userData.hasSeenWelcome || userData.has_seen_welcome,
         };
 
         setUser(updatedUser);
         console.log('✅ Auth context user updated with fresh data');
-        
+
         // Force a re-render by triggering a state update
         setLoading(true);
         setTimeout(() => setLoading(false), 100);
@@ -925,6 +955,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sendVerificationEmail,
         resendFirebaseVerification,
         refreshUserData,
+        syncUserWithBackend,
       }}
     >
       {children}

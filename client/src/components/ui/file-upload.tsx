@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 import { FileText, Upload, X } from "lucide-react";
 import React, { useState } from "react";
 
@@ -15,6 +15,7 @@ interface FileUploadProps {
   maxSize?: number; // in MB
   description?: string;
   className?: string;
+  folder?: string;
 }
 
 export function FileUpload({
@@ -26,33 +27,29 @@ export function FileUpload({
   accept = ".pdf,.jpg,.jpeg,.png,.webp",
   maxSize = 4.5,
   description = "PDF, JPG, PNG, WebP files",
-  className = ""
+  className = "",
+  folder = "documents"
 }: FileUploadProps) {
-  const { toast } = useToast();
-  const [isDragOver, setIsDragOver] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
 
   const validateFile = (file: File): boolean => {
     // Validate file type
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      toast({
-        title: "Invalid file type",
+      toast.error("Invalid file type", {
         description: `Please upload ${description} only.`,
-        variant: "destructive",
       });
       return false;
     }
-    
+
     // Validate file size
     if (file.size > maxSize * 1024 * 1024) {
-      toast({
-        title: "File too large",
+      toast.error("File too large", {
         description: `Please upload files smaller than 4.5MB.`,
-        variant: "destructive",
       });
       return false;
     }
-    
+
     return true;
   };
 
@@ -76,7 +73,7 @@ export function FileUpload({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
       handleFileSelect(files[0]);
@@ -101,7 +98,7 @@ export function FileUpload({
           </Button>
         )}
       </div>
-      
+
       {currentFile ? (
         <div className="w-full">
           <div className="flex items-center space-x-3 p-3 bg-white rounded-md border border-gray-200">
@@ -117,12 +114,11 @@ export function FileUpload({
           </div>
         </div>
       ) : (
-        <div 
-          className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
-            isDragOver 
-              ? 'border-primary bg-primary/5' 
+        <div
+          className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${isDragOver
+              ? 'border-primary bg-primary/5'
               : 'border-gray-300 hover:border-gray-400'
-          }`}
+            }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}

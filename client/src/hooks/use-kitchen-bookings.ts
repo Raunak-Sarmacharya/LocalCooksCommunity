@@ -10,6 +10,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<string | { startTime: string; endTime: string }>; // Discrete time slots
   status: "pending" | "confirmed" | "cancelled";
   specialNotes?: string;
   createdAt: string;
@@ -21,6 +22,7 @@ interface CreateBookingData {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots
   specialNotes?: string;
   paymentIntentId?: string;
   selectedStorage?: Array<{
@@ -37,6 +39,7 @@ interface Kitchen {
   name: string;
   description?: string;
   isActive: boolean;
+  taxRatePercent?: number;
 }
 
 // Helper function to get Firebase auth headers
@@ -216,6 +219,7 @@ export function useKitchenBookings() {
           
           return {
             ...k,
+            taxRatePercent: k.taxRatePercent ?? k.tax_rate_percent,
             locationId,
             locationName: location?.name,
             locationAddress: location?.address,
@@ -238,6 +242,7 @@ export function useKitchenBookings() {
         
         return {
           ...k,
+          taxRatePercent: k.taxRatePercent ?? k.tax_rate_percent,
           location,
         };
       });

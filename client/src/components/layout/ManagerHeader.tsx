@@ -10,6 +10,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
 import { useState } from "react";
 import ManagerHelpCenter from "@/components/manager/ManagerHelpCenter";
+import NotificationCenter from "@/components/manager/NotificationCenter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -143,7 +144,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
   const userInitials = getUserInitials(userDisplayName, userEmail, userUsername);
 
   return (
-    <header className="bg-white border-b border-gray-300 fixed top-0 left-0 right-0 z-50 mobile-safe-area">
+    <header className="fixed top-0 left-0 right-0 z-50 mobile-safe-area h-[var(--header-height)] border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center w-full relative" style={{ minHeight: '100%' }}>
         {/* Logo centered above sidebar - FIXED width, does NOT change with sidebar */}
         <div
@@ -202,6 +203,9 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                   <HelpCircle className="h-4 w-4" />
                   Help
                 </Button>
+
+                {/* Notification Center */}
+                <NotificationCenter />
 
                 {/* Profile Dropdown Menu */}
                 <DropdownMenu modal={false}>
@@ -270,6 +274,7 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
                           <span>Locations</span>
                         </Link>
                       </DropdownMenuItem>
+
                     </div>
 
                     <DropdownMenuSeparator className="bg-gray-200" />
@@ -334,18 +339,23 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
             <nav className="space-y-3">
               {user && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowHelpCenter(true);
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full gap-2 justify-start text-base min-h-[44px]"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                    Help
-                  </Button>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowHelpCenter(true);
+                        setIsMenuOpen(false);
+                      }}
+                      className="flex-1 gap-2 justify-start text-base min-h-[44px]"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                      Help
+                    </Button>
+                    
+                    {/* Mobile Notification Center */}
+                    <NotificationCenter />
+                  </div>
 
                   {/* Mobile Profile Section */}
                   <div className="pt-2 border-t border-gray-200">

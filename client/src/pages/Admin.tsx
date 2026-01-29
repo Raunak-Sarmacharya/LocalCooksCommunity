@@ -277,7 +277,7 @@ function AdminDashboard() {
 
   // Fetch all applications - Firebase auth
   const { data: applications = [], isLoading, error } = useQuery<Application[]>({
-    queryKey: ["/api/firebase/admin/applications"],
+    queryKey: ["/api/applications"],
     queryFn: async ({ queryKey }) => {
       if (!firebaseUser) {
         throw new Error("Admin not authenticated");
@@ -428,22 +428,20 @@ function AdminDashboard() {
 
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
-        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] })
       ]);
 
-      toast({
-        title: "Status updated",
-        description: `Application status changed to ${data.status}. Email notification sent.`,
+      toast.success("Status updated", {
+        description: `Application status changed to ${data.status}. Email notification sent.`
       });
 
       console.log('Status update successful with email notification:', data);
     },
     onError: (error) => {
-      toast({
-        title: "Error updating status",
-        description: error.message || "Please try again.",
-        variant: "destructive",
+      toast.error("Error updating status", {
+        description: error.message || "Please try again."
       });
     },
   });
@@ -478,8 +476,9 @@ function AdminDashboard() {
 
       // Additional immediate refresh for other components that might be listening
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["/api/firebase/admin/applications"] }),
-        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] })
+        queryClient.invalidateQueries({ queryKey: ["/api/applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/applications/my-applications"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/firebase/applications/my"] })
       ]);
 
       // Additional delayed refresh to catch any async database updates
@@ -487,9 +486,8 @@ function AdminDashboard() {
         await forceAdminRefresh();
       }, 1000);
 
-      toast({
-        title: "Document status updated",
-        description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. Email notification sent to user.`,
+      toast.success("Document status updated", {
+        description: `${variables.field === 'foodSafetyLicenseStatus' ? 'Food Safety License' : 'Food Establishment Certificate'} status changed to ${variables.status}. Email notification sent to user.`
       });
 
       console.log('Admin: Document status updated', {
@@ -500,10 +498,8 @@ function AdminDashboard() {
       });
     },
     onError: (error) => {
-      toast({
-        title: "Error updating document status",
-        description: error.message || "Please try again.",
-        variant: "destructive",
+      toast.error("Error updating document status", {
+        description: error.message || "Please try again."
       });
     },
   });
@@ -804,8 +800,9 @@ function AdminDashboard() {
     try {
       // 1. Clear all application-related caches more aggressively
       const cacheKeys = [
-        ["/api/applications"],
-        ["/api/applications/my-applications"]
+        ["/api/firebase/admin/applications"],
+        ["/api/applications/my-applications"],
+        ["/api/firebase/applications/my"]
       ];
 
       // Remove all related queries from cache
@@ -821,11 +818,15 @@ function AdminDashboard() {
       // 3. Force immediate refetch with fresh network requests
       await Promise.all([
         queryClient.refetchQueries({
-          queryKey: ["/api/applications"],
+          queryKey: ["/api/firebase/admin/applications"],
           type: 'all'
         }),
         queryClient.refetchQueries({
           queryKey: ["/api/applications/my-applications"],
+          type: 'all'
+        }),
+        queryClient.refetchQueries({
+          queryKey: ["/api/firebase/applications/my"],
           type: 'all'
         })
       ]);
@@ -2222,7 +2223,7 @@ function KitchenLicenseApprovalView() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {
+                            onClick={async () => {
                               if (!license.kitchenLicenseUrl) {
                                 toast({
                                   title: "No License",
@@ -2232,21 +2233,32 @@ function KitchenLicenseApprovalView() {
                                 return;
                               }
 
-                              // Determine the correct URL based on the stored URL format
-                              let viewUrl = license.kitchenLicenseUrl;
-
-                              // If it's a public R2 URL (.r2.dev), use directly
-                              if (viewUrl.includes('.r2.dev/')) {
+                              try {
+                                const token = await auth.currentUser?.getIdToken();
+                                let viewUrl = license.kitchenLicenseUrl;
+                                
+                                // For local/protected files, append auth token
+                                if (viewUrl.includes('/api/files/documents/')) {
+                                   if (viewUrl.includes('?')) {
+                                     viewUrl += `&token=${token}`;
+                                   } else {
+                                     viewUrl += `?token=${token}`;
+                                   }
+                                } 
+                                // If it's an R2 URL that needs proxying
+                                else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
+                                  viewUrl = `/api/files/r2-proxy?url=${encodeURIComponent(viewUrl)}`;
+                                }
+                                
                                 window.open(viewUrl, '_blank');
-                                return;
+                              } catch (error) {
+                                console.error("Error opening license:", error);
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to open license document. Please try again.",
+                                  variant: "destructive"
+                                });
                               }
-
-                              // If it's a private R2 URL or custom domain, use the proxy
-                              if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
-                                viewUrl = `/api/files/r2-proxy?url=${encodeURIComponent(viewUrl)}`;
-                              }
-
-                              window.open(viewUrl, '_blank');
                             }}
                             className="inline-flex items-center gap-2"
                           >
@@ -2395,144 +2407,178 @@ function KitchenLicenseApprovalView() {
   );
 }
 
-// Platform Settings Component
+// Platform Settings Component - Stripe Fee Configuration
 function PlatformSettingsView() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [serviceFeeRate, setServiceFeeRate] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationAmount, setSimulationAmount] = useState<string>('100');
+  const [simulationResult, setSimulationResult] = useState<any>(null);
+  
+  // Fee configuration state
+  const [feeConfig, setFeeConfig] = useState({
+    stripePercentageFee: '2.9',
+    stripeFlatFeeCents: '30',
+    platformCommissionRate: '0',
+    minimumApplicationFeeCents: '0',
+    useStripePlatformPricing: false,
+  });
 
-  // Fetch current service fee rate - Firebase auth
-  const { data: currentRate, isLoading: isLoadingRate, error: rateError } = useQuery<{
-    key: string;
-    value: string;
-    rate: number;
-    percentage: string;
-    description?: string;
-    updatedAt?: string;
+  // Fetch current fee configuration
+  const { data: currentConfig, isLoading, error, refetch } = useQuery<{
+    success: boolean;
+    config: {
+      stripePercentageFee: number;
+      stripePercentageFeeDisplay: string;
+      stripeFlatFeeCents: number;
+      stripeFlatFeeDisplay: string;
+      platformCommissionRate: number;
+      platformCommissionRateDisplay: string;
+      minimumApplicationFeeCents: number;
+      minimumApplicationFeeDisplay: string;
+      useStripePlatformPricing: boolean;
+    };
   }>({
-    queryKey: ['/api/admin/platform-settings/service-fee-rate'],
+    queryKey: ['/api/admin/fees/config'],
     queryFn: async () => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
         throw new Error("Firebase user not available");
       }
       const token = await currentFirebaseUser.getIdToken();
-      const headers: HeadersInit = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      };
-
-      const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
+      const response = await fetch('/api/admin/fees/config', {
         credentials: 'include',
-        headers,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
       if (!response.ok) {
-        throw new Error('Failed to fetch service fee rate');
+        throw new Error('Failed to fetch fee configuration');
       }
       return response.json();
     },
   });
 
-  // Handle query success/error with useEffect (React Query v5)
+  // Update local state when data is fetched
   useEffect(() => {
-    if (currentRate?.rate) {
-      setServiceFeeRate((currentRate.rate * 100).toFixed(2));
-      setIsLoading(false);
-    } else if (rateError) {
-      setIsLoading(false);
-      toast({
-        title: "Error",
-        description: "Failed to load service fee rate. Using default 5%.",
-        variant: "destructive",
+    if (currentConfig?.config) {
+      setFeeConfig({
+        stripePercentageFee: (currentConfig.config.stripePercentageFee * 100).toFixed(1),
+        stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
+        platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
+        minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
+        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
       });
-      setServiceFeeRate('5.00');
     }
-  }, [currentRate, rateError, toast]);
+  }, [currentConfig]);
 
-  // Update mutation - Firebase auth
-  const updateMutation = useMutation<{
-    key: string;
-    value: string;
-    rate: number;
-    percentage: string;
-    description?: string;
-    updatedAt?: string;
-    message?: string;
-  }, Error, number>({
-    mutationFn: async (rate: number) => {
+  // Update mutation
+  const updateMutation = useMutation({
+    mutationFn: async (config: {
+      stripePercentageFee?: number;
+      stripeFlatFeeCents?: number;
+      platformCommissionRate?: number;
+      minimumApplicationFeeCents?: number;
+      useStripePlatformPricing?: boolean;
+    }) => {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
         throw new Error("Firebase user not available");
       }
       const token = await currentFirebaseUser.getIdToken();
-      const headers: HeadersInit = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      };
-
-      const response = await fetch('/api/admin/platform-settings/service-fee-rate', {
+      const response = await fetch('/api/admin/fees/config', {
         method: 'PUT',
         credentials: 'include',
-        headers,
-        body: JSON.stringify({ rate }),
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config),
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to update service fee rate');
+        throw new Error(error.error || 'Failed to update fee configuration');
       }
       return response.json();
     },
-  });
-
-  // Handle mutation success/error with useEffect (React Query v5)
-  useEffect(() => {
-    if (updateMutation.isSuccess && updateMutation.data) {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/platform-settings/service-fee-rate'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/platform-settings/service-fee-rate'] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/fees/config'] });
       toast({
         title: "Success",
-        description: `Service fee rate updated to ${updateMutation.data.percentage}%`,
+        description: "Fee configuration updated successfully",
       });
       setIsSaving(false);
-    } else if (updateMutation.isError) {
+    },
+    onError: (error: Error) => {
       toast({
         title: "Error",
-        description: updateMutation.error?.message || "Failed to update service fee rate",
+        description: error.message || "Failed to update fee configuration",
         variant: "destructive",
       });
       setIsSaving(false);
-    }
-  }, [updateMutation.isSuccess, updateMutation.isError, updateMutation.data, updateMutation.error, queryClient, toast]);
+    },
+  });
 
   const handleSave = () => {
-    const rateValue = parseFloat(serviceFeeRate);
+    setIsSaving(true);
+    updateMutation.mutate({
+      stripePercentageFee: parseFloat(feeConfig.stripePercentageFee) / 100,
+      stripeFlatFeeCents: parseInt(feeConfig.stripeFlatFeeCents, 10),
+      platformCommissionRate: parseFloat(feeConfig.platformCommissionRate) / 100,
+      minimumApplicationFeeCents: parseInt(feeConfig.minimumApplicationFeeCents, 10),
+      useStripePlatformPricing: feeConfig.useStripePlatformPricing,
+    });
+  };
 
-    if (isNaN(rateValue) || rateValue < 0 || rateValue > 100) {
+  const handleSimulate = async () => {
+    setIsSimulating(true);
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+      const token = await currentFirebaseUser.getIdToken();
+      const amountCents = Math.round(parseFloat(simulationAmount) * 100);
+      const response = await fetch('/api/admin/fees/simulate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ bookingAmountCents: amountCents }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to simulate fees');
+      }
+      const result = await response.json();
+      setSimulationResult(result);
+    } catch (error: any) {
       toast({
-        title: "Invalid Input",
-        description: "Service fee rate must be between 0 and 100",
+        title: "Error",
+        description: error.message || "Failed to simulate fees",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsSimulating(false);
     }
-
-    // Convert percentage to decimal
-    const rateDecimal = rateValue / 100;
-    setIsSaving(true);
-    updateMutation.mutate(rateDecimal);
   };
 
   const handleReset = () => {
-    if (currentRate) {
-      setServiceFeeRate((currentRate.rate * 100).toFixed(2));
-    } else {
-      setServiceFeeRate('5.00');
+    if (currentConfig?.config) {
+      setFeeConfig({
+        stripePercentageFee: (currentConfig.config.stripePercentageFee * 100).toFixed(1),
+        stripeFlatFeeCents: currentConfig.config.stripeFlatFeeCents.toString(),
+        platformCommissionRate: (currentConfig.config.platformCommissionRate * 100).toFixed(1),
+        minimumApplicationFeeCents: currentConfig.config.minimumApplicationFeeCents.toString(),
+        useStripePlatformPricing: currentConfig.config.useStripePlatformPricing,
+      });
     }
   };
 
-  if (isLoading || isLoadingRate) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
@@ -2540,105 +2586,289 @@ function PlatformSettingsView() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+        <p className="text-red-600">Failed to load fee configuration. Please refresh the page.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-4xl space-y-6">
       <div className="mb-6">
         <h3 className="text-xl font-semibold text-gray-900 mb-2 flex items-center gap-2">
           <Settings className="h-5 w-5 text-indigo-600" />
-          Platform Settings
+          Platform Fee Configuration
         </h3>
-        <p className="text-gray-600">Configure platform-wide settings that affect all users</p>
+        <p className="text-gray-600">Configure Stripe processing fees and platform commission for bookings</p>
       </div>
 
-      {/* Service Fee Rate Card */}
+      {/* Stripe Processing Fees Card */}
       <Card className="border-2 border-gray-200">
         <CardContent className="p-6">
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-indigo-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                <DollarSign className="h-6 w-6 text-indigo-600" />
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <DollarSign className="h-6 w-6 text-purple-600" />
               </div>
               <div className="flex-1">
-                <h4 className="text-lg font-semibold text-gray-900 mb-1">Service Fee Rate</h4>
+                <h4 className="text-lg font-semibold text-gray-900 mb-1">Stripe Processing Fees</h4>
                 <p className="text-sm text-gray-600 mb-4">
-                  The platform service fee rate applied to storage extensions and bookings. This rate is used when chefs extend their storage bookings.
+                  These fees match Stripe&apos;s Canada pricing (2.9% + $0.30 CAD). Adjust only if your Stripe account has custom pricing.
                 </p>
+              </div>
+            </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Service Fee Rate (%)
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={serviceFeeRate}
-                        onChange={(e) => setServiceFeeRate(e.target.value)}
-                        className="max-w-xs"
-                        placeholder="5.00"
-                      />
-                      <span className="text-sm text-gray-500">%</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Enter a value between 0 and 100 (e.g., 5.00 for 5%)
-                    </p>
-                  </div>
-
-                  {currentRate && (
-                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-gray-700">Current Rate</p>
-                          <p className="text-2xl font-bold text-indigo-600 mt-1">
-                            {currentRate.percentage}%
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Last updated: {currentRate.updatedAt ? new Date(currentRate.updatedAt).toLocaleString() : 'Never'}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-600">Decimal Value</p>
-                          <p className="text-lg font-semibold text-gray-900">{currentRate.rate}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-3 pt-2">
-                    <Button
-                      onClick={handleSave}
-                      disabled={isSaving || !serviceFeeRate}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                    >
-                      {isSaving ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4 mr-2" />
-                          Save Changes
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      onClick={handleReset}
-                      disabled={isSaving}
-                      variant="outline"
-                    >
-                      Reset
-                    </Button>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Stripe Percentage Fee (%)
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.1"
+                    value={feeConfig.stripePercentageFee}
+                    onChange={(e) => setFeeConfig({ ...feeConfig, stripePercentageFee: e.target.value })}
+                    className="max-w-32"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
                 </div>
+                <p className="text-xs text-gray-500 mt-1">Standard: 2.9%</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Stripe Flat Fee (cents)
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={feeConfig.stripeFlatFeeCents}
+                    onChange={(e) => setFeeConfig({ ...feeConfig, stripeFlatFeeCents: e.target.value })}
+                    className="max-w-32"
+                  />
+                  <span className="text-sm text-gray-500">¢ (${(parseInt(feeConfig.stripeFlatFeeCents) / 100 || 0).toFixed(2)})</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Standard: 30¢ ($0.30)</p>
               </div>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Platform Commission Card */}
+      <Card className="border-2 border-gray-200">
+        <CardContent className="p-6">
+          <div className="space-y-6">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <TrendingUp className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 mb-1">Platform Commission</h4>
+                <p className="text-sm text-gray-600 mb-4">
+                  Your platform&apos;s commission on each booking. Set to 0% for break-even mode (only cover Stripe fees).
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Platform Commission Rate (%)
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="0.1"
+                    value={feeConfig.platformCommissionRate}
+                    onChange={(e) => setFeeConfig({ ...feeConfig, platformCommissionRate: e.target.value })}
+                    className="max-w-32"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Current: {feeConfig.platformCommissionRate}% (0% = break-even)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Minimum Application Fee (cents)
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    value={feeConfig.minimumApplicationFeeCents}
+                    onChange={(e) => setFeeConfig({ ...feeConfig, minimumApplicationFeeCents: e.target.value })}
+                    className="max-w-32"
+                  />
+                  <span className="text-sm text-gray-500">¢ (${(parseInt(feeConfig.minimumApplicationFeeCents) / 100 || 0).toFixed(2)})</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Set to 0 for no minimum</p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Current Configuration Summary */}
+      {currentConfig?.config && (
+        <Card className="border border-indigo-200 bg-indigo-50">
+          <CardContent className="p-4">
+            <h5 className="font-semibold text-indigo-900 mb-3">Current Configuration</h5>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-indigo-600">Stripe %</p>
+                <p className="font-bold text-indigo-900">{currentConfig.config.stripePercentageFeeDisplay}</p>
+              </div>
+              <div>
+                <p className="text-indigo-600">Stripe Flat</p>
+                <p className="font-bold text-indigo-900">{currentConfig.config.stripeFlatFeeDisplay}</p>
+              </div>
+              <div>
+                <p className="text-indigo-600">Platform %</p>
+                <p className="font-bold text-indigo-900">{currentConfig.config.platformCommissionRateDisplay}</p>
+              </div>
+              <div>
+                <p className="text-indigo-600">Min Fee</p>
+                <p className="font-bold text-indigo-900">{currentConfig.config.minimumApplicationFeeDisplay}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fee Simulator */}
+      <Card className="border-2 border-gray-200">
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <BarChart3 className="h-6 w-6 text-orange-600" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-gray-900 mb-1">Fee Simulator</h4>
+                <p className="text-sm text-gray-600 mb-4">
+                  Test how fees will be calculated for a booking amount
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-end gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Booking Amount ($)
+                </label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={simulationAmount}
+                  onChange={(e) => setSimulationAmount(e.target.value)}
+                  className="max-w-32"
+                  placeholder="100.00"
+                />
+              </div>
+              <Button
+                onClick={handleSimulate}
+                disabled={isSimulating}
+                variant="outline"
+                className="border-orange-300 text-orange-700 hover:bg-orange-50"
+              >
+                {isSimulating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Simulating...
+                  </>
+                ) : (
+                  'Simulate'
+                )}
+              </Button>
+            </div>
+
+            {simulationResult && (
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mt-4">
+                <h5 className="font-semibold text-gray-900 mb-3">Simulation Result</h5>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600">Booking Amount</p>
+                    <p className="font-bold text-gray-900">${(simulationResult.calculation?.bookingPriceInCents / 100).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Stripe Fee</p>
+                    <p className="font-bold text-red-600">${(simulationResult.calculation?.stripeProcessingFeeInCents / 100).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Platform Commission</p>
+                    <p className="font-bold text-green-600">${(simulationResult.calculation?.platformCommissionInCents / 100).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Total Application Fee</p>
+                    <p className="font-bold text-indigo-600">${(simulationResult.calculation?.totalPlatformFeeInCents / 100).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Manager Receives</p>
+                    <p className="font-bold text-blue-600">${(simulationResult.calculation?.managerReceivesInCents / 100).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Platform Net</p>
+                    <p className="font-bold text-purple-600">
+                      ${((simulationResult.calculation?.totalPlatformFeeInCents - simulationResult.calculation?.stripeProcessingFeeInCents) / 100).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Action Buttons */}
+      <div className="flex gap-3 pt-2">
+        <Button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white"
+        >
+          {isSaving ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </>
+          )}
+        </Button>
+        <Button
+          onClick={handleReset}
+          disabled={isSaving}
+          variant="outline"
+        >
+          Reset
+        </Button>
+        <Button
+          onClick={() => refetch()}
+          disabled={isSaving}
+          variant="outline"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Refresh
+        </Button>
+      </div>
 
       {/* Info Card */}
       <Card className="border border-blue-200 bg-blue-50">
@@ -2646,12 +2876,13 @@ function PlatformSettingsView() {
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-blue-800">
-              <p className="font-semibold mb-1">Important Notes:</p>
+              <p className="font-semibold mb-1">How Fees Work:</p>
               <ul className="list-disc list-inside space-y-1 text-blue-700">
-                <li>Changes to the service fee rate will apply to all new storage extensions</li>
-                <li>Existing bookings will retain their original service fee rate</li>
-                <li>The rate is applied as a percentage of the base price</li>
-                <li>This setting affects storage extension payments only</li>
+                <li><strong>Stripe Fee:</strong> Covers Stripe&apos;s processing cost (2.9% + $0.30 for Canada)</li>
+                <li><strong>Platform Commission:</strong> Your profit margin (set to 0% for break-even)</li>
+                <li><strong>Application Fee:</strong> Stripe Fee + Platform Commission (sent to your Stripe account)</li>
+                <li><strong>Manager Receives:</strong> Booking Amount - Application Fee</li>
+                <li>Changes apply to all new bookings immediately</li>
               </ul>
             </div>
           </div>
@@ -2743,13 +2974,13 @@ function AdminManagerRevenuesView({ getFirebaseToken }: { getFirebaseToken: () =
     enabled: selectedManager !== 'all',
   });
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amountInCents: number) => {
     return new Intl.NumberFormat('en-CA', {
       style: 'currency',
       currency: 'CAD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    }).format(amountInCents / 100);
   };
 
   return (
@@ -3002,13 +3233,13 @@ function AdminPlatformRevenueView({ getFirebaseToken }: { getFirebaseToken: () =
     },
   });
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amountInCents: number) => {
     return new Intl.NumberFormat('en-CA', {
       style: 'currency',
       currency: 'CAD',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    }).format(amountInCents / 100);
   };
 
   return (

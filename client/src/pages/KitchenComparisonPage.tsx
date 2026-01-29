@@ -10,7 +10,6 @@ import {
   MapPin,
   Calendar,
   DollarSign,
-  ChefHat,
   ArrowRight,
   ArrowLeft,
   Loader2,
@@ -22,10 +21,18 @@ import {
   Wrench,
   Package,
   Snowflake,
-  Info,
   FileText,
   MessageCircle,
+  AlertCircle,
 } from "lucide-react";
+
+import {
+  createConversation,
+  ensureConversationManagerId,
+  getConversationForApplication,
+} from '@/services/chat-service';
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -33,9 +40,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import ChatPanel from "@/components/chat/ChatPanel";
+import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
+
 
 interface EquipmentListing {
   id: number;
@@ -110,6 +118,7 @@ interface LocationWithKitchens {
     tier3: boolean;
     tier4: boolean;
   };
+  managerId?: number;
 }
 
 // Helper function to get Firebase auth headers
@@ -137,6 +146,8 @@ export default function KitchenComparisonPage() {
   const [showChatDialog, setShowChatDialog] = useState(false);
   const [chatApplication, setChatApplication] = useState<any | null>(null);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const queryClient = useQueryClient();
 
   // Scroll to top on mount
   useEffect(() => {
@@ -249,7 +260,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -308,7 +319,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -331,8 +342,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
               rental: (equipmentData.rental || []).map((e: any) => ({
@@ -342,8 +353,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
             };
@@ -361,13 +372,14 @@ export default function KitchenComparisonPage() {
           });
           if (storageResponse.ok) {
             const storageData = await storageResponse.json();
+            // Convert cents to dollars for UI display
             storage = (storageData || []).map((s: any) => ({
               id: s.id,
               storageType: s.storageType,
               name: s.name,
               description: s.description,
-              basePrice: s.basePrice,
-              pricePerCubicFoot: s.pricePerCubicFoot,
+              basePrice: s.basePrice ? s.basePrice / 100 : 0,
+              pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
               pricingModel: s.pricingModel,
               dimensionsLength: s.dimensionsLength,
               dimensionsWidth: s.dimensionsWidth,
@@ -383,7 +395,7 @@ export default function KitchenComparisonPage() {
 
         return {
           ...baseKitchen,
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -439,7 +451,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate, // Should already be in dollars from backend
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -491,7 +503,7 @@ export default function KitchenComparisonPage() {
           } : k.location,
           imageUrl: k.imageUrl || k.image_url,
           amenities: k.amenities || [],
-          hourlyRate: k.hourlyRate,
+          hourlyRate: k.hourlyRate ? k.hourlyRate / 100 : undefined, // Convert cents to dollars
           currency: k.currency || 'CAD',
           minimumBookingHours: k.minimumBookingHours || k.minimum_booking_hours || 1,
           pricingModel: k.pricingModel || k.pricing_model || 'hourly',
@@ -528,8 +540,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
               rental: (equipmentData.rental || []).map((e: any) => ({
@@ -539,8 +551,8 @@ export default function KitchenComparisonPage() {
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
             };
@@ -558,13 +570,14 @@ export default function KitchenComparisonPage() {
           });
           if (storageResponse.ok) {
             const storageData = await storageResponse.json();
+            // Convert cents to dollars for UI display
             storage = (storageData || []).map((s: any) => ({
               id: s.id,
               storageType: s.storageType,
               name: s.name,
               description: s.description,
-              basePrice: s.basePrice,
-              pricePerCubicFoot: s.pricePerCubicFoot,
+              basePrice: s.basePrice ? s.basePrice / 100 : 0,
+              pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
               pricingModel: s.pricingModel,
               dimensionsLength: s.dimensionsLength,
               dimensionsWidth: s.dimensionsWidth,
@@ -608,12 +621,12 @@ export default function KitchenComparisonPage() {
             headers,
           });
 
-          let hourlyRate = kitchen.hourlyRate;
+          let hourlyRate = kitchen.hourlyRate ? kitchen.hourlyRate / 100 : undefined;
           let currency = kitchen.currency || "CAD";
 
           if (pricingResponse.ok) {
             const pricing = await pricingResponse.json();
-            hourlyRate = pricing.hourlyRate > 100 ? pricing.hourlyRate / 100 : pricing.hourlyRate;
+            hourlyRate = pricing.hourlyRate ? pricing.hourlyRate / 100 : undefined;
             currency = pricing.currency || "CAD";
           }
 
@@ -634,8 +647,8 @@ export default function KitchenComparisonPage() {
                   brand: e.brand,
                   model: e.model,
                   availabilityType: e.availabilityType,
-                  hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                  dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                  hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                  dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                   currency: e.currency || currency,
                 })),
                 rental: (equipmentData.rental || []).map((e: any) => ({
@@ -645,8 +658,8 @@ export default function KitchenComparisonPage() {
                   brand: e.brand,
                   model: e.model,
                   availabilityType: e.availabilityType,
-                  hourlyRate: e.hourlyRate ? (e.hourlyRate > 100 ? e.hourlyRate / 100 : e.hourlyRate) : undefined,
-                  dailyRate: e.dailyRate ? (e.dailyRate > 100 ? e.dailyRate / 100 : e.dailyRate) : undefined,
+                  hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
+                  dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                   currency: e.currency || currency,
                 })),
               };
@@ -664,13 +677,14 @@ export default function KitchenComparisonPage() {
             });
             if (storageResponse.ok) {
               const storageData = await storageResponse.json();
+              // Convert cents to dollars for UI display
               storage = (storageData || []).map((s: any) => ({
                 id: s.id,
                 storageType: s.storageType,
                 name: s.name,
                 description: s.description,
-                basePrice: s.basePrice,
-                pricePerCubicFoot: s.pricePerCubicFoot,
+                basePrice: s.basePrice ? s.basePrice / 100 : 0,
+                pricePerCubicFoot: s.pricePerCubicFoot ? s.pricePerCubicFoot / 100 : 0,
                 pricingModel: s.pricingModel,
                 dimensionsLength: s.dimensionsLength,
                 dimensionsWidth: s.dimensionsWidth,
@@ -717,18 +731,28 @@ export default function KitchenComparisonPage() {
     const application = applications.find((a) => a.locationId === location.id);
 
 
-    // Check tier completion status (only Tier 1 and Tier 2 are in use)
-    const tier1Completed = !!application?.tier1_completed_at;
-    const tier2Completed = !!application?.tier2_completed_at;
-    const allTiersCompleted = tier2Completed; // Tier 2 is the final tier
+    // Enterprise 3-Tier System (using current_tier as source of truth):
+    // - Tier 1: Application submitted, pending manager review (current_tier = 1)
+    // - Tier 2: Step 1 approved, chef completing Step 2 (current_tier = 2)
+    // - Tier 3: Fully approved, ready to book (current_tier >= 3)
+    const currentTier = (application as any)?.current_tier ?? 1;
+    const allTiersCompleted = currentTier >= 3;
 
-    // Determine next tier to complete
+    // Determine next action based on current tier
     let nextTierToComplete = "";
     if (!application) {
-      nextTierToComplete = "Complete remaining application requirements";
-    } else if (!tier1Completed) nextTierToComplete = "Complete application submission (Step 1)";
-    else if (!tier2Completed) nextTierToComplete = "Complete kitchen coordination (Step 2)";
-
+      nextTierToComplete = "Submit your application";
+    } else if (currentTier === 1) {
+      nextTierToComplete = "Complete application submission (Step 1)";
+    } else if (currentTier === 2) {
+      // Check if Step 2 docs submitted but not yet approved
+      if (application.tier2_completed_at) {
+        nextTierToComplete = "Awaiting manager approval for Step 2";
+      } else {
+        nextTierToComplete = "Complete kitchen coordination (Step 2)";
+      }
+    }
+    // currentTier >= 3 means fully approved, no next step needed
 
     return {
       id: location.id,
@@ -742,11 +766,12 @@ export default function KitchenComparisonPage() {
       nextTierToComplete,
       hasChatConversation: !!application?.chat_conversation_id,
       tierProgress: {
-        tier1: tier1Completed,
-        tier2: tier2Completed,
-        tier3: false, // Not in use
-        tier4: false, // Not in use
+        tier1: currentTier >= 1,
+        tier2: currentTier >= 2,
+        tier3: currentTier >= 3, // Tier 3 = fully approved
+        tier4: false, // Reserved for future use
       },
+      managerId: location.managerId,
     };
   }).filter((loc) => loc.kitchens.length > 0);
 
@@ -871,8 +896,16 @@ export default function KitchenComparisonPage() {
     }))
     .filter((loc) => loc.kitchens.length > 0);
 
-  const handleBookKitchen = (locationId: number) => {
-    navigate(`/kitchen-requirements/${locationId}`);
+  // For fully approved chefs (Tier 3), go directly to booking calendar
+  // For others, show requirements page
+  const handleBookKitchen = (locationId: number, isFullyApproved: boolean = false) => {
+    if (isFullyApproved) {
+      // Tier 3: Skip requirements, go directly to booking calendar with location filter
+      navigate(`/book-kitchen?location=${locationId}`);
+    } else {
+      // Tier 1/2: Show requirements page
+      navigate(`/kitchen-requirements/${locationId}`);
+    }
   };
 
   const handleViewDetails = (locationId: number) => {
@@ -896,9 +929,78 @@ export default function KitchenComparisonPage() {
       return;
     }
 
+    // Prepare chat data
     setChatApplication(application);
-    setChatConversationId(application.chat_conversation_id);
-    setShowChatDialog(true);
+
+    try {
+      setIsCreatingChat(true);
+
+      // Check if conversation exists via service first (source of truth)
+      // This handles cases where local state might be stale
+      let conversationId = application.chat_conversation_id;
+
+      if (!conversationId) {
+        // Try getting it from Firestore directly
+        const existingConv = await getConversationForApplication(application.id);
+        if (existingConv) {
+          conversationId = existingConv.id;
+        }
+      }
+
+      // If we have a conversation ID, just open it
+      if (conversationId) {
+        // Self-healing: Ensure managerId is correct on the conversation document
+        const appWithManager = application as any;
+        const managerIdVal = appWithManager.location?.managerId || location.managerId;
+        const managerId = managerIdVal ? Number(managerIdVal) : 0;
+
+        if (managerId) {
+          ensureConversationManagerId(conversationId, managerId);
+        }
+
+        setChatConversationId(conversationId);
+        setShowChatDialog(true);
+        setIsCreatingChat(false);
+        return;
+      }
+
+      // If no conversation exists, create one
+      if (chefId) {
+        // We need managerId. The application object usually has included relation location -> managerId
+        // Fallback: Use the managerID from the application's location property if available
+        const appWithManager = application as any;
+        // Ensure managerId is a number
+        const managerIdVal = appWithManager.location?.managerId || location.managerId;
+        const managerId = managerIdVal ? Number(managerIdVal) : 0;
+
+        if (!managerId) {
+          console.error("Manager ID missing from application or location", { appLocation: appWithManager.location, location });
+          toast.error("Cannot start chat: Manager information missing");
+          setIsCreatingChat(false);
+          return;
+        }
+
+        // createConversation is now idempotent - safe to call
+        const newConvId = await createConversation(
+          application.id,
+          chefId,
+          managerId,
+          location.id
+        );
+
+        setChatConversationId(newConvId);
+
+        // Invalidate applications query to re-fetch with new conversation ID
+        queryClient.invalidateQueries({ queryKey: ["chef-kitchen-applications-status"] });
+
+        setShowChatDialog(true);
+      }
+    } catch (error) {
+      console.error("Failed to open conversation:", error);
+      toast.error("Failed to start conversation");
+    } finally {
+      setIsCreatingChat(false);
+    }
   };
 
   if (authLoading || isLoading) {
@@ -1258,9 +1360,9 @@ export default function KitchenComparisonPage() {
                                           <span className="font-medium">{storage.name || storage.storageType}</span>
                                           {storage.basePrice && (
                                             <span className="text-purple-600">
-                                              ${storage.basePrice.toFixed(2)}
+                                              ${(storage.basePrice || 0).toFixed(2)}
                                               {storage.pricingModel === 'per_cubic_foot' && storage.pricePerCubicFoot && (
-                                                <span className="text-xs"> + ${storage.pricePerCubicFoot.toFixed(2)}/ft³</span>
+                                                <span className="text-xs"> + ${(storage.pricePerCubicFoot || 0).toFixed(2)}/ft³</span>
                                               )}
                                             </span>
                                           )}
@@ -1300,7 +1402,7 @@ export default function KitchenComparisonPage() {
                                         </div>
                                         <Button
                                           size="sm"
-                                          onClick={() => handleBookKitchen(location.id)}
+                                          onClick={() => handleBookKitchen(location.id, true)}
                                           className="w-full bg-green-600 hover:bg-green-700"
                                         >
                                           <Calendar className="mr-2 h-4 w-4" />
@@ -1308,31 +1410,60 @@ export default function KitchenComparisonPage() {
                                         </Button>
                                       </div>
                                     ) : (
-                                      <div className="flex-1">
-                                        <div className="text-xs text-amber-700 font-medium mb-1">
-                                          {location.nextTierToComplete}
+                                      <div className="flex-1 flex flex-col gap-3">
+                                        <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm relative overflow-hidden group">
+                                          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+                                          <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                              <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 gap-1 px-2 py-0.5 h-5">
+                                                <Check className="h-3 w-3" />
+                                                Step 1 Approved
+                                              </Badge>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                              50%
+                                            </span>
+                                          </div>
+
+                                          {/* Progress Bar */}
+                                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mb-2.5">
+                                            <div className="h-full bg-blue-500 w-1/2 rounded-full transition-all duration-500 group-hover:w-[52%]" />
+                                          </div>
+
+                                          <div className="flex items-center text-[11px] text-slate-600">
+                                            <AlertCircle className="h-3 w-3 mr-1 text-blue-500" />
+                                            <span>
+                                              Next: <span className="font-medium text-slate-900">{location.nextTierToComplete || "Complete requirements"}</span>
+                                            </span>
+                                          </div>
                                         </div>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          disabled
-                                          className="w-full bg-amber-50 border-amber-300 text-amber-700 cursor-not-allowed"
-                                        >
-                                          <Clock className="mr-2 h-4 w-4" />
-                                          Complete All Steps
-                                        </Button>
+
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            onClick={() => handleApplyKitchen(location.id)}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-sm font-medium h-9"
+                                          >
+                                            Continue Application
+                                            <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                                          </Button>
+
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleOpenChat(location)}
+                                            disabled={isCreatingChat}
+                                            className="px-3 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 h-9 shrink-0"
+                                            title="Message Kitchen"
+                                          >
+                                            {isCreatingChat ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <MessageCircle className="h-4 w-4" />
+                                            )}
+                                          </Button>
+                                        </div>
                                       </div>
-                                    )}
-                                    {location.hasChatConversation && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleOpenChat(location)}
-                                        className="flex-1"
-                                      >
-                                        <MessageCircle className="mr-2 h-4 w-4" />
-                                        Chat
-                                      </Button>
                                     )}
                                   </>
                                 ) : location.isPending ? (
@@ -1391,25 +1522,17 @@ export default function KitchenComparisonPage() {
 
       {/* Chat Dialog */}
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0">
-          {chatApplication && chatConversationId && chefId && (
-            <ChatPanel
-              conversationId={chatConversationId}
-              applicationId={chatApplication.id}
-              chefId={chefId}
-              managerId={chatApplication.location?.managerId || 0}
-              locationId={chatApplication.locationId}
-              locationName={chatApplication.location?.name || "Unknown Location"}
-              onClose={() => {
-                setShowChatDialog(false);
-                setChatApplication(null);
-                setChatConversationId(null);
-              }}
-              embedded={true}
+        <DialogContent className="max-w-6xl h-[85vh] flex flex-col p-0 overflow-hidden border-none shadow-2xl">
+          {chatConversationId && chefId && (
+            <UnifiedChatView
+              userId={chefId}
+              role="chef"
+              initialConversationId={chatConversationId}
             />
           )}
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

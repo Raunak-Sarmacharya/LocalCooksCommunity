@@ -1,7 +1,9 @@
-import { Package, Save, Loader2, Plus, X, ChevronRight, ChevronLeft, Info, AlertCircle, Check } from "lucide-react";
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useManagerDashboard } from "../hooks/use-manager-dashboard";
+import { 
+  Package, Plus, Check, Loader2, Pencil, Trash2, Search,
+  Thermometer, Snowflake, Grid3X3, DollarSign, PlusCircle, SearchX
+} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,9 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +26,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import {
+  STORAGE_CATEGORIES,
+  StorageTemplate,
+  StorageTypeId,
+  ACCESS_TYPE_LABELS,
+  getDefaultTemperatureRange,
+} from "@/lib/storage-templates";
+
+// Category icon component for dynamic rendering
+const StorageCategoryIcon = ({ iconName, className }: { iconName: string; className?: string }) => {
+  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
+    Package, Thermometer, Snowflake
+  };
+  const Icon = icons[iconName] || Package;
+  return <Icon className={className} />;
+};
 
 interface Kitchen {
   id: number;
@@ -34,1113 +59,662 @@ interface StorageListing {
   storageType: 'dry' | 'cold' | 'freezer';
   name: string;
   description?: string;
-  // SIMPLIFIED: Daily rate pricing
-  basePrice: number; // Daily rate in dollars
-  minimumBookingDuration: number; // Minimum days required
-  // Legacy fields - kept for backwards compatibility
-  pricePerCubicFoot?: number;
-  pricingModel?: 'monthly-flat' | 'per-cubic-foot' | 'hourly' | 'daily';
-  bookingDurationUnit?: 'hourly' | 'daily' | 'monthly';
-  currency: string; // Always CAD
-  dimensionsLength?: number;
-  dimensionsWidth?: number;
-  dimensionsHeight?: number;
-  totalVolume?: number;
-  shelfCount?: number;
-  shelfMaterial?: string;
+  basePrice: number; // Daily rate in dollars (converted from cents)
+  totalVolume?: number; // Cubic feet
   accessType?: string;
   temperatureRange?: string;
-  climateControl?: boolean;
-  humidityControl?: boolean;
-  powerOutlets?: number;
-  features?: string[];
-  securityFeatures?: string[];
-  certifications?: string[];
-  photos?: string[];
-  documents?: string[];
-  houseRules?: string[];
-  prohibitedItems?: string[];
-  insuranceRequired?: boolean;
-  isActive?: boolean; // Active status toggle
+  isActive?: boolean;
+  minimumBookingDuration?: number; // Minimum days for booking
 }
 
-interface StorageListingManagementProps {
-  embedded?: boolean;
+interface SelectedStorage {
+  templateId: string;
+  name: string;
+  storageType: StorageTypeId;
+  description: string;
+  dailyRate: number;
+  totalVolume: number;
+  accessType: string;
+  temperatureRange: string;
+  minimumBookingDuration: number; // Minimum days for booking
 }
 
-
-async function getAuthHeaders(): Promise<HeadersInit> {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  
-  // Get Firebase token for authentication
-  const { auth } = await import('@/lib/firebase');
-  const currentFirebaseUser = auth.currentUser;
-  if (currentFirebaseUser) {
-    try {
-      const token = await currentFirebaseUser.getIdToken();
-      headers['Authorization'] = `Bearer ${token}`;
-    } catch (error) {
-      console.error('Error getting Firebase token:', error);
-    }
-  }
-  
-  return headers;
+export default function StorageListingManagement() {
+  return (
+    <ManagerPageLayout
+      title="Storage Management"
+      description="Manage your kitchen storage listings"
+      showKitchenSelector={true}
+    >
+      {({ selectedLocationId, selectedKitchenId, isLoading }) => {
+        if (isLoading) {
+          return (
+            <div className="space-y-6">
+              <Skeleton className="h-[200px] w-full" />
+              <Skeleton className="h-[400px] w-full" />
+            </div>
+          );
+        }
+        return (
+          <StorageListingContent
+            selectedLocationId={selectedLocationId}
+            selectedKitchenId={selectedKitchenId}
+          />
+        );
+      }}
+    </ManagerPageLayout>
+  );
 }
 
-export default function StorageListingManagement({ embedded = false }: StorageListingManagementProps = {}) {
+function StorageListingContent({
+  selectedLocationId,
+  selectedKitchenId
+}: {
+  selectedLocationId: number | null,
+  selectedKitchenId: number | null
+}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { locations, isLoadingLocations } = useManagerDashboard();
-  
-  const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
-  const [selectedKitchenId, setSelectedKitchenId] = useState<number | null>(null);
+
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
-  const [currentStep, setCurrentStep] = useState(1);
-  const totalSteps = 4;
-  
-  // Form state - simplified to daily pricing
-  const [formData, setFormData] = useState<Partial<StorageListing>>({
-    storageType: 'dry',
-    basePrice: 0, // Daily rate in dollars
-    minimumBookingDuration: 1, // Minimum days
-    currency: 'CAD', // Always CAD
-    climateControl: false,
-    humidityControl: false,
-    powerOutlets: 0,
-    insuranceRequired: false,
-    features: [],
-    securityFeatures: [],
-    certifications: [],
-    photos: [],
-    documents: [],
-    houseRules: [],
-    prohibitedItems: [],
-  });
-  
-  const [isSaving, setIsSaving] = useState(false);
-  const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [listings, setListings] = useState<StorageListing[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState<'list' | 'add'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<string[]>(['dry', 'cold', 'freezer']);
+  const [selectedStorage, setSelectedStorage] = useState<Record<string, SelectedStorage>>({});
+  
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingListing, setEditingListing] = useState<StorageListing | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [toggleDialogOpen, setToggleDialogOpen] = useState(false);
   const [pendingToggle, setPendingToggle] = useState<{ id: number; isActive: boolean } | null>(null);
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [isToggling, setIsToggling] = useState(false);
 
-  // Auto-select location if only one exists
-  useEffect(() => {
-    if (!isLoadingLocations && locations.length === 1 && !selectedLocationId) {
-      setSelectedLocationId(locations[0].id);
-    }
-  }, [locations, isLoadingLocations, selectedLocationId]);
+  // Custom storage state for intuitive "not found" flow
+  const [customStorage, setCustomStorage] = useState({
+    name: '',
+    storageType: 'dry' as StorageTypeId,
+    description: '',
+    dailyRate: 0,
+    totalVolume: 0,
+    accessType: 'shelving-unit',
+    temperatureRange: '',
+    minimumBookingDuration: 1,
+  });
 
-  // Load kitchens when location is selected
+  const selectedStorageCount = Object.keys(selectedStorage).length;
+
   useEffect(() => {
-    if (selectedLocationId) {
-      loadKitchens();
-    } else {
-      setKitchens([]);
-      setSelectedKitchenId(null);
-    }
+    if (selectedLocationId) loadKitchens();
+    else setKitchens([]);
   }, [selectedLocationId]);
 
-  // Load listings when kitchen is selected
   useEffect(() => {
-    if (selectedKitchenId) {
-      loadListings();
-    } else {
-      setListings([]);
-    }
+    if (selectedKitchenId) loadListings();
+    else setListings([]);
   }, [selectedKitchenId]);
 
   const loadKitchens = async () => {
     if (!selectedLocationId) return;
-    
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/kitchens/${selectedLocationId}`, {
-        headers,
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to load kitchens');
-      }
-      
-      const data = await response.json();
+      const data = await apiGet(`/manager/kitchens/${selectedLocationId}`);
       setKitchens(data);
-      
-      if (data.length === 1 && !selectedKitchenId) {
-        setSelectedKitchenId(data[0].id);
-      }
     } catch (error: any) {
-      console.error('Error loading kitchens:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load kitchens",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to load kitchens", variant: "destructive" });
     }
   };
 
   const loadListings = async () => {
     if (!selectedKitchenId) return;
-    
+    setIsLoading(true);
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, {
-        headers,
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to load storage listings');
-      }
-      
-      const data = await response.json();
-      setListings(data);
+      const data = await apiGet(`/manager/kitchens/${selectedKitchenId}/storage-listings`);
+      // Convert cents to dollars for UI
+      const mappedData = Array.isArray(data) ? data.map((item: any) => ({
+        ...item,
+        basePrice: item.basePrice ? item.basePrice / 100 : 0,
+      })) : [];
+      setListings(mappedData);
     } catch (error: any) {
-      console.error('Error loading storage listings:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load storage listings",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to load storage listings", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleEdit = async (listingId: number) => {
-    try {
-      const headers = await getAuthHeaders();
-      console.log('Loading storage listing for edit:', listingId);
-      
-      const response = await fetch(`/api/manager/storage-listings/${listingId}`, {
-        headers,
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error loading listing:', response.status, errorText);
-        throw new Error(`Failed to load listing (${response.status})`);
-      }
-      
-      const data = await response.json();
-      console.log('Storage listing loaded:', data);
-      
-      // Ensure proper data types - basePrice should already be in dollars from backend
-      setFormData({
-        ...data,
-        basePrice: data.basePrice !== undefined && data.basePrice !== null ? Number(data.basePrice) : 0,
-        minimumBookingDuration: data.minimumBookingDuration || 1,
-        kitchenId: data.kitchenId || data.kitchen_id,
-      });
-      setEditingListingId(listingId);
-      setCurrentStep(1);
-      setSelectedKitchenId(data.kitchenId || data.kitchen_id);
-    } catch (error: any) {
-      console.error('Error loading storage listing:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load listing",
-        variant: "destructive",
-      });
-    }
-  };
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return STORAGE_CATEGORIES;
+    const query = searchQuery.toLowerCase();
+    return STORAGE_CATEGORIES.map(cat => ({
+      ...cat,
+      items: cat.items.filter(item => item.name.toLowerCase().includes(query) || cat.name.toLowerCase().includes(query))
+    })).filter(cat => cat.items.length > 0);
+  }, [searchQuery]);
 
-  const handleDelete = async (listingId: number) => {
-    if (!confirm('Are you sure you want to delete this storage listing?')) {
+  const totalFilteredItems = filteredCategories.reduce((sum, cat) => sum + cat.items.length, 0);
+  const showNoResultsCustomOption = searchQuery.trim().length > 0 && totalFilteredItems === 0;
+
+  const saveCustomStorage = async () => {
+    // Use searchQuery as fallback if customStorage.name is empty (intuitive flow)
+    const storageName = (customStorage.name.trim() || searchQuery.trim());
+    if (!selectedKitchenId || !storageName) {
+      toast({ title: "Error", description: "Please enter a storage name", variant: "destructive" });
       return;
     }
-
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/storage-listings/${listingId}`, {
-        method: 'DELETE',
-        headers,
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete listing');
-      }
-
-      toast({
-        title: "Success",
-        description: "Storage listing deleted successfully",
-      });
-
-      loadListings();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete listing",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const saveListing = async () => {
-    if (!selectedKitchenId) {
-      toast({
-        title: "Error",
-        description: "Please select a kitchen first",
-        variant: "destructive",
-      });
+    if (!customStorage.dailyRate || customStorage.dailyRate <= 0) {
+      toast({ title: "Error", description: "Please enter a daily rate", variant: "destructive" });
       return;
     }
-
-    // Validation - simplified to daily rate pricing
-    if (!formData.name || !formData.storageType || !formData.basePrice || formData.basePrice <= 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields (name, storage type, daily rate)",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    if (!formData.minimumBookingDuration || formData.minimumBookingDuration < 1) {
-      toast({
-        title: "Validation Error", 
-        description: "Minimum rental period must be at least 1 day",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsSaving(true);
     try {
-      const headers = await getAuthHeaders();
-      const url = editingListingId 
-        ? `/api/manager/storage-listings/${editingListingId}`
-        : '/api/manager/storage-listings';
-      
-      const method = editingListingId ? 'PUT' : 'POST';
-      
-      // Build payload with daily rate pricing model - ensure basePrice is a number
-      const payload = {
+      await apiPost('/manager/storage-listings', {
         kitchenId: selectedKitchenId,
-        name: formData.name,
-        description: formData.description || null,
-        storageType: formData.storageType,
-        basePrice: Number(formData.basePrice), // Ensure it's a number
-        minimumBookingDuration: Number(formData.minimumBookingDuration) || 1,
-        currency: 'CAD',
+        name: storageName,
+        storageType: customStorage.storageType,
+        description: customStorage.description || undefined,
+        basePrice: Math.round(customStorage.dailyRate * 100), // Convert to cents
+        totalVolume: customStorage.totalVolume || undefined,
+        accessType: customStorage.accessType || undefined,
+        temperatureRange: customStorage.temperatureRange || getDefaultTemperatureRange(customStorage.storageType) || undefined,
         pricingModel: 'daily',
+        minimumBookingDuration: customStorage.minimumBookingDuration || 1,
         bookingDurationUnit: 'daily',
-        // Optional fields
-        dimensionsLength: formData.dimensionsLength ? Number(formData.dimensionsLength) : null,
-        dimensionsWidth: formData.dimensionsWidth ? Number(formData.dimensionsWidth) : null,
-        dimensionsHeight: formData.dimensionsHeight ? Number(formData.dimensionsHeight) : null,
-        totalVolume: formData.totalVolume ? Number(formData.totalVolume) : null,
-        shelfCount: formData.shelfCount ? Number(formData.shelfCount) : null,
-        shelfMaterial: formData.shelfMaterial || null,
-        accessType: formData.accessType || null,
-        temperatureRange: formData.temperatureRange || null,
-        climateControl: formData.climateControl || false,
-        humidityControl: formData.humidityControl || false,
-        powerOutlets: formData.powerOutlets || 0,
-        insuranceRequired: formData.insuranceRequired || false,
-        features: formData.features || [],
-        securityFeatures: formData.securityFeatures || [],
-        certifications: formData.certifications || [],
-        documents: formData.documents || [],
-        houseRules: formData.houseRules || [],
-        prohibitedItems: formData.prohibitedItems || [],
-      };
-
-      console.log('Saving storage listing:', { listingId: editingListingId, payload });
-      
-      const response = await fetch(url, {
-        method,
-        headers,
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { error: errorText || 'Failed to save listing' };
-        }
-        console.error('Error response:', response.status, errorData);
-        throw new Error(errorData.error || `Failed to save listing (${response.status})`);
-      }
-
-      const saved = await response.json();
-      console.log('Storage listing saved successfully:', saved);
-      
-      toast({
-        title: "Success",
-        description: editingListingId ? "Storage listing updated successfully" : "Storage listing created successfully",
-      });
-
-      // Reset form
-      setFormData({
-        storageType: 'dry',
-        basePrice: 0,
-        minimumBookingDuration: 1,
         currency: 'CAD',
-        climateControl: false,
-        humidityControl: false,
-        powerOutlets: 0,
-        insuranceRequired: false,
-        features: [],
-        securityFeatures: [],
-        certifications: [],
-        documents: [],
-        houseRules: [],
-        prohibitedItems: [],
+        isActive: true,
       });
-      setEditingListingId(null);
-      setCurrentStep(1);
-      
+      toast({ title: "Storage Added", description: `Successfully added "${storageName}"` });
+      setCustomStorage({ name: '', storageType: 'dry', description: '', dailyRate: 0, totalVolume: 0, accessType: 'shelving-unit', temperatureRange: '', minimumBookingDuration: 1 });
+      setSearchQuery('');
+      setActiveTab('list');
       loadListings();
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/storage-listings`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
     } catch (error: any) {
-      console.error('Error saving storage listing:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save storage listing",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to add storage", variant: "destructive" });
     } finally {
       setIsSaving(false);
     }
   };
 
-  const addArrayItem = (field: keyof StorageListing, value: string) => {
-    if (!value.trim()) return;
-    const current = (formData[field] as string[]) || [];
-    setFormData({ ...formData, [field]: [...current, value.trim()] });
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories(prev => prev.includes(categoryId) ? prev.filter(id => id !== categoryId) : [...prev, categoryId]);
   };
 
-  const removeArrayItem = (field: keyof StorageListing, index: number) => {
-    const current = (formData[field] as string[]) || [];
-    setFormData({ ...formData, [field]: current.filter((_, i) => i !== index) });
-  };
-
-  // Toggle active status mutation
-  const toggleActiveMutation = useMutation({
-    mutationFn: async ({ id, isActive }: { id: number; isActive: boolean }) => {
-      const headers = await getAuthHeaders();
-      const response = await fetch(`/api/manager/storage-listings/${id}`, {
-        method: 'PUT',
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ isActive }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Failed to update status' }));
-        throw new Error(errorData.error || 'Failed to update status');
+  const handleTemplateSelect = (template: StorageTemplate) => {
+    setSelectedStorage(prev => {
+      const newState = { ...prev };
+      if (newState[template.id]) {
+        delete newState[template.id];
+      } else {
+        newState[template.id] = {
+          templateId: template.id,
+          name: template.name,
+          storageType: template.storageType,
+          description: template.description,
+          dailyRate: template.suggestedDailyRate,
+          totalVolume: 0,
+          accessType: template.accessTypes[0] || 'walk-in',
+          temperatureRange: template.temperatureRange || getDefaultTemperatureRange(template.storageType) || '',
+          minimumBookingDuration: 1,
+        };
       }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/manager/kitchens/${selectedKitchenId}/storage-listings`] });
-      loadListings(); // Reload listings to get updated status
-      toast({
-        title: "Status Updated",
-        description: `Storage listing is now ${pendingToggle?.isActive ? 'active' : 'inactive'}`,
+      return newState;
+    });
+  };
+
+  const updateSelectedStorage = (templateId: string, updates: Partial<SelectedStorage>) => {
+    setSelectedStorage(prev => {
+      if (!prev[templateId]) return prev;
+      return { ...prev, [templateId]: { ...prev[templateId], ...updates } };
+    });
+  };
+
+  const saveSelectedStorage = async () => {
+    if (!selectedKitchenId || selectedStorageCount === 0) return;
+    setIsSaving(true);
+    let successCount = 0;
+    for (const storage of Object.values(selectedStorage)) {
+      try {
+        await apiPost('/manager/storage-listings', {
+          kitchenId: selectedKitchenId,
+          name: storage.name,
+          storageType: storage.storageType,
+          description: storage.description || undefined,
+          basePrice: Math.round(storage.dailyRate * 100), // Convert to cents
+          totalVolume: storage.totalVolume || undefined,
+          accessType: storage.accessType || undefined,
+          temperatureRange: storage.temperatureRange || undefined,
+          pricingModel: 'daily',
+          minimumBookingDuration: storage.minimumBookingDuration || 1,
+          bookingDurationUnit: 'daily',
+          currency: 'CAD',
+          isActive: true,
+        });
+        successCount++;
+      } catch (error) {
+        console.error('Error creating storage listing:', error);
+      }
+    }
+    setIsSaving(false);
+    if (successCount > 0) {
+      toast({ title: "Storage Added", description: `Successfully added ${successCount} storage listing${successCount > 1 ? 's' : ''}.` });
+      setSelectedStorage({});
+      setActiveTab('list');
+      loadListings();
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+    } else {
+      toast({ title: "Error", description: "Failed to add storage listings.", variant: "destructive" });
+    }
+  };
+
+  const handleEdit = (listing: StorageListing) => {
+    setEditingListing(listing);
+    setEditDialogOpen(true);
+  };
+
+  const saveEditedListing = async () => {
+    if (!editingListing?.id) return;
+    setIsSaving(true);
+    try {
+      await apiPut(`/manager/storage-listings/${editingListing.id}`, {
+        ...editingListing,
+        basePrice: Math.round((editingListing.basePrice || 0) * 100), // Convert to cents
       });
-      setToggleDialogOpen(false);
-      setPendingToggle(null);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update status",
-        variant: "destructive",
-      });
-      setToggleDialogOpen(false);
-      setPendingToggle(null);
-    },
-  });
+      toast({ title: "Success", description: "Storage listing updated successfully" });
+      setEditDialogOpen(false);
+      setEditingListing(null);
+      loadListings();
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update listing", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!pendingDeleteId) return;
+    try {
+      await apiDelete(`/manager/storage-listings/${pendingDeleteId}`);
+      toast({ title: "Success", description: "Storage listing deleted successfully" });
+      setDeleteDialogOpen(false);
+      setPendingDeleteId(null);
+      loadListings();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete listing", variant: "destructive" });
+    }
+  };
 
   const handleToggleActive = (listingId: number, currentStatus: boolean) => {
     const newStatus = !currentStatus;
-    
-    // If deactivating, show confirmation dialog
     if (!newStatus) {
       setPendingToggle({ id: listingId, isActive: newStatus });
       setToggleDialogOpen(true);
     } else {
-      // Activating - proceed immediately
-      toggleActiveMutation.mutate({ id: listingId, isActive: newStatus });
+      doToggleActive(listingId, newStatus);
     }
   };
 
-  const confirmToggle = () => {
-    if (pendingToggle) {
-      toggleActiveMutation.mutate(pendingToggle);
+  const doToggleActive = async (id: number, isActive: boolean) => {
+    setIsToggling(true);
+    try {
+      await apiPut(`/manager/storage-listings/${id}`, { isActive });
+      queryClient.invalidateQueries({ queryKey: [`/api/manager/storage-listings`] });
+      loadListings();
+      toast({ title: "Status Updated", description: `Storage listing is now ${isActive ? 'active' : 'inactive'}` });
+      setToggleDialogOpen(false);
+      setPendingToggle(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update status", variant: "destructive" });
+    } finally {
+      setIsToggling(false);
     }
   };
 
   const selectedKitchen = kitchens.find(k => k.id === selectedKitchenId);
 
+  if (!selectedKitchenId) {
+    return (
+      <Card className="border-dashed h-full">
+        <CardContent className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground h-full">
+          <Package className="h-12 w-12 mb-4 opacity-20" />
+          <h3 className="text-lg font-medium text-foreground mb-1">No Kitchen Selected</h3>
+          <p>Select a location and kitchen from the sidebar to manage storage.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      {/* Location & Kitchen Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Select Location & Kitchen</CardTitle>
-          <CardDescription>Choose a location and kitchen to manage storage listings</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="location">Location</Label>
-            {isLoadingLocations ? (
-              <div className="text-sm text-gray-500 mt-2">Loading locations...</div>
-            ) : locations.length === 0 ? (
-              <div className="text-sm text-gray-500 mt-2">No locations available</div>
-            ) : locations.length === 1 ? (
-              <div className="mt-2 px-3 py-2 text-sm font-medium text-gray-900 bg-gray-50 rounded-lg border border-gray-200">
-                {locations[0].name}
-              </div>
-            ) : (
-              <Select
-                value={selectedLocationId?.toString() || ""}
-                onValueChange={(value) => {
-                  setSelectedLocationId(parseInt(value));
-                  setSelectedKitchenId(null);
-                }}
-              >
-                <SelectTrigger id="location" className="mt-2">
-                  <SelectValue placeholder="Choose location..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((loc: any) => (
-                    <SelectItem key={loc.id} value={loc.id.toString()}>
-                      {loc.name}
-                    </SelectItem>
+    <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'list' | 'add')}>
+        <div className="flex items-center justify-between mb-4">
+          <TabsList className="grid w-[300px] grid-cols-2">
+            <TabsTrigger value="list" className="flex items-center gap-2"><Package className="h-4 w-4" />My Storage</TabsTrigger>
+            <TabsTrigger value="add" className="flex items-center gap-2"><Plus className="h-4 w-4" />Add Storage</TabsTrigger>
+          </TabsList>
+          {selectedKitchen && <Badge variant="outline" className="text-sm">{selectedKitchen.name}</Badge>}
+        </div>
+
+        <TabsContent value="list" className="mt-0">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Storage Inventory</CardTitle>
+              <CardDescription>{listings.length} storage listing{listings.length !== 1 ? 's' : ''} for this kitchen</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
+              ) : listings.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                  <p className="font-medium">No storage listed yet</p>
+                  <p className="text-sm mt-1">Click "Add Storage" to get started</p>
+                  <Button className="mt-4" onClick={() => setActiveTab('add')}><Plus className="h-4 w-4 mr-2" />Add Storage</Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {listings.map((listing) => (
+                    <div key={listing.id} className={cn("flex items-center justify-between p-4 border rounded-lg transition-colors", listing.isActive === false && "bg-muted/50 opacity-75")}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-medium truncate">{listing.name}</h4>
+                          <Badge variant={listing.isActive !== false ? "default" : "secondary"} className="text-xs">{listing.isActive !== false ? 'Active' : 'Inactive'}</Badge>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span className="capitalize">{listing.storageType}</span>
+                          {listing.totalVolume && <><span>•</span><span>{listing.totalVolume} cu ft</span></>}
+                          <span>•</span>
+                          <span className="font-medium text-blue-600">${(listing.basePrice || 0).toFixed(2)}/day</span>
+                          {listing.minimumBookingDuration && listing.minimumBookingDuration > 1 && <><span>•</span><span>Min {listing.minimumBookingDuration} days</span></>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <Switch checked={listing.isActive !== false} onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)} disabled={isToggling} />
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(listing)}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => { setPendingDeleteId(listing.id!); setDeleteDialogOpen(true); }}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-            )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="add" className="mt-0 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search storage types..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
           </div>
 
-          {selectedLocationId && (
-            <div>
-              <Label htmlFor="kitchen">Kitchen</Label>
-              {kitchens.length === 0 ? (
-                <div className="text-sm text-gray-500 mt-2">Loading kitchens...</div>
-              ) : (
-                <Select
-                  value={selectedKitchenId?.toString() || ""}
-                  onValueChange={(value) => setSelectedKitchenId(parseInt(value))}
-                >
-                  <SelectTrigger id="kitchen" className="mt-2">
-                    <SelectValue placeholder="Choose kitchen..." />
-                  </SelectTrigger>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2"><Grid3X3 className="h-5 w-5" />Select Storage Type</CardTitle>
+                  <CardDescription>Choose from pre-defined storage options or add custom</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[500px] pr-4">
+                    <div className="space-y-2">
+                      {filteredCategories.map((category) => (
+                        <Collapsible key={category.id} open={expandedCategories.includes(category.id)} onOpenChange={() => toggleCategory(category.id)}>
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" className="w-full justify-between p-3 h-auto font-medium hover:bg-muted/50">
+                              <span className="flex items-center gap-2"><StorageCategoryIcon iconName={category.iconName} className="h-4 w-4 text-muted-foreground" />{category.name}<Badge variant="secondary" className="ml-2">{category.items.length}</Badge></span>
+                              {expandedCategories.includes(category.id) ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <div className="p-2 pl-4 space-y-2">
+                              {/* Category description */}
+                              <p className="text-xs text-muted-foreground mb-3">{category.description}{category.temperatureRange && ` • ${category.temperatureRange}`}</p>
+                              <div className="grid grid-cols-1 gap-2">
+                                {category.items.map((template) => {
+                                  const isSelected = !!selectedStorage[template.id];
+                                  const isAlreadyListed = listings.some(l => l.name.toLowerCase() === template.name.toLowerCase());
+                                  return (
+                                    <button key={template.id} onClick={() => !isAlreadyListed && handleTemplateSelect(template)} disabled={isAlreadyListed}
+                                      className={cn("flex items-start gap-3 p-3 rounded-lg border text-left transition-all", isSelected && "border-primary bg-primary/5 ring-1 ring-primary", isAlreadyListed && "opacity-50 cursor-not-allowed bg-muted", !isSelected && !isAlreadyListed && "hover:border-primary/50 hover:bg-muted/50")}>
+                                      <div className={cn("flex items-center justify-center w-5 h-5 rounded border mt-0.5", isSelected ? "bg-primary border-primary" : "border-muted-foreground/30")}>
+                                        {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-sm font-medium">{template.name}</p>
+                                          {isAlreadyListed && <Badge variant="secondary" className="text-xs">Listed</Badge>}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-0.5">{template.description}</p>
+                                        <p className="text-xs text-blue-600 mt-1">~${template.suggestedDailyRate}/day</p>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      ))}
+                      
+                      {/* Intuitive custom storage option when search has no results */}
+                      {showNoResultsCustomOption && (
+                        <Card className="border-dashed border-primary/50 bg-primary/5">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-base flex items-center gap-2">
+                              <SearchX className="h-4 w-4" />
+                              No matching storage found
+                            </CardTitle>
+                            <CardDescription>Add "{searchQuery}" as custom storage</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Storage Type</Label>
+                                <Select value={customStorage.storageType} onValueChange={(v: StorageTypeId) => {
+                                  setCustomStorage({ ...customStorage, storageType: v, temperatureRange: getDefaultTemperatureRange(v) || '' });
+                                }}>
+                                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="dry">Dry Storage</SelectItem>
+                                    <SelectItem value="cold">Cold Storage</SelectItem>
+                                    <SelectItem value="freezer">Freezer</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Daily Rate ($) *</Label>
+                                <Input type="number" step="0.01" min="0" value={customStorage.dailyRate || ''} onChange={(e) => setCustomStorage({ ...customStorage, dailyRate: parseFloat(e.target.value) || 0 })} placeholder="15.00" className="h-9" />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Size (cubic feet)</Label>
+                                <Input type="number" min="0" value={customStorage.totalVolume || ''} onChange={(e) => setCustomStorage({ ...customStorage, totalVolume: parseFloat(e.target.value) || 0 })} placeholder="50" className="h-9" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Access Type</Label>
+                                <Select value={customStorage.accessType} onValueChange={(v) => setCustomStorage({ ...customStorage, accessType: v })}>
+                                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
+                                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Minimum Booking (days)</Label>
+                              <Input type="number" min="1" value={customStorage.minimumBookingDuration || 1} onChange={(e) => setCustomStorage({ ...customStorage, minimumBookingDuration: parseInt(e.target.value) || 1 })} placeholder="1" className="h-9" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Description</Label>
+                              <Textarea value={customStorage.description} onChange={(e) => setCustomStorage({ ...customStorage, description: e.target.value })} placeholder="Describe the storage space..." rows={2} className="text-sm" />
+                            </div>
+                            <Button onClick={saveCustomStorage} disabled={isSaving || !customStorage.dailyRate} className="w-full">
+                              {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <PlusCircle className="h-4 w-4 mr-2" />}
+                              Add "{searchQuery}" Storage
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Configure Panel */}
+            <div className="lg:col-span-1">
+              <Card className="sticky top-4">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2"><DollarSign className="h-5 w-5" />Configure</CardTitle>
+                  <CardDescription>{selectedStorageCount} storage{selectedStorageCount !== 1 ? 's' : ''} selected</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {selectedStorageCount === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Package className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                      <p className="text-sm">Select storage from the list to configure</p>
+                    </div>
+                  ) : (
+                    <ScrollArea className="h-[400px] pr-2">
+                      <div className="space-y-4">
+                        {Object.values(selectedStorage).map((storage) => (
+                          <div key={storage.templateId} className="p-3 border rounded-lg space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium text-sm">{storage.name}</h4>
+                              <Badge variant="outline" className="text-xs capitalize">{storage.storageType}</Badge>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs">Daily Rate ($)</Label>
+                                <Input type="number" step="0.01" min="0" value={storage.dailyRate} onChange={(e) => updateSelectedStorage(storage.templateId, { dailyRate: parseFloat(e.target.value) || 0 })} className="h-8" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Size (cubic feet)</Label>
+                                <Input type="number" min="0" value={storage.totalVolume || ''} onChange={(e) => updateSelectedStorage(storage.templateId, { totalVolume: parseFloat(e.target.value) || 0 })} placeholder="Enter size" className="h-8" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Access Type</Label>
+                                <Select value={storage.accessType} onValueChange={(v) => updateSelectedStorage(storage.templateId, { accessType: v })}>
+                                  <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
+                                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {(storage.storageType === 'cold' || storage.storageType === 'freezer') && (
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Temperature Range</Label>
+                                  <Input value={storage.temperatureRange} onChange={(e) => updateSelectedStorage(storage.templateId, { temperatureRange: e.target.value })} placeholder="e.g., 35-40°F" className="h-8" />
+                                </div>
+                              )}
+                              <div className="space-y-1">
+                                <Label className="text-xs">Minimum Booking (days)</Label>
+                                <Input type="number" min="1" value={storage.minimumBookingDuration || 1} onChange={(e) => updateSelectedStorage(storage.templateId, { minimumBookingDuration: parseInt(e.target.value) || 1 })} className="h-8" />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs">Description</Label>
+                                <Textarea value={storage.description} onChange={(e) => updateSelectedStorage(storage.templateId, { description: e.target.value })} rows={2} className="text-sm" />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                  {selectedStorageCount > 0 && (
+                    <Button onClick={saveSelectedStorage} disabled={isSaving} className="w-full mt-4">
+                      {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
+                      Add {selectedStorageCount} Storage{selectedStorageCount > 1 ? 's' : ''}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Storage Listing</DialogTitle>
+            <DialogDescription>Update the storage listing details</DialogDescription>
+          </DialogHeader>
+          {editingListing && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2"><Label>Name</Label><Input value={editingListing.name} onChange={(e) => setEditingListing({ ...editingListing, name: e.target.value })} /></div>
+              <div className="space-y-2"><Label>Storage Type</Label>
+                <Select value={editingListing.storageType} onValueChange={(v: 'dry' | 'cold' | 'freezer') => setEditingListing({ ...editingListing, storageType: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {kitchens.map((kitchen) => (
-                      <SelectItem key={kitchen.id} value={kitchen.id.toString()}>
-                        {kitchen.name}
-                      </SelectItem>
+                    <SelectItem value="dry">Dry Storage</SelectItem>
+                    <SelectItem value="cold">Cold Storage</SelectItem>
+                    <SelectItem value="freezer">Freezer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2"><Label>Daily Rate ($)</Label><Input type="number" step="0.01" min="0" value={editingListing.basePrice || ''} onChange={(e) => setEditingListing({ ...editingListing, basePrice: parseFloat(e.target.value) || 0 })} /></div>
+              <div className="space-y-2"><Label>Size (cubic feet)</Label><Input type="number" min="0" value={editingListing.totalVolume || ''} onChange={(e) => setEditingListing({ ...editingListing, totalVolume: parseFloat(e.target.value) || undefined })} /></div>
+              <div className="space-y-2"><Label>Access Type</Label>
+                <Select value={editingListing.accessType || ''} onValueChange={(v) => setEditingListing({ ...editingListing, accessType: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select access type" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ACCESS_TYPE_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              {(editingListing.storageType === 'cold' || editingListing.storageType === 'freezer') && (
+                <div className="space-y-2"><Label>Temperature Range</Label><Input value={editingListing.temperatureRange || ''} onChange={(e) => setEditingListing({ ...editingListing, temperatureRange: e.target.value })} placeholder="e.g., 35-40°F" /></div>
               )}
+              <div className="space-y-2"><Label>Minimum Booking (days)</Label><Input type="number" min="1" value={editingListing.minimumBookingDuration || 1} onChange={(e) => setEditingListing({ ...editingListing, minimumBookingDuration: parseInt(e.target.value) || 1 })} /></div>
+              <div className="space-y-2"><Label>Description</Label><Textarea value={editingListing.description || ''} onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })} placeholder="Optional description..." rows={3} /></div>
             </div>
           )}
-        </CardContent>
-      </Card>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+            <Button onClick={saveEditedListing} disabled={isSaving}>{isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Existing Listings */}
-      {selectedKitchenId && listings.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Existing Storage Listings</CardTitle>
-            <CardDescription>Manage your existing storage listings</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {listings.map((listing) => (
-                <div key={listing.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium">{listing.name}</h4>
-                      <Badge 
-                        variant={listing.isActive !== false ? "default" : "secondary"}
-                        className={listing.isActive !== false 
-                          ? "bg-green-100 text-green-700 border-green-300" 
-                          : "bg-gray-100 text-gray-600 border-gray-300"
-                        }
-                      >
-                        {listing.isActive !== false ? '✓ Active' : '✗ Inactive'}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      {listing.storageType} • ${listing.basePrice?.toFixed(2)}/day • Min: {listing.minimumBookingDuration || 1} days
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor={`toggle-${listing.id}`} className="text-sm text-gray-600">
-                        {listing.isActive !== false ? 'Active' : 'Inactive'}
-                      </Label>
-                      <Switch
-                        id={`toggle-${listing.id}`}
-                        checked={listing.isActive !== false}
-                        onCheckedChange={() => handleToggleActive(listing.id!, listing.isActive !== false)}
-                        disabled={toggleActiveMutation.isPending}
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(listing.id!)}>
-                        Edit
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDelete(listing.id!)}>
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Storage Listing?</DialogTitle>
+            <DialogDescription>This action cannot be undone. The storage listing will be permanently deleted.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Create/Edit Form */}
-      {selectedKitchenId && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              {editingListingId ? 'Edit Storage Listing' : 'Create New Storage Listing'}
-            </CardTitle>
-            <CardDescription>
-              {selectedKitchen && `For ${selectedKitchen.name}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Step Indicator */}
-            <div className="flex items-center justify-between mb-6">
-              {[1, 2, 3, 4].map((step) => (
-                <div key={step} className="flex items-center flex-1">
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                    step === currentStep ? 'bg-rose-500 text-white' :
-                    step < currentStep ? 'bg-green-500 text-white' :
-                    'bg-gray-200 text-gray-600'
-                  }`}>
-                    {step < currentStep ? <Check className="h-5 w-5" /> : step}
-                  </div>
-                  {step < totalSteps && (
-                    <div className={`flex-1 h-1 mx-2 ${
-                      step < currentStep ? 'bg-green-500' : 'bg-gray-200'
-                    }`} />
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Step 1: Basic Information */}
-            {currentStep === 1 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Basic Information</h3>
-                
-                <div>
-                  <Label htmlFor="name">Listing Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name || ''}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g., Walk-in Freezer - 200 sq ft"
-                    className="mt-2"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description || ''}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Describe the storage space..."
-                    className="mt-2"
-                    rows={4}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="storageType">Storage Type *</Label>
-                  <Select
-                    value={formData.storageType}
-                    onValueChange={(value: 'dry' | 'cold' | 'freezer') => 
-                      setFormData({ ...formData, storageType: value })
-                    }
-                  >
-                    <SelectTrigger id="storageType" className="mt-2">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dry">Dry Storage</SelectItem>
-                      <SelectItem value="cold">Cold Storage</SelectItem>
-                      <SelectItem value="freezer">Freezer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    onClick={() => setCurrentStep(2)}
-                    disabled={!formData.name || !formData.storageType}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Pricing - Simplified Daily Rate */}
-            {currentStep === 2 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Pricing</h3>
-                
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <div className="flex items-start gap-2">
-                    <Info className="h-5 w-5 text-blue-500 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Simple Daily Pricing</p>
-                      <p className="text-sm text-blue-600">
-                        Set a daily rate and minimum rental period. Chefs will be charged the same daily rate 
-                        whether they book for 7 days or 30 days.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="basePrice">Daily Rate (CAD) *</Label>
-                  <p className="text-sm text-gray-500 mb-2">Amount charged per day of storage rental</p>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500">$</span>
-                    </div>
-                    <Input
-                      id="basePrice"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.basePrice || ''}
-                      onChange={(e) => setFormData({ ...formData, basePrice: parseFloat(e.target.value) || 0 })}
-                      placeholder="15.00"
-                      className="pl-7 text-lg"
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Example: $15/day × 7 days = $105 total
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="minimumBookingDuration">Minimum Rental Period (Days) *</Label>
-                  <p className="text-sm text-gray-500 mb-2">Chefs cannot book for less than this many days</p>
-                  <Input
-                    id="minimumBookingDuration"
-                    type="number"
-                    min="1"
-                    value={formData.minimumBookingDuration || 1}
-                    onChange={(e) => setFormData({ ...formData, minimumBookingDuration: parseInt(e.target.value) || 1 })}
-                    className="text-lg"
-                    placeholder="7"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Common minimums: 1 day (flexible), 7 days (weekly), 30 days (monthly)
-                  </p>
-                </div>
-
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-green-600" />
-                    <div className="text-sm text-green-800">
-                      <strong>Preview:</strong> ${(formData.basePrice || 0).toFixed(2)}/day with {formData.minimumBookingDuration || 1}-day minimum
-                      {formData.minimumBookingDuration && formData.basePrice && (
-                        <span className="ml-2 text-green-600">
-                          (min booking = ${((formData.basePrice || 0) * (formData.minimumBookingDuration || 1)).toFixed(2)})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                  </Button>
-                  <Button
-                    onClick={() => setCurrentStep(3)}
-                    disabled={!formData.basePrice || formData.basePrice <= 0}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Specifications */}
-            {currentStep === 3 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Physical Specifications</h3>
-                
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label htmlFor="dimensionsLength">Length (ft)</Label>
-                    <Input
-                      id="dimensionsLength"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={formData.dimensionsLength || ''}
-                      onChange={(e) => setFormData({ ...formData, dimensionsLength: parseFloat(e.target.value) || undefined })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="dimensionsWidth">Width (ft)</Label>
-                    <Input
-                      id="dimensionsWidth"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={formData.dimensionsWidth || ''}
-                      onChange={(e) => setFormData({ ...formData, dimensionsWidth: parseFloat(e.target.value) || undefined })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="dimensionsHeight">Height (ft)</Label>
-                    <Input
-                      id="dimensionsHeight"
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={formData.dimensionsHeight || ''}
-                      onChange={(e) => setFormData({ ...formData, dimensionsHeight: parseFloat(e.target.value) || undefined })}
-                      className="mt-2"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="totalVolume">Total Volume (cubic ft)</Label>
-                  <Input
-                    id="totalVolume"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={formData.totalVolume || ''}
-                    onChange={(e) => setFormData({ ...formData, totalVolume: parseFloat(e.target.value) || undefined })}
-                    className="mt-2"
-                    placeholder="Auto-calculated if dimensions provided"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="shelfCount">Shelf Count</Label>
-                    <Input
-                      id="shelfCount"
-                      type="number"
-                      min="0"
-                      value={formData.shelfCount || ''}
-                      onChange={(e) => setFormData({ ...formData, shelfCount: parseInt(e.target.value) || undefined })}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="shelfMaterial">Shelf Material</Label>
-                    <Input
-                      id="shelfMaterial"
-                      value={formData.shelfMaterial || ''}
-                      onChange={(e) => setFormData({ ...formData, shelfMaterial: e.target.value })}
-                      placeholder="e.g., Stainless steel, Wire"
-                      className="mt-2"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="accessType">Access Type</Label>
-                  <Select
-                    value={formData.accessType || ''}
-                    onValueChange={(value) => setFormData({ ...formData, accessType: value })}
-                  >
-                    <SelectTrigger id="accessType" className="mt-2">
-                      <SelectValue placeholder="Select access type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="walk-in">Walk-in</SelectItem>
-                      <SelectItem value="shelving-unit">Shelving Unit</SelectItem>
-                      <SelectItem value="rack-system">Rack System</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {(formData.storageType === 'cold' || formData.storageType === 'freezer') && (
-                  <>
-                    <div>
-                      <Label htmlFor="temperatureRange">Temperature Range</Label>
-                      <Input
-                        id="temperatureRange"
-                        value={formData.temperatureRange || ''}
-                        onChange={(e) => setFormData({ ...formData, temperatureRange: e.target.value })}
-                        placeholder="e.g., 35-40°F"
-                        className="mt-2"
-                      />
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="climateControl"
-                        checked={formData.climateControl || false}
-                        onCheckedChange={(checked) => setFormData({ ...formData, climateControl: checked as boolean })}
-                      />
-                      <Label htmlFor="climateControl" className="cursor-pointer">Climate Controlled</Label>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="humidityControl"
-                        checked={formData.humidityControl || false}
-                        onCheckedChange={(checked) => setFormData({ ...formData, humidityControl: checked as boolean })}
-                      />
-                      <Label htmlFor="humidityControl" className="cursor-pointer">Humidity Controlled</Label>
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <Label htmlFor="powerOutlets">Power Outlets</Label>
-                  <Input
-                    id="powerOutlets"
-                    type="number"
-                    min="0"
-                    value={formData.powerOutlets || 0}
-                    onChange={(e) => setFormData({ ...formData, powerOutlets: parseInt(e.target.value) || 0 })}
-                    className="mt-2"
-                  />
-                </div>
-
-                <div className="flex justify-between gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(2)}>
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                  </Button>
-                  <Button
-                    onClick={() => setCurrentStep(4)}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
-                  >
-                    Next <ChevronRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 4: Additional Details & Save */}
-            {currentStep === 4 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Additional Details</h3>
-                
-                <div>
-                  <Label htmlFor="features">Features</Label>
-                  <div className="mt-2 space-y-2">
-                    {(formData.features || []).map((feature, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input value={feature} readOnly />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeArrayItem('features', index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Input
-                        id="newFeature"
-                        placeholder="Add feature..."
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addArrayItem('features', (e.target as HTMLInputElement).value);
-                            (e.target as HTMLInputElement).value = '';
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const input = document.getElementById('newFeature') as HTMLInputElement;
-                          if (input.value) {
-                            addArrayItem('features', input.value);
-                            input.value = '';
-                          }
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="securityFeatures">Security Features</Label>
-                  <div className="mt-2 space-y-2">
-                    {(formData.securityFeatures || []).map((feature, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input value={feature} readOnly />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeArrayItem('securityFeatures', index)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Input
-                        id="newSecurityFeature"
-                        placeholder="Add security feature..."
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addArrayItem('securityFeatures', (e.target as HTMLInputElement).value);
-                            (e.target as HTMLInputElement).value = '';
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          const input = document.getElementById('newSecurityFeature') as HTMLInputElement;
-                          if (input.value) {
-                            addArrayItem('securityFeatures', input.value);
-                            input.value = '';
-                          }
-                        }}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="insuranceRequired"
-                    checked={formData.insuranceRequired || false}
-                    onCheckedChange={(checked) => setFormData({ ...formData, insuranceRequired: checked as boolean })}
-                  />
-                  <Label htmlFor="insuranceRequired" className="cursor-pointer">Insurance Required</Label>
-                </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <Info className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-blue-900 mb-1">Listing Status</h4>
-                      <p className="text-xs text-blue-800">
-                        New listings are created as "draft" status. Submit for admin approval to make them active.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between gap-3 pt-4 border-t">
-                  <Button variant="outline" onClick={() => setCurrentStep(3)}>
-                    <ChevronLeft className="h-4 w-4 mr-2" /> Previous
-                  </Button>
-                  <Button
-                    onClick={saveListing}
-                    disabled={isSaving}
-                    className="bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white"
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        {editingListingId ? 'Update Listing' : 'Create Listing'}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Empty State */}
-      {!selectedLocationId && (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
-            <p className="text-gray-500">Choose a location to manage storage listings</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {selectedLocationId && !selectedKitchenId && kitchens.length > 0 && (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Kitchen</h3>
-            <p className="text-gray-500">Choose a kitchen to create storage listings</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Confirmation Dialog for Deactivation */}
+      {/* Toggle Confirmation Dialog */}
       <Dialog open={toggleDialogOpen} onOpenChange={setToggleDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Deactivate Storage Listing?</DialogTitle>
-            <DialogDescription>
-              This storage listing will no longer be available for booking. Chefs will not be able to see or book this storage space.
-              <br /><br />
-              You can reactivate it at any time using the toggle switch.
-            </DialogDescription>
+            <DialogDescription>This storage listing will no longer be available for booking. You can reactivate it at any time.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setToggleDialogOpen(false);
-                setPendingToggle(null);
-              }}
-              disabled={toggleActiveMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmToggle}
-              disabled={toggleActiveMutation.isPending}
-            >
-              {toggleActiveMutation.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Deactivating...
-                </>
-              ) : (
-                'Deactivate'
-              )}
+            <Button variant="outline" onClick={() => { setToggleDialogOpen(false); setPendingToggle(null); }} disabled={isToggling}>Cancel</Button>
+            <Button variant="destructive" onClick={() => pendingToggle && doToggleActive(pendingToggle.id, pendingToggle.isActive)} disabled={isToggling}>
+              {isToggling ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Deactivate
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1148,5 +722,3 @@ export default function StorageListingManagement({ embedded = false }: StorageLi
     </div>
   );
 }
-
-

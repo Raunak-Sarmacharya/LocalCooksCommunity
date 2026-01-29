@@ -81,13 +81,37 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
   }
 
   // Validate Connect parameters if provided
-  if (managerConnectAccountId && !applicationFeeAmount) {
-    throw new Error('applicationFeeAmount is required when managerConnectAccountId is provided');
-  }
-  if (applicationFeeAmount && !managerConnectAccountId) {
+  const hasApplicationFee = applicationFeeAmount !== undefined && applicationFeeAmount !== null;
+
+  if (hasApplicationFee && !managerConnectAccountId) {
     throw new Error('managerConnectAccountId is required when applicationFeeAmount is provided');
   }
-  if (applicationFeeAmount && applicationFeeAmount >= amount) {
+  if (managerConnectAccountId && !hasApplicationFee) {
+    // Optional: enforce fee if connect account is present? 
+    // The original code enforced: if (managerConnectAccountId && !applicationFeeAmount) throw...
+    // Let's keep that enforcement if it was there, or adapt.
+    // Original code:
+    // if (managerConnectAccountId && !applicationFeeAmount) throw...
+    // if (applicationFeeAmount && !managerConnectAccountId) throw...
+    // if (applicationFeeAmount && applicationFeeAmount >= amount) throw...
+    
+    // New code from diff:
+    // const hasApplicationFee = applicationFeeAmount !== undefined && applicationFeeAmount !== null;
+    // if (hasApplicationFee && !managerConnectAccountId) throw...
+    // if (hasApplicationFee && applicationFeeAmount < 0) throw...
+    // if (hasApplicationFee && applicationFeeAmount >= amount) throw...
+    // It seems to have REMOVED the check "if (managerConnectAccountId && !applicationFeeAmount)"?
+    // Let's look at the diff again.
+    // -  if (managerConnectAccountId && !applicationFeeAmount) {
+    // -    throw new Error('applicationFeeAmount is required when managerConnectAccountId is provided');
+    // -  }
+    // This block was REMOVED. So I should remove it too.
+  }
+  
+  if (hasApplicationFee && applicationFeeAmount < 0) {
+    throw new Error('Application fee must be 0 or a positive amount');
+  }
+  if (hasApplicationFee && applicationFeeAmount >= amount) {
     throw new Error('Application fee must be less than total amount');
   }
 
@@ -177,15 +201,18 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
       paymentIntentParams.customer = customerId;
     }
 
-    // Add Stripe Connect split payment if manager has Connect account
-    if (managerConnectAccountId && applicationFeeAmount) {
-      paymentIntentParams.application_fee_amount = applicationFeeAmount;
+    // Add Stripe Connect destination if manager has Connect account
+    if (managerConnectAccountId) {
       paymentIntentParams.transfer_data = {
         destination: managerConnectAccountId,
       };
       // Add manager account ID to metadata for tracking
       paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-      paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+
+      if (hasApplicationFee) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        paymentIntentParams.metadata.platform_fee = applicationFeeAmount!.toString();
+      }
     }
 
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
@@ -438,7 +465,12 @@ export async function cancelPaymentIntent(paymentIntentId: string): Promise<Paym
 export async function createRefund(
   paymentIntentId: string,
   amount?: number,
-  reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer'
+  reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer',
+  options?: {
+    reverseTransfer?: boolean;
+    refundApplicationFee?: boolean;
+    metadata?: Record<string, string>;
+  }
 ): Promise<{ id: string; amount: number; status: string; charge: string }> {
   if (!stripe) {
     throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
@@ -467,6 +499,18 @@ export async function createRefund(
       refundParams.amount = amount;
     }
 
+    if (options?.reverseTransfer !== undefined) {
+      refundParams.reverse_transfer = options.reverseTransfer;
+    }
+
+    if (options?.refundApplicationFee !== undefined) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
+    }
+
     const refund = await stripe.refunds.create(refundParams);
 
     if (!refund.charge || typeof refund.charge !== 'string') {
@@ -490,6 +534,99 @@ export async function createRefund(
   } catch (error: any) {
     console.error('Error creating refund:', error);
     throw new Error(`Failed to create refund: ${error.message}`);
+  }
+}
+
+/**
+ * Reverse the transfer (from connected account back to platform) and then refund the charge.
+ * This is required when the manager is liable for the platform fee.
+ */
+export async function reverseTransferAndRefund(
+  paymentIntentId: string,
+  amount: number,
+  reason: 'duplicate' | 'fraudulent' | 'requested_by_customer' = 'requested_by_customer',
+  options?: {
+    reverseTransferAmount?: number;
+    refundApplicationFee?: boolean;
+    metadata?: Record<string, string>;
+    transferMetadata?: Record<string, string>;
+  }
+): Promise<{ refundId: string; refundAmount: number; refundStatus: string; chargeId: string; transferReversalId: string }> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  if (!amount || amount <= 0) {
+    throw new Error('Refund amount must be greater than 0');
+  }
+
+  try {
+    // Retrieve PaymentIntent and expand latest charge
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge'],
+    });
+
+    if (!paymentIntent.latest_charge) {
+      throw new Error('Payment intent has no charge to refund');
+    }
+
+    const charge = typeof paymentIntent.latest_charge === 'string'
+      ? await stripe.charges.retrieve(paymentIntent.latest_charge)
+      : paymentIntent.latest_charge;
+
+    const chargeId = charge.id;
+    const transferId = typeof charge.transfer === 'string'
+      ? charge.transfer
+      : charge.transfer?.id;
+
+    if (!transferId) {
+      throw new Error('No transfer found for this charge to reverse');
+    }
+
+    const reversalAmount = options?.reverseTransferAmount ?? amount;
+    if (reversalAmount <= 0) {
+      throw new Error('Transfer reversal amount must be greater than 0');
+    }
+
+    const reversal = await stripe.transfers.createReversal(transferId, {
+      amount: reversalAmount,
+      metadata: options?.transferMetadata || options?.metadata,
+    });
+
+    const refundParams: any = {
+      charge: chargeId,
+      reason,
+      amount,
+    };
+
+    if (options?.refundApplicationFee !== undefined) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
+    }
+
+    const refund = await stripe.refunds.create(refundParams);
+
+    if (!refund.charge || typeof refund.charge !== 'string') {
+      throw new Error('Refund created but charge ID is missing');
+    }
+
+    if (!refund.status || typeof refund.status !== 'string') {
+      throw new Error('Refund created but status is missing');
+    }
+
+    return {
+      refundId: refund.id,
+      refundAmount: refund.amount,
+      refundStatus: refund.status,
+      chargeId,
+      transferReversalId: reversal.id,
+    };
+  } catch (error: any) {
+    console.error('Error reversing transfer and refunding:', error);
+    throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
   }
 }
 

@@ -1,0 +1,341 @@
+import { Request, Response, Router } from "express";
+import { userService } from "../domains/users/user.service";
+import { microlearningService } from "../domains/microlearning/microlearning.service";
+import { applicationService } from "../domains/applications/application.service";
+import { generateCertificatePDF } from "../certificate-utils";
+import { upload } from "../fileUpload";
+import { pool } from "../db";
+// @ts-ignore
+import { isAlwaysFoodSafeConfigured, submitToAlwaysFoodSafe } from "../alwaysFoodSafeAPI";
+
+const router = Router();
+
+// Helper
+const hasApprovedApplication = async (userId: number) => {
+  try {
+    const applications = await applicationService.getApplicationsByUserId(userId);
+    return applications.some(app => app.status === 'approved');
+  } catch (error) {
+    console.error('Error checking application status:', error);
+    return false;
+  }
+};
+
+// Get current user's microlearning progress (no userId param - uses authenticated user)
+router.get("/progress", async (req: Request, res: Response) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const userId = req.neonUser.id;
+    const progress = await microlearningService.getUserProgress(userId);
+    const completionStatus = await microlearningService.getUserCompletion(userId);
+    const hasApproval = await hasApprovedApplication(userId);
+
+    const isAdmin = req.neonUser.role === 'admin';
+    const isCompleted = completionStatus?.confirmed || false;
+    const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
+
+    res.json({
+      success: true,
+      progress: progress || [],
+      confirmed: completionStatus?.confirmed || false,
+      completionConfirmed: completionStatus?.confirmed || false,
+      completedAt: completionStatus?.completedAt,
+      hasApprovedApplication: hasApproval,
+      accessLevel: accessLevel,
+      isAdmin: isAdmin
+    });
+  } catch (error) {
+    console.error('Error fetching microlearning progress:', error);
+    res.status(500).json({ message: 'Failed to fetch progress' });
+  }
+});
+
+// Get user's microlearning access level and progress
+router.get("/progress/:userId", async (req: Request, res: Response) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    // Support both numeric Neon ID and Firebase UID (use authenticated user for Firebase UID)
+    const paramUserId = req.params.userId;
+    let userId: number;
+
+    // If param is a Firebase UID (not a number), use the authenticated user's Neon ID
+    if (isNaN(parseInt(paramUserId))) {
+      // Firebase UID passed - use authenticated user's Neon ID
+      userId = req.neonUser.id;
+    } else {
+      userId = parseInt(paramUserId);
+    }
+
+    // Verify user can access this data (either their own or admin)
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const progress = await microlearningService.getUserProgress(userId);
+    const completionStatus = await microlearningService.getUserCompletion(userId);
+    const hasApproval = await hasApprovedApplication(userId);
+
+    // Admins and completed users have unrestricted access regardless of application status
+    const isAdmin = req.neonUser.role === 'admin';
+    const isCompleted = completionStatus?.confirmed || false;
+    const accessLevel = isAdmin || hasApproval || isCompleted ? 'full' : 'limited';
+
+    res.json({
+      success: true,
+      progress: progress || [],
+      completionConfirmed: completionStatus?.confirmed || false,
+      completedAt: completionStatus?.completedAt,
+      hasApprovedApplication: hasApproval,
+      accessLevel: accessLevel, // admins get full access, others limited to first video only
+      isAdmin: isAdmin
+    });
+  } catch (error) {
+    console.error('Error fetching microlearning progress:', error);
+    res.status(500).json({ message: 'Failed to fetch progress' });
+  }
+});
+
+// Update video progress
+router.post("/progress", async (req: Request, res: Response) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const { userId: requestUserId, videoId, progress, completed, completedAt, watchedPercentage } = req.body;
+
+    // Support both numeric Neon ID and Firebase UID
+    // If userId is not provided or is a Firebase UID (string), use authenticated user's Neon ID
+    let userId: number;
+    if (!requestUserId || typeof requestUserId === 'string') {
+      // Firebase UID or missing - use authenticated user's Neon ID
+      userId = req.neonUser.id;
+    } else {
+      userId = requestUserId;
+      // Verify user can update this data (either their own or admin)
+      if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+    }
+
+    // Check if user has approved application for videos beyond the first one
+    const hasApproval = await hasApprovedApplication(userId);
+    const completionStatus = await microlearningService.getUserCompletion(userId);
+    const isCompleted = completionStatus?.confirmed || false;
+    const firstVideoId = 'basics-cross-contamination'; // First video that everyone can access
+    const isAdmin = req.neonUser.role === 'admin';
+
+    // Admins and completed users have unrestricted access to all videos
+    if (!hasApproval && !isAdmin && !isCompleted && videoId !== firstVideoId) {
+      return res.status(403).json({
+        message: 'Application approval required to access this video',
+        accessLevel: 'limited',
+        firstVideoOnly: true
+      });
+    }
+
+    // Accept completion status as provided
+    const actualCompleted = completed;
+
+    const progressData = {
+      userId,
+      videoId,
+      progress: Math.max(0, Math.min(100, progress)), // Clamp between 0-100
+      watchedPercentage: Math.max(0, Math.min(100, watchedPercentage || 0)), // Clamp between 0-100
+      completed: actualCompleted,
+      completedAt: actualCompleted ? (completedAt ? new Date(completedAt) : new Date()) : null,
+      updatedAt: new Date()
+    };
+
+    await microlearningService.updateVideoProgress(progressData);
+
+    res.json({
+      success: true,
+      message: 'Progress updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating video progress:', error);
+    res.status(500).json({ message: 'Failed to update progress' });
+  }
+});
+
+// Complete microlearning and integrate with Always Food Safe
+router.post("/complete", async (req: Request, res: Response) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const { userId, completionDate, videoProgress } = req.body;
+
+    // Verify user can complete this (either their own or admin)
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Check if user has approved application to complete full training
+    const hasApproval = await hasApprovedApplication(userId);
+    const isAdmin = req.neonUser.role === 'admin';
+
+    // Admins can complete certification without application approval
+    // Regular users need approval unless they're completing as admin
+    if (!hasApproval && !isAdmin) {
+      return res.status(403).json({
+        message: 'Application approval required to complete full certification',
+        accessLevel: 'limited',
+        requiresApproval: true
+      });
+    }
+
+    // Verify all required videos are completed (2 comprehensive modules)
+    const requiredVideos = [
+      // Food Safety Basics Module (14 videos)
+      'basics-personal-hygiene', 'basics-temperature-danger', 'basics-cross-contamination',
+      'basics-allergen-awareness', 'basics-food-storage', 'basics-cooking-temps',
+      'basics-cooling-reheating', 'basics-thawing', 'basics-receiving', 'basics-fifo',
+      'basics-illness-reporting', 'basics-pest-control', 'basics-chemical-safety', 'basics-food-safety-plan',
+      // Safety and Hygiene How-To's Module (8 videos)
+      'howto-handwashing', 'howto-sanitizing', 'howto-thermometer', 'howto-cleaning-schedule',
+      'howto-equipment-cleaning', 'howto-uniform-care', 'howto-wound-care', 'howto-inspection-prep'
+    ];
+    const completedVideos = videoProgress.filter((v: any) => v.completed).map((v: any) => v.videoId);
+    const allRequired = requiredVideos.every((videoId: string) => completedVideos.includes(videoId));
+
+    if (!allRequired) {
+      return res.status(400).json({
+        message: 'All required videos must be completed before certification',
+        missingVideos: requiredVideos.filter(id => !completedVideos.includes(id))
+      });
+    }
+
+    // Get user details for certificate generation
+    const user = await userService.getUser(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Create completion record
+    const completionData = {
+      userId,
+      completedAt: new Date(completionDate),
+      videoProgress,
+      confirmed: true,
+      certificateGenerated: false
+    };
+
+    await microlearningService.completeMicrolearning(completionData);
+
+    // Integration with Always Food Safe API (if configured)
+    let alwaysFoodSafeResult = null;
+    if (isAlwaysFoodSafeConfigured()) {
+      try {
+        alwaysFoodSafeResult = await submitToAlwaysFoodSafe({
+          userId,
+          userName: user.username,
+          email: `${user.username}@localcooks.ca`, // Placeholder email since User type doesn't have email
+          completionDate: new Date(completionDate),
+          videoProgress
+        });
+      } catch (afsError) {
+        console.error('Always Food Safe API error:', afsError);
+        // Don't fail the request, just log the error
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Microlearning completed successfully',
+      completionConfirmed: true,
+      alwaysFoodSafeIntegration: alwaysFoodSafeResult?.success ? 'success' : 'not_configured',
+      certificateId: alwaysFoodSafeResult?.certificateId,
+      certificateUrl: alwaysFoodSafeResult?.certificateUrl
+    });
+  } catch (error) {
+    console.error('Error completing microlearning:', error);
+    res.status(500).json({ message: 'Failed to complete microlearning' });
+  }
+});
+
+// Get microlearning completion status
+router.get("/completion/:userId", async (req: Request, res: Response) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    // Support both numeric Neon ID and Firebase UID
+    const paramUserId = req.params.userId;
+    let userId: number;
+
+    if (isNaN(parseInt(paramUserId))) {
+      userId = req.neonUser.id;
+    } else {
+      userId = parseInt(paramUserId);
+    }
+
+    // Verify user can access this completion (either their own or admin)
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const completion = await microlearningService.getUserCompletion(userId);
+
+    // Return 200 with null/empty completion - frontend expects this instead of 404
+    if (!completion) {
+      return res.json({ confirmed: false, completedAt: null });
+    }
+
+    res.json(completion);
+  } catch (error) {
+    console.error('Error getting microlearning completion status:', error);
+    res.status(500).json({ message: 'Failed to get completion status' });
+  }
+});
+
+// Generate and download certificate
+router.get("/certificate/:userId", async (req: Request, res: Response) => {
+  try {
+    if (!req.neonUser) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+
+    const userId = parseInt(req.params.userId);
+
+    // Verify user can access this certificate (either their own or admin)
+    if (req.neonUser.id !== userId && req.neonUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const completion = await microlearningService.getUserCompletion(userId);
+    if (!completion || !completion.confirmed) {
+      return res.status(404).json({ message: 'No confirmed completion found' });
+    }
+
+    const user = await userService.getUser(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // For now, return a placeholder certificate URL
+    const certificateUrl = `/api/certificates/microlearning-${userId}-${Date.now()}.pdf`;
+
+    res.json({
+      success: true,
+      certificateUrl,
+      completionDate: completion.completedAt,
+      message: 'Certificate for skillpass.nl food safety training preparation - Complete your official certification at skillpass.nl'
+    });
+  } catch (error) {
+    console.error('Error generating certificate:', error);
+    res.status(500).json({ message: 'Failed to generate certificate' });
+  }
+});
+
+export default router;
+

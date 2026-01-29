@@ -140,8 +140,16 @@ export default function KitchenApplicationForm({
   const { createApplication, refetch } = useChefKitchenApplications();
   const { application, hasApplication, refetch: refetchLocationApp } = useChefKitchenApplicationForLocation(location.id);
 
-  // Get current tier from application or default to 1
-  const currentTier = application?.current_tier ?? 1;
+  // Get current tier from application
+  // If status is 'approved' but still on tier 1, we should effectively be on tier 2 for the form
+  // unless we've reached the max tier (which is currently 2)
+  const dbTier = application?.current_tier ?? 1;
+  const effectiveTier = (application?.status === 'approved' && dbTier < 2)
+    ? dbTier + 1
+    : dbTier;
+
+  // Use effectiveTier for all UI logic, but keep dbTier for submission logic if needed
+  const currentTier = effectiveTier;
   const tierData = (application?.tier_data || {}) as Record<string, any>;
 
   // Fetch location requirements
@@ -426,7 +434,7 @@ export default function KitchenApplicationForm({
     // Section 3 includes file upload
     const section3Progress = () => {
       let filled = 0;
-      let total = 2; // file + expiry date
+      const total = 2; // file + expiry date
       if (foodHandlerFile) filled++;
       if (watchedValues.foodHandlerCertExpiry) filled++;
       return Math.round((filled / total) * 100);
@@ -717,8 +725,8 @@ export default function KitchenApplicationForm({
     );
   }
 
-  // If fully approved (tier 2 completed), show booking option
-  if (hasApplication && application && application.status === "approved" && application.tier2_completed_at) {
+  // If fully approved (Tier 3: current_tier >= 3), show booking option
+  if (hasApplication && application && application.status === "approved" && (application.current_tier ?? 1) >= 3) {
     const statusConfig = {
       approved: {
         icon: Check,

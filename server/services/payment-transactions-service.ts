@@ -5,7 +5,7 @@
  * Provides a single source of truth for all payment-related data.
  */
 
-import type { Pool } from '@neondatabase/serverless';
+import { sql, type SQL } from "drizzle-orm";
 
 export type BookingType = 'kitchen' | 'storage' | 'equipment' | 'bundle';
 export type TransactionStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'canceled' | 'refunded' | 'partially_refunded';
@@ -30,6 +30,7 @@ export interface CreatePaymentTransactionParams {
 export interface UpdatePaymentTransactionParams {
   status?: TransactionStatus;
   stripeStatus?: string;
+  paymentIntentId?: string;
   chargeId?: string;
   refundId?: string;
   refundAmount?: number;
@@ -82,7 +83,7 @@ export interface PaymentTransactionRecord {
  */
 export async function createPaymentTransaction(
   params: CreatePaymentTransactionParams,
-  dbPool: Pool
+  db: any
 ): Promise<PaymentTransactionRecord> {
   const {
     bookingId,
@@ -104,7 +105,7 @@ export async function createPaymentTransaction(
   // Calculate net amount (amount - refund_amount, initially just amount)
   const netAmount = amount;
 
-  const result = await dbPool.query(`
+  const result = await db.execute(sql`
     INSERT INTO payment_transactions (
       booking_id,
       booking_type,
@@ -122,26 +123,26 @@ export async function createPaymentTransaction(
       status,
       stripe_status,
       metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    ) VALUES (
+      ${bookingId},
+      ${bookingType},
+      ${chefId},
+      ${managerId},
+      ${amount.toString()},
+      ${baseAmount.toString()},
+      ${serviceFee.toString()},
+      ${managerRevenue.toString()},
+      '0',
+      ${netAmount.toString()},
+      ${currency},
+      ${paymentIntentId || null},
+      ${paymentMethodId || null},
+      ${status},
+      ${stripeStatus || null},
+      ${JSON.stringify(metadata)}
+    )
     RETURNING *
-  `, [
-    bookingId,
-    bookingType,
-    chefId,
-    managerId,
-    amount.toString(),
-    baseAmount.toString(),
-    serviceFee.toString(),
-    managerRevenue.toString(),
-    '0', // refund_amount
-    netAmount.toString(),
-    currency,
-    paymentIntentId || null,
-    paymentMethodId || null,
-    status,
-    stripeStatus || null,
-    JSON.stringify(metadata),
-  ]);
+  `);
 
   const record = result.rows[0] as PaymentTransactionRecord;
 
@@ -156,7 +157,7 @@ export async function createPaymentTransaction(
       description: `Payment transaction created for ${bookingType} booking ${bookingId}`,
       metadata: { initialAmount: amount, baseAmount, serviceFee, managerRevenue },
     },
-    dbPool
+    db
   );
 
   return record;
@@ -168,213 +169,172 @@ export async function createPaymentTransaction(
 export async function updatePaymentTransaction(
   transactionId: number,
   params: UpdatePaymentTransactionParams,
-  dbPool: Pool
+  db: any
 ): Promise<PaymentTransactionRecord | null> {
   // Get current transaction to track status changes
-  const currentResult = await dbPool.query(`
+  const currentResult = await db.execute(sql`
     SELECT status, refund_amount, amount
     FROM payment_transactions
-    WHERE id = $1
-  `, [transactionId]);
+    WHERE id = ${transactionId}
+  `);
 
   if (currentResult.rows.length === 0) {
     return null;
   }
 
-  const current = currentResult.rows[0];
+  const current: any = currentResult.rows[0];
   const previousStatus = current.status as TransactionStatus;
   const currentRefundAmount = parseFloat(current.refund_amount || '0');
   const currentAmount = parseFloat(current.amount || '0');
 
   // Build update query dynamically
-  const updates: string[] = [];
-  const values: any[] = [];
-  let paramIndex = 1;
+  const updates: SQL[] = [];
 
   if (params.status !== undefined) {
-    updates.push(`status = $${paramIndex}`);
-    values.push(params.status);
-    paramIndex++;
+    updates.push(sql`status = ${params.status}`);
   }
 
   if (params.stripeStatus !== undefined) {
-    updates.push(`stripe_status = $${paramIndex}`);
-    values.push(params.stripeStatus);
-    paramIndex++;
+    updates.push(sql`stripe_status = ${params.stripeStatus}`);
   }
 
   if (params.chargeId !== undefined) {
-    updates.push(`charge_id = $${paramIndex}`);
-    values.push(params.chargeId);
-    paramIndex++;
+    updates.push(sql`charge_id = ${params.chargeId}`);
   }
 
   if (params.refundId !== undefined) {
-    updates.push(`refund_id = $${paramIndex}`);
-    values.push(params.refundId);
-    paramIndex++;
+    updates.push(sql`refund_id = ${params.refundId}`);
   }
 
   if (params.refundAmount !== undefined) {
-    updates.push(`refund_amount = $${paramIndex}`);
-    values.push(params.refundAmount.toString());
-    paramIndex++;
-    
+    updates.push(sql`refund_amount = ${params.refundAmount.toString()}`);
+
     // Update net_amount = amount - refund_amount
     const newRefundAmount = params.refundAmount;
     const netAmount = currentAmount - newRefundAmount;
-    updates.push(`net_amount = $${paramIndex}`);
-    values.push(netAmount.toString());
-    paramIndex++;
+    updates.push(sql`net_amount = ${netAmount.toString()}`);
   }
 
   if (params.refundReason !== undefined) {
-    updates.push(`refund_reason = $${paramIndex}`);
-    values.push(params.refundReason);
-    paramIndex++;
+    updates.push(sql`refund_reason = ${params.refundReason}`);
   }
 
   if (params.failureReason !== undefined) {
-    updates.push(`failure_reason = $${paramIndex}`);
-    values.push(params.failureReason);
-    paramIndex++;
+    updates.push(sql`failure_reason = ${params.failureReason}`);
   }
 
   if (params.paidAt !== undefined) {
-    updates.push(`paid_at = $${paramIndex}`);
-    values.push(params.paidAt);
-    paramIndex++;
+    updates.push(sql`paid_at = ${params.paidAt}`);
   }
 
   if (params.refundedAt !== undefined) {
-    updates.push(`refunded_at = $${paramIndex}`);
-    values.push(params.refundedAt);
-    paramIndex++;
+    updates.push(sql`refunded_at = ${params.refundedAt}`);
   }
 
   if (params.lastSyncedAt !== undefined) {
-    updates.push(`last_synced_at = $${paramIndex}`);
-    values.push(params.lastSyncedAt);
-    paramIndex++;
+    updates.push(sql`last_synced_at = ${params.lastSyncedAt}`);
   }
 
   if (params.webhookEventId !== undefined) {
-    updates.push(`webhook_event_id = $${paramIndex}`);
-    values.push(params.webhookEventId);
-    paramIndex++;
+    updates.push(sql`webhook_event_id = ${params.webhookEventId}`);
   }
 
   // Handle Stripe-synced amounts (override calculated amounts with actual Stripe amounts)
   if (params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) {
     // If Stripe amounts are provided, update the transaction amounts with actual Stripe values
     // This ensures all amounts match what Stripe shows
-    
+
     if (params.stripeAmount !== undefined) {
-      updates.push(`amount = $${paramIndex}`);
-      values.push(params.stripeAmount.toString());
-      paramIndex++;
+      updates.push(sql`amount = ${params.stripeAmount.toString()}`);
     }
-    
+
     if (params.stripeNetAmount !== undefined) {
       // Net amount is what manager actually receives after all fees
-      updates.push(`net_amount = $${paramIndex}`);
-      values.push(params.stripeNetAmount.toString());
-      paramIndex++;
-      
+      updates.push(sql`net_amount = ${params.stripeNetAmount.toString()}`);
+
       // Update manager_revenue to match Stripe net amount (what manager actually receives)
       // This ensures manager_revenue reflects actual Stripe payout
-      updates.push(`manager_revenue = $${paramIndex}`);
-      values.push(params.stripeNetAmount.toString());
-      paramIndex++;
+      updates.push(sql`manager_revenue = ${params.stripeNetAmount.toString()}`);
     }
-    
+
+    // Store actual Stripe processing fee in dedicated column
+    if (params.stripeProcessingFee !== undefined) {
+      updates.push(sql`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
+    }
+
     // Update service_fee (platform fee) with actual Stripe platform fee
     // For Stripe Connect: platform fee = application_fee_amount (explicitly set)
     // Platform fee is what goes to the platform, not including Stripe processing fees
     if (params.stripePlatformFee !== undefined && params.stripePlatformFee > 0) {
       // Use the explicit platform fee from Stripe (application fee)
-      updates.push(`service_fee = $${paramIndex}`);
-      values.push(params.stripePlatformFee.toString());
-      paramIndex++;
+      updates.push(sql`service_fee = ${params.stripePlatformFee.toString()}`);
     } else if (params.stripeAmount !== undefined && params.stripeNetAmount !== undefined) {
       // Fallback: calculate platform fee as difference
       // But this includes processing fees, so we need to subtract processing fee
       const totalFees = params.stripeAmount - params.stripeNetAmount;
       const processingFee = params.stripeProcessingFee || 0;
       const actualPlatformFee = Math.max(0, totalFees - processingFee);
-      updates.push(`service_fee = $${paramIndex}`);
-      values.push(actualPlatformFee.toString());
-      paramIndex++;
+      updates.push(sql`service_fee = ${actualPlatformFee.toString()}`);
     }
-    
+
     // Update base_amount: for Stripe Connect, base = amount - platform fee
     // This represents the amount before platform fee is deducted
     if (params.stripeAmount !== undefined) {
-      const platformFee = params.stripePlatformFee || 
+      const platformFee = params.stripePlatformFee ||
         (params.stripeAmount !== undefined && params.stripeNetAmount !== undefined
           ? Math.max(0, (params.stripeAmount - params.stripeNetAmount) - (params.stripeProcessingFee || 0))
           : 0);
       const baseAmount = params.stripeAmount - platformFee;
-      updates.push(`base_amount = $${paramIndex}`);
-      values.push(baseAmount.toString());
-      paramIndex++;
+      updates.push(sql`base_amount = ${baseAmount.toString()}`);
     }
-    
+
     // Store Stripe fees in metadata for reference
-    const currentMetadataResult = await dbPool.query(`
-      SELECT metadata FROM payment_transactions WHERE id = $1
-    `, [transactionId]);
-    const currentMetadata = currentMetadataResult.rows[0]?.metadata 
-      ? (typeof currentMetadataResult.rows[0].metadata === 'string' 
-          ? JSON.parse(currentMetadataResult.rows[0].metadata) 
-          : currentMetadataResult.rows[0].metadata)
+    const currentMetadataResult = await db.execute(sql`
+      SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
+    `);
+    const currentMetadata = currentMetadataResult.rows[0]?.metadata
+      ? (typeof currentMetadataResult.rows[0].metadata === 'string'
+        ? JSON.parse(currentMetadataResult.rows[0].metadata)
+        : currentMetadataResult.rows[0].metadata)
       : {};
-    
+
     const stripeFees = {
       processingFee: params.stripeProcessingFee || 0,
       platformFee: params.stripePlatformFee || 0,
       syncedAt: new Date().toISOString(),
     };
-    
+
     const updatedMetadata = {
       ...currentMetadata,
       stripeFees,
     };
-    
-    updates.push(`metadata = $${paramIndex}`);
-    values.push(JSON.stringify(updatedMetadata));
-    paramIndex++;
+
+    updates.push(sql`metadata = ${JSON.stringify(updatedMetadata)}`);
   } else if (params.metadata !== undefined) {
-    updates.push(`metadata = $${paramIndex}`);
-    values.push(JSON.stringify(params.metadata));
-    paramIndex++;
+    updates.push(sql`metadata = ${JSON.stringify(params.metadata)}`);
   }
 
   if (updates.length === 0) {
     // No updates to make
-    const result = await dbPool.query(`
-      SELECT * FROM payment_transactions WHERE id = $1
-    `, [transactionId]);
+    const result = await db.execute(sql`
+      SELECT * FROM payment_transactions WHERE id = ${transactionId}
+    `);
     return result.rows[0] as PaymentTransactionRecord | null;
   }
 
-  // Add transaction ID to values
-  values.push(transactionId);
-
-  const updateQuery = `
+  const result = await db.execute(sql`
     UPDATE payment_transactions
-    SET ${updates.join(', ')}, updated_at = NOW()
-    WHERE id = $${paramIndex}
+    SET ${sql.join(updates, sql`, `)}, updated_at = NOW()
+    WHERE id = ${transactionId}
     RETURNING *
-  `;
+  `);
 
-  const result = await dbPool.query(updateQuery, values);
   const updated = result.rows[0] as PaymentTransactionRecord;
 
   // Track status change in history
   if (params.status !== undefined && params.status !== previousStatus) {
     const historyMetadata: any = { ...(params.metadata || {}) };
-    
+
     // Include Stripe amounts in history if they were synced
     if (params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) {
       historyMetadata.stripeAmounts = {
@@ -385,7 +345,7 @@ export async function updatePaymentTransaction(
         syncedAt: new Date().toISOString(),
       };
     }
-    
+
     await addPaymentHistory(
       transactionId,
       {
@@ -397,10 +357,10 @@ export async function updatePaymentTransaction(
         stripeEventId: params.webhookEventId,
         metadata: historyMetadata,
       },
-      dbPool
+      db
     );
   }
-  
+
   // Track Stripe amount sync in history (separate from status change)
   if ((params.stripeAmount !== undefined || params.stripeNetAmount !== undefined) && params.status === undefined) {
     await addPaymentHistory(
@@ -422,7 +382,7 @@ export async function updatePaymentTransaction(
           },
         },
       },
-      dbPool
+      db
     );
   }
 
@@ -443,7 +403,7 @@ export async function updatePaymentTransaction(
           refundId: params.refundId,
         },
       },
-      dbPool
+      db
     );
   }
 
@@ -462,11 +422,11 @@ export async function syncStripeAmountsToBookings(
     stripeProcessingFee: number;
     stripePlatformFee: number;
   },
-  dbPool: Pool
+  db: any
 ): Promise<void> {
   try {
     // Find the payment transaction
-    const transactionResult = await dbPool.query(`
+    const transactionResult = await db.execute(sql`
       SELECT 
         pt.id,
         pt.booking_id,
@@ -476,48 +436,48 @@ export async function syncStripeAmountsToBookings(
         pt.amount as current_amount,
         pt.manager_revenue as current_manager_revenue
       FROM payment_transactions pt
-      WHERE pt.payment_intent_id = $1
-    `, [paymentIntentId]);
+      WHERE pt.payment_intent_id = ${paymentIntentId}
+    `);
 
     if (transactionResult.rows.length === 0) {
       console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
       return;
     }
 
-    const transaction = transactionResult.rows[0];
+    const transaction: any = transactionResult.rows[0];
     const bookingId = transaction.booking_id;
     const bookingType = transaction.booking_type;
 
     // For bundle bookings, we need to get all related bookings
     if (bookingType === 'bundle') {
       // Get kitchen booking
-      const kitchenBooking = await dbPool.query(`
+      const kitchenBooking = await db.execute(sql`
         SELECT id, total_price, service_fee
         FROM kitchen_bookings
-        WHERE id = $1
-      `, [bookingId]);
+        WHERE id = ${bookingId}
+      `);
 
       // Get storage bookings
-      const storageBookings = await dbPool.query(`
+      const storageBookings = await db.execute(sql`
         SELECT id, total_price, service_fee
         FROM storage_bookings
-        WHERE kitchen_booking_id = $1
-      `, [bookingId]);
+        WHERE kitchen_booking_id = ${bookingId}
+      `);
 
       // Get equipment bookings
-      const equipmentBookings = await dbPool.query(`
+      const equipmentBookings = await db.execute(sql`
         SELECT id, total_price, service_fee
         FROM equipment_bookings
-        WHERE kitchen_booking_id = $1
-      `, [bookingId]);
+        WHERE kitchen_booking_id = ${bookingId}
+      `);
 
       // Calculate total base amount from all bookings
       let totalBaseAmount = parseFloat(transaction.base_amount || '0');
       if (totalBaseAmount === 0) {
         // Calculate from bookings if not available
         const kbAmount = parseFloat(kitchenBooking.rows[0]?.total_price || '0');
-        const sbAmount = storageBookings.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || '0'), 0);
-        const ebAmount = equipmentBookings.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || '0'), 0);
+        const sbAmount = storageBookings.rows.reduce((sum: number, sb: any) => sum + parseFloat(sb.total_price || '0'), 0);
+        const ebAmount = equipmentBookings.rows.reduce((sum: number, eb: any) => sum + parseFloat(eb.total_price || '0'), 0);
         totalBaseAmount = kbAmount + sbAmount + ebAmount;
       }
 
@@ -533,52 +493,44 @@ export async function syncStripeAmountsToBookings(
         const kbServiceFee = stripeAmounts.stripePlatformFee > 0
           ? Math.round(stripeAmounts.stripePlatformFee * kbProportion)
           : Math.round((kbStripeAmount - kbStripeNet) * 0.5); // Estimate if no platform fee
-        
-        await dbPool.query(`
+
+        await db.execute(sql`
           UPDATE kitchen_bookings
           SET 
-            total_price = $1,
-            service_fee = $2,
+            total_price = ${kbStripeAmount.toString()},
+            service_fee = ${kbServiceFee.toString()},
             updated_at = NOW()
-          WHERE id = $3
-        `, [
-          kbStripeAmount.toString(),
-          kbServiceFee.toString(),
-          bookingId
-        ]);
+          WHERE id = ${bookingId}
+        `);
       }
 
       // Update storage bookings proportionally
       for (const sb of storageBookings.rows) {
-        const sbBase = parseFloat(sb.total_price || '0');
+        const sbBase = parseFloat((sb as any).total_price || '0');
         if (totalBaseAmount > 0 && sbBase > 0) {
           const sbProportion = sbBase / totalBaseAmount;
           const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
           const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
-          
+
           // Calculate service fee proportionally
           const sbServiceFee = stripeAmounts.stripePlatformFee > 0
             ? Math.round(stripeAmounts.stripePlatformFee * sbProportion)
             : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
 
-          await dbPool.query(`
+          await db.execute(sql`
             UPDATE storage_bookings
             SET 
-              total_price = $1,
-              service_fee = $2,
+              total_price = ${sbStripeAmount.toString()},
+              service_fee = ${sbServiceFee.toString()},
               updated_at = NOW()
-            WHERE id = $3
-          `, [
-            sbStripeAmount.toString(),
-            sbServiceFee.toString(),
-            sb.id
-          ]);
+            WHERE id = ${(sb as any).id}
+          `);
         }
       }
 
       // Update equipment bookings proportionally
       for (const eb of equipmentBookings.rows) {
-        const ebBase = parseFloat(eb.total_price || '0');
+        const ebBase = parseFloat((eb as any).total_price || '0');
         if (totalBaseAmount > 0 && ebBase > 0) {
           const ebProportion = ebBase / totalBaseAmount;
           const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
@@ -588,19 +540,15 @@ export async function syncStripeAmountsToBookings(
           const ebServiceFee = stripeAmounts.stripePlatformFee > 0
             ? Math.round(stripeAmounts.stripePlatformFee * ebProportion)
             : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
-          
-          await dbPool.query(`
+
+          await db.execute(sql`
             UPDATE equipment_bookings
             SET 
-              total_price = $1,
-              service_fee = $2,
+              total_price = ${ebStripeAmount.toString()},
+              service_fee = ${ebServiceFee.toString()},
               updated_at = NOW()
-            WHERE id = $3
-          `, [
-            ebStripeAmount.toString(),
-            ebServiceFee.toString(),
-            eb.id
-          ]);
+            WHERE id = ${(eb as any).id}
+          `);
         }
       }
     } else {
@@ -610,46 +558,34 @@ export async function syncStripeAmountsToBookings(
       const serviceFee = stripeAmounts.stripePlatformFee > 0
         ? stripeAmounts.stripePlatformFee
         : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
-      
+
       if (bookingType === 'kitchen') {
-        await dbPool.query(`
+        await db.execute(sql`
           UPDATE kitchen_bookings
           SET 
-            total_price = $1,
-            service_fee = $2,
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
             updated_at = NOW()
-          WHERE id = $3
-        `, [
-          stripeAmounts.stripeAmount.toString(),
-          serviceFee.toString(),
-          bookingId
-        ]);
+          WHERE id = ${bookingId}
+        `);
       } else if (bookingType === 'storage') {
-        await dbPool.query(`
+        await db.execute(sql`
           UPDATE storage_bookings
           SET 
-            total_price = $1,
-            service_fee = $2,
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
             updated_at = NOW()
-          WHERE id = $3
-        `, [
-          stripeAmounts.stripeAmount.toString(),
-          serviceFee.toString(),
-          bookingId
-        ]);
+          WHERE id = ${bookingId}
+        `);
       } else if (bookingType === 'equipment') {
-        await dbPool.query(`
+        await db.execute(sql`
           UPDATE equipment_bookings
           SET 
-            total_price = $1,
-            service_fee = $2,
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
             updated_at = NOW()
-          WHERE id = $3
-        `, [
-          stripeAmounts.stripeAmount.toString(),
-          serviceFee.toString(),
-          bookingId
-        ]);
+          WHERE id = ${bookingId}
+        `);
       }
     }
 
@@ -666,7 +602,7 @@ export async function syncStripeAmountsToBookings(
  */
 export async function syncExistingPaymentTransactionsFromStripe(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   options?: {
     limit?: number; // Limit number of transactions to sync (default: all)
     onlyUnsynced?: boolean; // Only sync transactions that haven't been synced yet (default: true)
@@ -681,13 +617,13 @@ export async function syncExistingPaymentTransactionsFromStripe(
   // The error shows it's looking for '/var/task/server/services/stripe-service' (no .js)
   // So we try without extension first, then with extension
   let getStripePaymentAmounts: any;
-  
+
   const importPaths = [
     './stripe-service',           // Path 1: Relative without extension (works in some builds)
     './stripe-service.js',       // Path 2: Relative with .js extension (standard)
     '../server/services/stripe-service.js', // Path 3: From api/ perspective
   ];
-  
+
   let lastError: Error | null = null;
   for (const importPath of importPaths) {
     try {
@@ -701,18 +637,26 @@ export async function syncExistingPaymentTransactionsFromStripe(
       continue; // Try next path
     }
   }
-  
+
   if (!getStripePaymentAmounts) {
     console.error('[Stripe Sync] Failed to import stripe-service from all paths:', importPaths);
     throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || 'Unknown'}`);
   }
-  
+
   const limit = options?.limit || 1000;
   const onlyUnsynced = options?.onlyUnsynced !== false; // Default to true
-  
+
   try {
     // Find payment transactions that need syncing
-    let query = `
+    const params: any[] = [managerId];
+
+    // Build the query using sql
+    // Only sync transactions that haven't been synced or need re-syncing
+    const unsyncedFilter = onlyUnsynced
+      ? sql` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)`
+      : sql``;
+
+    const result = await db.execute(sql`
       SELECT 
         pt.id,
         pt.payment_intent_id,
@@ -726,66 +670,58 @@ export async function syncExistingPaymentTransactionsFromStripe(
       WHERE pt.payment_intent_id IS NOT NULL
         AND pt.status IN ('succeeded', 'processing')
         AND (
-          pt.manager_id = $1 
+          pt.manager_id = ${managerId} 
           OR EXISTS (
             SELECT 1 FROM kitchen_bookings kb
             JOIN kitchens k ON kb.kitchen_id = k.id
             JOIN locations l ON k.location_id = l.id
             WHERE kb.id = pt.booking_id 
-              AND l.manager_id = $1
+              AND l.manager_id = ${managerId}
           )
         )
-    `;
-    
-    const params: any[] = [managerId];
-    
-    // Only sync transactions that haven't been synced or need re-syncing
-    if (onlyUnsynced) {
-      query += ` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)`;
-    }
-    
-    query += ` ORDER BY pt.created_at DESC LIMIT $${params.length + 1}`;
-    params.push(limit);
-    
-    const result = await dbPool.query(query, params);
+      ${unsyncedFilter}
+      ORDER BY pt.created_at DESC
+      LIMIT ${limit}
+    `);
+
     const transactions = result.rows;
-    
+
     console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
-    
+
     let synced = 0;
     let failed = 0;
     const errors: Array<{ paymentIntentId: string; error: string }> = [];
-    
-    for (const transaction of transactions) {
+
+    for (const transaction of transactions as any[]) {
       const paymentIntentId = transaction.payment_intent_id;
       if (!paymentIntentId) continue;
-      
+
       try {
         // Get manager's Stripe Connect account ID if available
         let managerConnectAccountId: string | undefined;
         try {
-          const managerResult = await dbPool.query(`
+          const managerResult = await db.execute(sql`
             SELECT stripe_connect_account_id 
             FROM users 
-            WHERE id = $1 AND stripe_connect_account_id IS NOT NULL
-          `, [transaction.manager_id || managerId]);
+            WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
+          `);
           if (managerResult.rows.length > 0) {
-            managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
+            managerConnectAccountId = (managerResult.rows[0] as any).stripe_connect_account_id;
           }
         } catch (error) {
           console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
         }
-        
+
         // Fetch actual Stripe amounts
         const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
-        
+
         if (!stripeAmounts) {
           console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
           failed++;
           errors.push({ paymentIntentId, error: 'Could not fetch Stripe amounts' });
           continue;
         }
-        
+
         // Update payment transaction with Stripe amounts
         await updatePaymentTransaction(transaction.id, {
           stripeAmount: stripeAmounts.stripeAmount,
@@ -793,11 +729,11 @@ export async function syncExistingPaymentTransactionsFromStripe(
           stripeProcessingFee: stripeAmounts.stripeProcessingFee,
           stripePlatformFee: stripeAmounts.stripePlatformFee,
           lastSyncedAt: new Date(),
-        }, dbPool);
-        
+        }, db);
+
         // Sync to booking tables
-        await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, dbPool);
-        
+        await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db);
+
         synced++;
         console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
       } catch (error: any) {
@@ -806,9 +742,9 @@ export async function syncExistingPaymentTransactionsFromStripe(
         errors.push({ paymentIntentId, error: error.message || 'Unknown error' });
       }
     }
-    
+
     console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
-    
+
     return { synced, failed, errors };
   } catch (error: any) {
     console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
@@ -821,13 +757,29 @@ export async function syncExistingPaymentTransactionsFromStripe(
  */
 export async function findPaymentTransactionByIntentId(
   paymentIntentId: string,
-  dbPool: Pool
+  db: any
 ): Promise<PaymentTransactionRecord | null> {
-  const result = await dbPool.query(`
+  const result = await db.execute(sql`
     SELECT * FROM payment_transactions
-    WHERE payment_intent_id = $1
+    WHERE payment_intent_id = ${paymentIntentId}
     LIMIT 1
-  `, [paymentIntentId]);
+  `);
+
+  return result.rows[0] as PaymentTransactionRecord | null;
+}
+
+/**
+ * Find payment transaction by ID
+ */
+export async function findPaymentTransactionById(
+  transactionId: number,
+  db: any
+): Promise<PaymentTransactionRecord | null> {
+  const result = await db.execute(sql`
+    SELECT * FROM payment_transactions
+    WHERE id = ${transactionId}
+    LIMIT 1
+  `);
 
   return result.rows[0] as PaymentTransactionRecord | null;
 }
@@ -838,14 +790,32 @@ export async function findPaymentTransactionByIntentId(
 export async function findPaymentTransactionByBooking(
   bookingId: number,
   bookingType: BookingType,
-  dbPool: Pool
+  db: any
 ): Promise<PaymentTransactionRecord | null> {
-  const result = await dbPool.query(`
+  const result = await db.execute(sql`
     SELECT * FROM payment_transactions
-    WHERE booking_id = $1 AND booking_type = $2
+    WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
     ORDER BY created_at DESC
     LIMIT 1
-  `, [bookingId, bookingType]);
+  `);
+
+  return result.rows[0] as PaymentTransactionRecord | null;
+}
+
+/**
+ * Find payment transaction by metadata key-value pair
+ */
+export async function findPaymentTransactionByMetadata(
+  metadataKey: string,
+  metadataValue: string,
+  db: any
+): Promise<PaymentTransactionRecord | null> {
+  const result = await db.execute(sql`
+    SELECT * FROM payment_transactions
+    WHERE metadata->>${metadataKey} = ${metadataValue}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
 
   return result.rows[0] as PaymentTransactionRecord | null;
 }
@@ -865,9 +835,9 @@ export async function addPaymentHistory(
     metadata?: Record<string, any>;
     createdBy?: number;
   },
-  dbPool: Pool
+  db: any
 ): Promise<void> {
-  await dbPool.query(`
+  await db.execute(sql`
     INSERT INTO payment_history (
       transaction_id,
       previous_status,
@@ -878,18 +848,18 @@ export async function addPaymentHistory(
       description,
       metadata,
       created_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-  `, [
-    transactionId,
-    history.previousStatus,
-    history.newStatus,
-    history.eventType,
-    history.eventSource || 'system',
-    history.stripeEventId || null,
-    history.description || null,
-    JSON.stringify(history.metadata || {}),
-    history.createdBy || null,
-  ]);
+    ) VALUES (
+      ${transactionId},
+      ${history.previousStatus},
+      ${history.newStatus},
+      ${history.eventType},
+      ${history.eventSource || 'system'},
+      ${history.stripeEventId || null},
+      ${history.description || null},
+      ${JSON.stringify(history.metadata || {})},
+      ${history.createdBy || null}
+    )
+  `);
 }
 
 /**
@@ -897,13 +867,13 @@ export async function addPaymentHistory(
  */
 export async function getPaymentHistory(
   transactionId: number,
-  dbPool: Pool
+  db: any
 ): Promise<any[]> {
-  const result = await dbPool.query(`
+  const result = await db.execute(sql`
     SELECT * FROM payment_history
-    WHERE transaction_id = $1
+    WHERE transaction_id = ${transactionId}
     ORDER BY created_at ASC
-  `, [transactionId]);
+  `);
 
   return result.rows;
 }
@@ -913,7 +883,7 @@ export async function getPaymentHistory(
  */
 export async function getManagerPaymentTransactions(
   managerId: number,
-  dbPool: Pool,
+  db: any,
   filters?: {
     status?: TransactionStatus;
     startDate?: Date;
@@ -922,50 +892,48 @@ export async function getManagerPaymentTransactions(
     offset?: number;
   }
 ): Promise<{ transactions: PaymentTransactionRecord[]; total: number }> {
-  let whereClause = 'WHERE manager_id = $1';
-  const params: any[] = [managerId];
-  let paramIndex = 2;
+  // Build WHERE clause dynamically
+  const whereConditions = [sql`manager_id = ${managerId}`];
 
   if (filters?.status) {
-    whereClause += ` AND status = $${paramIndex}`;
-    params.push(filters.status);
-    paramIndex++;
+    whereConditions.push(sql`status = ${filters.status}`);
   }
 
   // For date filtering, use paidAt for succeeded transactions (when payment was captured)
   // and created_at for pending/processing transactions (when booking was made)
   if (filters?.startDate) {
-    whereClause += ` AND (
-      (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= $${paramIndex})
-      OR (status != 'succeeded' AND created_at >= $${paramIndex})
-    )`;
-    params.push(filters.startDate);
-    paramIndex++;
+    whereConditions.push(sql`
+      (
+        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
+        OR (status != 'succeeded' AND created_at >= ${filters.startDate})
+      )
+    `);
   }
 
   if (filters?.endDate) {
-    whereClause += ` AND (
-      (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= $${paramIndex})
-      OR (status != 'succeeded' AND created_at <= $${paramIndex})
-    )`;
-    params.push(filters.endDate);
-    paramIndex++;
+    whereConditions.push(sql`
+      (
+        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
+        OR (status != 'succeeded' AND created_at <= ${filters.endDate})
+      )
+    `);
   }
 
+  const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
+
   // Get total count
-  const countResult = await dbPool.query(`
+  const countResult = await db.execute(sql`
     SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
-  `, params);
-  const total = parseInt(countResult.rows[0].total);
+  `);
+  const total = parseInt((countResult.rows[0] as any).total);
 
   // Get transactions
   const limit = filters?.limit || 50;
   const offset = filters?.offset || 0;
-  params.push(limit, offset);
 
   // Order by paid_at for succeeded transactions, created_at for others
   // This ensures captured payments appear in chronological order
-  const result = await dbPool.query(`
+  const result = await db.execute(sql`
     SELECT * FROM payment_transactions
     ${whereClause}
     ORDER BY 
@@ -974,8 +942,8 @@ export async function getManagerPaymentTransactions(
         THEN paid_at 
         ELSE created_at 
       END DESC
-    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-  `, params);
+    LIMIT ${limit} OFFSET ${offset}
+  `);
 
   return {
     transactions: result.rows as PaymentTransactionRecord[],

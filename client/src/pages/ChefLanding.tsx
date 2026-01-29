@@ -7,15 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import FadeInSection from "@/components/ui/FadeInSection";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
-import { 
-  ChefHat, Clock, Users, Target, Utensils, 
+import {
+  ChefHat, Clock, Users, Target, Utensils,
   Building2, ArrowRight, CheckCircle2, Check, X, Sparkles,
   Heart, Rocket, Star, Zap, Shield, MessageCircle,
   CreditCard, Truck, Instagram, Phone, Calendar, ChevronLeft, ChevronRight,
   HeartHandshake, HandCoins
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { KitchenLocationCard } from "@/components/chef-landing/KitchenLocationCard";
 import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import chefImage from "@/assets/chef-cooking.png";
@@ -101,15 +102,15 @@ function ParallaxIcon({
 
   // Subtle scale breathing effect for depth
   const scale = useTransform(
-    scrollYProgress, 
-    [0, 0.5, 1], 
+    scrollYProgress,
+    [0, 0.5, 1],
     [0.95, 1.02, 0.98]
   );
 
   // Hide breakpoint classes
-  const hideClass = hideOn === 'mobile' ? 'hidden sm:block' : 
-                    hideOn === 'tablet' ? 'block md:hidden lg:block' : 
-                    hideOn === 'desktop' ? 'lg:hidden' : '';
+  const hideClass = hideOn === 'mobile' ? 'hidden sm:block' :
+    hideOn === 'tablet' ? 'block md:hidden lg:block' :
+      hideOn === 'desktop' ? 'lg:hidden' : '';
 
   const iconSrc = APP_ICON_IMAGES[iconKey];
 
@@ -141,9 +142,9 @@ function ParallaxIcon({
           transform: 'translateZ(0)', // GPU acceleration
         }}
       >
-        <img 
-          src={iconSrc} 
-          alt="" 
+        <img
+          src={iconSrc}
+          alt=""
           className="w-full h-full object-cover"
           loading="lazy"
           draggable={false}
@@ -157,7 +158,7 @@ function ParallaxIcon({
 // ELEGANT PARALLAX: Like donedrinks.com - smooth vertical movement, no rotation
 function ScrollLinkedChaosIcons() {
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   // Track scroll progress of the entire chaos section
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -165,7 +166,7 @@ function ScrollLinkedChaosIcons() {
   });
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className="absolute inset-0 pointer-events-none overflow-visible -m-2.5 sm:-m-10 p-2.5 sm:p-10"
       aria-hidden="true"
@@ -175,7 +176,7 @@ function ScrollLinkedChaosIcons() {
           Left side: varied x positions to break the circular pattern
           Right side: already good asymmetry
           ═══════════════════════════════════════════════════════════════════════ */}
-      
+
       {/* Instagram - Top left, near edge */}
       <ParallaxIcon
         iconKey="instagram"
@@ -187,7 +188,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* WhatsApp - Upper right, but lower than Instagram */}
       <ParallaxIcon
         iconKey="whatsapp"
@@ -199,7 +200,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* Messenger - Left side, PULLED INWARD toward title */}
       <ParallaxIcon
         iconKey="messenger"
@@ -211,7 +212,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* Gmail - Right side, middle-ish, pulled more inward */}
       <ParallaxIcon
         iconKey="gmail"
@@ -223,7 +224,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* Marketplace - Left side, KEPT OUTWARD for contrast */}
       <ParallaxIcon
         iconKey="marketplace"
@@ -235,7 +236,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* iOS Messages - Right side, higher than Gmail, different x */}
       <ParallaxIcon
         iconKey="iosMessages"
@@ -247,7 +248,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* Truck - Bottom left, PULLED INWARD to break symmetry */}
       <ParallaxIcon
         iconKey="truck"
@@ -259,7 +260,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* Interac - Bottom right, asymmetric to Truck */}
       <ParallaxIcon
         iconKey="interac"
@@ -271,7 +272,7 @@ function ScrollLinkedChaosIcons() {
         scrollYProgress={scrollYProgress}
         hideOn="mobile"
       />
-      
+
       {/* ═══════════════════════════════════════════════════════════════════════
           MOBILE LAYOUT - Properly positioned icons that stay within bounds
           ═══════════════════════════════════════════════════════════════════════ */}
@@ -396,14 +397,14 @@ const localCooksNotifications = [
 function ChaosNotificationFeed() {
   const [visibleNotifs, setVisibleNotifs] = useState<Array<{ uid: number; data: typeof chaosNotifications[0] }>>([]);
   const [counter, setCounter] = useState(0);
-  
+
   useEffect(() => {
     // Initialize with first few notifications
     const initial = chaosNotifications.slice(0, 4).map((n, i) => ({ uid: i, data: n }));
     setVisibleNotifs(initial);
     setCounter(4);
   }, []);
-  
+
   useEffect(() => {
     const interval = setInterval(() => {
       setVisibleNotifs(prev => {
@@ -413,35 +414,35 @@ function ChaosNotificationFeed() {
           data: chaosNotifications[counter % chaosNotifications.length]
         };
         setCounter(c => c + 1);
-        
+
         // Keep max 5 visible, remove from bottom
         const updated = [newNotif, ...prev].slice(0, 5);
         return updated;
       });
     }, 1800); // New notification every 1.8 seconds
-    
+
     return () => clearInterval(interval);
   }, [counter]);
-  
+
   const getIcon = (iconType: string) => {
-    switch(iconType) {
+    switch (iconType) {
       case 'instagram':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12 2c2.717 0 3.056.01 4.122.06 1.065.05 1.79.217 2.428.465.66.254 1.216.598 1.772 1.153a4.908 4.908 0 0 1 1.153 1.772c.247.637.415 1.363.465 2.428.047 1.066.06 1.405.06 4.122 0 2.717-.01 3.056-.06 4.122-.05 1.065-.218 1.79-.465 2.428a4.883 4.883 0 0 1-1.153 1.772 4.915 4.915 0 0 1-1.772 1.153c-.637.247-1.363.415-2.428.465-1.066.047-1.405.06-4.122.06-2.717 0-3.056-.01-4.122-.06-1.065-.05-1.79-.218-2.428-.465a4.89 4.89 0 0 1-1.772-1.153 4.904 4.904 0 0 1-1.153-1.772c-.248-.637-.415-1.363-.465-2.428C2.013 15.056 2 14.717 2 12c0-2.717.01-3.056.06-4.122.05-1.066.217-1.79.465-2.428a4.88 4.88 0 0 1 1.153-1.772A4.897 4.897 0 0 1 5.45 2.525c.638-.248 1.362-.415 2.428-.465C8.944 2.013 9.283 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.25a1.25 1.25 0 0 0-2.5 0 1.25 1.25 0 0 0 2.5 0zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>;
+        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12 2c2.717 0 3.056.01 4.122.06 1.065.05 1.79.217 2.428.465.66.254 1.216.598 1.772 1.153a4.908 4.908 0 0 1 1.153 1.772c.247.637.415 1.363.465 2.428.047 1.066.06 1.405.06 4.122 0 2.717-.01 3.056-.06 4.122-.05 1.065-.218 1.79-.465 2.428a4.883 4.883 0 0 1-1.153 1.772 4.915 4.915 0 0 1-1.772 1.153c-.637.247-1.363.415-2.428.465-1.066.047-1.405.06-4.122.06-2.717 0-3.056-.01-4.122-.06-1.065-.05-1.79-.218-2.428-.465a4.89 4.89 0 0 1-1.772-1.153 4.904 4.904 0 0 1-1.153-1.772c-.248-.637-.415-1.363-.465-2.428C2.013 15.056 2 14.717 2 12c0-2.717.01-3.056.06-4.122.05-1.066.217-1.79.465-2.428a4.88 4.88 0 0 1 1.153-1.772A4.897 4.897 0 0 1 5.45 2.525c.638-.248 1.362-.415 2.428-.465C8.944 2.013 9.283 2 12 2zm0 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm6.5-.25a1.25 1.25 0 0 0-2.5 0 1.25 1.25 0 0 0 2.5 0zM12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z" /></svg>;
       case 'whatsapp':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>;
+        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" /></svg>;
       case 'phone':
         return <Phone className="w-4 h-4 text-white" />;
       case 'marketplace':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12.001 2C17.523 2 22 6.478 22 12.001C22 17.523 17.523 22 12.001 22C6.478 22 2 17.523 2 12.001C2 6.478 6.478 2 12.001 2Z"/></svg>;
+        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12.001 2C17.523 2 22 6.478 22 12.001C22 17.523 17.523 22 12.001 22C6.478 22 2 17.523 2 12.001C2 6.478 6.478 2 12.001 2Z" /></svg>;
       case 'interac':
         return <CreditCard className="w-4 h-4 text-white" />;
       case 'messenger':
-        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.19 5.44 3.14 7.17.16.13.26.35.27.57l.05 1.78c.04.57.61.94 1.13.71l1.98-.87c.17-.08.36-.1.55-.06.91.25 1.87.38 2.88.38 5.64 0 10-4.13 10-9.7C22 6.13 17.64 2 12 2z"/></svg>;
+        return <svg className="w-4 h-4" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.36 2 2 6.13 2 11.7c0 2.91 1.19 5.44 3.14 7.17.16.13.26.35.27.57l.05 1.78c.04.57.61.94 1.13.71l1.98-.87c.17-.08.36-.1.55-.06.91.25 1.87.38 2.88.38 5.64 0 10-4.13 10-9.7C22 6.13 17.64 2 12 2z" /></svg>;
       default:
         return <Phone className="w-4 h-4 text-white" />;
     }
   };
-  
+
   return (
     <div className="absolute top-8 left-2 right-2 h-[340px] md:h-[380px] overflow-hidden">
       <AnimatePresence initial={false} mode="popLayout">
@@ -452,7 +453,7 @@ function ChaosNotificationFeed() {
             initial={{ opacity: 0, y: -50, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
-            transition={{ 
+            transition={{
               type: "spring",
               stiffness: 500,
               damping: 30,
@@ -484,8 +485,8 @@ function ChaosNotificationFeed() {
 
 // Testimonial Carousel Component with Auto-Scroll
 function TestimonialCarouselSection() {
-  const [emblaRef, emblaApi] = useEmblaCarousel({ 
-    loop: true, 
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: true,
     align: "start",
     duration: 25, // Smooth transition duration in milliseconds
     dragFree: false,
@@ -555,19 +556,19 @@ function TestimonialCarouselSection() {
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
                   chefs
                 </span>
-                <motion.svg 
-                  className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
-                  viewBox="0 0 200 12" 
+                <motion.svg
+                  className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
+                  viewBox="0 0 200 12"
                   fill="none"
                   initial={{ pathLength: 0, opacity: 0 }}
                   whileInView={{ pathLength: 1, opacity: 1 }}
                   transition={{ duration: 1.2, delay: 0.6 }}
                   viewport={{ once: true }}
                 >
-                  <motion.path 
-                    d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8" 
+                  <motion.path
+                    d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8"
                     stroke="#F51042"
-                    strokeWidth="3" 
+                    strokeWidth="3"
                     strokeLinecap="round"
                     initial={{ pathLength: 0 }}
                     whileInView={{ pathLength: 1 }}
@@ -600,14 +601,14 @@ function TestimonialCarouselSection() {
                     >
                       {/* Elegant Quotation Mark */}
                       <div className="absolute top-2 left-2 sm:top-3 sm:left-3 md:top-4 md:left-4">
-                        <span 
+                        <span
                           className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif leading-none"
-                          style={{ 
-                            color: testimonial.color === "#ffffff" 
-                              ? "rgba(44, 44, 44, 0.15)" 
+                          style={{
+                            color: testimonial.color === "#ffffff"
+                              ? "rgba(44, 44, 44, 0.15)"
                               : testimonial.textColor === "#ffffff"
-                              ? "rgba(255, 255, 255, 0.3)"
-                              : "rgba(255, 255, 255, 0.4)",
+                                ? "rgba(255, 255, 255, 0.3)"
+                                : "rgba(255, 255, 255, 0.4)",
                             fontFamily: "'Georgia', 'Times New Roman', serif",
                             lineHeight: "1",
                           }}
@@ -632,8 +633,8 @@ function TestimonialCarouselSection() {
                         <div
                           className="h-px mb-2 sm:mb-3 md:mb-4"
                           style={{
-                            backgroundColor: testimonial.textColor === "#ffffff" 
-                              ? "rgba(255, 255, 255, 0.3)" 
+                            backgroundColor: testimonial.textColor === "#ffffff"
+                              ? "rgba(255, 255, 255, 0.3)"
                               : "rgba(44, 44, 44, 0.2)",
                           }}
                         />
@@ -651,8 +652,8 @@ function TestimonialCarouselSection() {
                           <p
                             className="text-xs sm:text-sm md:text-base"
                             style={{
-                              color: testimonial.textColor === "#ffffff" 
-                                ? "rgba(255, 255, 255, 0.8)" 
+                              color: testimonial.textColor === "#ffffff"
+                                ? "rgba(255, 255, 255, 0.8)"
                                 : "rgba(44, 44, 44, 0.7)",
                             }}
                           >
@@ -676,14 +677,14 @@ function TestimonialCarouselSection() {
 function LocalCooksNotificationFeed() {
   const [visibleNotifs, setVisibleNotifs] = useState<Array<{ uid: number; data: typeof localCooksNotifications[0] }>>([]);
   const [counter, setCounter] = useState(0);
-  
+
   useEffect(() => {
     // Initialize with first few notifications
     const initial = localCooksNotifications.slice(0, 4).map((n, i) => ({ uid: i, data: n }));
     setVisibleNotifs(initial);
     setCounter(4);
   }, []);
-  
+
   useEffect(() => {
     const interval = setInterval(() => {
       setVisibleNotifs(prev => {
@@ -693,16 +694,16 @@ function LocalCooksNotificationFeed() {
           data: localCooksNotifications[counter % localCooksNotifications.length]
         };
         setCounter(c => c + 1);
-        
+
         // Keep max 5 visible, remove from bottom
         const updated = [newNotif, ...prev].slice(0, 5);
         return updated;
       });
     }, 1500); // New notification every 1.5 seconds (faster for LocalCooks!)
-    
+
     return () => clearInterval(interval);
   }, [counter]);
-  
+
   return (
     <div className="absolute top-8 left-2 right-2 h-[340px] md:h-[380px] overflow-hidden">
       <AnimatePresence initial={false} mode="popLayout">
@@ -713,7 +714,7 @@ function LocalCooksNotificationFeed() {
             initial={{ opacity: 0, y: -50, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
-            transition={{ 
+            transition={{
               type: "spring",
               stiffness: 500,
               damping: 30,
@@ -824,7 +825,7 @@ function TypewriterText() {
       <span
         ref={measureRef}
         className="font-logo absolute opacity-0 pointer-events-none whitespace-nowrap"
-        style={{ 
+        style={{
           fontFamily: "'Lobster', cursive",
           visibility: 'hidden',
           fontSize: 'inherit'
@@ -832,16 +833,16 @@ function TypewriterText() {
       >
         {longestWord}
       </span>
-      
-      <span 
-        className="font-logo text-white whitespace-nowrap" 
+
+      <span
+        className="font-logo text-white whitespace-nowrap"
         style={{ fontFamily: "'Lobster', cursive" }}
       >
         Local
       </span>
-      <span 
+      <span
         className="relative ml-3 md:ml-4 inline-block whitespace-nowrap"
-        style={{ 
+        style={{
           width: containerWidth > 0 ? `${containerWidth + 20}px` : 'auto',
           textAlign: 'left',
           minWidth: containerWidth > 0 ? `${containerWidth + 20}px` : 'auto'
@@ -850,13 +851,13 @@ function TypewriterText() {
         <span
           ref={textRef}
           className="font-logo inline-block text-white whitespace-nowrap"
-          style={{ 
+          style={{
             fontFamily: "'Lobster', cursive"
           }}
         >
           {currentText}
         </span>
-        <span 
+        <span
           className="typewriter-cursor absolute top-0"
           style={{
             backgroundColor: 'white',
@@ -916,7 +917,7 @@ export default function ChefLanding() {
     const mapped = locations.map((loc: any) => {
       // Use featuredKitchenImage from actual kitchens for the main card image
       const mainImage = loc.featuredKitchenImage || null;
-      
+
       // Always log in production to debug
       console.log(`[ChefLanding] Processing Location ${loc.id} (${loc.name}):`, {
         featuredKitchenImage: loc.featuredKitchenImage,
@@ -924,7 +925,7 @@ export default function ChefLanding() {
         logoUrl: loc.logoUrl,
         hasMainImage: !!mainImage
       });
-      
+
       return {
         id: loc.id,
         name: loc.name,
@@ -932,7 +933,8 @@ export default function ChefLanding() {
         logoUrl: loc.logoUrl || null,
         featuredKitchenImage: loc.featuredKitchenImage || null,
         mainImage: mainImage, // Combined image for display
-        kitchenCount: loc.kitchenCount || 1
+        kitchenCount: loc.kitchenCount || 1,
+        description: loc.description || null
       };
     });
     console.log(`[ChefLanding] Processed ${mapped.length} locations`);
@@ -956,7 +958,7 @@ export default function ChefLanding() {
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
-      
+
       <main className="flex-grow">
         {/* ═══════════════════════════════════════════════════════════════════════
             HERO SECTION - Premium Split-Screen Design
@@ -966,23 +968,23 @@ export default function ChefLanding() {
           <div className="absolute inset-0">
             {/* Warm gradient base */}
             <div className="absolute inset-0 bg-gradient-to-br from-[#FFF8F5] via-[#FFFAF8] to-white" />
-            
+
             {/* Large accent gradient */}
-            <motion.div 
+            <motion.div
               className="absolute -top-[20%] -right-[10%] w-[800px] h-[800px] rounded-full"
               style={{ background: "radial-gradient(circle, rgba(245,16,66,0.08) 0%, transparent 70%)" }}
-              animate={{ 
+              animate={{
                 scale: [1, 1.1, 1],
                 opacity: [0.6, 0.8, 0.6]
               }}
               transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
             />
-            
+
             {/* Golden accent */}
-            <motion.div 
+            <motion.div
               className="absolute bottom-[10%] left-[5%] w-[500px] h-[500px] rounded-full"
               style={{ background: "radial-gradient(circle, rgba(255,215,0,0.12) 0%, transparent 70%)" }}
-              animate={{ 
+              animate={{
                 scale: [1, 1.05, 1],
                 x: [0, 20, 0]
               }}
@@ -1011,7 +1013,7 @@ export default function ChefLanding() {
             </motion.div>
 
             <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-16 items-center min-h-[calc(100vh-180px)] sm:min-h-[calc(100vh-200px)]">
-              
+
               {/* Left Content Column */}
               <div className="order-2 lg:order-1">
                 {/* Trial Badge - Desktop only */}
@@ -1035,11 +1037,11 @@ export default function ChefLanding() {
                   transition={{ duration: 0.7, delay: 0.3 }}
                 >
                   <h1 className="font-logo text-[2.5rem] sm:text-[3rem] md:text-[4rem] lg:text-[5rem] xl:text-[6rem] text-[#F51042] leading-none mb-3 sm:mb-4 md:mb-5 tracking-tight">
-                  LocalCooks
-                </h1>
+                    LocalCooks
+                  </h1>
                   <p className="font-mono text-[9px] sm:text-[10px] md:text-[11px] text-[#6B4A4F] uppercase tracking-[0.3em] sm:tracking-[0.4em] mb-6 sm:mb-8">
                     For Chefs Who Dream Bigger
-                </p>
+                  </p>
                 </motion.div>
 
                 {/* Main Headline */}
@@ -1051,31 +1053,31 @@ export default function ChefLanding() {
                 >
                   <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[#2C2C2C] leading-[1.15] mb-4 sm:mb-6">
                     Turn Your Kitchen
-                  <br />
+                    <br />
                     <span className="relative inline-block">
                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
                         Into a Business
                       </span>
-                      <motion.svg 
-                        className="absolute -bottom-2 left-0 w-full" 
-                        viewBox="0 0 300 12" 
+                      <motion.svg
+                        className="absolute -bottom-2 left-0 w-full"
+                        viewBox="0 0 300 12"
                         fill="none"
                         initial={{ pathLength: 0, opacity: 0 }}
                         animate={{ pathLength: 1, opacity: 1 }}
                         transition={{ duration: 1, delay: 1.2 }}
                       >
-                        <motion.path 
-                          d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
-                          stroke="#F51042" 
-                          strokeWidth="3" 
+                        <motion.path
+                          d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
+                          stroke="#F51042"
+                          strokeWidth="3"
                           strokeLinecap="round"
                           initial={{ pathLength: 0 }}
                           animate={{ pathLength: 1 }}
                           transition={{ duration: 1, delay: 1.2 }}
                         />
                       </motion.svg>
-                  </span>
-                </h2>
+                    </span>
+                  </h2>
                   <p className="text-sm md:text-base lg:text-lg text-[#6B6B6B] leading-relaxed max-w-lg">
                     <span className="block mb-3">
                       Your passion deserves a platform that keeps up.
@@ -1100,9 +1102,9 @@ export default function ChefLanding() {
                   >
                     <span className="relative z-10 flex items-center justify-center">
                       Start Your Journey
-                    <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="ml-1 md:ml-2 h-3.5 w-3.5 md:h-5 md:w-5 group-hover:translate-x-1 transition-transform" />
                     </span>
-                    <motion.div 
+                    <motion.div
                       className="absolute inset-0 bg-gradient-to-r from-[#D90E3A] to-[#F51042]"
                       initial={{ x: "100%" }}
                       whileHover={{ x: 0 }}
@@ -1131,7 +1133,7 @@ export default function ChefLanding() {
                     { icon: Shield, text: "No upfront costs" },
                     { icon: HeartHandshake, text: "Dedicated support every step" }
                   ].map((item, i) => (
-                    <motion.span 
+                    <motion.span
                       key={i}
                       className="flex items-center gap-1 md:gap-2 text-[#6B6B6B] text-[10px] md:text-sm whitespace-nowrap flex-shrink-0"
                       initial={{ opacity: 0, x: -10 }}
@@ -1156,20 +1158,20 @@ export default function ChefLanding() {
                   {/* Decorative background shapes */}
                   <div className="absolute -inset-4 bg-gradient-to-br from-[#F51042]/10 via-[#FFE8DD]/50 to-[#FFD700]/20 rounded-[2.5rem] transform rotate-3" />
                   <div className="absolute -inset-4 bg-gradient-to-tr from-[#FFE8DD]/80 to-white/60 rounded-[2.5rem] transform -rotate-2" />
-                  
+
                   {/* Main Image Container */}
                   <div className="relative rounded-[2rem] overflow-visible shadow-2xl shadow-[#F51042]/10 w-full">
                     <div className="relative rounded-[2rem] overflow-hidden w-full">
-                      <img 
-                        src={chefImage} 
-                        alt="Professional home chef cooking with passion" 
+                      <img
+                        src={chefImage}
+                        alt="Professional home chef cooking with passion"
                         className="w-full h-auto object-cover aspect-[4/3]"
                       />
-                      
+
                       {/* Gradient Overlay */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
                     </div>
-                    
+
                     {/* Trial Card - Centered Bottom, Partially Inside/Outside */}
                     <motion.div
                       initial={{ opacity: 0, y: 20, x: '-50%' }}
@@ -1199,82 +1201,82 @@ export default function ChefLanding() {
                       </div>
                     </motion.div>
                   </div>
-                
-                {/* Premium Floating Cards - Positioned to overlap frame significantly */}
-                
-                {/* Premium Floating Tag - Top Right: "Built for Chefs. Powered by community." */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.6, delay: 1.4, type: "spring", stiffness: 200 }}
-                  className="absolute top-0 -right-3 lg:top-4 lg:-right-6 bg-white/95 backdrop-blur-md rounded-xl lg:rounded-2xl shadow-2xl px-2 py-1.5 lg:px-4 lg:py-3 border border-slate-200/50 z-20"
-                  style={{ transform: 'translateY(-20%)' }}
-                >
+
+                  {/* Premium Floating Cards - Positioned to overlap frame significantly */}
+
+                  {/* Premium Floating Tag - Top Right: "Built for Chefs. Powered by community." */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.6, delay: 1.4, type: "spring", stiffness: 200 }}
+                    className="absolute top-0 -right-3 lg:top-4 lg:-right-6 bg-white/95 backdrop-blur-md rounded-xl lg:rounded-2xl shadow-2xl px-2 py-1.5 lg:px-4 lg:py-3 border border-slate-200/50 z-20"
+                    style={{ transform: 'translateY(-20%)' }}
+                  >
                     <div className="flex items-center gap-1.5 lg:gap-2.5">
                       <div className="w-6 h-6 lg:w-9 lg:h-9 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/30 flex-shrink-0">
                         <Heart className="h-3.5 w-3.5 lg:h-5 lg:w-5 text-white" />
                       </div>
-                    <div>
-                      <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Built for Chefs</p>
-                      <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">Powered by community</p>
+                      <div>
+                        <p className="text-[8px] lg:text-[10px] font-medium text-slate-600 uppercase tracking-wide leading-tight">Built for Chefs</p>
+                        <p className="text-[10px] lg:text-xs font-bold text-slate-900 leading-tight">Powered by community</p>
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
+                  </motion.div>
 
-                {/* Premium Floating Tag - Top Left: "Fast approval" */}
-                <motion.div
-                  initial={{ opacity: 0, x: -30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: 1.6, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute top-0 -left-3 lg:top-8 lg:-left-10 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
-                  style={{ transform: 'translateY(-30%)' }}
-                >
-                  <div className="flex items-center gap-1.5 lg:gap-2">
-                    <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Zap className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                  {/* Premium Floating Tag - Top Left: "Fast approval" */}
+                  <motion.div
+                    initial={{ opacity: 0, x: -30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.6, delay: 1.6, ease: [0.16, 1, 0.3, 1] }}
+                    className="absolute top-0 -left-3 lg:top-8 lg:-left-10 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
+                    style={{ transform: 'translateY(-30%)' }}
+                  >
+                    <div className="flex items-center gap-1.5 lg:gap-2">
+                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Zap className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      </div>
+                      <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Fast approval</span>
                     </div>
-                    <span className="text-[10px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Fast approval</span>
-                  </div>
-                </motion.div>
+                  </motion.div>
 
-                {/* Premium Floating Tag - Middle Right: "Join chefs who've already launched" */}
-                <motion.div
-                  initial={{ opacity: 0, x: 30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: 1.8, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute top-[32%] -right-3 lg:top-[28%] lg:-right-12 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
-                >
-                  <div className="flex items-center gap-1.5 lg:gap-2">
-                    <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Rocket className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                  {/* Premium Floating Tag - Middle Right: "Join chefs who've already launched" */}
+                  <motion.div
+                    initial={{ opacity: 0, x: 30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.6, delay: 1.8, ease: [0.16, 1, 0.3, 1] }}
+                    className="absolute top-[32%] -right-3 lg:top-[28%] lg:-right-12 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
+                  >
+                    <div className="flex items-center gap-1.5 lg:gap-2">
+                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-slate-700 to-slate-800 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Rocket className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      </div>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Join chefs who've already launched</span>
                     </div>
-                    <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">Join chefs who've already launched</span>
-                  </div>
-                </motion.div>
+                  </motion.div>
 
-                {/* Premium Floating Tag - Middle Left: "More time cooking, less time managing" */}
-                <motion.div
-                  initial={{ opacity: 0, x: -30 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: 2.0, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute top-[40%] -left-3 lg:top-[38%] lg:-left-10 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
-                >
-                  <div className="flex items-center gap-1.5 lg:gap-2">
-                    <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Clock className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                  {/* Premium Floating Tag - Middle Left: "More time cooking, less time managing" */}
+                  <motion.div
+                    initial={{ opacity: 0, x: -30 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.6, delay: 2.0, ease: [0.16, 1, 0.3, 1] }}
+                    className="absolute top-[40%] -left-3 lg:top-[38%] lg:-left-10 bg-white rounded-lg lg:rounded-xl shadow-[0_8px_24px_rgba(0,0,0,0.12)] px-2 py-1.5 lg:px-3.5 lg:py-2.5 border border-slate-200/60 ring-1 ring-slate-900/5 z-20"
+                  >
+                    <div className="flex items-center gap-1.5 lg:gap-2">
+                      <div className="w-4 h-4 lg:w-6 lg:h-6 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-md lg:rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Clock className="h-2.5 w-2.5 lg:h-3.5 lg:w-3.5 text-white" />
+                      </div>
+                      <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">More time cooking, less time managing</span>
                     </div>
-                    <span className="text-[9px] lg:text-xs font-semibold text-slate-900 tracking-tight whitespace-nowrap">More time cooking, less time managing</span>
-                  </div>
+                  </motion.div>
                 </motion.div>
-                </motion.div>
-                </div>
+              </div>
             </div>
           </div>
 
           {/* Elegant Wave Divider */}
           <div className="absolute bottom-0 left-0 right-0">
             <svg viewBox="0 0 1440 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full" preserveAspectRatio="none">
-              <path d="M0 50L60 45C120 40 240 30 360 35C480 40 600 60 720 65C840 70 960 60 1080 50C1200 40 1320 30 1380 25L1440 20V100H0V50Z" fill="white"/>
+              <path d="M0 50L60 45C120 40 240 30 360 35C480 40 600 60 720 65C840 70 960 60 1080 50C1200 40 1320 30 1380 25L1440 20V100H0V50Z" fill="white" />
             </svg>
           </div>
         </section>
@@ -1288,19 +1290,19 @@ export default function ChefLanding() {
             <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-gradient-radial from-[#F51042]/5 to-transparent rounded-full blur-3xl" />
             <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-gradient-radial from-[#0D9488]/5 to-transparent rounded-full blur-3xl" />
           </div>
-          
+
           <div className="container mx-auto max-w-7xl relative">
-            
+
             {/* Headline with Floating Chaos Icons - Cinematic Parallax Design */}
             <FadeInSection>
               <div className="relative text-center mb-6 md:mb-10 min-h-[400px] md:min-h-[480px] lg:min-h-[520px] flex flex-col items-center justify-center">
-                
-{/* ═══ SCROLL-LINKED PARALLAX CHAOS - donedrinks.com Style ═══ */}
+
+                {/* ═══ SCROLL-LINKED PARALLAX CHAOS - donedrinks.com Style ═══ */}
                 <ScrollLinkedChaosIcons />
-                
+
                 {/* ═══ MAIN TITLE - Centered with breathing room ═══ */}
                 <div className="relative z-40 max-w-3xl mx-auto px-8 md:px-12">
-                  <motion.h2 
+                  <motion.h2
                     className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#1A1A1A] leading-[1.35] md:leading-tight mb-5 md:mb-6"
                     initial={{ opacity: 0, y: 30 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1310,19 +1312,19 @@ export default function ChefLanding() {
                     You didn't start cooking to spend your days{" "}
                     <span className="relative inline-block">
                       <span className="relative z-10 text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">buried in admin work.</span>
-                      <motion.svg 
-                        className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
-                        viewBox="0 0 300 12" 
+                      <motion.svg
+                        className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
+                        viewBox="0 0 300 12"
                         fill="none"
                         initial={{ pathLength: 0, opacity: 0 }}
                         whileInView={{ pathLength: 1, opacity: 1 }}
                         transition={{ duration: 1.2, delay: 0.8 }}
                         viewport={{ once: true }}
                       >
-                        <motion.path 
-                          d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
+                        <motion.path
+                          d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
                           stroke="url(#underlineGradient)"
-                          strokeWidth="3" 
+                          strokeWidth="3"
                           strokeLinecap="round"
                           initial={{ pathLength: 0 }}
                           whileInView={{ pathLength: 1 }}
@@ -1339,8 +1341,8 @@ export default function ChefLanding() {
                       </motion.svg>
                     </span>
                   </motion.h2>
-                  
-                  <motion.p 
+
+                  <motion.p
                     className="text-sm md:text-base lg:text-lg text-[#4A5568] leading-relaxed font-medium"
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -1350,7 +1352,7 @@ export default function ChefLanding() {
                     Yet somehow, you're managing orders, responding to messages, and organizing pickups —{" "}
                     <span className="text-[#1A1A1A] font-bold">all on your own.</span>
                   </motion.p>
-                  
+
                   {/* Sound familiar? - Call to action */}
                   <motion.p
                     className="text-sm md:text-base lg:text-lg text-[#1A1A1A] font-semibold mt-6"
@@ -1367,12 +1369,12 @@ export default function ChefLanding() {
 
             {/* Phone Comparison - Side by Side with Cinematic Fade Effects */}
             <div className="grid md:grid-cols-2 gap-6 lg:gap-20 max-w-5xl mx-auto items-center">
-              
+
               {/* CHAOS Phone */}
               <FadeInSection delay={1}>
                 <div className="relative">
                   {/* iPhone 15 Pro - Compact with Full Fade Effect */}
-                  <div 
+                  <div
                     className="relative mx-auto w-[220px] md:w-[240px]"
                     style={{
                       maskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)',
@@ -1381,7 +1383,7 @@ export default function ChefLanding() {
                   >
                     {/* Warm ambient glow */}
                     <div className="absolute -inset-4 bg-gradient-to-br from-[#F51042]/15 via-[#FF6B6B]/10 to-transparent rounded-[3rem] blur-2xl" />
-                    
+
                     {/* Phone Frame */}
                     <div className="relative bg-[#1D1D1F] rounded-[44px] p-[2px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.35)]">
                       <div className="bg-[#1D1D1F] rounded-[42px] p-2">
@@ -1391,18 +1393,18 @@ export default function ChefLanding() {
                           <div className="relative z-10 px-5 pt-3 flex justify-between items-center text-[11px] text-white font-semibold">
                             <span>9:41</span>
                             <div className="flex items-center gap-1">
-                              <svg className="w-4 h-3" viewBox="0 0 18 12" fill="white"><path d="M1 4.5l2 2c2.5-2.5 6.5-2.5 9 0l2-2C10.5 1 4.5 1 1 4.5zm4 4l3 3 3-3c-1.5-1.5-4.5-1.5-6 0z"/></svg>
-                              <svg className="w-4 h-3" viewBox="0 0 17 11" fill="white"><path d="M15.5 4.5h-14C.67 4.5 0 5.17 0 6v3.5c0 .83.67 1.5 1.5 1.5h14c.83 0 1.5-.67 1.5-1.5V6c0-.83-.67-1.5-1.5-1.5z"/></svg>
+                              <svg className="w-4 h-3" viewBox="0 0 18 12" fill="white"><path d="M1 4.5l2 2c2.5-2.5 6.5-2.5 9 0l2-2C10.5 1 4.5 1 1 4.5zm4 4l3 3 3-3c-1.5-1.5-4.5-1.5-6 0z" /></svg>
+                              <svg className="w-4 h-3" viewBox="0 0 17 11" fill="white"><path d="M15.5 4.5h-14C.67 4.5 0 5.17 0 6v3.5c0 .83.67 1.5 1.5 1.5h14c.83 0 1.5-.67 1.5-1.5V6c0-.83-.67-1.5-1.5-1.5z" /></svg>
                             </div>
                           </div>
-                          
+
                           {/* Animated Notification Feed - Chaos */}
                           <ChaosNotificationFeed />
                         </div>
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Label */}
                   <div className="text-center mt-4">
                     <p className="text-sm font-bold text-[#1A1A1A]">Scattered everywhere</p>
@@ -1410,12 +1412,12 @@ export default function ChefLanding() {
                   </div>
                 </div>
               </FadeInSection>
-              
+
               {/* LOCALCOOKS Phone */}
               <FadeInSection delay={2}>
                 <div className="relative">
                   {/* iPhone 15 Pro - Compact with Full Fade Effect */}
-                  <div 
+                  <div
                     className="relative mx-auto w-[220px] md:w-[240px]"
                     style={{
                       maskImage: 'linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)',
@@ -1424,7 +1426,7 @@ export default function ChefLanding() {
                   >
                     {/* Teal ambient glow */}
                     <div className="absolute -inset-4 bg-gradient-to-br from-[#0D9488]/20 via-[#14B8A6]/15 to-transparent rounded-[3rem] blur-2xl" />
-                    
+
                     {/* Phone Frame */}
                     <div className="relative bg-[#1D1D1F] rounded-[44px] p-[2px] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.35)]">
                       <div className="bg-[#1D1D1F] rounded-[42px] p-2">
@@ -1434,20 +1436,20 @@ export default function ChefLanding() {
                           <div className="relative z-10 px-5 pt-3 flex justify-between items-center text-[11px] text-white font-semibold">
                             <span>9:41</span>
                             <div className="flex items-center gap-1">
-                              <svg className="w-4 h-3" viewBox="0 0 18 12" fill="white"><path d="M1 4.5l2 2c2.5-2.5 6.5-2.5 9 0l2-2C10.5 1 4.5 1 1 4.5zm4 4l3 3 3-3c-1.5-1.5-4.5-1.5-6 0z"/></svg>
+                              <svg className="w-4 h-3" viewBox="0 0 18 12" fill="white"><path d="M1 4.5l2 2c2.5-2.5 6.5-2.5 9 0l2-2C10.5 1 4.5 1 1 4.5zm4 4l3 3 3-3c-1.5-1.5-4.5-1.5-6 0z" /></svg>
                               <div className="w-5 h-[9px] rounded-[2px] border border-white/80 relative">
                                 <div className="absolute inset-[1px] bg-[#34C759] rounded-[1px]" />
                               </div>
                             </div>
                           </div>
-                          
+
                           {/* Animated Notification Feed - LocalCooks */}
                           <LocalCooksNotificationFeed />
                         </div>
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Label */}
                   <div className="text-center mt-4">
                     <p className="text-sm font-bold text-[#0D9488]">Powered by <span className="font-display text-sm text-[#F51042]">LocalCooks</span></p>
@@ -1480,19 +1482,19 @@ export default function ChefLanding() {
                     <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F51042] via-[#E8103A] to-[#FF6B7A]">
                       Steps
                     </span>
-                    <motion.svg 
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
-                      viewBox="0 0 200 12" 
+                    <motion.svg
+                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
+                      viewBox="0 0 200 12"
                       fill="none"
                       initial={{ pathLength: 0, opacity: 0 }}
                       whileInView={{ pathLength: 1, opacity: 1 }}
                       transition={{ duration: 1.2, delay: 0.6 }}
                       viewport={{ once: true }}
                     >
-                      <motion.path 
-                        d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8" 
+                      <motion.path
+                        d="M2 8C30 4 70 4 100 6C130 8 170 5 198 8"
                         stroke="#F51042"
-                        strokeWidth="3" 
+                        strokeWidth="3"
                         strokeLinecap="round"
                         initial={{ pathLength: 0 }}
                         whileInView={{ pathLength: 1 }}
@@ -1502,7 +1504,7 @@ export default function ChefLanding() {
                     </motion.svg>
                   </span>
                 </motion.h2>
-                
+
                 <motion.p
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -1517,7 +1519,7 @@ export default function ChefLanding() {
 
             {/* Steps - 3 Column Grid with White Cards */}
             <div className="grid md:grid-cols-3 gap-4 md:gap-6 lg:gap-8 mb-12 md:mb-16">
-              
+
               {/* Step 1 - Apply (Coral/Red accent) */}
               <FadeInSection delay={1}>
                 <motion.div
@@ -1533,14 +1535,14 @@ export default function ChefLanding() {
                       </div>
                       <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F51042]/60">Step One</span>
                     </div>
-                    
+
                     <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">Apply</h3>
                     <p className="text-xs md:text-sm font-medium text-[#F51042] mb-2 md:mb-3">Less than 5 minutes</p>
-                    
+
                     <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">
                       Tell us about your cooking. Where would you prepare meals—your home kitchen or a commercial kitchen? Answer a few quick questions about regulations and certifications. That's all we need to get started.
                     </p>
-                    
+
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F51042]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
                   </div>
@@ -1562,14 +1564,14 @@ export default function ChefLanding() {
                       </div>
                       <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#0D9488]/60">Step Two</span>
                     </div>
-                    
+
                     <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">We Get You Live</h3>
                     <p className="text-xs md:text-sm font-medium text-[#0D9488] mb-2 md:mb-3">Approved in 24 hours</p>
-                    
+
                     <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">
-                    We review your application against regulatory standards and connect you with everything you need to launch. Documentation ready or not, we've got you covered.
+                      We review your application against regulatory standards and connect you with everything you need to launch. Documentation ready or not, we've got you covered.
                     </p>
-                    
+
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#0D9488]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
                   </div>
@@ -1591,14 +1593,14 @@ export default function ChefLanding() {
                       </div>
                       <span className="font-mono text-xs md:text-[10px] uppercase tracking-[0.15em] text-[#F59E0B]/60">Step Three</span>
                     </div>
-                    
+
                     <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C] mb-1">Build Your Menu & Sell</h3>
                     <p className="text-xs md:text-sm font-medium text-[#F59E0B] mb-2 md:mb-3">Start earning today</p>
-                    
+
                     <p className="text-[#6B6B6B] leading-relaxed text-xs md:text-sm">
                       Create your menu, set your prices, start accepting orders. Payment deposits straight to your bank. Scale from one order to hundreds—it's all in your hands.
                     </p>
-                    
+
                     {/* Decorative accent */}
                     <div className="absolute bottom-0 left-0 w-16 h-16 bg-gradient-to-tr from-[#F59E0B]/5 to-transparent rounded-br-2xl rounded-tl-[60px]" />
                   </div>
@@ -1614,7 +1616,7 @@ export default function ChefLanding() {
                   <h3 className="text-base md:text-lg lg:text-xl font-bold text-[#2C2C2C]">What You Get</h3>
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
                 </div>
-                
+
                 <div className="grid grid-cols-3 sm:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
                   {[
                     { text: "Sell from home or a commercial kitchen — pick what works for you.", icon: Building2, borderColor: "border-[#F51042]/20", iconColor: "text-[#F51042]" },
@@ -1649,9 +1651,9 @@ export default function ChefLanding() {
             <FadeInSection>
               <div className="text-center">
                 <p className="text-sm md:text-base lg:text-lg font-semibold text-[#2C2C2C] mb-4 md:mb-6">Ready?</p>
-                
-                <Button 
-                  onClick={handleGetStarted} 
+
+                <Button
+                  onClick={handleGetStarted}
                   className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-bold py-4 px-4 md:py-6 md:px-12 text-xs md:text-lg rounded-full shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
                 >
                   <span className="flex items-center justify-center">
@@ -1668,21 +1670,21 @@ export default function ChefLanding() {
             KITCHEN ACCESS - DRAMATIC BRAND SECTION with Bold Wave Dividers
             Inspired by Stripe, Linear, and LocalCooks.ca branding
         ═══════════════════════════════════════════════════════════════════════ */}
-        
+
         {/* ══════ TOP WAVE DIVIDER - White to Primary Red ══════ */}
         <div className="relative w-full overflow-hidden" style={{ height: '120px', marginBottom: '-1px' }}>
-          <svg 
-            viewBox="0 0 1440 320" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg" 
+          <svg
+            viewBox="0 0 1440 320"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
             className="absolute bottom-0 w-full"
             style={{ height: '120px', minWidth: '100%' }}
             preserveAspectRatio="none"
           >
             {/* Wave pattern - solid brand red, no gradient */}
-            <path 
-              fill="#F51042" 
-              fillOpacity="1" 
+            <path
+              fill="#F51042"
+              fillOpacity="1"
               d="M0,224L48,224C96,224,192,224,288,213.3C384,203,480,181,576,192C672,203,768,245,864,256C960,267,1056,245,1152,224C1248,203,1344,181,1392,170.7L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"
             />
           </svg>
@@ -1691,7 +1693,7 @@ export default function ChefLanding() {
         {/* ══════ MAIN KITCHEN ACCESS SECTION - Bold Primary Background ══════ */}
         <section id="kitchen-access" className="relative py-20 md:py-28 px-4 overflow-hidden bg-[#F51042]">
           {/* Animated Background Effects with fade mask to blend into waves */}
-          <div 
+          <div
             className="absolute inset-0 overflow-hidden pointer-events-none"
             style={{
               maskImage: 'linear-gradient(to bottom, transparent 0%, transparent 5%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, transparent 95%, transparent 100%)',
@@ -1699,31 +1701,31 @@ export default function ChefLanding() {
             }}
           >
             {/* Large Floating Orbs */}
-            <motion.div 
+            <motion.div
               className="absolute -top-40 -right-40 w-[500px] h-[500px] md:w-[800px] md:h-[800px] rounded-full"
               style={{ background: 'radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 60%)' }}
               animate={{ scale: [1, 1.15, 1], x: [0, 40, 0], y: [0, 20, 0] }}
               transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
             />
-            <motion.div 
+            <motion.div
               className="absolute -bottom-60 -left-40 w-[400px] h-[400px] md:w-[600px] md:h-[600px] rounded-full"
               style={{ background: 'radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, transparent 60%)' }}
               animate={{ scale: [1.1, 1, 1.1], x: [0, -30, 0], y: [0, -40, 0] }}
               transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
             />
-            <motion.div 
+            <motion.div
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] md:w-[900px] md:h-[900px] rounded-full"
               style={{ background: 'radial-gradient(circle, rgba(255, 107, 107, 0.1) 0%, transparent 50%)' }}
               animate={{ rotate: [0, 360] }}
               transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
             />
-            
+
             {/* Cross Pattern Overlay */}
             <div className="absolute inset-0 opacity-[0.05]" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M20 0v40M0 20h40' stroke='%23fff' stroke-width='1'/%3E%3C/g%3E%3C/svg%3E")`,
             }} />
           </div>
-          
+
           <div className="container mx-auto max-w-6xl relative z-10">
             {/* Section Header - White Text on Red */}
             <FadeInSection>
@@ -1740,8 +1742,8 @@ export default function ChefLanding() {
                     Kitchen Access
                   </span>
                 </motion.div>
-                
-                <motion.h2 
+
+                <motion.h2
                   className="text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight mb-4"
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -1751,19 +1753,19 @@ export default function ChefLanding() {
                   No Kitchen?{" "}
                   <span className="relative inline-block">
                     <span className="relative z-10">No Problem.</span>
-                    <motion.svg 
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
-                      viewBox="0 0 300 12" 
+                    <motion.svg
+                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
+                      viewBox="0 0 300 12"
                       fill="none"
                       initial={{ pathLength: 0, opacity: 0 }}
                       whileInView={{ pathLength: 1, opacity: 1 }}
                       transition={{ duration: 1, delay: 0.5 }}
                       viewport={{ once: true }}
                     >
-                      <motion.path 
-                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
+                      <motion.path
+                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
                         stroke="rgba(255,255,255,0.6)"
-                        strokeWidth="3" 
+                        strokeWidth="3"
                         strokeLinecap="round"
                         initial={{ pathLength: 0 }}
                         whileInView={{ pathLength: 1 }}
@@ -1773,8 +1775,8 @@ export default function ChefLanding() {
                     </motion.svg>
                   </span>
                 </motion.h2>
-                
-                <motion.p 
+
+                <motion.p
                   className="text-sm md:text-base lg:text-lg text-white/85 leading-relaxed max-w-5xl mx-auto"
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -1791,121 +1793,10 @@ export default function ChefLanding() {
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
                 {uniqueLocations.slice(0, 6).map((loc: any, i: number) => (
                   <FadeInSection key={loc.id} delay={Math.min(i % 4, 3) as 0 | 1 | 2 | 3}>
-                    <motion.div 
-                      className="group h-full"
-                      initial={{ opacity: 0, y: 30 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      whileHover={{ y: -8 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
-                    >
-                      <Card className="h-full border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-white overflow-hidden">
-                        {/* Kitchen Image */}
-                        <div className="relative h-44 overflow-hidden">
-                          {(() => {
-                            // Get the image URL, filtering out empty strings
-                            const imageUrl = (loc.mainImage || loc.featuredKitchenImage || '').trim();
-                            const hasValidImage = imageUrl && imageUrl.length > 0;
-                            
-                            if (!hasValidImage) {
-                              console.warn(`[ChefLanding] No valid image URL for ${loc.name}:`, {
-                                mainImage: loc.mainImage,
-                                featuredKitchenImage: loc.featuredKitchenImage
-                              });
-                            }
-                            
-                            return hasValidImage ? (
-                              <>
-                                <img 
-                                  src={imageUrl}
-                                  alt={loc.name}
-                                  className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-                                  onError={(e) => {
-                                    // If image fails to load, hide it and show placeholder
-                                    console.error(`[ChefLanding] ❌ Image failed to load for ${loc.name}:`, {
-                                      imageUrl,
-                                      mainImage: loc.mainImage,
-                                      featuredKitchenImage: loc.featuredKitchenImage,
-                                      allLocationData: loc
-                                    });
-                                    const target = e.target as HTMLImageElement;
-                                    target.style.display = 'none';
-                                    const parent = target.parentElement;
-                                    if (parent) {
-                                      const placeholder = parent.querySelector('.image-placeholder') as HTMLElement;
-                                      if (placeholder) placeholder.style.display = 'flex';
-                                    }
-                                  }}
-                                  onLoad={() => {
-                                    // Always log successful image load (works in production)
-                                    console.log(`[ChefLanding] ✅ Image loaded successfully for ${loc.name}:`, imageUrl);
-                                  }}
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                                {/* Placeholder that shows if image fails to load */}
-                                <div className="image-placeholder absolute inset-0 bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center" style={{ display: 'none' }}>
-                                  <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
-                                    <Building2 className="h-8 w-8 text-[#F51042]" />
-                                  </div>
-                                </div>
-                              </>
-                            ) : null;
-                          })()}
-                          {!loc.mainImage && !loc.featuredKitchenImage && (
-                            <div className="w-full h-full bg-gradient-to-br from-[#FFE8DD] via-[#FFF0EB] to-white flex items-center justify-center">
-                              <div className="w-16 h-16 bg-gradient-to-br from-[#F51042]/15 to-[#FF6B6B]/10 rounded-xl flex items-center justify-center">
-                                <Building2 className="h-8 w-8 text-[#F51042]" />
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Kitchen count badge */}
-                          {loc.kitchenCount > 1 && (
-                            <div className="absolute top-3 right-3 bg-white rounded-full px-3 py-1 shadow-md">
-                              <span className="text-xs font-bold text-[#F51042]">{loc.kitchenCount} Kitchens</span>
-                            </div>
-                          )}
-                          
-                          {/* Logo overlay */}
-                          {loc.logoUrl && (
-                            <div className="absolute top-3 left-3">
-                              <img 
-                                src={loc.logoUrl} 
-                                alt={`${loc.name} logo`}
-                                className="h-10 w-auto object-contain bg-white rounded-lg p-1.5 shadow-md"
-                                onError={(e) => {
-                                  // If logo fails to load, hide it
-                                  const target = e.target as HTMLImageElement;
-                                  target.style.display = 'none';
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Content */}
-                        <div className="p-5">
-                          <h3 className="text-lg font-bold text-[#1A1A1A] mb-1 group-hover:text-[#F51042] transition-colors">
-                            {loc.name}
-                          </h3>
-                          {loc.address && (
-                            <p className="text-sm text-[#6B6B6B] flex items-start gap-1.5 mb-4">
-                              <span className="text-[#F51042]">📍</span>
-                              <span className="leading-relaxed line-clamp-2">{loc.address}</span>
-                            </p>
-                          )}
-                          
-                          <Button 
-                            className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold rounded-lg py-2.5 text-sm transition-all duration-300 group/btn"
-                            onClick={() => navigate(`/kitchen-preview/${loc.id}`)}
-                          >
-                            <Calendar className="mr-1.5 h-4 w-4" />
-                            View Availability
-                            <ArrowRight className="ml-1.5 h-4 w-4 group-hover/btn:translate-x-0.5 transition-transform" />
-                          </Button>
-                        </div>
-                      </Card>
-                    </motion.div>
+                    <KitchenLocationCard
+                      location={loc}
+                      navigate={navigate}
+                    />
                   </FadeInSection>
                 ))}
               </div>
@@ -1950,8 +1841,8 @@ export default function ChefLanding() {
             ) : null}
 
             {/* Partner CTA - Container Card with Bento Grid Inside */}
-              <FadeInSection delay={1}>
-              <motion.div 
+            <FadeInSection delay={1}>
+              <motion.div
                 className="bg-white rounded-2xl shadow-xl overflow-hidden"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -1962,9 +1853,9 @@ export default function ChefLanding() {
                 <div className="p-4 md:p-6">
                   {/* Header Row with Kitchen Icon */}
                   <div className="flex items-start gap-4 mb-4">
-                    <img 
-                      src={kitchenTableIcon} 
-                      alt="Kitchen" 
+                    <img
+                      src={kitchenTableIcon}
+                      alt="Kitchen"
                       className="w-12 h-12 object-contain"
                     />
                     <div>
@@ -1975,19 +1866,19 @@ export default function ChefLanding() {
                         Turn Downtime Into{" "}
                         <span className="relative inline-block">
                           <span className="text-[#F51042]">Revenue</span>
-                          <motion.svg 
-                            className="absolute -bottom-0.5 left-0 w-full" 
-                            viewBox="0 0 300 12" 
+                          <motion.svg
+                            className="absolute -bottom-0.5 left-0 w-full"
+                            viewBox="0 0 300 12"
                             fill="none"
                             initial={{ pathLength: 0, opacity: 0 }}
                             whileInView={{ pathLength: 1, opacity: 1 }}
                             transition={{ duration: 1, delay: 0.3 }}
                             viewport={{ once: true }}
                           >
-                            <motion.path 
-                              d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
+                            <motion.path
+                              d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
                               stroke="#F51042"
-                              strokeWidth="3" 
+                              strokeWidth="3"
                               strokeLinecap="round"
                               initial={{ pathLength: 0 }}
                               whileInView={{ pathLength: 1 }}
@@ -1999,7 +1890,7 @@ export default function ChefLanding() {
                       </h3>
                     </div>
                   </div>
-                  
+
                   <p className="text-sm text-[#6B6B6B] mb-4 max-w-xl">
                     Don't let your kitchen sit empty. Rent your underutilized hours to vetted local chefs.
                   </p>
@@ -2007,14 +1898,14 @@ export default function ChefLanding() {
                   {/* Bento Grid - Award-Winning Card Design with Background Icons */}
                   <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-3">
                     {/* Reliable Weekly Revenue Card */}
-                    <motion.div 
+                    <motion.div
                       className="relative bg-gradient-to-br from-[#4A90A4] to-[#2D6A7A] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
                       <CreditCard className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-                      
+
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
                           Reliable Income
@@ -2029,14 +1920,14 @@ export default function ChefLanding() {
                     </motion.div>
 
                     {/* Zero Risk, Total Compliance Card - Rich Violet (complementary to coral) */}
-                    <motion.div 
+                    <motion.div
                       className="relative bg-gradient-to-br from-[#7C5295] to-[#5D3D70] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
                       <Shield className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-                      
+
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
                           Zero Risk
@@ -2051,14 +1942,14 @@ export default function ChefLanding() {
                     </motion.div>
 
                     {/* Intelligent Hourly Management Card */}
-                    <motion.div 
+                    <motion.div
                       className="relative bg-gradient-to-br from-[#0D9488] to-[#0F766E] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
                       <Calendar className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-                      
+
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
                           Automated
@@ -2073,14 +1964,14 @@ export default function ChefLanding() {
                     </motion.div>
 
                     {/* Your Kitchen, Your Rules Card */}
-                    <motion.div 
+                    <motion.div
                       className="relative bg-gradient-to-br from-[#F5A623] to-[#E8940D] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
                       <Zap className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-                      
+
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
                           Your Control
@@ -2095,14 +1986,14 @@ export default function ChefLanding() {
                     </motion.div>
 
                     {/* Frictionless Flexibility Card */}
-                    <motion.div 
+                    <motion.div
                       className="relative bg-gradient-to-br from-[#2D3E50] to-[#1A2530] rounded-xl p-4 text-white overflow-hidden min-h-[160px]"
                       whileHover={{ scale: 1.02, y: -2 }}
                       transition={{ duration: 0.2 }}
                     >
                       {/* Background Icon */}
                       <Clock className="absolute -bottom-2 -right-2 h-20 w-20 text-white/10" />
-                      
+
                       <div className="relative z-10">
                         <span className="text-[9px] font-semibold uppercase tracking-wider text-white/70 block mb-2">
                           Flexible
@@ -2125,14 +2016,14 @@ export default function ChefLanding() {
                       Join kitchen partners earning passive income
                     </p>
                     <div className="flex flex-col sm:flex-row gap-2">
-                      <Button 
+                      <Button
                         onClick={() => window.location.href = 'mailto:admin@localcook.shop?subject=Kitchen Partnership Inquiry'}
                         className="bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300 group"
                       >
                         Become a Partner
                         <ArrowRight className="ml-1.5 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                       </Button>
-                      <Button 
+                      <Button
                         variant="outline"
                         onClick={() => window.location.href = 'https://kitchen.localcooks.ca'}
                         className="border border-[#2C2C2C]/20 text-[#2C2C2C] hover:border-[#F51042] hover:text-[#F51042] font-semibold py-2.5 px-6 rounded-full text-sm transition-all duration-300"
@@ -2149,18 +2040,18 @@ export default function ChefLanding() {
 
         {/* ══════ BOTTOM WAVE DIVIDER - Primary Red to Light ══════ */}
         <div className="relative w-full overflow-hidden" style={{ height: '120px', marginTop: '-1px' }}>
-          <svg 
-            viewBox="0 0 1440 320" 
-            fill="none" 
-            xmlns="http://www.w3.org/2000/svg" 
+          <svg
+            viewBox="0 0 1440 320"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
             className="absolute top-0 w-full"
             style={{ height: '120px', minWidth: '100%' }}
             preserveAspectRatio="none"
           >
             {/* Inverted wave pattern - solid brand red, no gradient */}
-            <path 
-              fill="#F51042" 
-              fillOpacity="1" 
+            <path
+              fill="#F51042"
+              fillOpacity="1"
               d="M0,96L48,106.7C96,117,192,139,288,149.3C384,160,480,160,576,138.7C672,117,768,75,864,64C960,53,1056,75,1152,96C1248,117,1344,139,1392,149.3L1440,160L1440,0L1392,0C1344,0,1248,0,1152,0C1056,0,960,0,864,0C768,0,672,0,576,0C480,0,384,0,288,0C192,0,96,0,48,0L0,0Z"
             />
           </svg>
@@ -2220,11 +2111,11 @@ export default function ChefLanding() {
             <div className="absolute top-10 left-10 w-96 h-96 bg-white rounded-full blur-3xl" />
             <div className="absolute bottom-10 right-10 w-80 h-80 bg-white rounded-full blur-3xl" />
           </div>
-          
+
           <div className="container mx-auto max-w-5xl text-center relative z-10">
             <FadeInSection>
               {/* Section Title - Styled like other sections with animated underline */}
-              <motion.div 
+              <motion.div
                 className="mb-8 md:mb-10"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2241,19 +2132,19 @@ export default function ChefLanding() {
                   <br />
                   <span className="relative inline-block">
                     <span className="text-white/95">On Your Terms.</span>
-                    <motion.svg 
-                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full" 
-                      viewBox="0 0 300 12" 
+                    <motion.svg
+                      className="absolute -bottom-1 md:-bottom-2 left-0 w-full"
+                      viewBox="0 0 300 12"
                       fill="none"
                       initial={{ pathLength: 0, opacity: 0 }}
                       whileInView={{ pathLength: 1, opacity: 1 }}
                       transition={{ duration: 1.2, delay: 0.6 }}
                       viewport={{ once: true }}
                     >
-                      <motion.path 
-                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8" 
+                      <motion.path
+                        d="M2 8C50 3 100 3 150 6C200 9 250 5 298 8"
                         stroke="rgba(255,255,255,0.8)"
-                        strokeWidth="3" 
+                        strokeWidth="3"
                         strokeLinecap="round"
                         initial={{ pathLength: 0 }}
                         whileInView={{ pathLength: 1 }}
@@ -2266,7 +2157,7 @@ export default function ChefLanding() {
               </motion.div>
 
               {/* Subheading - Single line on desktop */}
-              <motion.p 
+              <motion.p
                 className="text-base md:text-lg lg:text-xl text-white/90 mb-5 md:mb-6 max-w-4xl mx-auto leading-tight font-medium md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2276,7 +2167,7 @@ export default function ChefLanding() {
               </motion.p>
 
               {/* Brand Statement - Single line on desktop */}
-              <motion.p 
+              <motion.p
                 className="text-sm md:text-base lg:text-lg text-white/85 mb-6 md:mb-8 max-w-5xl mx-auto leading-tight md:whitespace-nowrap md:overflow-hidden md:text-ellipsis"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2286,7 +2177,7 @@ export default function ChefLanding() {
               </motion.p>
 
               {/* Three Truths Section - Centered */}
-              <motion.div 
+              <motion.div
                 className="mb-8"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

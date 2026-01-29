@@ -19,20 +19,27 @@ declare global {
 // Check if we're in production (Vercel)
 const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
 
-// Ensure uploads directory exists (for development)
+// Enterprise-grade storage strategy:
+// - Use R2 (cloud) when configured, regardless of environment
+// - This ensures team collaboration: all developers see the same files
+// - Fall back to local storage only when R2 is not configured
+const useCloudStorage = isR2Configured() || isProduction;
+
+// Ensure uploads directory exists (fallback for when R2 is not configured)
 const uploadsDir = path.join(process.cwd(), 'uploads', 'documents');
-if (!isProduction && !fs.existsSync(uploadsDir)) {
+if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configure multer for file storage
-const storage = multer.diskStorage({
+// Configure multer for local file storage (fallback only)
+const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     // Generate unique filename: userId_documentType_timestamp_originalname
-    const userId = req.user?.id || 'unknown';
+    // Check both req.user (legacy) and req.neonUser (Firebase auth)
+    const userId = (req as any).neonUser?.id || req.user?.id || 'unknown';
     const timestamp = Date.now();
     const documentType = file.fieldname; // 'foodSafetyLicense' or 'foodEstablishmentCert'
     const ext = path.extname(file.originalname);
@@ -43,7 +50,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// Memory storage for production (Cloudflare R2)
+// Memory storage for R2 uploads (keeps file in memory buffer for cloud upload)
 const memoryStorage = multer.memoryStorage();
 
 // File filter to only allow certain file types
@@ -64,9 +71,12 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   }
 };
 
-// Configure multer based on environment
+// Configure multer: use memory storage when R2 is available (for cloud upload)
+// Use disk storage only as fallback when R2 is not configured
+console.log(` File Upload Config: R2 configured = ${isR2Configured()}, using ${useCloudStorage ? 'memory (R2)' : 'disk (local)'} storage`);
+
 export const upload = multer({
-  storage: isProduction ? memoryStorage : storage,
+  storage: useCloudStorage ? memoryStorage : diskStorage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
@@ -76,16 +86,23 @@ export const upload = multer({
 // Helper function to upload file to Cloudflare R2 (production) or local storage (development)
 export const uploadToBlob = async (file: Express.Multer.File, userId: number, folder: string = 'documents'): Promise<string> => {
   try {
-    // In production, use Cloudflare R2 if configured, otherwise fall back to local
-    if (isProduction && isR2Configured()) {
-      return await uploadToR2(file, userId, folder);
+    // Use Cloudflare R2 if configured (production OR development with keys)
+    const r2Available = isR2Configured();
+    console.log(`📦 uploadToBlob: R2 configured = ${r2Available}, file has buffer = ${!!file.buffer}, file has path = ${!!file.path}`);
+    
+    if (r2Available) {
+      console.log(`☁️ Uploading to Cloudflare R2...`);
+      const url = await uploadToR2(file, userId, folder);
+      console.log(`✅ R2 upload complete: ${url}`);
+      return url;
     } else {
-      // Development: return local file path
+      // Development fallback: return local file path
+      console.log(`📁 R2 not configured, using local storage`);
       const filename = file.filename || `${userId}_${Date.now()}_${file.originalname}`;
       return getFileUrl(filename);
     }
   } catch (error) {
-    console.error('Error uploading file:', error);
+    console.error('❌ Error uploading file:', error);
     throw new Error('Failed to upload file to cloud storage');
   }
 };
@@ -117,8 +134,8 @@ export const cleanupApplicationDocuments = async (application: {
   try {
     const { deleteFromR2 } = await import('./r2-storage');
     
-    // In production with R2, delete from R2
-    if (isProduction && isR2Configured()) {
+    // Use R2 if configured
+    if (isR2Configured()) {
       if (application.foodSafetyLicenseUrl) {
         await deleteFromR2(application.foodSafetyLicenseUrl);
         console.log(`Deleted food safety license file from R2: ${application.foodSafetyLicenseUrl}`);

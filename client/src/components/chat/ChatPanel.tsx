@@ -1,27 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Send, Paperclip, Loader2 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef, useEffect } from 'react';
+import { X, Loader2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useFirebaseAuth } from '@/hooks/use-auth';
-import {
-  getMessages,
-  sendMessage,
-  subscribeToMessages,
-  markAsRead,
-  uploadChatFile,
-  type ChatMessage,
-} from '@/services/chat-service';
-import MessageList from './MessageList';
-import ChatInput from './ChatInput';
-import ChatHeader from './ChatHeader';
+import { Card, CardContent } from '@/components/ui/card';
 import FacilityDocumentsPanel from './FacilityDocumentsPanel';
+import { useChat } from '@/hooks/use-chat';
+import { Timestamp } from 'firebase/firestore';
+
+// Shadcn Chat Components
+import { ChatBubble } from '@/components/ui/chat/chat-bubble';
+import { ChatInput } from '@/components/ui/chat/chat-input';
+import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
+import { ChatAvatar } from '@/components/ui/chat/chat-avatar';
+import { Separator } from '@/components/ui/separator';
 
 interface ChatPanelProps {
   conversationId: string;
-  applicationId: number;
+  applicationId?: number; // Kept for prop compatibility but unused
   chefId: number;
   managerId: number;
   locationId: number;
@@ -35,7 +29,6 @@ interface ChatPanelProps {
 
 export default function ChatPanel({
   conversationId,
-  applicationId,
   chefId,
   managerId,
   locationId,
@@ -46,245 +39,253 @@ export default function ChatPanel({
   onUnreadCountUpdate,
   embedded = false,
 }: ChatPanelProps) {
-  const { user } = useFirebaseAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSending, setIsSending] = useState(false);
-  const [attachedFacilityDocument, setAttachedFacilityDocument] = useState<{
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [attachedFacilityDocuments, setAttachedFacilityDocuments] = useState<Array<{
     name: string;
     url: string;
-  } | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  }>>([]);
 
-  // Get Neon user ID from API
-  const { data: userInfo } = useQuery({
-    queryKey: ['/api/firebase/user/me'],
-    queryFn: async () => {
-      const { auth } = await import('@/lib/firebase');
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error('Not authenticated');
-      const token = await currentUser.getIdToken();
-      const response = await fetch('/api/firebase/user/me', {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to get user info');
-      return response.json();
-    },
-    enabled: !!user,
+  const {
+    messages,
+    isLoading,
+    isSending,
+    currentUserId,
+    handleSendMessage,
+    isManager,
+    error,
+  } = useChat({
+    conversationId,
+    chefId,
+    managerId,
+    onUnreadCountUpdate,
   });
 
-  const currentUserId = userInfo?.id || 0;
-  const isChef = currentUserId === chefId;
-  const isManager = currentUserId === managerId;
-
-  useEffect(() => {
-    if (!conversationId) {
-      console.log('No conversationId, skipping message load');
-      return;
-    }
-
-    if (!currentUserId || currentUserId === 0) {
-      console.log('Waiting for currentUserId...', { currentUserId, userInfo });
-      return;
-    }
-
-    console.log('Setting up message subscription for conversation:', conversationId, {
-      currentUserId,
-      isChef,
-      isManager,
-    });
-
-    // Load initial messages
-    const loadMessages = async () => {
-      try {
-        console.log('Loading initial messages...');
-        const initialMessages = await getMessages(conversationId);
-        console.log('Loaded messages:', initialMessages.length);
-        setMessages(initialMessages);
-        setIsLoading(false);
-
-        // Mark as read
-        if (isChef || isManager) {
-          await markAsRead(conversationId, currentUserId, isChef ? 'chef' : 'manager');
-          // Notify parent component to update conversation list
-          if (onUnreadCountUpdate) {
-            onUnreadCountUpdate();
-          }
-        }
-      } catch (error) {
-        console.error('Error loading messages:', error);
-        setIsLoading(false);
+  const onSend = async (content: string, files?: File[]) => {
+    try {
+      // 1. Send text message first if exists
+      if (content.trim()) {
+        await handleSendMessage(content);
       }
-    };
 
-    loadMessages();
+      // 2. Send attached facility documents
+      if (attachedFacilityDocuments.length > 0) {
+        for (const doc of attachedFacilityDocuments) {
+          // Send as a file message with URL
+          await handleSendMessage('', { name: doc.name, url: doc.url });
+        }
+        setAttachedFacilityDocuments([]);
+      }
 
-    // Subscribe to real-time updates
-    console.log('Setting up real-time subscription...');
-    const unsubscribe = subscribeToMessages(
-      conversationId,
-      (newMessages) => {
-        console.log('Received new messages from subscription:', newMessages.length);
-        setMessages(newMessages);
-        // Auto-scroll to bottom
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      },
-      (error) => {
-        console.error('Subscription error:', error);
-        // Show error to user if subscription fails
-        if (error && typeof error === 'object' && 'code' in error) {
-          const firebaseError = error as { code: string };
-          if (firebaseError.code === 'permission-denied') {
-            console.error('Permission denied - check Firestore rules');
-          } else if (firebaseError.code === 'failed-precondition') {
-            console.error('Index required - check Firestore indexes');
-          }
+      // 3. Send uploaded files
+      if (files && files.length > 0) {
+        for (const file of files) {
+          await handleSendMessage('', file);
         }
       }
-    );
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
+  };
 
-    return () => {
-      console.log('Cleaning up message subscription');
-      unsubscribe();
-    };
-  }, [conversationId, currentUserId, isChef, isManager, userInfo]);
+  const handleAttachFacilityDocuments = (documents: Array<{ name: string; url: string }>) => {
+    setAttachedFacilityDocuments(prev => [...prev, ...documents]);
+  };
 
-  // Auto-scroll to bottom when new messages arrive
+  const removeAttachedDocument = (index: number) => {
+    setAttachedFacilityDocuments(prev => prev.filter((_, i) => i !== index));
+  };
+
+
+  // ... scroll effect kept same ...
+  // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length > 0) {
+      // Only scroll if we are already near the bottom OR it's the first load
+      // For now, let's just make it behavior: 'auto' to avoid the whole page jumping visibly
+      // And scope it to the container if possible, but scrollIntoView works on element.
+      // Better: check if we should scroll.
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }, [messages]);
 
-  const handleSendMessage = async (content: string, file?: File) => {
-    if (!content.trim() && !file && !attachedFacilityDocument) return;
-
-    // Validate currentUserId before sending
-    if (!currentUserId || currentUserId === 0) {
-      console.error('Cannot send message: currentUserId is not available', { currentUserId, userInfo });
-      return;
-    }
-
-    setIsSending(true);
-    try {
-      let fileUrl: string | undefined;
-      let fileName: string | undefined;
-
-      if (file) {
-        fileUrl = await uploadChatFile(conversationId, file);
-        fileName = file.name;
-      } else if (attachedFacilityDocument) {
-        // Use the facility document URL directly
-        fileUrl = attachedFacilityDocument.url;
-        fileName = attachedFacilityDocument.name;
-      }
-
-      // Use attached facility document content or provided content
-      const messageContent = attachedFacilityDocument && !content.trim()
-        ? `Attached facility document: ${attachedFacilityDocument.name}`
-        : content;
-
-      console.log('Sending message:', {
-        conversationId,
-        senderId: currentUserId,
-        senderRole: isChef ? 'chef' : 'manager',
-        content: messageContent.substring(0, 50) + '...',
-        hasFacilityDoc: !!attachedFacilityDocument,
-      });
-
-      const messageId = await sendMessage(
-        conversationId,
-        currentUserId,
-        isChef ? 'chef' : 'manager',
-        messageContent,
-        (file || attachedFacilityDocument) ? 'file' : 'text',
-        fileUrl,
-        fileName
-      );
-
-      console.log('Message sent successfully:', messageId);
-
-      // Clear the attached facility document after sending
-      setAttachedFacilityDocument(null);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      // Show error to user
-      alert(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsSending(false);
-    }
+  // ... helpers getPartnerName/getPartnerLabel kept same ...
+  const getPartnerName = () => {
+    if (isManager) return chefName || "Chef";
+    return managerName || "Manager";
   };
 
-  const handleAttachFacilityDocument = (document: { name: string; url: string }) => {
-    setAttachedFacilityDocument(document);
-  };
+  const getPartnerLabel = () => {
+    if (isManager) return "Chef";
+    return "Manager";
+  }
 
-  if (embedded) {
-    return (
-      <div className="flex flex-col h-full">
-        <ChatHeader
-          locationName={locationName}
-          onClose={onClose}
-          embedded={embedded}
+  // ... renderHeader kept same ...
+  const renderHeader = () => (
+    <div className="flex flex-row items-center justify-between space-y-0 gap-x-3 py-3 px-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center gap-3">
+        <ChatAvatar
+          fallback={getPartnerName()[0]}
         />
-        <div className="flex-1 overflow-hidden min-h-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-            </div>
-          ) : (
-            <MessageList
-              messages={messages}
-              currentUserId={currentUserId}
-              chefName={chefName}
-              managerName={managerName}
-              messagesEndRef={messagesEndRef}
-            />
-          )}
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold text-foreground">{getPartnerName()}</span>
+          <span className="text-xs text-muted-foreground">{locationName || getPartnerLabel()}</span>
         </div>
+      </div>
+
+      <div className="flex items-center gap-1">
+        {error && (
+          <div className="flex items-center text-destructive text-sm mr-2">
+            <Info className="h-4 w-4 mr-1" />
+            <span>Connection error</span>
+          </div>
+        )}
+        {onClose && (
+          <>
+            <Separator orientation="vertical" className="h-6 mx-1" />
+            <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-destructive/10 hover:text-destructive">
+              <X className="h-4 w-4" />
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  // ... renderMessages kept same generally ...
+  const renderMessages = () => {
+    if (messages.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-8">
+          <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
+            <Info className="h-6 w-6 text-muted-foreground/50" />
+          </div>
+          <p>No messages yet.</p>
+          <p className="text-xs mt-1 text-muted-foreground/70">Start the conversation by saying hello!</p>
+        </div>
+      );
+    }
+
+    return (
+      <ChatMessageList scrollRef={messagesEndRef} className="px-4 py-6">
+        {messages.map((message) => {
+          if (message.senderRole === 'system') {
+            return (
+              <div key={message.id} className="flex justify-center my-4">
+                <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full border">
+                  {message.content}
+                </span>
+              </div>
+            );
+          }
+
+          const isMe = message.senderId === currentUserId;
+          let senderName = "User";
+          if (message.senderRole === 'chef') senderName = chefName || "Chef";
+          if (message.senderRole === 'manager') senderName = managerName || "Manager";
+
+          const timestamp = message.createdAt instanceof Date
+            ? message.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : message.createdAt instanceof Timestamp
+              ? message.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          return (
+            <ChatBubble
+              key={message.id}
+              variant={isMe ? "sent" : "received"}
+              avatarFallback={senderName[0]}
+              senderName={!isMe ? senderName : "You"}
+              timestamp={timestamp}
+            >
+              {message.type === 'file' ? (
+                <div className="flex flex-col gap-2 p-1">
+                  <span className="text-sm">{message.content}</span>
+                  <a
+                    href={message.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 p-2 rounded bg-background/50 border hover:bg-background/80 transition-colors group"
+                  >
+                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20">
+                      <Info className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-xs underline truncate max-w-[150px]">
+                      {message.fileName || 'Attached File'}
+                    </span>
+                  </a>
+                </div>
+              ) : (
+                <span className="whitespace-pre-wrap">{message.content}</span>
+              )}
+            </ChatBubble>
+          );
+        })}
+      </ChatMessageList>
+    );
+  };
+
+  const renderContent = (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {renderHeader()}
+
+      <div className="flex-1 overflow-hidden relative bg-muted/20">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
+          </div>
+        ) : (
+          renderMessages()
+        )}
+      </div>
+
+      <div className="border-t bg-background">
         {isManager && (
-          <div className="border-t bg-gray-50 p-4">
+          <div className="border-b bg-muted/10">
             <FacilityDocumentsPanel
               locationId={locationId}
-              onAttachDocument={handleAttachFacilityDocument}
+              onAttachDocuments={handleAttachFacilityDocuments}
             />
           </div>
         )}
+
+        {attachedFacilityDocuments.length > 0 && (
+          <div className="px-4 py-2 bg-muted/30 border-b flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2">
+            {attachedFacilityDocuments.map((doc, index) => (
+              <div key={index} className="flex items-center gap-2 bg-background border px-2 py-1 rounded-md text-sm shadow-sm">
+                <span className="flex items-center gap-2 max-w-[150px]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0" />
+                  <span className="font-medium truncate">{doc.name}</span>
+                </span>
+                <Button variant="ghost" size="icon" className="h-4 w-4 rounded-full -mr-1" onClick={() => removeAttachedDocument(index)}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <ChatInput
-          onSend={handleSendMessage}
-          isSending={isSending}
-          attachedFacilityDocument={attachedFacilityDocument}
-          onClearFacilityDocument={() => setAttachedFacilityDocument(null)}
+          onSend={onSend}
+          isLoading={isSending}
+          className="border-0 shadow-none bg-background pb-6"
+          placeholder={`Message ${getPartnerName()}...`}
         />
+      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="flex flex-col h-full bg-background border-none shadow-none">
+        {renderContent}
       </div>
     );
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto h-[600px] flex flex-col">
-      <CardHeader className="flex-shrink-0 pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Chat</CardTitle>
-          {onClose && (
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-        <ChatHeader locationName={locationName} embedded={true} />
-      </CardHeader>
-      <CardContent className="flex-1 flex flex-col overflow-hidden p-0">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0">
-            <MessageList messages={messages} currentUserId={currentUserId} messagesEndRef={messagesEndRef} />
-          </div>
-        )}
-        <ChatInput onSend={handleSendMessage} isSending={isSending} />
+    <Card className="w-full max-w-4xl mx-auto h-[700px] flex flex-col shadow-2xl border-border/50 overflow-hidden">
+      <CardContent className="flex-1 p-0 flex flex-col h-full">
+        {renderContent}
       </CardContent>
     </Card>
   );

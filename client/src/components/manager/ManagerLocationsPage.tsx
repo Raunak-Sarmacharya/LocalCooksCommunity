@@ -13,6 +13,8 @@ import {
 import LocationCard, { LocationCardSkeleton, type LocationData } from "./LocationCard";
 import LocationEditModal from "./LocationEditModal";
 import { auth } from "@/lib/firebase";
+import { DataTable } from "@/components/ui/data-table";
+import { getLocationColumns } from "./locations/columns";
 
 interface ManagerLocationsPageProps {
   locations: LocationData[];
@@ -24,7 +26,7 @@ interface ManagerLocationsPageProps {
 async function getAuthHeaders(): Promise<HeadersInit> {
   const token = localStorage.getItem('firebaseToken');
   const currentFirebaseUser = auth.currentUser;
-  
+
   if (currentFirebaseUser) {
     try {
       const freshToken = await currentFirebaseUser.getIdToken();
@@ -36,14 +38,14 @@ async function getAuthHeaders(): Promise<HeadersInit> {
       console.error('Error getting Firebase token:', error);
     }
   }
-  
+
   if (token) {
     return {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     };
   }
-  
+
   return {
     'Content-Type': 'application/json',
   };
@@ -68,7 +70,7 @@ export default function ManagerLocationsPage({
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const counts: Record<number, number> = {};
-      
+
       await Promise.all(
         locations.map(async (location) => {
           try {
@@ -87,7 +89,7 @@ export default function ManagerLocationsPage({
           }
         })
       );
-      
+
       return counts;
     },
     enabled: locations.length > 0,
@@ -99,19 +101,19 @@ export default function ManagerLocationsPage({
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const counts: Record<number, number> = {};
-      
+
       try {
         const response = await fetch("/api/manager/bookings", {
           credentials: "include",
           headers,
         });
-        
+
         if (response.ok) {
           const bookings = await response.json();
           // Count active bookings (confirmed or pending) per location
           // We need to match bookings to locations through kitchens
           const kitchenToLocation: Record<number, number> = {};
-          
+
           // First, build a map of kitchen IDs to location IDs
           await Promise.all(
             locations.map(async (location) => {
@@ -133,10 +135,10 @@ export default function ManagerLocationsPage({
               }
             })
           );
-          
+
           // Initialize counts
           locations.forEach(l => counts[l.id] = 0);
-          
+
           // Count bookings per location
           if (Array.isArray(bookings)) {
             bookings.forEach((booking: any) => {
@@ -152,7 +154,7 @@ export default function ManagerLocationsPage({
       } catch (error) {
         locations.forEach(l => counts[l.id] = 0);
       }
-      
+
       return counts;
     },
     enabled: locations.length > 0,
@@ -160,16 +162,16 @@ export default function ManagerLocationsPage({
 
   // Filter locations based on search and status
   const filteredLocations = locations.filter((location) => {
-    const matchesSearch = 
+    const matchesSearch =
       location.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       location.address.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = 
+
+    const matchesStatus =
       statusFilter === "all" ||
       (statusFilter === "approved" && location.kitchenLicenseStatus === "approved") ||
       (statusFilter === "pending" && (!location.kitchenLicenseStatus || location.kitchenLicenseStatus === "pending")) ||
       (statusFilter === "rejected" && location.kitchenLicenseStatus === "rejected");
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -217,7 +219,7 @@ export default function ManagerLocationsPage({
             Manage all your kitchen locations and their approval status
           </p>
         </div>
-        <Button 
+        <Button
           onClick={onCreateLocation}
           className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
         >
@@ -262,8 +264,8 @@ export default function ManagerLocationsPage({
         </Select>
 
         {/* Refresh Button */}
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="icon"
           onClick={refreshData}
           className="shrink-0"
@@ -272,7 +274,7 @@ export default function ManagerLocationsPage({
         </Button>
       </div>
 
-      {/* Locations Grid */}
+      {/* Locations Data Table */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
@@ -290,7 +292,7 @@ export default function ManagerLocationsPage({
               <p className="text-gray-500 mb-6">
                 Create your first location to start managing your kitchens
               </p>
-              <Button 
+              <Button
                 onClick={onCreateLocation}
                 className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
               >
@@ -310,20 +312,16 @@ export default function ManagerLocationsPage({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredLocations.map((location) => (
-            <LocationCard
-              key={location.id}
-              location={location}
-              kitchenCount={kitchenCounts?.[location.id] || 0}
-              activeBookingsCount={bookingCounts?.[location.id] || 0}
-              pendingApplicationsCount={0}
-              onEdit={handleEdit}
-              onManage={handleManage}
-              onViewDetails={handleViewDetails}
-            />
-          ))}
-        </div>
+        <DataTable
+          columns={getLocationColumns({
+            onEdit: handleEdit,
+            onManage: handleManage,
+            onViewDetails: handleViewDetails
+          })}
+          data={filteredLocations}
+          filterColumn="name"
+          filterPlaceholder="Filter by name..."
+        />
       )}
 
       {/* Summary Stats */}

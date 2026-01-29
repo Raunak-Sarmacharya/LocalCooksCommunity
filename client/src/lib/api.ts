@@ -131,6 +131,30 @@ export class APIClient {
 // Create default API client instance
 export const apiClient = new APIClient();
 
+/**
+ * Get Firebase Auth headers for API requests
+ * Enterprise-grade utility function - use this instead of duplicating auth logic
+ * 
+ * @returns Promise<HeadersInit> - Headers object with Content-Type and Authorization
+ */
+export async function getAuthHeaders(): Promise<HeadersInit> {
+  try {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const token = await currentUser.getIdToken();
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+    }
+  } catch (error) {
+    console.error('Error getting Firebase token:', error);
+  }
+  return {
+    'Content-Type': 'application/json',
+  };
+}
+
 // Helper functions for common operations
 export async function apiGet(endpoint: string, requireAuth: boolean = true) {
   const response = await apiClient.get(endpoint, requireAuth);

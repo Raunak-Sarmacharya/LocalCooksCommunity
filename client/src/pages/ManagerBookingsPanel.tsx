@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, XCircle, Clock, Calendar, User, MapPin, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ManagerHeader from "@/components/layout/ManagerHeader";
+import { StorageExtensionApprovals } from "@/components/manager/StorageExtensionApprovals";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +16,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast, createBookingDateTime, getNowInTimezone } from "@/utils/timezone-utils";
 import { useManagerDashboard } from "@/hooks/use-manager-dashboard";
+import { DataTable } from "@/components/ui/data-table";
+import { getBookingColumns } from "@/components/manager/bookings/columns";
 import { auth } from "@/lib/firebase";
 
 interface Booking {
@@ -24,6 +27,7 @@ interface Booking {
   bookingDate: string;
   startTime: string;
   endTime: string;
+  selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots
   status: string;
   specialNotes?: string;
   createdAt: string;
@@ -83,17 +87,17 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       try {
         const headers = await getAuthHeaders();
         const headersObj = headers as Record<string, string>;
-        console.log('📋 ManagerBookingsPanel: Fetching bookings', { 
-          hasAuth: !!headersObj.Authorization 
+        console.log('📋 ManagerBookingsPanel: Fetching bookings', {
+          hasAuth: !!headersObj.Authorization
         });
-        
+
         const response = await fetch('/api/manager/bookings', {
           headers,
           credentials: "include",
         });
-        
+
         console.log('📋 ManagerBookingsPanel: Response status:', response.status);
-        
+
         if (!response.ok) {
           let errorMessage = 'Failed to fetch bookings';
           try {
@@ -111,7 +115,7 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           }
           throw new Error(errorMessage);
         }
-        
+
         const contentType = response.headers.get('content-type');
         let data;
         if (contentType && contentType.includes('application/json')) {
@@ -120,12 +124,12 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
           const text = await response.text();
           data = text ? JSON.parse(text) : [];
         }
-        
+
         console.log(`✅ ManagerBookingsPanel: Received ${Array.isArray(data) ? data.length : 0} bookings`);
         if (Array.isArray(data) && data.length > 0) {
           console.log('📋 ManagerBookingsPanel: Sample booking:', data[0]);
         }
-        
+
         return data;
       } catch (error) {
         console.error('❌ ManagerBookingsPanel: Fetch error:', error);
@@ -257,20 +261,20 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
         // Check if booking end time has passed - if yes, it's past (regardless of status)
         if (isBookingPast(bookingDateStr, booking.endTime, timezone)) {
           past.push(booking);
-        } 
+        }
         // Check if booking start time is in the future - if yes, it's upcoming
         else if (isBookingUpcoming(bookingDateStr, booking.startTime, timezone)) {
           upcoming.push(booking);
-        } 
+        }
         // If booking is currently happening (between start and end), check more carefully
         else {
           // Booking start time has passed but end time hasn't - check if it's very recent
           const bookingEndDateTime = createBookingDateTime(bookingDateStr, booking.endTime, timezone);
           const now = getNowInTimezone(timezone);
-          
+
           // If end time is very close (within 1 hour), it might have just ended - use end time to decide
           const hoursSinceEnd = (now.getTime() - bookingEndDateTime.getTime()) / (1000 * 60 * 60);
-          
+
           // If end time passed more than 1 hour ago, it's definitely past
           if (hoursSinceEnd > 1) {
             past.push(booking);
@@ -382,252 +386,198 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
 
   const content = (
     <main className={embedded ? "flex-1 py-4 sm:py-6" : "flex-1 pt-20 sm:pt-24 pb-6 sm:pb-8"}>
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">Booking Requests</h1>
-            <p className="text-gray-600 mt-2">Review and manage chef booking requests</p>
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Booking Requests</h1>
+          <p className="text-gray-600 mt-2">Review and manage chef booking requests</p>
+        </div>
+
+        {/* Storage Extension Approvals */}
+        <div className="mb-8">
+          <StorageExtensionApprovals />
+        </div>
+
+        {/* Location Filter (shown only when multiple locations exist) */}
+        {locations.length > 1 && (
+          <div className="flex items-center gap-3 mb-4">
+            <label className="text-sm font-medium text-gray-700">Location:</label>
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="all">All Locations</option>
+              {locations.map((loc: any) => (
+                <option key={loc.id} value={loc.name}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
           </div>
+        )}
 
-          {/* Location Filter (shown only when multiple locations exist) */}
-          {locations.length > 1 && (
-            <div className="flex items-center gap-3 mb-4">
-              <label className="text-sm font-medium text-gray-700">Location:</label>
-              <select
-                value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">All Locations</option>
-                {locations.map((loc: any) => (
-                  <option key={loc.id} value={loc.name}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+        {/* Filter Tabs */}
+        <div className="flex gap-4 mb-6 border-b overflow-x-auto">
+          {[
+            { key: 'all', label: 'All Bookings' },
+            { key: 'upcoming', label: 'Upcoming' },
+            { key: 'past', label: 'Past' },
+            { key: 'pending', label: 'Pending' },
+            { key: 'cancelled', label: 'Cancelled' },
+          ].map((filter) => {
+            // Calculate counts considering location filter
+            const baseBookings = locationFilter === 'all'
+              ? bookings
+              : bookings.filter((b: Booking) => b.locationName === locationFilter);
 
-          {/* Filter Tabs */}
-          <div className="flex gap-4 mb-6 border-b overflow-x-auto">
-            {[
-              { key: 'all', label: 'All Bookings' },
-              { key: 'upcoming', label: 'Upcoming' },
-              { key: 'past', label: 'Past' },
-              { key: 'pending', label: 'Pending' },
-              { key: 'cancelled', label: 'Cancelled' },
-            ].map((filter) => {
-              // Calculate counts considering location filter
-              let baseBookings = locationFilter === 'all' 
-                ? bookings 
-                : bookings.filter((b: Booking) => b.locationName === locationFilter);
-              
-              let count = 0;
-              if (filter.key === 'all') {
-                count = baseBookings.length;
-              } else if (filter.key === 'upcoming') {
-                count = upcomingBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
-              } else if (filter.key === 'past') {
-                count = pastBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
-              } else {
-                count = baseBookings.filter((b: Booking) => b.status === filter.key).length;
-              }
+            let count = 0;
+            if (filter.key === 'all') {
+              count = baseBookings.length;
+            } else if (filter.key === 'upcoming') {
+              count = upcomingBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
+            } else if (filter.key === 'past') {
+              count = pastBookings.filter((b: Booking) => locationFilter === 'all' || b.locationName === locationFilter).length;
+            } else {
+              count = baseBookings.filter((b: Booking) => b.status === filter.key).length;
+            }
 
-              return (
-                <button
-                  key={filter.key}
-                  onClick={() => setStatusFilter(filter.key)}
-                  className={`px-4 py-2 font-medium whitespace-nowrap transition-colors ${
-                    statusFilter === filter.key
-                      ? 'text-blue-600 border-b-2 border-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
+            return (
+              <button
+                key={filter.key}
+                onClick={() => setStatusFilter(filter.key)}
+                className={`px-4 py-2 font-medium whitespace-nowrap transition-colors ${statusFilter === filter.key
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
                   }`}
-                >
-                  {filter.label}
-                  <span className="ml-2 text-sm">
-                    ({count})
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+              >
+                {filter.label}
+                <span className="ml-2 text-sm">
+                  ({count})
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
-          {/* Bookings List */}
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            </div>
-          ) : filteredBookings.length === 0 ? (
-            <div className="text-center py-12">
-              <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No bookings found</h3>
-              <p className="text-gray-600">
-                {statusFilter === 'all' 
-                  ? "You don't have any bookings yet" 
-                  : `No ${statusFilter} bookings`}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredBookings.map((booking: Booking) => {
-                return (
-                <div
-                  key={booking.id}
-                  className="bg-white rounded-lg shadow-md border border-gray-200 p-6 hover:shadow-lg transition-shadow"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="text-xl font-semibold text-gray-900">
-                          {booking.kitchenName || 'Kitchen'}
-                        </h3>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <MapPin className="h-4 w-4" />
-                          <span>{booking.locationName || 'Location'}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <User className="h-4 w-4" />
-                          <span>{booking.chefName || `Chef #${booking.chefId}`}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <Calendar className="h-4 w-4" />
-                          <span>{formatDate(booking.bookingDate)}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-gray-600">
-                          <Clock className="h-4 w-4" />
-                          <span>{formatTime(booking.startTime)} - {formatTime(booking.endTime)}</span>
-                        </div>
-                      </div>
-                      {booking.specialNotes && (
-                        <div className="mt-3 p-3 bg-gray-50 rounded-md">
-                          <p className="text-sm text-gray-700">
-                            <span className="font-medium">Notes: </span>
-                            {booking.specialNotes}
-                          </p>
-                        </div>
-                      )}
+        {/* Bookings List */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <DataTable
+              columns={getBookingColumns({
+                onConfirm: (id) => {
+                  if (!hasApprovedLicense) {
+                    toast({
+                      title: "License Not Approved",
+                      description: "Your kitchen license must be approved by an admin before you can confirm bookings.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  handleConfirm(id);
+                },
+                onReject: handleCancelClick, // Reuse cancel click for reject as it opens same dialog or we might need differentiation. 
+                // Wait, existing code uses handleCancelClick for Reject too?
+                // Line 539: onClick={() => handleCancelClick(booking)} for Reject button. Yes.
+                onCancel: handleCancelClick,
+                hasApprovedLicense
+              })}
+              data={filteredBookings}
+              filterColumn="chefName" // filter by Chef name by default
+              filterPlaceholder="Filter by chef..."
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Cancellation Confirmation Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              {bookingToCancel?.status === 'pending' ? 'Reject Booking Request' : 'Cancel Booking Confirmation'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="pt-4">
+              <div className="space-y-3">
+                <p className="font-medium">
+                  {bookingToCancel?.status === 'pending'
+                    ? "Are you sure you want to reject this request?"
+                    : "Are you sure you want to cancel this booking? This action cannot be undone."}
+                </p>
+                {bookingToCancel && (
+                  <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Chef:</span>
+                      <span>{bookingToCancel.chefName || `Chef #${bookingToCancel.chefId}`}</span>
                     </div>
-                    <div className="ml-4">
-                      {getStatusBadge(booking.status)}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Kitchen:</span>
+                      <span>{bookingToCancel.kitchenName || 'Kitchen'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Date:</span>
+                      <span>{formatDate(bookingToCancel.bookingDate)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Time:</span>
+                      <span>
+                        {(() => {
+                          const rawSlots = bookingToCancel.selectedSlots as Array<string | { startTime: string; endTime: string }> | undefined;
+                          if (rawSlots && rawSlots.length > 0) {
+                            // Normalize slots to handle both old string format and new object format
+                            const normalizeSlot = (slot: string | { startTime: string; endTime: string }) => {
+                              if (typeof slot === 'string') {
+                                const [h, m] = slot.split(':').map(Number);
+                                const endMins = h * 60 + m + 60;
+                                const endH = Math.floor(endMins / 60);
+                                const endM = endMins % 60;
+                                return { startTime: slot, endTime: `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}` };
+                              }
+                              return slot;
+                            };
+                            const normalized = rawSlots.map(normalizeSlot).filter(s => s.startTime && s.endTime);
+                            const sorted = [...normalized].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                            // Check if contiguous
+                            let isContiguous = true;
+                            for (let i = 1; i < sorted.length; i++) {
+                              if (sorted[i - 1].endTime !== sorted[i].startTime) {
+                                isContiguous = false;
+                                break;
+                              }
+                            }
+                            if (!isContiguous) {
+                              return sorted.map(s => `${formatTime(s.startTime)}-${formatTime(s.endTime)}`).join(', ');
+                            }
+                          }
+                          return `${formatTime(bookingToCancel.startTime)} - ${formatTime(bookingToCancel.endTime)}`;
+                        })()}
+                      </span>
                     </div>
                   </div>
-
-                  {/* Action Buttons */}
-                  {booking.status === 'pending' && (
-                    <div className="flex gap-3 mt-4 pt-4 border-t">
-                      <button
-                        onClick={() => {
-                          if (!hasApprovedLicense) {
-                            toast({
-                              title: "License Not Approved",
-                              description: "Your kitchen license must be approved by an admin before you can confirm bookings.",
-                              variant: "destructive",
-                            });
-                            return;
-                          }
-                          handleConfirm(booking.id);
-                        }}
-                        disabled={updateStatusMutation.isPending || !hasApprovedLicense}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        title={!hasApprovedLicense ? "Kitchen license must be approved before confirming bookings" : ""}
-                      >
-                        <CheckCircle className="h-4 w-4" />
-                        Confirm Booking
-                      </button>
-                      <button
-                        onClick={() => handleCancelClick(booking)}
-                        disabled={updateStatusMutation.isPending}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <XCircle className="h-4 w-4" />
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                  
-                  {booking.status === 'confirmed' && (() => {
-                    // Check if booking time has passed
-                    const bookingDateTime = new Date(`${booking.bookingDate.split('T')[0]}T${booking.startTime}`);
-                    const isBookingPast = bookingDateTime < new Date();
-                    
-                    // Only show cancel button if booking hasn't started yet
-                    if (isBookingPast) {
-                      return null;
-                    }
-                    
-                    return (
-                      <div className="flex gap-3 mt-4 pt-4 border-t">
-                        <button
-                          onClick={() => handleCancelClick(booking)}
-                          disabled={updateStatusMutation.isPending}
-                          className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <XCircle className="h-4 w-4" />
-                          Cancel Booking
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        
-        {/* Cancellation Confirmation Dialog */}
-        <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-                <AlertTriangle className="h-5 w-5" />
-                Cancel Booking Confirmation
-              </AlertDialogTitle>
-              <AlertDialogDescription className="pt-4">
-                <div className="space-y-3">
-                  <p className="font-medium">
-                    Are you sure you want to cancel this booking? This action cannot be undone.
-                  </p>
-                  {bookingToCancel && (
-                    <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Chef:</span>
-                        <span>{bookingToCancel.chefName || `Chef #${bookingToCancel.chefId}`}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Kitchen:</span>
-                        <span>{bookingToCancel.kitchenName || 'Kitchen'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Date:</span>
-                        <span>{formatDate(bookingToCancel.bookingDate)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">Time:</span>
-                        <span>{formatTime(bookingToCancel.startTime)} - {formatTime(bookingToCancel.endTime)}</span>
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-gray-600 mt-3">
-                    The chef will be notified via email that their booking has been cancelled.
-                  </p>
-                </div>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancelDialogClose}>Keep Booking</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleCancelConfirm}
-                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-                disabled={updateStatusMutation.isPending}
-              >
-                {updateStatusMutation.isPending ? 'Cancelling...' : 'Yes, Cancel Booking'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </main>
+                )}
+                <p className="text-muted-foreground mt-3">
+                  The chef will be notified via email.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelDialogClose}>Keep Booking</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelConfirm}
+              className="bg-destructive hover:bg-destructive/90 focus:ring-destructive"
+              disabled={updateStatusMutation.isPending}
+            >
+              {updateStatusMutation.isPending ? 'Processing...' : (bookingToCancel?.status === 'pending' ? 'Reject Request' : 'Yes, Cancel Booking')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </main>
   );
 
   if (embedded) {
