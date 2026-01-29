@@ -372,6 +372,43 @@ export async function downloadInvoice(bookingId: number): Promise<void> {
     document.body.removeChild(a)
 }
 
+// Refund a transaction (manager-initiated)
+export async function refundTransaction(params: {
+    transactionId: number;
+    amountCents: number;
+    reason?: string;
+}): Promise<any> {
+    const headers = await getAuthHeaders()
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 20000)
+    try {
+        const response = await fetch(`/api/manager/revenue/transactions/${params.transactionId}/refund`, {
+            method: 'POST',
+            headers,
+            credentials: 'include',
+            signal: controller.signal,
+            body: JSON.stringify({
+                amount: params.amountCents,
+                reason: params.reason,
+            }),
+        })
+
+        if (!response.ok) {
+            const errorBody = await response.json().catch(() => null)
+            throw new Error(errorBody?.error || 'Failed to process refund')
+        }
+
+        return response.json()
+    } catch (error: any) {
+        if (error?.name === 'AbortError') {
+            throw new Error('Refund request timed out. Please try again.')
+        }
+        throw error
+    } finally {
+        window.clearTimeout(timeoutId)
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // PAYOUT STATEMENT DOWNLOAD HANDLER
 // ═══════════════════════════════════════════════════════════════════════

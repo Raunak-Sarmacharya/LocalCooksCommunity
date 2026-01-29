@@ -803,35 +803,33 @@ export async function getTransactionHistory(
   endDate?: string | Date,
   locationId?: number,
   limit: number = 100,
-  offset: number = 0
-): Promise<any[]> {
+  offset: number = 0,
+  paymentStatus?: string
+): Promise<{ transactions: any[]; total: number }> {
   try {
-    // Build WHERE clause
-    const whereConditions = [sql`l.manager_id = ${managerId}`, sql`kb.status != 'cancelled'`];
+    const start = startDate ? (typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0]) : undefined;
+    const end = endDate ? (typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0]) : undefined;
 
-    if (startDate) {
-      const start = typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0];
-      whereConditions.push(sql`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
+    const mapPaymentStatus = (status: string | null | undefined): string => {
+      if (!status) return 'pending';
+      if (status === 'succeeded') return 'paid';
+      if (status === 'canceled') return 'canceled';
+      return status;
+    };
+
+    const kitchenWhereConditions = [sql`l.manager_id = ${managerId}`, sql`kb.status != 'cancelled'`];
+    if (start) {
+      kitchenWhereConditions.push(sql`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
-
-    if (endDate) {
-      const end = typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0];
-      whereConditions.push(sql`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
+    if (end) {
+      kitchenWhereConditions.push(sql`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
-
     if (locationId) {
-      whereConditions.push(sql`l.id = ${locationId}`);
+      kitchenWhereConditions.push(sql`l.id = ${locationId}`);
     }
+    const kitchenWhereClause = sql`WHERE ${sql.join(kitchenWhereConditions, sql` AND `)}`;
 
-    const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
-
-    // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service.js');
-    const serviceFeeRate = await getServiceFeeRate();
-
-    // Query transactions - join with payment_transactions to get actual Stripe data
-    // Use payment_transactions.amount as the source of truth for totalPrice when available
-    const result = await db.execute(sql`
+    const kitchenResult = await db.execute(sql`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -857,33 +855,39 @@ export async function getTransactionHistory(
         u.username as chef_name,
         u.username as chef_email,
         kb.created_at,
+        kb.updated_at,
         -- Actual amount from payment_transactions (what was actually charged to Stripe)
         pt.amount as pt_amount,
         -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
         COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
-        -- Actual tax amount from payment_transactions
-        COALESCE(pt.tax_amount, 0)::bigint as actual_tax_amount,
         -- Service fee from payment_transactions
         COALESCE(pt.service_fee, 0)::bigint as pt_service_fee,
         -- Manager revenue from payment_transactions (actual Stripe net amount)
-        pt.manager_revenue as pt_manager_revenue
+        pt.manager_revenue as pt_manager_revenue,
+        pt.id as transaction_id,
+        pt.status as transaction_status,
+        pt.payment_intent_id as pt_payment_intent_id,
+        pt.refund_amount as pt_refund_amount,
+        pt.booking_type as pt_booking_type,
+        pt.currency as pt_currency,
+        pt.paid_at as pt_paid_at,
+        pt.metadata as pt_metadata
       FROM kitchen_bookings kb
       JOIN kitchens k ON kb.kitchen_id = k.id
       JOIN locations l ON k.location_id = l.id
       LEFT JOIN users u ON kb.chef_id = u.id
       LEFT JOIN payment_transactions pt ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
-      ${whereClause}
+      ${kitchenWhereClause}
       ORDER BY kb.booking_date DESC, kb.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
     `);
 
-    return result.rows.map((row: any) => {
+    const kitchenTransactions = kitchenResult.rows.map((row: any) => {
       // Get values from payment_transactions (source of truth when available)
       const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
       const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
       const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
       const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
-      const actualTaxAmount = row.actual_tax_amount != null ? parseInt(String(row.actual_tax_amount)) : 0;
+      const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
       
       // Fallback values from kitchen_bookings
       const kbTotalPrice = row.kb_total_price != null ? parseInt(String(row.kb_total_price)) : 0;
@@ -903,7 +907,7 @@ export async function getTransactionHistory(
         // Use actual values from payment_transactions
         // pt.amount is the total charged to Stripe (subtotal + tax)
         totalPriceCents = ptAmount;
-        taxCents = actualTaxAmount;
+        taxCents = Math.round((kbTotalPrice * taxRatePercent) / 100);
         serviceFeeCents = ptServiceFee > 0 ? ptServiceFee : kbServiceFee;
       } else {
         // Fallback: use kitchen_bookings values
@@ -926,12 +930,20 @@ export async function getTransactionHistory(
       // Net revenue = total - tax - stripe fees
       const netRevenue = totalPriceCents - taxCents - stripeFee;
 
+      const resolvedBookingType = row.pt_booking_type || 'kitchen';
+
+      const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
+      const bookingId = parseInt(String(row.id));
+
       return {
-        id: row.id,
-        bookingId: row.id, // Add bookingId for invoice download
+        id: bookingId,
+        transactionId,
+        bookingId, // Add bookingId for invoice download
+        bookingType: resolvedBookingType,
         bookingDate: row.booking_date,
         startTime: row.start_time,
         endTime: row.end_time,
+        chefId: row.chef_id != null ? parseInt(String(row.chef_id)) : null,
         totalPrice: totalPriceCents,
         serviceFee: serviceFeeCents,
         platformFee: serviceFeeCents, // Alias for frontend compatibility - DEPRECATED
@@ -940,18 +952,40 @@ export async function getTransactionHistory(
         stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
         managerRevenue: managerRevenue || 0,
         netRevenue: netRevenue, // Net after tax and Stripe fees
-        paymentStatus: row.payment_status,
-        paymentIntentId: row.payment_intent_id,
+        paymentStatus: mapPaymentStatus(row.transaction_status || row.payment_status),
+        paymentIntentId: row.pt_payment_intent_id || row.payment_intent_id,
         status: row.status,
-        currency: row.currency || 'CAD',
+        currency: String(row.pt_currency || row.currency || 'CAD').toUpperCase(),
+        kitchenId: parseInt(String(row.kitchen_id)),
         kitchenName: row.kitchen_name,
-        locationId: parseInt(row.location_id),
+        locationId: parseInt(String(row.location_id)),
         locationName: row.location_name,
         chefName: row.chef_name || 'Guest',
         chefEmail: row.chef_email,
         createdAt: row.created_at,
+        paidAt: row.pt_paid_at || null,
+        refundAmount: ptRefundAmount,
+        refundableAmount: Math.max(0, totalPriceCents - ptRefundAmount),
       };
     });
+
+    let allTransactions = kitchenTransactions;
+
+    if (paymentStatus && paymentStatus !== 'all') {
+      allTransactions = allTransactions.filter((t: { paymentStatus: string; }) => t.paymentStatus === paymentStatus);
+    }
+
+    allTransactions.sort((a: { bookingDate: any; createdAt: string | number | Date; }, b: { bookingDate: any; createdAt: string | number | Date; }) => {
+      const aDate = new Date(a.bookingDate || a.createdAt).getTime();
+      const bDate = new Date(b.bookingDate || b.createdAt).getTime();
+      if (bDate !== aDate) return bDate - aDate;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const total = allTransactions.length;
+    const pagedTransactions = allTransactions.slice(offset, offset + limit);
+
+    return { transactions: pagedTransactions, total };
   } catch (error) {
     console.error('Error getting transaction history:', error);
     throw error;

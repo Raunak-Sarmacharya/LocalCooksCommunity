@@ -20,6 +20,7 @@ export {
     usePayouts,
     useStripeConnectStatus,
     downloadInvoice,
+    refundTransaction,
     downloadPayoutStatement,
     getDefaultDateRange,
 } from './hooks/use-revenue-data'

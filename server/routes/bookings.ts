@@ -1204,8 +1204,8 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
 
         // Get the location for this kitchen
         // Get the location for this kitchen
-        const kitchen = await kitchenService.getKitchenById(kitchenId);
-        const kitchenLocationId1 = kitchen.locationId;
+        const kitchenDetails = await kitchenService.getKitchenById(kitchenId);
+        const kitchenLocationId1 = kitchenDetails.locationId;
         if (!kitchenLocationId1) {
             return res.status(400).json({ error: "Kitchen location not found" });
         }
@@ -1235,7 +1235,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
         }
 
         // Get location to get timezone and minimum booking window
-        const kitchenLocationId2 = kitchen.locationId;
+        const kitchenLocationId2 = kitchenDetails.locationId;
         let location = null;
         let timezone = "America/Edmonton"; // Default fallback
         let minimumBookingWindowHours = 1; // Default fallback
@@ -1278,6 +1278,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
         }
 
         // Verify payment intent if provided
+        let paymentIntentStatus: string | undefined;
         if (paymentIntentId) {
             const { getPaymentIntent } = await import('../services/stripe-service');
             const paymentIntent = await getPaymentIntent(paymentIntentId);
@@ -1292,6 +1293,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
                 });
             }
 
+            paymentIntentStatus = paymentIntent.status;
             // Check amount matches expected
             // Note: We should ideally recalculate price here to verify, but for now trusting the intent amount
         }
@@ -1320,6 +1322,47 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             selectedStorageIds: storageIds,
             selectedEquipmentIds: selectedEquipmentIds || []
         });
+
+        // Create payment transaction record if payment intent is present
+        if (paymentIntentId) {
+            try {
+                const { createPaymentTransaction, findPaymentTransactionByIntentId } = await import('../services/payment-transactions-service');
+                const existingTransaction = await findPaymentTransactionByIntentId(paymentIntentId, db);
+
+                if (!existingTransaction) {
+                    const subtotalCents = booking?.totalPrice != null ? parseInt(String(booking.totalPrice)) : 0;
+                    const serviceFeeCents = booking?.serviceFee != null ? parseInt(String(booking.serviceFee)) : 0;
+                    const taxRatePercent = kitchenDetails?.taxRatePercent != null ? Number(kitchenDetails.taxRatePercent) : 0;
+                    const taxCents = Math.round((subtotalCents * taxRatePercent) / 100);
+                    const totalAmountCents = subtotalCents + taxCents;
+                    const managerRevenueCents = Math.max(0, subtotalCents - serviceFeeCents);
+                    const managerId = (location as any)?.managerId || (location as any)?.manager_id || null;
+                    const normalizedStatus: 'succeeded' | 'processing' = paymentIntentStatus === 'succeeded' ? 'succeeded' : 'processing';
+
+                    await createPaymentTransaction({
+                        bookingId: booking.id,
+                        bookingType: 'kitchen',
+                        chefId,
+                        managerId,
+                        amount: totalAmountCents,
+                        baseAmount: subtotalCents,
+                        serviceFee: serviceFeeCents,
+                        managerRevenue: managerRevenueCents,
+                        currency: (booking.currency || 'CAD').toUpperCase(),
+                        paymentIntentId,
+                        status: normalizedStatus,
+                        stripeStatus: paymentIntentStatus,
+                        metadata: {
+                            createdFrom: 'chef_booking',
+                            taxRatePercent,
+                            taxCents,
+                        },
+                    }, db);
+                }
+            } catch (ptError) {
+                console.warn(`[Booking Route] Could not create payment_transactions record for booking ${booking.id}:`, ptError);
+            }
+        }
 
         // Send email notifications
         try {

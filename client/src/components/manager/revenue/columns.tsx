@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, Download, Eye, CheckCircle, Clock, XCircle, AlertCircle } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Download, Eye, CheckCircle, Clock, XCircle, AlertCircle, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -124,11 +124,13 @@ function PayoutStatusBadge({ status }: { status: string }) {
 interface TransactionColumnsProps {
     onDownloadInvoice: (bookingId: number) => void
     onViewDetails?: (transaction: Transaction) => void
+    onRefund?: (transaction: Transaction) => void
 }
 
 export function getTransactionColumns({
     onDownloadInvoice,
-    onViewDetails
+    onViewDetails,
+    onRefund,
 }: TransactionColumnsProps): ColumnDef<Transaction>[] {
     return [
         {
@@ -160,12 +162,16 @@ export function getTransactionColumns({
         {
             accessorKey: "locationName",
             header: "Location",
-            cell: ({ row }) => (
-                <div className="flex flex-col">
-                    <span className="text-sm font-medium">{row.original.kitchenName}</span>
-                    <span className="text-xs text-muted-foreground">{row.getValue("locationName")}</span>
-                </div>
-            ),
+            cell: ({ row }) => {
+                return (
+                    <div className="flex flex-col">
+                        <span className="text-sm font-medium">{row.original.kitchenName}</span>
+                        <span className="text-xs text-muted-foreground">
+                            {row.getValue("locationName")}
+                        </span>
+                    </div>
+                )
+            },
         },
         {
             accessorKey: "totalPrice",
@@ -267,6 +273,10 @@ export function getTransactionColumns({
             id: "actions",
             cell: ({ row }) => {
                 const transaction = row.original
+                const canRefund = !!transaction.transactionId
+                    && transaction.refundableAmount > 0
+                    && (transaction.paymentStatus === 'paid' || transaction.paymentStatus === 'partially_refunded')
+                const canDownloadInvoice = transaction.bookingType === 'kitchen' || transaction.bookingType === 'bundle'
 
                 return (
                     <DropdownMenu>
@@ -278,7 +288,10 @@ export function getTransactionColumns({
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={() => onDownloadInvoice(transaction.bookingId)}>
+                            <DropdownMenuItem
+                                onClick={() => onDownloadInvoice(transaction.bookingId)}
+                                disabled={!canDownloadInvoice}
+                            >
                                 <Download className="mr-2 h-4 w-4" />
                                 Download Invoice
                             </DropdownMenuItem>
@@ -286,6 +299,15 @@ export function getTransactionColumns({
                                 <DropdownMenuItem onClick={() => onViewDetails(transaction)}>
                                     <Eye className="mr-2 h-4 w-4" />
                                     View Details
+                                </DropdownMenuItem>
+                            )}
+                            {onRefund && (
+                                <DropdownMenuItem
+                                    onClick={() => onRefund(transaction)}
+                                    disabled={!canRefund}
+                                >
+                                    <RotateCcw className="mr-2 h-4 w-4" />
+                                    Issue Refund
                                 </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />

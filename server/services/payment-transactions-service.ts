@@ -769,6 +769,22 @@ export async function findPaymentTransactionByIntentId(
 }
 
 /**
+ * Find payment transaction by ID
+ */
+export async function findPaymentTransactionById(
+  transactionId: number,
+  db: any
+): Promise<PaymentTransactionRecord | null> {
+  const result = await db.execute(sql`
+    SELECT * FROM payment_transactions
+    WHERE id = ${transactionId}
+    LIMIT 1
+  `);
+
+  return result.rows[0] as PaymentTransactionRecord | null;
+}
+
+/**
  * Find payment transaction by booking
  */
 export async function findPaymentTransactionByBooking(
