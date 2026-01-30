@@ -17,19 +17,22 @@ export default function PaymentSuccessPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Get booking ID from URL (supports both bookingId and booking_id params)
+  // Get booking ID or session ID from URL
+  // Enterprise-grade flow: booking is created in webhook, so we may need to poll
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const bookingId = params.get('bookingId') || params.get('booking_id');
+    const sessionId = params.get('session_id');
 
-    if (!bookingId) {
-      setError('No booking ID provided');
+    // If no booking ID and no session ID, show generic success
+    if (!bookingId && !sessionId) {
+      // Payment was successful but booking details not available yet
       setIsLoading(false);
       return;
     }
 
-    // Fetch booking details
-    const fetchBooking = async () => {
+    // Fetch booking details with retry for enterprise flow
+    const fetchBooking = async (retryCount = 0): Promise<void> => {
       try {
         const { auth } = await import('@/lib/firebase');
         const currentUser = auth.currentUser;
@@ -40,7 +43,53 @@ export default function PaymentSuccessPage() {
         }
 
         const token = await currentUser.getIdToken();
-        const response = await fetch(`/api/chef/bookings/${bookingId}`, {
+        
+        // If we have a booking ID, fetch directly
+        if (bookingId) {
+          const response = await fetch(`/api/chef/bookings/${bookingId}`, {
+            credentials: 'include',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch booking details');
+          }
+
+          const bookingData = await response.json();
+          setBookingFromData(bookingData);
+          return;
+        }
+
+        // Enterprise flow: Fetch by session ID
+        // The booking is created by the webhook using the payment intent ID
+        if (sessionId) {
+          const response = await fetch(`/api/chef/bookings/by-session/${sessionId}`, {
+            credentials: 'include',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (response.ok) {
+            const bookingData = await response.json();
+            setBookingFromData(bookingData);
+            return;
+          }
+
+          // If 404, booking may not be created yet - retry
+          if (response.status === 404 && retryCount < 10) {
+            console.log(`[PaymentSuccess] Booking not found yet, retrying (${retryCount + 1}/10)...`);
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            return fetchBooking(retryCount + 1);
+          }
+        }
+
+        // Fallback: try to get latest booking
+        const fallbackResponse = await fetch(`/api/chef/bookings?limit=1`, {
           credentials: 'include',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -48,28 +97,53 @@ export default function PaymentSuccessPage() {
           },
         });
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch booking details');
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          const bookings = data.bookings || data;
+          if (Array.isArray(bookings) && bookings.length > 0) {
+            const latestBooking = bookings[0];
+            const createdAt = new Date(latestBooking.createdAt || latestBooking.created_at);
+            const now = new Date();
+            const diffMs = now.getTime() - createdAt.getTime();
+            
+            if (diffMs < 120000) { // Within 2 minutes
+              setBookingFromData(latestBooking);
+              return;
+            }
+          }
         }
 
-        const bookingData = await response.json();
-        // Normalize booking data structure
-        const normalizedBooking = {
-          ...bookingData,
-          kitchenName: bookingData.kitchen?.name || bookingData.kitchenName || 'Kitchen',
-          bookingDate: bookingData.bookingDate || bookingData.booking_date,
-          startTime: bookingData.startTime || bookingData.start_time,
-          endTime: bookingData.endTime || bookingData.end_time,
-          selectedSlots: bookingData.selectedSlots || bookingData.selected_slots,
-          status: bookingData.status,
-        };
-        setBooking(normalizedBooking);
+        // If booking not found yet and we have retries left, wait and retry
+        if (retryCount < 10) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          return fetchBooking(retryCount + 1);
+        }
+
+        // After retries, show error
+        setError('Booking is being processed. Please check your dashboard in a moment.');
+        setIsLoading(false);
       } catch (err: any) {
         console.error('Error fetching booking:', err);
-        setError(err.message || 'Failed to load booking details');
-      } finally {
+        // Don't show error for enterprise flow - booking may still be processing
+        if (bookingId) {
+          setError(err.message || 'Failed to load booking details');
+        }
         setIsLoading(false);
       }
+    };
+
+    const setBookingFromData = (bookingData: any) => {
+      const normalizedBooking = {
+        ...bookingData,
+        kitchenName: bookingData.kitchen?.name || bookingData.kitchenName || 'Kitchen',
+        bookingDate: bookingData.bookingDate || bookingData.booking_date,
+        startTime: bookingData.startTime || bookingData.start_time,
+        endTime: bookingData.endTime || bookingData.end_time,
+        selectedSlots: bookingData.selectedSlots || bookingData.selected_slots,
+        status: bookingData.status,
+      };
+      setBooking(normalizedBooking);
+      setIsLoading(false);
     };
 
     fetchBooking();

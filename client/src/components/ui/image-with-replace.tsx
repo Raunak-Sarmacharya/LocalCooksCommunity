@@ -79,6 +79,36 @@ export function ImageWithReplace({
         return;
       }
 
+      // Handle URLs without protocol (e.g., "files.localcooks.ca/documents/...")
+      // These need to be routed through the proxy with the full URL
+      if (imageUrl.includes('files.localcooks.ca') || imageUrl.includes('r2.cloudflarestorage.com')) {
+        // Add https:// if missing and route through proxy
+        const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://${imageUrl}`;
+        const proxyUrl = getR2ProxyUrl(fullUrl);
+        setImageSrc(proxyUrl);
+        setIsLoading(false);
+        return;
+      }
+
+      // Handle plain filenames (no path prefix, no protocol) - route through proxy
+      // These are likely R2 filenames stored without the full URL
+      const isPlainFilename = !imageUrl.startsWith('http://') && 
+                              !imageUrl.startsWith('https://') && 
+                              !imageUrl.startsWith('/') &&
+                              !imageUrl.startsWith('data:') &&
+                              !imageUrl.startsWith('blob:') &&
+                              (imageUrl.endsWith('.png') || imageUrl.endsWith('.jpg') || 
+                               imageUrl.endsWith('.jpeg') || imageUrl.endsWith('.webp') ||
+                               imageUrl.endsWith('.gif'));
+      
+      if (isPlainFilename) {
+        // Route through the R2 proxy with the filename - server will resolve the full path
+        const proxyUrl = `/api/files/r2-proxy?filename=${encodeURIComponent(imageUrl)}`;
+        setImageSrc(proxyUrl);
+        setIsLoading(false);
+        return;
+      }
+
       // Check if it's already a full URL (R2 public URL or other CDN)
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
         // Check if it's a public R2 URL - use directly

@@ -126,6 +126,7 @@ export function useKitchenBookings() {
         bookingDate: booking.booking_date || booking.bookingDate,
         startTime: booking.start_time || booking.startTime,
         endTime: booking.end_time || booking.endTime,
+        selectedSlots: booking.selected_slots || booking.selectedSlots || [], // Discrete time slots for non-contiguous bookings
         status: booking.status,
         specialNotes: booking.special_notes || booking.specialNotes,
         createdAt: booking.created_at || booking.createdAt,

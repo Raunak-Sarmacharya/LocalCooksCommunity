@@ -56,6 +56,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { auth } from "@/lib/firebase";
 import { toast } from "@/hooks/use-toast";
+import { useFirebaseAuth } from "@/hooks/use-auth";
 import { formatDistanceToNow, isToday, isYesterday, isThisWeek } from "date-fns";
 
 // Types
@@ -424,6 +425,10 @@ export default function ChefNotificationCenter() {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<FilterType>("all");
+  const { user, loading: isAuthLoading } = useFirebaseAuth();
+  
+  // Only fetch when auth is ready and user is authenticated
+  const isAuthReady = !isAuthLoading && !!user;
 
   // Fetch unread count - poll more frequently when popover is open
   const { data: unreadData, isError: unreadError } = useQuery({
@@ -436,7 +441,8 @@ export default function ChefNotificationCenter() {
       }
       return res.json();
     },
-    refetchInterval: isOpen ? 10000 : 30000,
+    enabled: isAuthReady,
+    refetchInterval: isAuthReady ? (isOpen ? 10000 : 30000) : false,
     retry: 2,
     staleTime: 5000,
   });
@@ -454,7 +460,7 @@ export default function ChefNotificationCenter() {
       }
       return res.json();
     },
-    enabled: isOpen,
+    enabled: isOpen && isAuthReady,
     retry: false,
   });
 

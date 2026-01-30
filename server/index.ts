@@ -8,6 +8,13 @@ import { log, serveStatic, setupVite } from "./vite.js";
 const app = express();
 // Set environment explicitly to match NODE_ENV
 app.set('env', process.env.NODE_ENV || 'development');
+
+// CRITICAL: Stripe webhooks require raw body for signature verification
+// Must be registered BEFORE express.json() middleware
+// Only apply to the exact webhook endpoint, not sub-routes like /manual-process-session
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+
+// JSON parsing for all other routes
 app.use(express.json({ limit: '12mb' }));
 app.use(express.urlencoded({ limit: '12mb', extended: true }));
 

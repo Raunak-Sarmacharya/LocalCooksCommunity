@@ -149,6 +149,39 @@ export async function syncFirebaseUserToNeon(params: {
       }
     }
 
+    // Send notification to admins about new user registration
+    try {
+      const { sendEmail, generateNewUserRegistrationAdminEmail } = await import('./email.js');
+      const { db } = await import('./db.js');
+      const { users } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      
+      // Get all admin users to notify
+      const admins = await db
+        .select({ username: users.username })
+        .from(users)
+        .where(eq(users.role, 'admin'));
+      
+      for (const admin of admins) {
+        if (admin.username && admin.username !== email) {
+          const adminEmail = generateNewUserRegistrationAdminEmail({
+            adminEmail: admin.username,
+            newUserName: displayName || email.split('@')[0],
+            newUserEmail: email,
+            userRole: finalRole,
+            registrationDate: new Date(),
+          });
+          await sendEmail(adminEmail, {
+            trackingId: `new_user_admin_notify_${admin.username}_${Date.now()}`
+          });
+          console.log(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
+        }
+      }
+    } catch (adminNotifyError) {
+      console.error('❌ Error sending admin notification for new user:', adminNotifyError);
+      // Don't fail user creation if admin notification fails
+    }
+
     return newUser;
   } catch (error) {
     console.error('❌ Error in syncFirebaseUserToNeon:', error);

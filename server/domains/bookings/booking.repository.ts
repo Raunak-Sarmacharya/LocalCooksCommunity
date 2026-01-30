@@ -13,7 +13,7 @@ import {
     paymentTransactions,
     chefKitchenApplications
 } from "@shared/schema";
-import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql } from "drizzle-orm";
+import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
 
 export class BookingRepository {
@@ -140,7 +140,12 @@ export class BookingRepository {
                 eq(paymentTransactions.bookingId, kitchenBookings.id),
                 eq(paymentTransactions.bookingType, 'kitchen')
             ))
-            .where(eq(locations.managerId, managerId))
+            .where(and(
+                eq(locations.managerId, managerId),
+                // CRITICAL: Only show bookings where payment has been initiated (not abandoned at checkout)
+                // 'pending' paymentStatus means chef never completed checkout - don't show to manager
+                ne(kitchenBookings.paymentStatus, 'pending')
+            ))
             .orderBy(desc(kitchenBookings.bookingDate));
 
         return results.map(row => {
@@ -340,6 +345,7 @@ export class BookingRepository {
         extensionServiceFeeCents: number;
         extensionTotalPriceCents: number;
         stripeSessionId: string;
+        stripePaymentIntentId?: string;
         status: string;
     }) {
         const [extension] = await db
@@ -352,6 +358,7 @@ export class BookingRepository {
                 extensionServiceFeeCents: data.extensionServiceFeeCents,
                 extensionTotalPriceCents: data.extensionTotalPriceCents,
                 stripeSessionId: data.stripeSessionId,
+                stripePaymentIntentId: data.stripePaymentIntentId,
                 status: data.status,
             })
             .returning();
