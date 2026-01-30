@@ -3,8 +3,8 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2, MapPin, Loader2, ArrowRight, Calendar, Lock,
-  ChevronLeft, ChevronRight, Utensils, Sparkles, Check, ImageOff, FileText, Clock, XCircle,
-  Wrench, Package, Snowflake, DollarSign
+  ChevronLeft, ChevronRight, Utensils, Check, ImageOff, FileText, Clock,
+  Wrench, Package, Snowflake
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +17,8 @@ import kitchenTableIcon from "@assets/kitchen-table.png";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
 import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Component for individual carousel image with presigned URL
 function CarouselImage({ imageUrl, kitchenName, index }: { imageUrl: string; kitchenName: string; index: number }) {
@@ -270,7 +272,13 @@ function ImageCarousel({ images, kitchenName }: { images: string[]; kitchenName:
 
   useEffect(() => {
     if (!emblaApi) return;
-    onSelect();
+    // Initialize state from embla on mount
+    const initializeState = () => {
+      setSelectedIndex(emblaApi.selectedScrollSnap());
+      setCanScrollPrev(emblaApi.canScrollPrev());
+      setCanScrollNext(emblaApi.canScrollNext());
+    };
+    initializeState();
     emblaApi.on('select', onSelect);
     emblaApi.on('reInit', onSelect);
     return () => {
@@ -354,7 +362,7 @@ function MiniCalendarPreview({
   isAuthenticated,
   canBook,
   onBookClick,
-  onApplyClick
+  onApplyClick: _onApplyClick
 }: {
   isAuthenticated: boolean;
   canBook: boolean;
@@ -679,7 +687,7 @@ function KitchenDetailsSection({ kitchen }: { kitchen: PublicKitchen }) {
 
 export default function KitchenPreviewPage() {
   const [locationPath, navigate] = useLocation();
-  const { user } = useFirebaseAuth();
+  const { user, loading: authLoading } = useFirebaseAuth();
   const isAuthenticated = !!user;
 
   const locationIdMatch = locationPath.match(/\/kitchen-preview\/(\d+)/);
@@ -688,7 +696,8 @@ export default function KitchenPreviewPage() {
   const [selectedKitchen, setSelectedKitchen] = useState<PublicKitchen | null>(null);
   const [kitchenEquipment, setKitchenEquipment] = useState<{ included: EquipmentListing[]; rental: EquipmentListing[] } | null>(null);
   const [kitchenStorage, setKitchenStorage] = useState<StorageListing[] | null>(null);
-  const [isLoadingAddons, setIsLoadingAddons] = useState(false);
+  const [, setIsLoadingAddons] = useState(false);
+  const [activeView, setActiveView] = useState("discover-kitchens");
 
   // Check if chef has an approved application for this location
   // Only check if user is authenticated
@@ -766,7 +775,7 @@ export default function KitchenPreviewPage() {
           if (equipmentResponse.ok) {
             const equipmentData = await equipmentResponse.json();
             setKitchenEquipment({
-              included: (equipmentData.included || []).map((e: any) => ({
+              included: (equipmentData.included || []).map((e: EquipmentListing & { hourlyRate?: number; dailyRate?: number }) => ({
                 id: e.id,
                 category: e.category,
                 equipmentType: e.equipmentType,
@@ -777,7 +786,7 @@ export default function KitchenPreviewPage() {
                 dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
                 currency: e.currency || "CAD",
               })),
-              rental: (equipmentData.rental || []).map((e: any) => ({
+              rental: (equipmentData.rental || []).map((e: EquipmentListing & { hourlyRate?: number; dailyRate?: number }) => ({
                 id: e.id,
                 category: e.category,
                 equipmentType: e.equipmentType,
@@ -805,7 +814,7 @@ export default function KitchenPreviewPage() {
           });
           if (storageResponse.ok) {
             const storageData = await storageResponse.json();
-            setKitchenStorage((storageData || []).map((s: any) => ({
+            setKitchenStorage((storageData || []).map((s: StorageListing & { basePrice?: number; pricePerCubicFoot?: number }) => ({
               id: s.id,
               storageType: s.storageType,
               name: s.name,
@@ -845,24 +854,12 @@ export default function KitchenPreviewPage() {
         // Navigate to booking page with location filter
         navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
       } else {
-        // Navigate to application page or custom link
-        if (locationData?.customOnboardingLink) {
-          window.location.href = locationData.customOnboardingLink;
-        } else {
-          navigate(`/kitchen-requirements/${locationId}`);
-        }
+        // Navigate to application page within the app
+        navigate(`/kitchen-requirements/${locationId}`);
       }
     } else {
-      // If there's a custom link, we might want to go there directly even if not logged in
-      // But typically we want them to sign in first to LocalCooks
-      // HOWEVER, if the manager wants to bypass our application form, they might want to bypass auth too
-      // Let's stick to the custom link if provided
-      if (locationData?.customOnboardingLink) {
-        window.location.href = locationData.customOnboardingLink;
-      } else {
-        // Navigate to auth page with redirect
-        navigate(`/auth?redirect=/kitchen-preview/${locationId}`);
-      }
+      // Navigate to auth page with redirect
+      navigate(`/auth?redirect=/kitchen-preview/${locationId}`);
     }
   };
 
@@ -870,22 +867,329 @@ export default function KitchenPreviewPage() {
     if (canBook) {
       navigate(`/book-kitchen${locationId ? `?location=${locationId}` : ''}`);
     } else {
-      if (locationData?.customOnboardingLink) {
-        window.location.href = locationData.customOnboardingLink;
-      } else {
-        navigate(`/kitchen-requirements/${locationId}`);
-      }
-    }
-  };
-
-  const handleApplyClick = () => {
-    if (locationData?.customOnboardingLink) {
-      window.location.href = locationData.customOnboardingLink;
-    } else {
       navigate(`/kitchen-requirements/${locationId}`);
     }
   };
 
+  const handleApplyClick = () => {
+    navigate(`/kitchen-requirements/${locationId}`);
+  };
+
+  // Loading content for dashboard
+  const loadingContent = (
+    <div className="space-y-6">
+      <Skeleton className="h-20 w-full rounded-xl" />
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-3 space-y-4">
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+        <div className="col-span-9">
+          <Skeleton className="h-[500px] w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+
+  // Error/Not found content
+  const notFoundContent = (
+    <div className="text-center py-16">
+      <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+        <ImageOff className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h1 className="text-xl sm:text-2xl font-bold text-foreground mb-2">Location Not Found</h1>
+      <p className="text-sm sm:text-base text-muted-foreground mb-6">This kitchen location doesn&apos;t exist or has been removed.</p>
+      <Button
+        onClick={() => isAuthenticated ? navigate('/dashboard?view=discover-kitchens') : navigate('/')}
+        variant="default"
+      >
+        {isAuthenticated ? 'Back to Discover Kitchens' : 'Back to Home'}
+      </Button>
+    </div>
+  );
+
+  // Main kitchen preview content
+  const mainContent = (locationData: PublicLocation & { kitchens: PublicKitchen[] }) => {
+    const { kitchens, ...location } = locationData;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="space-y-6"
+      >
+        {/* Location Header Card */}
+        <Card className="border-0 shadow-lg overflow-hidden">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4 w-full sm:w-auto">
+                {location.logoUrl ? (
+                  <img
+                    src={location.logoUrl}
+                    alt={location.name}
+                    className="h-12 w-auto sm:h-14 rounded-xl flex-shrink-0 shadow-md"
+                  />
+                ) : (
+                  <div className="h-12 w-12 sm:h-14 sm:w-14 rounded-xl bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center flex-shrink-0 shadow-md">
+                    <Building2 className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-xl sm:text-2xl font-bold text-foreground">{location.name}</h1>
+                    {location.kitchenLicenseStatus === 'pending' && (
+                      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                        <Clock className="h-3 w-3 mr-1" />
+                        Pending
+                      </Badge>
+                    )}
+                    {location.kitchenLicenseStatus === 'approved' && (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        <Check className="h-3 w-3 mr-1" />
+                        Licensed
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-muted-foreground text-sm mt-1">
+                    <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="truncate">{location.address}</span>
+                  </div>
+                  {location.description && (
+                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                      {location.description}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                onClick={handleGetStarted}
+                className="w-full sm:w-auto shadow-lg shadow-primary/20"
+                disabled={isAuthenticated && applicationLoading}
+              >
+                {applicationLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Checking...
+                  </>
+                ) : isAuthenticated && canBook ? (
+                  'Book Now'
+                ) : isAuthenticated && application?.status === 'approved' && ((application as unknown as { current_tier?: number })?.current_tier ?? 1) < 3 ? (
+                  'Continue Application'
+                ) : isAuthenticated ? (
+                  'Apply to Kitchen'
+                ) : (
+                  'Sign In to Book'
+                )}
+                {!applicationLoading && <ArrowRight className="ml-2 h-4 w-4" />}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Main Content Grid */}
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6">
+          {/* Left Sidebar - Kitchen Selection */}
+          <div className="lg:col-span-3 space-y-4 order-2 lg:order-1">
+            <Card className="border-0 shadow-lg">
+              <CardContent className="p-4 sm:p-5">
+                <h2 className="text-xs sm:text-sm font-semibold text-foreground mb-3 sm:mb-4 uppercase tracking-wide">
+                  Select a Kitchen
+                </h2>
+                <div className="space-y-2 sm:space-y-2.5">
+                  {kitchens.map((kitchen) => (
+                    <KitchenSelectionCard
+                      key={kitchen.id}
+                      kitchen={kitchen}
+                      isSelected={selectedKitchen?.id === kitchen.id}
+                      onSelect={() => setSelectedKitchen(kitchen)}
+                    />
+                  ))}
+                </div>
+
+                {kitchens.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Utensils className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                    <p className="text-sm">No kitchens available</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Pending Approval Notice */}
+            {location.kitchenLicenseStatus === 'pending' && (
+              <Card className="border-yellow-200 bg-yellow-50">
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-3">
+                    <Clock className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-semibold text-yellow-900 mb-1">
+                        License Pending Approval
+                      </h3>
+                      <p className="text-xs text-yellow-700">
+                        This location&apos;s kitchen license is pending admin approval. Bookings will be available once approved.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Mini Calendar */}
+            <Card className="border-0 shadow-lg overflow-hidden">
+              <div className="bg-gradient-to-r from-primary to-primary/80 p-3 text-white">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  <span className="font-semibold text-sm">Availability</span>
+                </div>
+              </div>
+              <CardContent className="p-0">
+                <MiniCalendarPreview
+                  isAuthenticated={isAuthenticated}
+                  canBook={canBook}
+                  onBookClick={handleBookClick}
+                  onApplyClick={handleApplyClick}
+                />
+              </CardContent>
+            </Card>
+
+            {/* CTA Card */}
+            <Card className="border-0 shadow-lg">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <img
+                    src={kitchenTableIcon}
+                    alt="Kitchen"
+                    className="h-5 w-auto flex-shrink-0"
+                  />
+                  <span className="font-semibold text-foreground text-sm leading-tight">Start Cooking at {location.name}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                  Join LocalCooks and get instant access to professional kitchen spaces. Book your slot today and bring your culinary vision to life.
+                </p>
+                {isAuthenticated && canBook ? (
+                  <Button
+                    onClick={handleBookClick}
+                    className="w-full shadow-lg shadow-primary/20"
+                    size="sm"
+                  >
+                    <Calendar className="mr-2 h-3.5 w-3.5" />
+                    Book This Kitchen
+                    <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                  </Button>
+                ) : isAuthenticated && application?.status === 'approved' && ((application as unknown as { current_tier?: number })?.current_tier ?? 1) < 3 ? (
+                  <Button
+                    onClick={handleApplyClick}
+                    className="w-full shadow-lg shadow-primary/20"
+                    size="sm"
+                  >
+                    <FileText className="mr-2 h-3.5 w-3.5" />
+                    Continue Application
+                    <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                  </Button>
+                ) : isAuthenticated ? (
+                  <Button
+                    onClick={handleApplyClick}
+                    className="w-full shadow-lg shadow-primary/20"
+                    size="sm"
+                  >
+                    <FileText className="mr-2 h-3.5 w-3.5" />
+                    Apply to Kitchen
+                    <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      onClick={handleGetStarted}
+                      className="w-full shadow-lg shadow-primary/20"
+                      size="sm"
+                    >
+                      Create Free Account
+                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                    </Button>
+                    <p className="text-center text-xs text-muted-foreground mt-3">
+                      Already have an account?{' '}
+                      <button
+                        onClick={() => navigate('/auth')}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        Log in
+                      </button>
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Main Content - Selected Kitchen Details */}
+          <div className="lg:col-span-9 order-1 lg:order-2">
+            <AnimatePresence mode="wait">
+              {selectedKitchen ? (
+                <KitchenDetailsSection
+                  key={selectedKitchen.id}
+                  kitchen={{
+                    ...selectedKitchen,
+                    equipment: kitchenEquipment || undefined,
+                    storage: kitchenStorage || undefined,
+                  }}
+                />
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center justify-center h-64 sm:h-96 bg-card rounded-xl border shadow-lg"
+                >
+                  <div className="text-center px-4">
+                    <Utensils className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mx-auto mb-3" />
+                    <p className="text-sm sm:text-base text-muted-foreground">Select a kitchen to view details</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  // Determine what content to show
+  const getContent = () => {
+    if (isLoading || authLoading) return loadingContent;
+    if (error || !locationData) return notFoundContent;
+    return mainContent(locationData);
+  };
+
+  // Handle sidebar navigation
+  const handleViewChange = (view: string) => {
+    setActiveView(view);
+    if (view === 'overview') navigate('/dashboard');
+    else if (view === 'discover-kitchens') navigate('/dashboard?view=discover-kitchens');
+    else if (view === 'kitchen-applications') navigate('/dashboard?view=kitchen-applications');
+    else if (view === 'bookings') navigate('/dashboard?view=bookings');
+    else if (view === 'applications') navigate('/dashboard?view=applications');
+    else if (view === 'messages') navigate('/dashboard?view=messages');
+    else if (view === 'training') navigate('/dashboard?view=training');
+  };
+
+  // If user is authenticated, wrap in ChefDashboardLayout
+  if (isAuthenticated) {
+    return (
+      <ChefDashboardLayout
+        activeView={activeView}
+        onViewChange={handleViewChange}
+        breadcrumbs={[
+          { label: "Dashboard", onClick: () => navigate('/dashboard') },
+          { label: "Discover Kitchens", onClick: () => navigate('/dashboard?view=discover-kitchens') },
+          { label: locationData?.name || 'Kitchen' },
+        ]}
+      >
+        {getContent()}
+      </ChefDashboardLayout>
+    );
+  }
+
+  // For unauthenticated users, use public layout
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -902,23 +1206,14 @@ export default function KitchenPreviewPage() {
       <div className="min-h-screen flex flex-col">
         <Header />
         <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 py-8">
-          <div className="text-center max-w-md mx-auto w-full">
-            <ImageOff className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Location Not Found</h1>
-            <p className="text-sm sm:text-base text-gray-600 mb-6">This kitchen location doesn&apos;t exist or has been removed.</p>
-            <Button
-              onClick={() => navigate('/')}
-              className="bg-[#F51042] hover:bg-[#D90E3A] w-full sm:w-auto"
-            >
-              Back to Home
-            </Button>
-          </div>
+          {notFoundContent}
         </div>
         <Footer />
       </div>
     );
   }
 
+  // Public view for unauthenticated users
   const { kitchens, ...location } = locationData;
 
   return (
@@ -975,34 +1270,10 @@ export default function KitchenPreviewPage() {
                     onClick={handleGetStarted}
                     className="bg-[#F51042] hover:bg-[#D90E3A] text-white w-full sm:w-auto text-sm sm:text-base"
                     size="sm"
-                    disabled={isAuthenticated && applicationLoading}
                   >
-                    {applicationLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin" />
-                        Checking...
-                      </>
-                    ) : isAuthenticated && canBook ? (
-                      'Book Now'
-                    ) : isAuthenticated && application?.status === 'approved' && ((application as any)?.current_tier ?? 1) < 3 ? (
-                      'Continue Application'
-                    ) : isAuthenticated ? (
-                      'Apply to Kitchen'
-                    ) : (
-                      'Sign In to Book'
-                    )}
-                    {!applicationLoading && <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                    Sign In to Book
+                    <ArrowRight className="ml-2 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </Button>
-                  {location.customOnboardingLink && (
-                    <a
-                      href={location.customOnboardingLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] sm:text-xs text-[#F51042] hover:underline text-center sm:text-right font-medium flex items-center justify-center sm:justify-end gap-1"
-                    >
-                      External Application <ArrowRight className="h-2.5 w-2.5" />
-                    </a>
-                  )}
                 </div>
             </div>
           </div>
@@ -1036,25 +1307,6 @@ export default function KitchenPreviewPage() {
                 )}
               </div>
 
-              {/* Pending Approval Notice */}
-              {location.kitchenLicenseStatus === 'pending' && (
-                <Card className="overflow-hidden border-yellow-200 bg-yellow-50 mb-4">
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <Clock className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <h3 className="text-sm font-semibold text-yellow-900 mb-1">
-                          License Pending Approval
-                        </h3>
-                        <p className="text-xs text-yellow-700">
-                          This location&apos;s kitchen license is pending admin approval. Bookings will be available once approved.
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
               {/* Mini Calendar */}
               <Card className="overflow-hidden border-gray-200">
                 <div className="bg-gradient-to-r from-[#F51042] to-[#FF6B7A] p-3 text-white">
@@ -1087,71 +1339,23 @@ export default function KitchenPreviewPage() {
                   <p className="text-xs text-gray-600 mb-3 sm:mb-4 leading-relaxed">
                     Join LocalCooks and get instant access to professional kitchen spaces. Book your slot today and bring your culinary vision to life.
                   </p>
-                  {isAuthenticated && canBook ? (
-                    <Button
-                      onClick={handleBookClick}
-                      className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
-                      size="sm"
+                  <Button
+                    onClick={handleGetStarted}
+                    className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
+                    size="sm"
+                  >
+                    Create Free Account
+                    <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                  </Button>
+                  <p className="text-center text-xs text-gray-500 mt-2 sm:mt-3">
+                    Already have an account?{' '}
+                    <button
+                      onClick={() => navigate('/auth')}
+                      className="text-[#F51042] hover:underline font-medium"
                     >
-                      <Calendar className="mr-2 h-3.5 w-3.5" />
-                      Book This Kitchen
-                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                    </Button>
-                  ) : isAuthenticated && application?.status === 'approved' && ((application as any)?.current_tier ?? 1) < 3 ? (
-                    <Button
-                      onClick={handleApplyClick}
-                      className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
-                      size="sm"
-                    >
-                      <FileText className="mr-2 h-3.5 w-3.5" />
-                      Continue Application
-                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                    </Button>
-                  ) : isAuthenticated ? (
-                    <Button
-                      onClick={handleApplyClick}
-                      className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
-                      size="sm"
-                    >
-                      <FileText className="mr-2 h-3.5 w-3.5" />
-                      Apply to Kitchen
-                      <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={handleGetStarted}
-                        className="w-full bg-[#F51042] hover:bg-[#D90E3A] text-white font-semibold text-xs sm:text-sm py-2.5 sm:py-2"
-                        size="sm"
-                      >
-                        Create Free Account
-                        <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                      </Button>
-                      <p className="text-center text-xs text-gray-500 mt-2 sm:mt-3">
-                        Already have an account?{' '}
-                        <button
-                          onClick={() => navigate('/auth')}
-                          className="text-[#F51042] hover:underline font-medium"
-                        >
-                          Log in
-                        </button>
-                      </p>
-                      {location.customOnboardingLink && (
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                          <p className="text-[10px] text-gray-500 text-center mb-2 uppercase tracking-wider font-semibold">Prefer to apply directly?</p>
-                          <a
-                            href={location.customOnboardingLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-[#F51042]/20 text-[#F51042] hover:bg-[#F51042]/5 text-xs font-bold transition-all"
-                          >
-                            External Application
-                            <ArrowRight className="h-3 w-3" />
-                          </a>
-                        </div>
-                      )}
-                    </>
-                  )}
+                      Log in
+                    </button>
+                  </p>
                 </CardContent>
               </Card>
             </div>

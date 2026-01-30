@@ -109,21 +109,19 @@ const createTransporter = (config: EmailConfig) => {
     // Enhanced configuration for Vercel serverless functions
     tls: {
       rejectUnauthorized: false, // Allow self-signed certificates
-      ciphers: 'SSLv3'
+      minVersion: 'TLSv1.2' // Use modern TLS (SSLv3 is deprecated and rejected by most servers)
     },
     // Reduced timeouts for serverless functions (max 10s execution time)
     connectionTimeout: isProduction ? 15000 : 60000, // 15s production, 60s development
     greetingTimeout: isProduction ? 10000 : 30000, // 10s production, 30s development
     socketTimeout: isProduction ? 15000 : 60000, // 15s production, 60s development
-    // Add authentication method
-    authMethod: 'PLAIN',
+    // Let nodemailer auto-negotiate the best auth method
+    // authMethod: 'PLAIN', // Removed - let server choose (Hostinger prefers LOGIN)
     // Enable debug for troubleshooting in development only
     debug: process.env.NODE_ENV === 'development',
     logger: process.env.NODE_ENV === 'development',
-    // Pool configuration for better performance
-    pool: isProduction ? true : false,
-    maxConnections: 1, // Single connection for serverless
-    maxMessages: 1, // Single message per connection for serverless
+    // Disable pooling for serverless - each request should create fresh connection
+    pool: false,
   } as any);
 };
 

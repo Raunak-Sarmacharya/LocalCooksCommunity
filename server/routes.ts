@@ -221,13 +221,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create new user - no existing user found
       console.log(`📝 Creating new user: ${email} with role: ${role || 'user'}`);
+      const finalRole = role || "user";
       const newUser = await userService.createUser({
         username: email,
         firebaseUid: uid,
-        role: role || "user",
+        role: finalRole,
         isVerified: decodedToken.email_verified || false,
         ...otherData
       });
+
+      // Send registration emails
+      try {
+        const { sendEmail, generateWelcomeEmail, generateNewUserRegistrationAdminEmail } = await import('./email');
+        const { db } = await import('./db');
+        const { users } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+        
+        const displayName = otherData.displayName || email.split('@')[0];
+        
+        // Always send welcome email to new users (all roles: chef, manager, admin)
+        console.log(`📧 Sending welcome email to new ${finalRole}: ${email}`);
+        const welcomeEmail = generateWelcomeEmail({
+          fullName: displayName,
+          email
+        });
+        const welcomeSent = await sendEmail(welcomeEmail, {
+          trackingId: `welcome_${finalRole}_${email}_${Date.now()}`
+        });
+        if (welcomeSent) {
+          console.log(`✅ Welcome email sent to new ${finalRole}: ${email}`);
+        } else {
+          console.log(`❌ Failed to send welcome email to ${email}`);
+        }
+        
+        // Send notification to admins about new user registration
+        const admins = await db
+          .select({ username: users.username })
+          .from(users)
+          .where(eq(users.role, 'admin'));
+        
+        for (const admin of admins) {
+          if (admin.username && admin.username !== email) {
+            const adminEmail = generateNewUserRegistrationAdminEmail({
+              adminEmail: admin.username,
+              newUserName: displayName,
+              newUserEmail: email,
+              userRole: finalRole,
+              registrationDate: new Date(),
+            });
+            const adminSent = await sendEmail(adminEmail, {
+              trackingId: `new_user_admin_${admin.username}_${Date.now()}`
+            });
+            if (adminSent) {
+              console.log(`✅ Admin notification sent to ${admin.username} about new ${finalRole} registration`);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error('❌ Error sending registration emails:', emailError);
+        // Don't fail registration if email fails
+      }
 
       res.status(201).json(newUser);
     } catch (error: any) {

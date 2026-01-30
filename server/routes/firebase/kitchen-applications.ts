@@ -286,7 +286,7 @@ router.post('/firebase/chef/kitchen-applications',
             }
 
             // Validate experience
-            if (requirements.requireExperience && (!businessInfo.experience || businessInfo.experience.trim() === '') && (!req.body.cookingExperience || req.body.cookingExperience.trim() === '')) {
+            if (requirements.tier1_years_experience_required && (!businessInfo.experience || businessInfo.experience.trim() === '') && (!req.body.cookingExperience || req.body.cookingExperience.trim() === '')) {
                 return res.status(400).json({
                     error: 'Validation error',
                     message: 'Experience level is required for this location',
