@@ -4,6 +4,7 @@ import { useFirebaseAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
 import { useChefKitchenApplications } from "@/hooks/use-chef-kitchen-applications";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChatPanel from "@/components/chat/ChatPanel";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import { useSubdomain } from "@/hooks/use-subdomain";
@@ -1165,7 +1166,7 @@ export default function ApplicantDashboard() {
                     <AspectRatio ratio={16 / 10} className="md:h-full">
                       {hasImage ? (
                         <img
-                          src={imageUrl!}
+                          src={getR2ProxyUrl(imageUrl)}
                           alt={app.location?.name || 'Kitchen'}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />

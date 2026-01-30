@@ -1820,21 +1820,39 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             
             console.log(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
             
-            const newBooking = await bookingService.createKitchenBooking({
-                kitchenId: kitchenIdFromMeta,
-                chefId: chefIdFromMeta,
-                bookingDate,
-                startTime,
-                endTime,
-                selectedSlots,
-                status: "pending", // Awaiting manager approval
-                paymentStatus: "paid", // Payment already confirmed
-                paymentIntentId: paymentIntentId,
-                specialNotes,
-                selectedStorage,
-                selectedEquipmentIds,
-            });
+            // Use direct DB insert to bypass chef access validation (already validated at checkout)
+            const totalPriceCents = parseInt(metadata.total_price_cents || "0");
+            const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
+            const durationHours = parseFloat(metadata.duration_hours || "1");
             
+            const [directBooking] = await db
+                .insert(kitchenBookings)
+                .values({
+                    kitchenId: kitchenIdFromMeta,
+                    chefId: chefIdFromMeta,
+                    bookingDate,
+                    startTime,
+                    endTime,
+                    status: "pending", // Awaiting manager approval
+                    paymentStatus: "paid", // Payment already confirmed
+                    paymentIntentId: paymentIntentId,
+                    specialNotes,
+                    totalPrice: totalPriceCents.toString(),
+                    hourlyRate: hourlyRateCents.toString(),
+                    durationHours: durationHours.toString(),
+                    serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
+                    currency: "CAD",
+                    selectedSlots: selectedSlots,
+                    storageItems: [],
+                    equipmentItems: [],
+                })
+                .returning();
+            
+            if (!directBooking) {
+                throw new Error("Failed to create booking");
+            }
+            
+            const newBooking = directBooking;
             console.log(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
             
             // Create payment_transactions record

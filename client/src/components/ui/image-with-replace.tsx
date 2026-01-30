@@ -79,6 +79,36 @@ export function ImageWithReplace({
         return;
       }
 
+      // Handle URLs without protocol (e.g., "files.localcooks.ca/documents/...")
+      // These need to be routed through the proxy with the full URL
+      if (imageUrl.includes('files.localcooks.ca') || imageUrl.includes('r2.cloudflarestorage.com')) {
+        // Add https:// if missing and route through proxy
+        const fullUrl = imageUrl.startsWith('http') ? imageUrl : `https://${imageUrl}`;
+        const proxyUrl = getR2ProxyUrl(fullUrl);
+        setImageSrc(proxyUrl);
+        setIsLoading(false);
+        return;
+      }
+
+      // Handle plain filenames (no path prefix, no protocol) - route through proxy
+      // These are likely R2 filenames stored without the full URL
+      const isPlainFilename = !imageUrl.startsWith('http://') && 
+                              !imageUrl.startsWith('https://') && 
+                              !imageUrl.startsWith('/') &&
+                              !imageUrl.startsWith('data:') &&
+                              !imageUrl.startsWith('blob:') &&
+                              (imageUrl.endsWith('.png') || imageUrl.endsWith('.jpg') || 
+                               imageUrl.endsWith('.jpeg') || imageUrl.endsWith('.webp') ||
+                               imageUrl.endsWith('.gif'));
+      
+      if (isPlainFilename) {
+        // Route through the R2 proxy with the filename - server will resolve the full path
+        const proxyUrl = `/api/files/r2-proxy?filename=${encodeURIComponent(imageUrl)}`;
+        setImageSrc(proxyUrl);
+        setIsLoading(false);
+        return;
+      }
+
       // Check if it's already a full URL (R2 public URL or other CDN)
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
         // Check if it's a public R2 URL - use directly
@@ -88,40 +118,12 @@ export function ImageWithReplace({
           return;
         }
 
-        // Check if it's a private R2 URL or custom domain
+        // Check if it's a private R2 URL or custom domain - use the public proxy endpoint
         const isR2Url = imageUrl.includes('r2.cloudflarestorage.com') ||
           imageUrl.includes('files.localcooks.ca');
 
         if (isR2Url) {
-          // Document URLs require authentication - use presigned URL approach
-          if (imageUrl.includes('/documents/') || imageUrl.includes('/documents%2F')) {
-            // For documents, fetch presigned URL with auth
-            try {
-              const currentUser = auth.currentUser;
-              if (currentUser) {
-                const token = await currentUser.getIdToken();
-                const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(imageUrl)}`, {
-                  method: 'GET',
-                  headers: { 'Authorization': `Bearer ${token}` },
-                  credentials: 'include',
-                });
-                if (response.ok) {
-                  const data = await response.json();
-                  setImageSrc(data.url);
-                  setIsLoading(false);
-                  return;
-                }
-              }
-            } catch (error) {
-              console.error('Error getting presigned URL for document:', error);
-            }
-            // Fallback to original URL if presigned fails
-            setImageSrc(imageUrl);
-            setIsLoading(false);
-            return;
-          }
-          
-          // For non-document R2 URLs (public paths), use proxy
+          // Use the public r2-proxy endpoint (no auth required)
           const proxyUrl = getR2ProxyUrl(imageUrl);
           setImageSrc(proxyUrl);
           setIsLoading(false);
