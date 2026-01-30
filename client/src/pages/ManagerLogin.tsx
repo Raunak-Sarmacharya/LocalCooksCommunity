@@ -1,9 +1,12 @@
 import AnimatedTabs, { AnimatedTabContent } from "@/components/auth/AnimatedTabs";
 import EnhancedLoginForm from "@/components/auth/EnhancedLoginForm";
 import EnhancedRegisterForm from "@/components/auth/EnhancedRegisterForm";
+import EmailVerificationScreen from "@/components/auth/EmailVerificationScreen";
+import LoadingOverlay from "@/components/auth/LoadingOverlay";
 import Logo from "@/components/ui/logo";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { sendEmailVerification } from "firebase/auth";
 // WelcomeScreen removed - managers use ManagerOnboardingWizard instead
 import { motion } from "framer-motion";
 import { Building2, LogIn, UserPlus } from "lucide-react";
@@ -23,9 +26,76 @@ export default function ManagerLogin() {
   const [userMeta, setUserMeta] = useState<any>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessageType, setSuccessMessageType] = useState<'password-reset' | 'email-verified'>('password-reset');
+  
+  // ENTERPRISE FIX: Lift email verification state to parent so it persists across auth state changes
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [emailForVerification, setEmailForVerification] = useState("");
+  
+  // ENTERPRISE FIX: Lift loading overlay state to parent so it persists across auth state changes
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("Creating your account...");
+  const [loadingSubmessage, setLoadingSubmessage] = useState("Please wait while we set up your account securely.");
 
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasCheckedUser = useRef(false);
+  
+  // Handle resend verification email
+  const handleResendVerification = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        console.log('📧 Resending Firebase verification email...');
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || 
+                           hostname === '127.0.0.1' || 
+                           hostname.endsWith('.localhost');
+        
+        if (isLocalhost) {
+          await sendEmailVerification(currentUser);
+        } else {
+          // ENTERPRISE: Use production subdomain for managers
+          await sendEmailVerification(currentUser, {
+            url: 'https://kitchen.localcooks.ca/manager/login?verified=true',
+            handleCodeInApp: false,
+          });
+        }
+        console.log('✅ Firebase verification email resent successfully');
+      } else {
+        console.log('⚠️ User is signed out - verification email was sent during registration');
+      }
+    } catch (error: any) {
+      console.error('❌ Failed to resend Firebase verification email:', error);
+      throw error;
+    }
+  };
+  
+  // Callback when registration starts (show loading overlay)
+  const handleRegistrationStart = () => {
+    console.log('🔄 Registration started - showing loading overlay');
+    setLoadingMessage("Creating your account...");
+    setLoadingSubmessage("Please wait while we set up your account securely.");
+    setShowLoadingOverlay(true);
+  };
+  
+  // Callback when registration completes successfully
+  const handleRegistrationSuccess = (email: string) => {
+    console.log('✅ Registration complete - showing email verification screen');
+    // Brief delay to show success state before transitioning
+    setLoadingMessage("Account created!");
+    setLoadingSubmessage("Redirecting to email verification...");
+    
+    setTimeout(() => {
+      setShowLoadingOverlay(false);
+      setEmailForVerification(email);
+      setShowEmailVerification(true);
+    }, 800); // Show success message briefly before transitioning
+  };
+  
+  // Callback when registration fails
+  const handleRegistrationError = () => {
+    console.log('❌ Registration failed - hiding loading overlay');
+    setShowLoadingOverlay(false);
+  };
 
   // Tab configuration
   const tabs = [
@@ -179,6 +249,15 @@ export default function ManagerLogin() {
 
   // Show login/register form
   return (
+    <>
+      {/* Loading Overlay - lifted to parent for persistence across auth state changes */}
+      <LoadingOverlay 
+        isVisible={showLoadingOverlay}
+        message={loadingMessage}
+        submessage={loadingSubmessage}
+        type="loading"
+      />
+      
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50">
       {/* Form Section */}
       <motion.div
@@ -238,34 +317,48 @@ export default function ManagerLogin() {
             </motion.div>
           )}
 
-          {/* Auth Forms */}
-          <div className="space-y-6">
-            <AnimatedTabs
-              tabs={tabs}
-              activeTab={activeTab}
-              onTabChange={(tab) => setActiveTab(tab as "login" | "register")}
+          {/* Auth Forms or Email Verification Screen */}
+          {showEmailVerification ? (
+            <EmailVerificationScreen
+              email={emailForVerification}
+              onResend={handleResendVerification}
+              onGoBack={() => {
+                setShowEmailVerification(false);
+                setActiveTab('login');
+              }}
             />
-            
-            <AnimatedTabContent activeTab={activeTab}>
-              {activeTab === "login" ? (
-                <EnhancedLoginForm
-                  onSuccess={() => {
-                    setHasAttemptedLogin(true);
-                    refreshUserData();
-                  }}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                />
-              ) : (
-                <EnhancedRegisterForm
-                  onSuccess={() => {
-                    setHasAttemptedLogin(true);
-                    refreshUserData();
-                  }}
-                  setHasAttemptedLogin={setHasAttemptedLogin}
-                />
-              )}
-            </AnimatedTabContent>
-          </div>
+          ) : (
+            <div className="space-y-6">
+              <AnimatedTabs
+                tabs={tabs}
+                activeTab={activeTab}
+                onTabChange={(tab) => setActiveTab(tab as "login" | "register")}
+              />
+              
+              <AnimatedTabContent activeTab={activeTab}>
+                {activeTab === "login" ? (
+                  <EnhancedLoginForm
+                    onSuccess={() => {
+                      setHasAttemptedLogin(true);
+                      refreshUserData();
+                    }}
+                    setHasAttemptedLogin={setHasAttemptedLogin}
+                  />
+                ) : (
+                  <EnhancedRegisterForm
+                    onSuccess={() => {
+                      setHasAttemptedLogin(true);
+                      refreshUserData();
+                    }}
+                    setHasAttemptedLogin={setHasAttemptedLogin}
+                    onRegistrationStart={handleRegistrationStart}
+                    onRegistrationComplete={handleRegistrationSuccess}
+                    onRegistrationError={handleRegistrationError}
+                  />
+                )}
+              </AnimatedTabContent>
+            </div>
+          )}
 
           {/* Footer */}
           <motion.div
@@ -381,5 +474,6 @@ export default function ManagerLogin() {
         </motion.div>
       </motion.div>
     </div>
+    </>
   );
 }

@@ -184,16 +184,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Token mismatch" });
       }
 
-      // Check if user already exists
-      const existing = await userService.getUserByFirebaseUid(uid);
-      if (existing) {
-        return res.json(existing);
+      // Check if user already exists by Firebase UID
+      const existingByUid = await userService.getUserByFirebaseUid(uid);
+      if (existingByUid) {
+        console.log(`✅ User already exists with Firebase UID ${uid}, returning existing user`);
+        return res.json(existingByUid);
       }
 
-      // Create new user
+      // ENTERPRISE FIX: Also check if user exists by email/username
+      // This handles the case where user was deleted from Firebase but not Neon, or vice versa
+      const existingByUsername = await userService.getUserByUsername(email);
+      if (existingByUsername) {
+        // User exists in Neon but with different/no Firebase UID
+        // Link the new Firebase account to existing Neon user
+        if (!existingByUsername.firebaseUid) {
+          console.log(`🔗 Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
+          const updatedUser = await userService.updateUser(existingByUsername.id, { 
+            firebaseUid: uid,
+            isVerified: decodedToken.email_verified || existingByUsername.isVerified
+          });
+          return res.json(updatedUser || existingByUsername);
+        } else if (existingByUsername.firebaseUid !== uid) {
+          // User exists with a DIFFERENT Firebase UID - this is a conflict
+          // The old Firebase account may have been deleted and user is re-registering
+          console.log(`⚠️ User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
+          console.log(`🔄 Updating Firebase UID to new account (user may have re-registered in Firebase)`);
+          const updatedUser = await userService.updateUser(existingByUsername.id, { 
+            firebaseUid: uid,
+            isVerified: decodedToken.email_verified || false // Reset verification for new Firebase account
+          });
+          return res.json(updatedUser || existingByUsername);
+        }
+        // Same Firebase UID - just return existing user
+        return res.json(existingByUsername);
+      }
+
+      // Create new user - no existing user found
+      console.log(`📝 Creating new user: ${email} with role: ${role || 'user'}`);
       const newUser = await userService.createUser({
         username: email,
-        email: email,
         firebaseUid: uid,
         role: role || "user",
         isVerified: decodedToken.email_verified || false,
@@ -201,8 +230,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.status(201).json(newUser);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error registering user:", error);
+      
+      // Provide more specific error messages
+      if (error.message?.includes('already taken') || error.code === '23505') {
+        return res.status(409).json({ 
+          error: "Email already registered", 
+          code: "EMAIL_EXISTS",
+          message: "This email is already registered. Please try signing in instead."
+        });
+      }
+      
       res.status(500).json({ error: "Failed to register user" });
     }
   });
