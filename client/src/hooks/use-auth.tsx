@@ -484,10 +484,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Firebase will use its default email template which works without domain configuration
         // Check for localhost, 127.0.0.1, and any subdomain of localhost (e.g., kitchen.localhost)
         const hostname = window.location.hostname;
-        const isLocalhost = hostname === 'localhost' || 
-                           hostname === '127.0.0.1' || 
-                           hostname.endsWith('.localhost');
-        
+        const isLocalhost = hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname.endsWith('.localhost');
+
         if (isLocalhost) {
           // Simple verification without custom redirect - works on localhost
           console.log('📧 Using simple email verification (localhost mode)');
@@ -496,7 +496,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // ENTERPRISE: Determine the correct redirect URL based on user role
           // Production subdomains: kitchen.localcooks.ca (managers), chef.localcooks.ca (chefs), admin.localcooks.ca (admins)
           let redirectUrl = `${window.location.origin}/auth?verified=true`;
-          
+
           // Determine redirect based on detected role
           if (detectedRole === 'manager') {
             redirectUrl = 'https://kitchen.localcooks.ca/manager/login?verified=true';
@@ -505,9 +505,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else if (detectedRole === 'admin') {
             redirectUrl = 'https://admin.localcooks.ca/admin/login?verified=true';
           }
-          
+
           console.log(`📧 Using redirect URL for ${detectedRole}: ${redirectUrl}`);
-          
+
           await sendEmailVerification(updatedUser, {
             url: redirectUrl,
             handleCodeInApp: false,
@@ -519,7 +519,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('❌ Failed to send Firebase verification email:', emailError);
         console.error('❌ Error code:', emailError?.code);
         console.error('❌ Error message:', emailError?.message);
-        
+
         // If domain not whitelisted, try without actionCodeSettings
         if (emailError?.code === 'auth/unauthorized-continue-uri') {
           console.log('🔄 Retrying email verification without custom redirect...');
@@ -532,7 +532,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-      
+
       if (!emailSent) {
         console.warn('⚠️ Verification email was not sent - user will need to request resend');
       }
@@ -782,6 +782,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return !!(user && (user.isVerified === true || user.is_verified === true || user.emailVerified === true));
   };
 
+  /**
+   * ENTERPRISE: Production subdomain configuration for role-based routing
+   * Single source of truth for all email verification redirects
+   */
+  const PRODUCTION_SUBDOMAINS = {
+    manager: 'https://kitchen.localcooks.ca',
+    chef: 'https://chef.localcooks.ca',
+    admin: 'https://admin.localcooks.ca',
+  } as const;
+
+  const DEFAULT_REDIRECT_PATHS = {
+    manager: '/manager/login?verified=true',
+    chef: '/auth?verified=true',
+    admin: '/admin/login?verified=true',
+  } as const;
+
+  /**
+   * Determines user role from current URL context (subdomain + path)
+   */
+  const detectRoleFromContext = (): 'manager' | 'chef' | 'admin' => {
+    const hostname = window.location.hostname.toLowerCase();
+    const pathname = window.location.pathname.toLowerCase();
+    const subdomain = getSubdomainFromHostname(hostname);
+
+    // Check subdomain first (most reliable)
+    if (subdomain === 'admin') return 'admin';
+    if (subdomain === 'chef') return 'chef';
+    if (subdomain === 'kitchen') {
+      // Kitchen subdomain - check path for manager vs chef
+      if (pathname.includes('/manager')) return 'manager';
+      return 'chef';
+    }
+
+    // Check path patterns as fallback
+    if (pathname.includes('/admin')) return 'admin';
+    if (pathname.includes('/manager')) return 'manager';
+
+    // Default to chef
+    return 'chef';
+  };
+
+  /**
+   * Builds enterprise-grade verification redirect URL based on role
+   * Uses production subdomains in production, relative paths in development
+   */
+  const buildVerificationRedirectUrl = (role?: 'manager' | 'chef' | 'admin'): string => {
+    const detectedRole = role || detectRoleFromContext();
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname.endsWith('.localhost');
+
+    if (isLocalhost) {
+      // Development: use relative paths for localhost
+      return DEFAULT_REDIRECT_PATHS[detectedRole];
+    }
+
+    // Production: use full subdomain URLs
+    return `${PRODUCTION_SUBDOMAINS[detectedRole]}${DEFAULT_REDIRECT_PATHS[detectedRole]}`;
+  };
+
   // Send verification email to a user (Firebase only)
   const sendVerificationEmail = async (email: string, fullName: string) => {
     try {
@@ -796,11 +857,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
+      const hostname = window.location.hostname;
+      const isLocalhost = hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.localhost');
+
       console.log('📧 Sending Firebase verification email to:', email);
-      await sendEmailVerification(firebaseUser, {
-        url: `${window.location.origin}/email-action`,
-        handleCodeInApp: true,
-      });
+
+      if (isLocalhost) {
+        // Development: Simple verification without custom redirect
+        console.log('📧 Using simple verification (localhost mode)');
+        await sendEmailVerification(firebaseUser);
+      } else {
+        // Production: Use role-based redirect URL
+        const redirectUrl = buildVerificationRedirectUrl();
+        console.log(`📧 Using redirect URL: ${redirectUrl}`);
+        await sendEmailVerification(firebaseUser, {
+          url: redirectUrl,
+          handleCodeInApp: false, // Let Firebase handle the email action page
+        });
+      }
 
       console.log('✅ Firebase verification email sent successfully');
       return true;
@@ -899,7 +975,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
-  // Resend Firebase verification email
+  /**
+   * Resend Firebase verification email with role-based redirect URL
+   * ENTERPRISE: Uses production subdomains for multi-tenant architecture
+   */
   const resendFirebaseVerification = async () => {
     try {
       const firebaseUser = auth.currentUser;
@@ -912,11 +991,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
+      const hostname = window.location.hostname;
+      const isLocalhost = hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.localhost');
+
       console.log('📧 Resending Firebase verification email...');
-      await sendEmailVerification(firebaseUser, {
-        url: `${window.location.origin}/email-action`,
-        handleCodeInApp: true,
-      });
+
+      if (isLocalhost) {
+        // Development: Simple verification without custom redirect
+        console.log('📧 Using simple verification (localhost mode)');
+        await sendEmailVerification(firebaseUser);
+      } else {
+        // Production: Use role-based redirect URL
+        const redirectUrl = buildVerificationRedirectUrl();
+        console.log(`📧 Using redirect URL: ${redirectUrl}`);
+        await sendEmailVerification(firebaseUser, {
+          url: redirectUrl,
+          handleCodeInApp: false, // Let Firebase handle the email action page
+        });
+      }
 
       console.log('✅ Firebase verification email resent successfully');
       return true;
