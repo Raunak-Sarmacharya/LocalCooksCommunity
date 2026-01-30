@@ -190,29 +190,42 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
 // Note: optionalFirebaseAuth is already applied globally in routes.ts
 router.get("/r2-proxy", async (req: Request, res: Response) => {
     try {
-        const { url } = req.query;
+        const { url, filename } = req.query;
 
-        if (!url || typeof url !== 'string') {
-            return res.status(400).send("Missing or invalid url parameter");
+        // Handle plain filename parameter (for images stored without full URL)
+        let targetUrl: string;
+        if (filename && typeof filename === 'string') {
+            // Plain filename - construct full R2 URL
+            // Try to determine folder from filename pattern (userId_fieldname_timestamp_name.ext)
+            const isImage = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(filename);
+            const folder = isImage ? 'images' : 'documents';
+            targetUrl = `https://files.localcooks.ca/${folder}/${filename}`;
+            console.log(`[R2 Proxy] Resolved filename "${filename}" to: ${targetUrl}`);
+        } else if (url && typeof url === 'string') {
+            targetUrl = url;
+        } else {
+            return res.status(400).send("Missing url or filename parameter");
         }
 
         // SECURITY CHECK:
-        // If the file is in 'public/' or 'kitchens/' folder, allow access without auth
-        // If it is in 'documents/' or other protected folders, require authentication
-        const isPublic = url.includes('/public/') || url.includes('/kitchens/');
+        // Allow public access to: public/, kitchens/, and image files (jpg, jpeg, png, gif, webp, svg)
+        // Require auth only for sensitive documents (PDFs, certificates, etc.)
+        const isPublicPath = targetUrl.includes('/public/') || targetUrl.includes('/kitchens/');
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(targetUrl);
+        const isPublic = isPublicPath || isImageFile;
 
         // Debug logging for auth issues
-        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}`);
+        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
 
         if (!isPublic && !req.neonUser) {
-            console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${url}`);
+            console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${targetUrl}`);
             return res.status(401).send("Authentication required for protected files");
         }
 
-        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
+        console.log(`[R2 Proxy] Request for: ${targetUrl} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
 
         // Generate a presigned URL (valid for 1 hour)
-        const presignedUrl = await getPresignedUrl(url);
+        const presignedUrl = await getPresignedUrl(targetUrl);
 
         // Redirect the client to the presigned URL
         // Use 307 Temporary Redirect to preserve method/body if necessary (though this is GET)
@@ -220,7 +233,7 @@ router.get("/r2-proxy", async (req: Request, res: Response) => {
     } catch (error) {
         console.error("[R2 Proxy] Error:", error);
         // Fallback: try redirecting to the original URL if signing fails
-        const fallbackUrl = req.query.url as string;
+        const fallbackUrl = (req.query.url as string) || (req.query.filename ? `https://files.localcooks.ca/images/${req.query.filename}` : null);
         if (fallbackUrl) {
             console.log(`[R2 Proxy] Falling back to original URL: ${fallbackUrl}`);
             return res.redirect(fallbackUrl);
@@ -240,12 +253,14 @@ router.get("/r2-presigned", async (req: Request, res: Response) => {
         }
 
         // SECURITY CHECK:
-        // If the file is in 'public/' or 'kitchens/' folder, allow access without auth
-        // If it is in 'documents/' or other protected folders, require authentication
-        const isPublic = url.includes('/public/') || url.includes('/kitchens/');
+        // Allow public access to: public/, kitchens/, and image files (jpg, jpeg, png, gif, webp, svg)
+        // Require auth only for sensitive documents (PDFs, certificates, etc.)
+        const isPublicPath = url.includes('/public/') || url.includes('/kitchens/');
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(url);
+        const isPublic = isPublicPath || isImageFile;
 
         // Debug logging for auth issues
-        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}`);
+        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
 
         if (!isPublic && !req.neonUser) {
             console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);

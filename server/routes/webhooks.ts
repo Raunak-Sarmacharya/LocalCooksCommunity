@@ -9,6 +9,7 @@ import {
   locations,
   kitchens,
   storageListings,
+  equipmentListings,
 } from "@shared/schema";
 import { eq, and, ne, notInArray } from "drizzle-orm";
 import { logger } from "../logger";
@@ -440,88 +441,62 @@ async function handleCheckoutSessionCompleted(
         });
 
         // Create the booking with payment already confirmed
+        // IMPORTANT: Use direct DB insert instead of bookingService.createKitchenBooking
+        // The booking service re-validates chef access which was already validated at checkout time
+        // Direct insert is faster and more reliable in webhook context
         let booking: { id: number; kitchenId: number; chefId: number | null; bookingDate: Date; startTime: string; endTime: string; status: string; paymentStatus: string | null; paymentIntentId: string | null } | undefined;
+        
         try {
-          const { bookingService } = await import("../domains/bookings/booking.service");
-          booking = await bookingService.createKitchenBooking({
-            kitchenId,
-            chefId,
-            bookingDate,
-            startTime,
-            endTime,
-            selectedSlots,
-            status: "pending", // Awaiting manager approval
-            paymentStatus: "paid", // Payment already confirmed
-            paymentIntentId: paymentIntentId,
-            specialNotes,
-            selectedStorage,
-            selectedEquipmentIds,
-          });
+          const [directBooking] = await db
+            .insert(kitchenBookings)
+            .values({
+              kitchenId,
+              chefId,
+              bookingDate,
+              startTime,
+              endTime,
+              status: "pending", // Awaiting manager approval
+              paymentStatus: "paid", // Payment already confirmed
+              paymentIntentId: paymentIntentId,
+              specialNotes,
+              totalPrice: totalPriceCents.toString(),
+              hourlyRate: hourlyRateCents.toString(),
+              durationHours: durationHours.toString(),
+              serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
+              currency: "CAD",
+              selectedSlots: selectedSlots,
+              storageItems: [],
+              equipmentItems: [],
+            })
+            .returning();
           
-          if (!booking || !booking.id) {
-            logger.error(`[Webhook] CRITICAL: bookingService.createKitchenBooking returned invalid booking`, { booking, sessionId: session.id });
-            throw new Error("Booking creation returned invalid result");
+          if (directBooking) {
+            booking = {
+              id: directBooking.id,
+              kitchenId: directBooking.kitchenId,
+              chefId: directBooking.chefId,
+              bookingDate: directBooking.bookingDate,
+              startTime: directBooking.startTime,
+              endTime: directBooking.endTime,
+              status: directBooking.status,
+              paymentStatus: directBooking.paymentStatus,
+              paymentIntentId: directBooking.paymentIntentId,
+            };
+            logger.info(`[Webhook] Created booking ${directBooking.id} via direct DB insert`);
+          } else {
+            throw new Error("Direct DB insert returned no result");
           }
-        } catch (bookingError: unknown) {
-          const errorMessage = bookingError instanceof Error ? bookingError.message : String(bookingError);
-          const errorStack = bookingError instanceof Error ? bookingError.stack : undefined;
-          logger.error(`[Webhook] BookingService failed, attempting direct DB insert. Error: ${errorMessage}`, {
+        } catch (insertError: unknown) {
+          const errorMessage = insertError instanceof Error ? insertError.message : String(insertError);
+          const errorStack = insertError instanceof Error ? insertError.stack : undefined;
+          logger.error(`[Webhook] CRITICAL: Failed to create booking for session ${session.id}:`, {
+            error: errorMessage,
             stack: errorStack,
             kitchenId,
             chefId,
             paymentIntentId,
           });
-          
-          // FALLBACK: Direct database insert if booking service fails
-          try {
-            const [directBooking] = await db
-              .insert(kitchenBookings)
-              .values({
-                kitchenId,
-                chefId,
-                bookingDate,
-                startTime,
-                endTime,
-                status: "pending",
-                paymentStatus: "paid",
-                paymentIntentId: paymentIntentId,
-                specialNotes,
-                totalPrice: totalPriceCents.toString(),
-                serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
-                currency: "CAD",
-                selectedSlots: selectedSlots,
-                storageItems: [],
-                equipmentItems: [],
-              })
-              .returning();
-            
-            if (directBooking) {
-              booking = {
-                id: directBooking.id,
-                kitchenId: directBooking.kitchenId,
-                chefId: directBooking.chefId,
-                bookingDate: directBooking.bookingDate,
-                startTime: directBooking.startTime,
-                endTime: directBooking.endTime,
-                status: directBooking.status,
-                paymentStatus: directBooking.paymentStatus,
-                paymentIntentId: directBooking.paymentIntentId,
-              };
-              logger.info(`[Webhook] Direct DB insert succeeded, booking ${directBooking.id} created`);
-            } else {
-              throw new Error("Direct DB insert returned no result");
-            }
-          } catch (directInsertError: unknown) {
-            const directErrorMessage = directInsertError instanceof Error ? directInsertError.message : String(directInsertError);
-            logger.error(`[Webhook] CRITICAL: Both booking service and direct insert failed for session ${session.id}:`, {
-              serviceError: errorMessage,
-              directError: directErrorMessage,
-              kitchenId,
-              chefId,
-              paymentIntentId,
-            });
-            throw directInsertError;
-          }
+          throw insertError;
         }
 
         // Ensure booking was created
@@ -545,6 +520,132 @@ async function handleCheckoutSessionCompleted(
         }
         
         logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
+
+        // Create storage bookings if any were selected
+        const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number, startDate: string, endDate: string}> = [];
+        if (selectedStorage && selectedStorage.length > 0) {
+          try {
+            for (const storage of selectedStorage) {
+              const [storageListing] = await db
+                .select()
+                .from(storageListings)
+                .where(eq(storageListings.id, storage.storageListingId))
+                .limit(1);
+              
+              if (storageListing) {
+                const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
+                const minDays = storageListing.minimumBookingDuration || 1;
+                const storageStartDate = new Date(storage.startDate);
+                const storageEndDate = new Date(storage.endDate);
+                const days = Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60 * 24));
+                const effectiveDays = Math.max(days, minDays);
+                
+                let priceCents = basePriceCents * effectiveDays;
+                if (storageListing.pricingModel === 'hourly') {
+                  const durationHoursStorage = Math.max(1, Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60)));
+                  priceCents = basePriceCents * durationHoursStorage;
+                } else if (storageListing.pricingModel === 'monthly-flat') {
+                  priceCents = basePriceCents;
+                }
+
+                const [storageBooking] = await db
+                  .insert(storageBookings)
+                  .values({
+                    kitchenBookingId: booking.id,
+                    storageListingId: storageListing.id,
+                    chefId,
+                    startDate: storageStartDate,
+                    endDate: storageEndDate,
+                    status: 'confirmed',
+                    totalPrice: priceCents.toString(),
+                    pricingModel: storageListing.pricingModel || 'daily',
+                    serviceFee: '0',
+                    currency: 'CAD',
+                  })
+                  .returning();
+
+                if (storageBooking) {
+                  storageItemsForJson.push({
+                    id: storageBooking.id,
+                    storageListingId: storageListing.id,
+                    name: storageListing.name || 'Storage',
+                    storageType: storageListing.storageType || 'other',
+                    totalPrice: priceCents,
+                    startDate: storageStartDate.toISOString(),
+                    endDate: storageEndDate.toISOString(),
+                  });
+                }
+              }
+            }
+            logger.info(`[Webhook] Created ${storageItemsForJson.length} storage bookings for booking ${booking.id}`);
+          } catch (storageError) {
+            logger.error(`[Webhook] Error creating storage bookings:`, storageError as Error);
+          }
+        }
+
+        // Create equipment bookings if any were selected
+        const equipmentItemsForJson: Array<{id: number, equipmentListingId: number, name: string, totalPrice: number}> = [];
+        if (selectedEquipmentIds && selectedEquipmentIds.length > 0) {
+          try {
+            for (const equipmentListingId of selectedEquipmentIds) {
+              const [equipmentListing] = await db
+                .select()
+                .from(equipmentListings)
+                .where(eq(equipmentListings.id, equipmentListingId))
+                .limit(1);
+              
+              if (equipmentListing && equipmentListing.availabilityType !== 'included') {
+                const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
+
+                const [equipmentBooking] = await db
+                  .insert(equipmentBookings)
+                  .values({
+                    kitchenBookingId: booking.id,
+                    equipmentListingId: equipmentListing.id,
+                    chefId,
+                    startDate: bookingDate,
+                    endDate: bookingDate,
+                    status: 'confirmed',
+                    totalPrice: sessionRateCents.toString(),
+                    pricingModel: 'daily',
+                    damageDeposit: (equipmentListing.damageDeposit || '0').toString(),
+                    serviceFee: '0',
+                    currency: 'CAD',
+                  })
+                  .returning();
+
+                if (equipmentBooking) {
+                  equipmentItemsForJson.push({
+                    id: equipmentBooking.id,
+                    equipmentListingId: equipmentListing.id,
+                    name: equipmentListing.equipmentType || 'Equipment',
+                    totalPrice: sessionRateCents,
+                  });
+                }
+              }
+            }
+            logger.info(`[Webhook] Created ${equipmentItemsForJson.length} equipment bookings for booking ${booking.id}`);
+          } catch (equipmentError) {
+            logger.error(`[Webhook] Error creating equipment bookings:`, equipmentError as Error);
+          }
+        }
+
+        // Update booking with storage and equipment items JSONB
+        if (storageItemsForJson.length > 0 || equipmentItemsForJson.length > 0) {
+          try {
+            await db
+              .update(kitchenBookings)
+              .set({
+                storageItems: storageItemsForJson,
+                equipmentItems: equipmentItemsForJson,
+                updatedAt: new Date(),
+              })
+              .where(eq(kitchenBookings.id, booking.id));
+            logger.info(`[Webhook] Updated booking ${booking.id} with storage/equipment items`);
+          } catch (updateError) {
+            logger.error(`[Webhook] Error updating booking with storage/equipment items:`, updateError as Error);
+          }
+        }
 
         // Create payment_transactions record with all Stripe data populated
         try {
