@@ -452,29 +452,48 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
 
         // Send notifications (Manager & Portal User)
         try {
-            const { sendEmail } = await import('../email');
+            const { sendEmail, generateBookingNotificationEmail, generateBookingRequestEmail } = await import('../email');
             const { sendSMS, generatePortalUserBookingConfirmationSMS, generateManagerPortalBookingSMS } = await import('../sms');
 
             // Get location notification email
             const locationData = await locationService.getLocationById(userLocationId);
             const notificationEmail = (locationData as any)?.notificationEmail;
+            const timezone = (locationData as any)?.timezone || 'America/Edmonton';
+            const locationName = (locationData as any)?.name || 'Location';
 
             // Send to manager
             if (notificationEmail) {
-                // ... Send manager email logic ...
-                // Simplified:
-                const { generateBookingNotificationEmail } = await import('../email');
-                /* await sendEmail(generateBookingNotificationEmail({
+                const managerEmail = generateBookingNotificationEmail({
                     managerEmail: notificationEmail,
+                    chefName: bookingName,
                     kitchenName: kitchen.name,
-                    // ...
-                })); */
-                // Keeping it brief, assumes robust logic in original or simplified here.
-                // Actually, let's copy the full logic if possible or trust the `firebaseStorage.createBooking` handles some? 
-                // No, createBooking is data only.
+                    bookingDate: bookingDateObj,
+                    startTime,
+                    endTime,
+                    specialNotes: specialNotes || undefined,
+                    timezone,
+                    locationName,
+                });
+                await sendEmail(managerEmail);
+                console.log(`✅ Portal booking notification email sent to manager: ${notificationEmail}`);
             }
 
-            // ...
+            // Send confirmation to portal user
+            if (bookingEmail) {
+                const portalUserEmail = generateBookingRequestEmail({
+                    chefEmail: bookingEmail,
+                    chefName: bookingName,
+                    kitchenName: kitchen.name,
+                    bookingDate: bookingDateObj,
+                    startTime,
+                    endTime,
+                    specialNotes: specialNotes || undefined,
+                    timezone,
+                    locationName,
+                });
+                await sendEmail(portalUserEmail);
+                console.log(`✅ Portal booking confirmation email sent to user: ${bookingEmail}`);
+            }
 
         } catch (error) {
             console.error("Error sending booking notifications:", error);

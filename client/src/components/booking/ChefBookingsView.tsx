@@ -1027,7 +1027,9 @@ export default function ChefBookingsView({
                                   <div className="flex items-center gap-1.5">
                                     <Calendar className="h-3.5 w-3.5" />
                                     <span>
-                                      {format(new Date(storageBooking.startDate), "MMM d")} - {format(endDate, "MMM d, yyyy")}
+                                      {new Date(storageBooking.startDate).toDateString() === endDate.toDateString()
+                                        ? format(endDate, "MMM d, yyyy")
+                                        : `${format(new Date(storageBooking.startDate), "MMM d")} - ${format(endDate, "MMM d, yyyy")}`}
                                     </span>
                                   </div>
                                 </div>
@@ -1072,9 +1074,11 @@ export default function ChefBookingsView({
                               <div className="flex items-start gap-3">
                                 <Calendar className="h-4 w-4 text-muted-foreground mt-0.5" />
                                 <div>
-                                  <p className="text-xs text-muted-foreground mb-0.5">Period</p>
+                                  <p className="text-xs text-muted-foreground mb-0.5">{new Date(storageBooking.startDate).toDateString() === endDate.toDateString() ? 'Date' : 'Period'}</p>
                                   <p className="font-medium">
-                                    {format(new Date(storageBooking.startDate), "PPP")} - {format(endDate, "PPP")}
+                                    {new Date(storageBooking.startDate).toDateString() === endDate.toDateString()
+                                      ? format(endDate, "PPP")
+                                      : `${format(new Date(storageBooking.startDate), "PPP")} - ${format(endDate, "PPP")}`}
                                   </p>
                                 </div>
                               </div>

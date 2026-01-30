@@ -24,6 +24,8 @@ import {
     generateChefLocationAccessApprovedEmail,
     generateBookingCancellationEmail,
     generateLocationEmailChangedEmail,
+    generateStorageExtensionApprovedEmail,
+    generateStorageExtensionRejectedEmail,
     // generateBookingStatusChangeEmail // check usage
 } from "../email";
 import {
@@ -1742,6 +1744,19 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
             return res.status(403).json({ error: "Access denied to this booking" });
         }
 
+        // CRITICAL FIX: Block approval if payment was never completed
+        // Bookings with paymentStatus='pending' have not been paid - they were abandoned at checkout
+        // Only allow confirmation if payment is 'processing' (checkout completed) or 'paid' (payment succeeded)
+        if (status === 'confirmed') {
+            const paymentStatus = (booking as any).paymentStatus;
+            if (paymentStatus === 'pending') {
+                return res.status(400).json({ 
+                    error: "Cannot confirm booking - payment has not been completed. The chef may have abandoned checkout.",
+                    paymentStatus: paymentStatus
+                });
+            }
+        }
+
         // Update booking status
         await bookingService.updateBookingStatus(id, status);
 
@@ -1769,7 +1784,12 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                         timezone,
                         locationName
                     });
-                    await sendEmail(chefConfirmationEmail);
+                    const emailSent = await sendEmail(chefConfirmationEmail);
+                    if (emailSent) {
+                        logger.info(`[Manager] ✅ Sent booking confirmation email to chef: ${chef.username}`);
+                    } else {
+                        logger.error(`[Manager] ❌ Failed to send booking confirmation email to chef: ${chef.username}`);
+                    }
 
                     // Send SMS to chef if phone available
                     try {
@@ -1821,7 +1841,12 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                         endTime: booking.endTime,
                         cancellationReason: "Booking was declined by the kitchen manager"
                     });
-                    await sendEmail(chefCancellationEmail);
+                    const cancelEmailSent = await sendEmail(chefCancellationEmail);
+                    if (cancelEmailSent) {
+                        logger.info(`[Manager] ✅ Sent booking cancellation email to chef: ${chef.username}`);
+                    } else {
+                        logger.error(`[Manager] ❌ Failed to send booking cancellation email to chef: ${chef.username}`);
+                    }
 
                     // Send SMS to chef if phone available
                     try {
@@ -2746,7 +2771,20 @@ router.post("/storage-extensions/:id/approve", requireFirebaseAuthWithUser, requ
             extensionDays: extension.extensionDays,
         });
 
-        // TODO: Send notification to chef about approval
+        // Send notification to chef about approval
+        try {
+            const approvalEmail = generateStorageExtensionApprovedEmail({
+                chefEmail: extension.chefEmail,
+                chefName: extension.chefEmail,
+                storageName: extension.storageName,
+                extensionDays: extension.extensionDays,
+                newEndDate: extension.newEndDate,
+            });
+            await sendEmail(approvalEmail);
+            logger.info(`[Manager] Sent storage extension approval email to chef: ${extension.chefEmail}`);
+        } catch (emailError) {
+            logger.error("Error sending storage extension approval email:", emailError);
+        }
 
         res.json({
             success: true,
@@ -2906,7 +2944,21 @@ router.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requi
             }
         }
 
-        // TODO: Send notification to chef about rejection and refund
+        // Send notification to chef about rejection and refund
+        try {
+            const rejectionEmail = generateStorageExtensionRejectedEmail({
+                chefEmail: extension.chefEmail,
+                chefName: extension.chefEmail,
+                storageName: (extension as any).storageName || 'Storage',
+                extensionDays: (extension as any).extensionDays || 0,
+                rejectionReason: reason || "Extension request declined by manager",
+                refundAmount: refundResult?.refundAmount,
+            });
+            await sendEmail(rejectionEmail);
+            logger.info(`[Manager] Sent storage extension rejection email to chef: ${extension.chefEmail}`);
+        } catch (emailError) {
+            logger.error("Error sending storage extension rejection email:", emailError);
+        }
 
         res.json({
             success: true,

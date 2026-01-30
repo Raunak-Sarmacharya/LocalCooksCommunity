@@ -310,7 +310,7 @@ var init_schema = __esm({
     equipmentConditionEnum = pgEnum("equipment_condition", ["excellent", "good", "fair", "needs-repair"]);
     equipmentPricingModelEnum = pgEnum("equipment_pricing_model", ["hourly", "daily", "weekly", "monthly"]);
     equipmentAvailabilityTypeEnum = pgEnum("equipment_availability_type", ["included", "rental"]);
-    paymentStatusEnum = pgEnum("payment_status", ["pending", "paid", "refunded", "failed", "partially_refunded"]);
+    paymentStatusEnum = pgEnum("payment_status", ["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]);
     transactionStatusEnum = pgEnum("transaction_status", ["pending", "processing", "succeeded", "failed", "canceled", "refunded", "partially_refunded"]);
     bookingTypeEnum = pgEnum("booking_type_enum", ["kitchen", "storage", "equipment", "bundle"]);
     users = pgTable("users", {
@@ -1201,7 +1201,7 @@ var init_schema = __esm({
       status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
       totalPrice: z2.number().int().positive("Total price must be positive"),
       pricingModel: z2.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
-      paymentStatus: z2.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+      paymentStatus: z2.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
       paymentIntentId: z2.string().optional(),
       serviceFee: z2.number().int().min(0).optional()
     }).omit({
@@ -1214,7 +1214,7 @@ var init_schema = __esm({
     updateStorageBookingSchema = z2.object({
       id: z2.number(),
       status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
-      paymentStatus: z2.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+      paymentStatus: z2.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
       paymentIntentId: z2.string().optional(),
       serviceFee: z2.number().int().min(0).optional()
     });
@@ -1260,7 +1260,7 @@ var init_schema = __esm({
       totalPrice: z2.number().int().positive("Total price must be positive"),
       pricingModel: z2.enum(["hourly", "daily", "weekly", "monthly"]),
       damageDeposit: z2.number().int().min(0).optional(),
-      paymentStatus: z2.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+      paymentStatus: z2.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
       paymentIntentId: z2.string().optional(),
       serviceFee: z2.number().int().min(0).optional()
     }).omit({
@@ -1273,7 +1273,7 @@ var init_schema = __esm({
     updateEquipmentBookingSchema = z2.object({
       id: z2.number(),
       status: z2.enum(["pending", "confirmed", "cancelled"]).optional(),
-      paymentStatus: z2.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+      paymentStatus: z2.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
       paymentIntentId: z2.string().optional(),
       damageDeposit: z2.number().int().min(0).optional(),
       serviceFee: z2.number().int().min(0).optional()
@@ -1703,9 +1703,13 @@ var init_user_service = __esm({
             409
           );
         }
+        let hashedPassword = "";
+        if (data.password) {
+          hashedPassword = await hashPassword(data.password);
+        }
         const userToCreate = {
           ...data,
-          password: data.password || "",
+          password: hashedPassword,
           isVerified: data.isVerified ?? false,
           has_seen_welcome: data.has_seen_welcome ?? false,
           isChef: data.isChef ?? false,
@@ -1715,6 +1719,9 @@ var init_user_service = __esm({
         return this.repo.create(userToCreate);
       }
       async updateUser(id, data) {
+        if (data.password) {
+          data.password = await hashPassword(data.password);
+        }
         return this.repo.update(id, data);
       }
       async updateUserFirebaseUid(id, firebaseUid) {
@@ -2182,19 +2189,33 @@ var init_r2_storage = __esm({
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-var isProduction, useCloudStorage, uploadsDir, diskStorage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
+function getUploadsDir() {
+  if (isVercel) {
+    return "/tmp/uploads/documents";
+  }
+  return path.join(process.cwd(), "uploads", "documents");
+}
+function ensureUploadsDirExists() {
+  if (useCloudStorage) {
+    return;
+  }
+  const dir = getUploadsDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+var isVercel, isProduction, useCloudStorage, uploadsDir, diskStorage, memoryStorage, fileFilter, upload, uploadToBlob, getFileUrl;
 var init_fileUpload = __esm({
   "server/fileUpload.ts"() {
     "use strict";
     init_r2_storage();
+    isVercel = !!process.env.VERCEL;
     isProduction = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-    useCloudStorage = isR2Configured() || isProduction;
-    uploadsDir = path.join(process.cwd(), "uploads", "documents");
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
+    useCloudStorage = isR2Configured() || isProduction || isVercel;
+    uploadsDir = getUploadsDir();
     diskStorage = multer.diskStorage({
       destination: (req, file, cb) => {
+        ensureUploadsDirExists();
         cb(null, uploadsDir);
       },
       filename: (req, file, cb) => {
@@ -2500,9 +2521,14 @@ __export(email_exports, {
   generateLocationEmailChangedEmail: () => generateLocationEmailChangedEmail,
   generateManagerCredentialsEmail: () => generateManagerCredentialsEmail,
   generateManagerMagicLinkEmail: () => generateManagerMagicLinkEmail,
+  generateNewUserRegistrationAdminEmail: () => generateNewUserRegistrationAdminEmail,
   generatePasswordResetEmail: () => generatePasswordResetEmail,
   generatePromoCodeEmail: () => generatePromoCodeEmail,
   generateStatusChangeEmail: () => generateStatusChangeEmail,
+  generateStorageExtensionApprovedEmail: () => generateStorageExtensionApprovedEmail,
+  generateStorageExtensionPaymentReceivedEmail: () => generateStorageExtensionPaymentReceivedEmail,
+  generateStorageExtensionPendingApprovalEmail: () => generateStorageExtensionPendingApprovalEmail,
+  generateStorageExtensionRejectedEmail: () => generateStorageExtensionRejectedEmail,
   generateWelcomeEmail: () => generateWelcomeEmail,
   sendApplicationReceivedEmail: () => sendApplicationReceivedEmail,
   sendApplicationRejectedEmail: () => sendApplicationRejectedEmail,
@@ -2668,7 +2694,7 @@ If you have any questions, contact us at ${supportEmail}
     text: textContent
   });
 }
-var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail;
+var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateNewUserRegistrationAdminEmail;
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
@@ -4972,6 +4998,75 @@ Notes: ${bookingData.specialNotes}` : ""}`;
       const dashboardUrl = `${baseUrl}/manager/dashboard`;
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Location Notification Email Updated</h2><p class="message">This email address has been set as the notification email for <strong>${data.locationName}</strong>.</p><div class="info-box"><strong>\u{1F4CD} Location:</strong> ${data.locationName}<br><strong>\u{1F4E7} Notification Email:</strong> ${data.email}</div><p class="message">You will now receive email notifications for bookings, cancellations, and other important updates for this location.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you didn't make this change, please contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
       return { to: data.email, subject, text: `Location Notification Email Updated - This email address has been set as the notification email for ${data.locationName}. You will now receive email notifications for bookings, cancellations, and other important updates for this location.`, html };
+    };
+    generateStorageExtensionPendingApprovalEmail = (data) => {
+      const subject = `Storage Extension Request - ${data.storageName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/manager/storage`;
+      const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
+      const formattedDate = data.newEndDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Storage Extension Request</h2><p class="message">A chef has requested to extend their storage booking. Payment has been received and is awaiting your approval.</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${data.chefName}<br><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4C6} New End Date:</strong> ${formattedDate}<br><strong>\u{1F4B0} Amount Paid:</strong> ${formattedPrice}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Approval</span></div><p class="message">Please review and approve or reject this extension request from your manager dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Extension Request</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.managerEmail,
+        subject,
+        text: `Storage Extension Request - Chef: ${data.chefName}, Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}, Amount: ${formattedPrice}. Status: Awaiting Approval. Please review from your manager dashboard.`,
+        html
+      };
+    };
+    generateStorageExtensionPaymentReceivedEmail = (data) => {
+      const subject = `Storage Extension Payment Received - ${data.storageName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/bookings`;
+      const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
+      const formattedDate = data.newEndDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Your payment for the storage extension has been received! The manager has been notified and will review your request shortly.</p><div class="info-box"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4C6} New End Date:</strong> ${formattedDate}<br><strong>\u{1F4B0} Amount Paid:</strong> ${formattedPrice}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Manager Approval</span></div><p class="message">You'll receive a confirmation email once the manager approves your extension.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.chefEmail,
+        subject,
+        text: `Hello ${data.chefName}, Your payment for the storage extension has been received! Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}, Amount: ${formattedPrice}. Status: Awaiting Manager Approval.`,
+        html
+      };
+    };
+    generateStorageExtensionApprovedEmail = (data) => {
+      const subject = `Storage Extension Approved - ${data.storageName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/bookings`;
+      const formattedDate = data.newEndDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! Your storage extension has been <strong style="color: #16a34a;">APPROVED</strong> \u2705</p><div class="info-box"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4C6} New End Date:</strong> ${formattedDate}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">Your storage booking has been extended. You can continue using the storage until the new end date.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.chefEmail,
+        subject,
+        text: `Hello ${data.chefName}, Great news! Your storage extension has been APPROVED! Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}.`,
+        html
+      };
+    };
+    generateStorageExtensionRejectedEmail = (data) => {
+      const subject = `Storage Extension Declined - ${data.storageName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/bookings`;
+      const refundText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited to your original payment method within 5-10 business days.` : "A refund will be processed shortly.";
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Unfortunately, your storage extension request has been declined.</p><div class="info-box"><strong>\u{1F4E6} Storage:</strong> ${data.storageName}<br><strong>\u{1F4C5} Requested Extension:</strong> ${data.extensionDays} days<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Declined</span>${data.rejectionReason ? `<br><br><strong>\u{1F4DD} Reason:</strong> ${data.rejectionReason}` : ""}</div><p class="message">${refundText}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.chefEmail,
+        subject,
+        text: `Hello ${data.chefName}, Unfortunately, your storage extension request has been declined. Storage: ${data.storageName}, Requested Extension: ${data.extensionDays} days.${data.rejectionReason ? ` Reason: ${data.rejectionReason}.` : ""} ${refundText}`,
+        html
+      };
+    };
+    generateNewUserRegistrationAdminEmail = (data) => {
+      const subject = `New ${data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1)} Registration - ${data.newUserName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/admin/users`;
+      const formattedDate = data.registrationDate.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const roleColor = data.userRole === "admin" ? "#dc2626" : data.userRole === "manager" ? "#2563eb" : "#16a34a";
+      const roleLabel = data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New User Registration</h2><p class="message">A new user has registered on the platform:</p><div class="info-box"><strong>\u{1F464} Name:</strong> ${data.newUserName}<br><strong>\u{1F4E7} Email:</strong> ${data.newUserEmail}<br><strong>\u{1F3F7}\uFE0F Role:</strong> <span style="color: ${roleColor}; font-weight: 600;">${roleLabel}</span><br><strong>\u{1F4C5} Registered:</strong> ${formattedDate}</div><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Users</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.adminEmail,
+        subject,
+        text: `New ${roleLabel} Registration - Name: ${data.newUserName}, Email: ${data.newUserEmail}, Registered: ${formattedDate}`,
+        html
+      };
     };
   }
 });
@@ -8752,7 +8847,7 @@ __export(files_exports, {
 import express, { Router as Router12 } from "express";
 import path2 from "path";
 import fs5 from "fs";
-var router12, files_default;
+var router12, isVercel2, files_default;
 var init_files = __esm({
   "server/routes/files.ts"() {
     "use strict";
@@ -8869,13 +8964,18 @@ var init_files = __esm({
         res.status(404).send("File not found or access denied");
       }
     });
-    router12.get("/r2-proxy", async (req, res) => {
+    router12.get("/r2-proxy", optionalFirebaseAuth, async (req, res) => {
       try {
         const { url } = req.query;
         if (!url || typeof url !== "string") {
           return res.status(400).send("Missing or invalid url parameter");
         }
-        console.log(`[R2 Proxy] Request for: ${url}`);
+        const isPublic = url.includes("/public/") || url.includes("/kitchens/");
+        if (!isPublic && !req.neonUser) {
+          console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${url}`);
+          return res.status(401).send("Authentication required for protected files");
+        }
+        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, public: ${isPublic})`);
         const presignedUrl = await getPresignedUrl(url);
         res.redirect(307, presignedUrl);
       } catch (error) {
@@ -8888,13 +8988,18 @@ var init_files = __esm({
         res.status(500).send("Failed to proxy image");
       }
     });
-    router12.get("/r2-presigned", async (req, res) => {
+    router12.get("/r2-presigned", optionalFirebaseAuth, async (req, res) => {
       try {
         const { url } = req.query;
         if (!url || typeof url !== "string") {
           return res.status(400).json({ error: "Missing or invalid url parameter" });
         }
-        console.log(`[R2 Presigned] Request for: ${url}`);
+        const isPublic = url.includes("/public/") || url.includes("/kitchens/");
+        if (!isPublic && !req.neonUser) {
+          console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
+          return res.status(401).json({ error: "Not authenticated" });
+        }
+        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, public: ${isPublic})`);
         const presignedUrl = await getPresignedUrl(url);
         return res.json({ url: presignedUrl });
       } catch (error) {
@@ -8902,7 +9007,10 @@ var init_files = __esm({
         res.status(500).json({ error: "Failed to generate presigned URL" });
       }
     });
-    router12.use("/documents", express.static(path2.join(process.cwd(), "uploads/documents")));
+    isVercel2 = !!process.env.VERCEL;
+    if (!isVercel2) {
+      router12.use("/documents", express.static(path2.join(process.cwd(), "uploads/documents")));
+    }
     router12.get("/documents/:filename", optionalFirebaseAuth, async (req, res) => {
       try {
         let userId = null;
@@ -9400,7 +9508,7 @@ var init_api_response = __esm({
 });
 
 // server/domains/bookings/booking.repository.ts
-import { eq as eq13, and as and9, desc as desc7, asc, lt, not, sql as sql4 } from "drizzle-orm";
+import { eq as eq13, and as and9, desc as desc7, asc, lt, not, sql as sql4, ne as ne2 } from "drizzle-orm";
 function getKitchenBookingSelection() {
   return {
     id: kitchenBookings.id,
@@ -9529,7 +9637,12 @@ var init_booking_repository = __esm({
         )).leftJoin(paymentTransactions, and9(
           eq13(paymentTransactions.bookingId, kitchenBookings.id),
           eq13(paymentTransactions.bookingType, "kitchen")
-        )).where(eq13(locations.managerId, managerId)).orderBy(desc7(kitchenBookings.bookingDate));
+        )).where(and9(
+          eq13(locations.managerId, managerId),
+          // CRITICAL: Only show bookings where payment has been initiated (not abandoned at checkout)
+          // 'pending' paymentStatus means chef never completed checkout - don't show to manager
+          ne2(kitchenBookings.paymentStatus, "pending")
+        )).orderBy(desc7(kitchenBookings.bookingDate));
         return results.map((row) => {
           const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
           const transactionAmount = row.transactionAmount ? parseFloat(row.transactionAmount) : null;
@@ -9669,6 +9782,7 @@ var init_booking_repository = __esm({
           extensionServiceFeeCents: data.extensionServiceFeeCents,
           extensionTotalPriceCents: data.extensionTotalPriceCents,
           stripeSessionId: data.stripeSessionId,
+          stripePaymentIntentId: data.stripePaymentIntentId,
           status: data.status
         }).returning();
         return extension;
@@ -10134,7 +10248,55 @@ var init_booking_service = __esm({
         });
         let storageTotalCents = 0;
         const storageItemsForJson = [];
-        if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
+        if (data.selectedStorage && data.selectedStorage.length > 0) {
+          try {
+            const { inventoryService: inventoryService2 } = await Promise.resolve().then(() => (init_inventory_service(), inventory_service_exports));
+            for (const storage of data.selectedStorage) {
+              const listing = await inventoryService2.getStorageListingById(storage.storageListingId);
+              if (listing) {
+                const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || "0")));
+                const minDays = listing.minimumBookingDuration || 1;
+                const storageStartDate = new Date(storage.startDate);
+                const storageEndDate = new Date(storage.endDate);
+                const days = Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1e3 * 60 * 60 * 24));
+                const effectiveDays = Math.max(days, minDays);
+                let priceCents = listingBasePriceCents * effectiveDays;
+                if (listing.pricingModel === "hourly") {
+                  const durationHours = Math.max(1, Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1e3 * 60 * 60)));
+                  priceCents = listingBasePriceCents * durationHours;
+                } else if (listing.pricingModel === "monthly-flat") {
+                  priceCents = listingBasePriceCents;
+                }
+                const storageBooking = await this.repo.createStorageBooking({
+                  kitchenBookingId: booking.id,
+                  storageListingId: listing.id,
+                  chefId: data.chefId,
+                  startDate: storageStartDate,
+                  endDate: storageEndDate,
+                  status: "confirmed",
+                  totalPrice: priceCents.toString(),
+                  pricingModel: listing.pricingModel || "daily",
+                  serviceFee: "0",
+                  currency: pricing.currency
+                });
+                if (storageBooking) {
+                  storageItemsForJson.push({
+                    id: storageBooking.id,
+                    storageListingId: listing.id,
+                    name: listing.name || "Storage",
+                    storageType: listing.storageType || "other",
+                    totalPrice: priceCents,
+                    startDate: storageStartDate.toISOString(),
+                    endDate: storageEndDate.toISOString()
+                  });
+                }
+                storageTotalCents += priceCents;
+              }
+            }
+          } catch (err) {
+            logger.error("Error creating storage bookings with explicit dates:", err);
+          }
+        } else if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
           try {
             const { inventoryService: inventoryService2 } = await Promise.resolve().then(() => (init_inventory_service(), inventory_service_exports));
             for (const storageId of data.selectedStorageIds) {
@@ -10500,6 +10662,33 @@ var init_booking_service = __esm({
           serviceFee: newServiceFeeCents.toString()
         });
         const updatedBooking = await this.repo.getStorageBookingById(id);
+        if (booking.kitchenBookingId) {
+          try {
+            const kitchenBooking = await this.repo.getKitchenBookingById(booking.kitchenBookingId);
+            if (kitchenBooking && kitchenBooking.storageItems && Array.isArray(kitchenBooking.storageItems)) {
+              const updatedStorageItems = kitchenBooking.storageItems.map((item) => {
+                if (item.storageListingId === booking.storageListingId || item.id === id) {
+                  return {
+                    ...item,
+                    endDate: newEndDate.toISOString(),
+                    totalPrice: newTotalPriceCents
+                    // Update price too
+                  };
+                }
+                return item;
+              });
+              await this.repo.updateKitchenBooking(booking.kitchenBookingId, {
+                storageItems: updatedStorageItems
+              });
+              logger.info(`[BookingService] Updated storageItems JSONB in kitchen booking ${booking.kitchenBookingId} for storage extension`, {
+                storageBookingId: id,
+                newEndDate: newEndDate.toISOString()
+              });
+            }
+          } catch (error) {
+            logger.warn(`[BookingService] Failed to update storageItems JSONB in kitchen booking: ${error}`);
+          }
+        }
         return {
           ...updatedBooking,
           // We should format money fields if the caller expects dollars, but here we return mixed struct?
@@ -10841,7 +11030,7 @@ var init_chef_service = __esm({
 });
 
 // server/domains/managers/manager.repository.ts
-import { eq as eq19, and as and13, desc as desc10, sql as sql5, ne as ne3 } from "drizzle-orm";
+import { eq as eq19, and as and13, desc as desc10, sql as sql5, ne as ne4 } from "drizzle-orm";
 var ManagerRepository, managerRepository;
 var init_manager_repository = __esm({
   "server/domains/managers/manager.repository.ts"() {
@@ -10870,7 +11059,7 @@ var init_manager_repository = __esm({
         const { startDate, endDate, locationId, limit = 50, offset = 0 } = filters;
         const conditions = [
           eq19(locations.managerId, managerId),
-          ne3(kitchenBookings.status, "cancelled"),
+          ne4(kitchenBookings.status, "cancelled"),
           eq19(kitchenBookings.paymentStatus, "paid")
         ];
         if (startDate) {
@@ -13452,6 +13641,12 @@ async function updatePaymentTransaction(transactionId, params, db2) {
   if (params.stripeStatus !== void 0) {
     updates.push(sql8`stripe_status = ${params.stripeStatus}`);
   }
+  if (params.paymentIntentId !== void 0) {
+    updates.push(sql8`payment_intent_id = ${params.paymentIntentId}`);
+  }
+  if (params.paymentMethodId !== void 0) {
+    updates.push(sql8`payment_method_id = ${params.paymentMethodId}`);
+  }
   if (params.chargeId !== void 0) {
     updates.push(sql8`charge_id = ${params.chargeId}`);
   }
@@ -15554,6 +15749,15 @@ var init_manager = __esm({
         if (!location || location.managerId !== user.id) {
           return res.status(403).json({ error: "Access denied to this booking" });
         }
+        if (status === "confirmed") {
+          const paymentStatus = booking.paymentStatus;
+          if (paymentStatus === "pending") {
+            return res.status(400).json({
+              error: "Cannot confirm booking - payment has not been completed. The chef may have abandoned checkout.",
+              paymentStatus
+            });
+          }
+        }
         await bookingService.updateBookingStatus(id, status);
         try {
           let chef = null;
@@ -15574,7 +15778,12 @@ var init_manager = __esm({
                 timezone,
                 locationName
               });
-              await sendEmail(chefConfirmationEmail);
+              const emailSent = await sendEmail(chefConfirmationEmail);
+              if (emailSent) {
+                logger.info(`[Manager] \u2705 Sent booking confirmation email to chef: ${chef.username}`);
+              } else {
+                logger.error(`[Manager] \u274C Failed to send booking confirmation email to chef: ${chef.username}`);
+              }
               try {
                 const chefPhone = await getChefPhone(booking.chefId);
                 if (chefPhone) {
@@ -15614,7 +15823,12 @@ var init_manager = __esm({
                 endTime: booking.endTime,
                 cancellationReason: "Booking was declined by the kitchen manager"
               });
-              await sendEmail(chefCancellationEmail);
+              const cancelEmailSent = await sendEmail(chefCancellationEmail);
+              if (cancelEmailSent) {
+                logger.info(`[Manager] \u2705 Sent booking cancellation email to chef: ${chef.username}`);
+              } else {
+                logger.error(`[Manager] \u274C Failed to send booking cancellation email to chef: ${chef.username}`);
+              }
               try {
                 const chefPhone = await getChefPhone(booking.chefId);
                 if (chefPhone) {
@@ -16307,6 +16521,19 @@ var init_manager = __esm({
           newEndDate: extension.newEndDate,
           extensionDays: extension.extensionDays
         });
+        try {
+          const approvalEmail = generateStorageExtensionApprovedEmail({
+            chefEmail: extension.chefEmail,
+            chefName: extension.chefEmail,
+            storageName: extension.storageName,
+            extensionDays: extension.extensionDays,
+            newEndDate: extension.newEndDate
+          });
+          await sendEmail(approvalEmail);
+          logger.info(`[Manager] Sent storage extension approval email to chef: ${extension.chefEmail}`);
+        } catch (emailError) {
+          logger.error("Error sending storage extension approval email:", emailError);
+        }
         res.json({
           success: true,
           message: "Storage extension approved successfully",
@@ -16418,6 +16645,20 @@ var init_manager = __esm({
           } catch (refundError) {
             logger.error(`[Manager] Failed to process refund for extension ${extensionId}:`, refundError);
           }
+        }
+        try {
+          const rejectionEmail = generateStorageExtensionRejectedEmail({
+            chefEmail: extension.chefEmail,
+            chefName: extension.chefEmail,
+            storageName: extension.storageName || "Storage",
+            extensionDays: extension.extensionDays || 0,
+            rejectionReason: reason || "Extension request declined by manager",
+            refundAmount: refundResult?.refundAmount
+          });
+          await sendEmail(rejectionEmail);
+          logger.info(`[Manager] Sent storage extension rejection email to chef: ${extension.chefEmail}`);
+        } catch (emailError) {
+          logger.error("Error sending storage extension rejection email:", emailError);
         }
         res.json({
           success: true,
@@ -17281,9 +17522,111 @@ var init_kitchens = __esm({
 // server/services/stripe-checkout-service.ts
 var stripe_checkout_service_exports = {};
 __export(stripe_checkout_service_exports, {
-  createCheckoutSession: () => createCheckoutSession
+  createCheckoutSession: () => createCheckoutSession,
+  createPendingCheckoutSession: () => createPendingCheckoutSession
 });
 import Stripe3 from "stripe";
+async function createPendingCheckoutSession(params) {
+  if (!stripe3) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  const {
+    bookingPriceInCents,
+    platformFeeInCents,
+    managerStripeAccountId,
+    customerEmail,
+    currency = "cad",
+    successUrl,
+    cancelUrl,
+    bookingData,
+    lineItemName = "Kitchen Session Booking"
+  } = params;
+  if (bookingPriceInCents <= 0) {
+    throw new Error("Booking price must be greater than 0");
+  }
+  if (platformFeeInCents < 0) {
+    throw new Error("Platform fee cannot be negative");
+  }
+  if (platformFeeInCents >= bookingPriceInCents) {
+    throw new Error("Platform fee must be less than booking price");
+  }
+  if (!managerStripeAccountId) {
+    throw new Error("Manager Stripe account ID is required");
+  }
+  if (!customerEmail) {
+    throw new Error("Customer email is required");
+  }
+  try {
+    const lineItems = [
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: { name: lineItemName },
+          unit_amount: bookingPriceInCents
+        },
+        quantity: 1
+      }
+    ];
+    const paymentIntentData = {
+      transfer_data: { destination: managerStripeAccountId },
+      metadata: {
+        type: "kitchen_booking",
+        kitchen_id: bookingData.kitchenId.toString(),
+        chef_id: bookingData.chefId.toString()
+      }
+    };
+    if (platformFeeInCents > 0) {
+      paymentIntentData.application_fee_amount = platformFeeInCents;
+    }
+    const sessionMetadata = {
+      type: "kitchen_booking",
+      kitchen_id: bookingData.kitchenId.toString(),
+      chef_id: bookingData.chefId.toString(),
+      booking_date: bookingData.bookingDate,
+      start_time: bookingData.startTime,
+      end_time: bookingData.endTime,
+      total_price_cents: bookingData.totalPriceCents.toString(),
+      tax_cents: bookingData.taxCents.toString(),
+      hourly_rate_cents: bookingData.hourlyRateCents.toString(),
+      duration_hours: bookingData.durationHours.toString(),
+      booking_price_cents: bookingPriceInCents.toString(),
+      platform_fee_cents: platformFeeInCents.toString(),
+      manager_account_id: managerStripeAccountId
+    };
+    if (bookingData.specialNotes) {
+      sessionMetadata.special_notes = bookingData.specialNotes;
+    }
+    if (bookingData.selectedSlots && bookingData.selectedSlots.length > 0) {
+      sessionMetadata.selected_slots = JSON.stringify(bookingData.selectedSlots);
+    }
+    if (bookingData.selectedStorage && bookingData.selectedStorage.length > 0) {
+      sessionMetadata.selected_storage = JSON.stringify(bookingData.selectedStorage);
+    }
+    if (bookingData.selectedEquipmentIds && bookingData.selectedEquipmentIds.length > 0) {
+      sessionMetadata.selected_equipment_ids = JSON.stringify(bookingData.selectedEquipmentIds);
+    }
+    const session = await stripe3.checkout.sessions.create({
+      mode: "payment",
+      customer_email: customerEmail,
+      line_items: lineItems,
+      payment_intent_data: paymentIntentData,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: sessionMetadata
+    });
+    if (!session.url) {
+      throw new Error("Failed to create checkout session URL");
+    }
+    console.log(`[Stripe Checkout] Created pending checkout session ${session.id} for kitchen ${bookingData.kitchenId}`);
+    return {
+      sessionId: session.id,
+      sessionUrl: session.url
+    };
+  } catch (error) {
+    console.error("Error creating Stripe Checkout session:", error);
+    throw new Error(`Failed to create checkout session: ${error.message}`);
+  }
+}
 async function createCheckoutSession(params) {
   if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
@@ -17389,130 +17732,6 @@ var init_stripe_checkout_service = __esm({
   }
 });
 
-// server/services/stripe-checkout-transactions-service.ts
-var stripe_checkout_transactions_service_exports = {};
-__export(stripe_checkout_transactions_service_exports, {
-  createTransaction: () => createTransaction,
-  getTransactionBySessionId: () => getTransactionBySessionId,
-  updateTransactionBySessionId: () => updateTransactionBySessionId
-});
-import { sql as sql13 } from "drizzle-orm";
-async function createTransaction(params, db2) {
-  const {
-    bookingId,
-    stripeSessionId,
-    customerEmail,
-    bookingAmountCents,
-    platformFeePercentageCents,
-    platformFeeFlatCents,
-    totalPlatformFeeCents,
-    totalCustomerChargedCents,
-    managerReceivesCents,
-    metadata = {}
-  } = params;
-  const result = await db2.execute(sql13`
-    INSERT INTO transactions (
-      booking_id,
-      stripe_session_id,
-      customer_email,
-      booking_amount_cents,
-      platform_fee_percentage_cents,
-      platform_fee_flat_cents,
-      total_platform_fee_cents,
-      total_customer_charged_cents,
-      manager_receives_cents,
-      status,
-      metadata
-    ) VALUES (
-      ${bookingId},
-      ${stripeSessionId},
-      ${customerEmail},
-      ${bookingAmountCents},
-      ${platformFeePercentageCents},
-      ${platformFeeFlatCents},
-      ${totalPlatformFeeCents},
-      ${totalCustomerChargedCents},
-      ${managerReceivesCents},
-      ${"pending"},
-      ${JSON.stringify(metadata)}
-    )
-    RETURNING *
-  `);
-  if (result.rows.length === 0) {
-    throw new Error("Failed to create transaction record");
-  }
-  return mapRowToTransaction(result.rows[0]);
-}
-async function updateTransactionBySessionId(sessionId, params, db2) {
-  const updates = [];
-  if (params.status !== void 0) {
-    updates.push(sql13`status = ${params.status}`);
-  }
-  if (params.stripePaymentIntentId !== void 0) {
-    updates.push(sql13`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
-  }
-  if (params.stripeChargeId !== void 0) {
-    updates.push(sql13`stripe_charge_id = ${params.stripeChargeId}`);
-  }
-  if (params.completedAt !== void 0) {
-    updates.push(sql13`completed_at = ${params.completedAt}`);
-  }
-  if (params.refundedAt !== void 0) {
-    updates.push(sql13`refunded_at = ${params.refundedAt}`);
-  }
-  if (params.metadata !== void 0) {
-    updates.push(sql13`metadata = ${JSON.stringify(params.metadata)}`);
-  }
-  if (updates.length === 0) {
-    return getTransactionBySessionId(sessionId, db2);
-  }
-  const result = await db2.execute(sql13`
-    UPDATE transactions
-    SET ${sql13.join(updates, sql13`, `)}
-    WHERE stripe_session_id = ${sessionId}
-    RETURNING *
-  `);
-  if (result.rows.length === 0) {
-    return null;
-  }
-  return mapRowToTransaction(result.rows[0]);
-}
-async function getTransactionBySessionId(sessionId, db2) {
-  const result = await db2.execute(sql13`
-    SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
-  `);
-  if (result.rows.length === 0) {
-    return null;
-  }
-  return mapRowToTransaction(result.rows[0]);
-}
-function mapRowToTransaction(row) {
-  return {
-    id: row.id,
-    booking_id: row.booking_id,
-    stripe_session_id: row.stripe_session_id,
-    stripe_payment_intent_id: row.stripe_payment_intent_id,
-    stripe_charge_id: row.stripe_charge_id,
-    customer_email: row.customer_email,
-    booking_amount_cents: row.booking_amount_cents,
-    platform_fee_percentage_cents: row.platform_fee_percentage_cents,
-    platform_fee_flat_cents: row.platform_fee_flat_cents,
-    total_platform_fee_cents: row.total_platform_fee_cents,
-    total_customer_charged_cents: row.total_customer_charged_cents,
-    manager_receives_cents: row.manager_receives_cents,
-    status: row.status,
-    created_at: row.created_at,
-    completed_at: row.completed_at,
-    refunded_at: row.refunded_at,
-    metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata || {}
-  };
-}
-var init_stripe_checkout_transactions_service = __esm({
-  "server/services/stripe-checkout-transactions-service.ts"() {
-    "use strict";
-  }
-});
-
 // server/date-utils.ts
 var date_utils_exports = {};
 __export(date_utils_exports, {
@@ -17574,7 +17793,6 @@ var init_bookings = __esm({
     init_chef_service();
     init_phone_utils();
     init_sms();
-    init_notification_service();
     router17 = Router17();
     router17.post("/bookings/checkout", async (req, res) => {
       try {
@@ -17621,57 +17839,7 @@ var init_bookings = __esm({
             kitchen_id: (booking.kitchenId || "").toString()
           }
         });
-        const { createTransaction: createTransaction2 } = await Promise.resolve().then(() => (init_stripe_checkout_transactions_service(), stripe_checkout_transactions_service_exports));
-        await createTransaction2(
-          {
-            bookingId,
-            stripeSessionId: checkoutSession.sessionId,
-            customerEmail,
-            bookingAmountCents: feeCalculation.bookingPriceInCents,
-            platformFeePercentageCents: feeCalculation.percentageFeeInCents,
-            platformFeeFlatCents: feeCalculation.flatFeeInCents,
-            totalPlatformFeeCents: feeCalculation.totalPlatformFeeInCents,
-            totalCustomerChargedCents: feeCalculation.totalChargeInCents,
-            managerReceivesCents: feeCalculation.managerReceivesInCents,
-            // Manager receives booking minus platform fee
-            metadata: {
-              booking_id: bookingId.toString(),
-              kitchen_id: (booking.kitchenId || "").toString(),
-              manager_account_id: managerStripeAccountId
-            }
-          },
-          db
-        );
-        try {
-          const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          const [bookingDetails] = await db.select({
-            chefId: kitchenBookings.chefId,
-            managerId: locations.managerId
-          }).from(kitchenBookings).innerJoin(kitchens, eq26(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq26(kitchens.locationId, locations.id)).where(eq26(kitchenBookings.id, bookingId)).limit(1);
-          if (bookingDetails) {
-            await createPaymentTransaction2({
-              bookingId,
-              bookingType: "kitchen",
-              chefId: bookingDetails.chefId,
-              managerId: bookingDetails.managerId,
-              amount: feeCalculation.totalChargeInCents,
-              baseAmount: feeCalculation.bookingPriceInCents,
-              serviceFee: feeCalculation.totalPlatformFeeInCents,
-              managerRevenue: feeCalculation.managerReceivesInCents,
-              currency: "CAD",
-              paymentIntentId: void 0,
-              // Will be set when checkout completes
-              status: "pending",
-              metadata: {
-                checkout_session_id: checkoutSession.sessionId,
-                booking_id: bookingId.toString()
-              }
-            }, db);
-            console.log(`[Checkout] Created payment_transactions record for booking ${bookingId}`);
-          }
-        } catch (ptError) {
-          console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
-        }
+        console.warn(`[DEPRECATED] Legacy /bookings/checkout endpoint used for booking ${bookingId}`);
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
@@ -17905,7 +18073,7 @@ var init_bookings = __esm({
           managerStripeAccountId,
           customerEmail: chefEmail,
           bookingId: id,
-          // Using storage booking ID
+          // Using storage booking ID for legacy compatibility
           currency: "cad",
           successUrl: `${baseUrl}/dashboard?storage_extended=true&storage_booking_id=${id}`,
           cancelUrl: `${baseUrl}/dashboard?storage_extension_cancelled=true&storage_booking_id=${id}`,
@@ -17919,49 +18087,16 @@ var init_bookings = __esm({
             chef_id: req.neonUser.id.toString(),
             kitchen_id: kitchen.id.toString(),
             location_id: location.id.toString(),
+            manager_id: location.managerId.toString(),
+            extension_base_price_cents: extensionBasePriceCents.toString(),
+            extension_service_fee_cents: feeCalculation.totalPlatformFeeInCents.toString(),
+            extension_total_price_cents: totalWithTaxCents.toString(),
+            manager_receives_cents: feeCalculation.managerReceivesInCents.toString(),
             tax_cents: extensionTaxCents.toString(),
             tax_rate_percent: taxRatePercent.toString()
           }
         });
-        const pendingExtension = await bookingService.createPendingStorageExtension({
-          storageBookingId: id,
-          newEndDate: newEndDateObj,
-          extensionDays,
-          extensionBasePriceCents,
-          extensionServiceFeeCents: feeCalculation.totalPlatformFeeInCents,
-          extensionTotalPriceCents: totalWithTaxCents,
-          stripeSessionId: checkoutSession.sessionId,
-          status: "pending"
-        });
-        try {
-          const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          await createPaymentTransaction2({
-            bookingId: id,
-            bookingType: "storage",
-            chefId: req.neonUser.id,
-            managerId: location.managerId,
-            amount: totalWithTaxCents,
-            baseAmount: extensionBasePriceCents,
-            serviceFee: feeCalculation.totalPlatformFeeInCents,
-            managerRevenue: feeCalculation.managerReceivesInCents,
-            currency: "CAD",
-            paymentIntentId: void 0,
-            // Will be set when checkout completes
-            status: "pending",
-            metadata: {
-              checkout_session_id: checkoutSession.sessionId,
-              storage_booking_id: id.toString(),
-              storage_extension_id: pendingExtension.id.toString(),
-              extension_days: extensionDays.toString(),
-              new_end_date: newEndDateObj.toISOString(),
-              tax_cents: extensionTaxCents.toString(),
-              tax_rate_percent: taxRatePercent.toString()
-            }
-          }, db);
-          console.log(`[Storage Extension Checkout] Created payment_transactions record for storage booking ${id}, extension ${pendingExtension.id}`);
-        } catch (ptError) {
-          console.warn(`[Storage Extension Checkout] Could not create payment_transactions record:`, ptError);
-        }
+        console.log(`[Storage Extension Checkout] Created pending checkout session ${checkoutSession.sessionId} - extension will be created in webhook`);
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
@@ -18646,7 +18781,17 @@ var init_bookings = __esm({
         }
         const chefEmail = chef.username;
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
-        let totalPriceCents = kitchenPricing.totalPriceCents;
+        let totalPriceCents;
+        let effectiveDurationHours;
+        if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
+          const minimumBookingHours = kitchenDetails.minimumBookingHours || 1;
+          effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
+          totalPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
+          console.log(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
+        } else {
+          effectiveDurationHours = kitchenPricing.durationHours;
+          totalPriceCents = kitchenPricing.totalPriceCents;
+        }
         const storageIds = [];
         if (selectedStorage && Array.isArray(selectedStorage) && selectedStorage.length > 0) {
           for (const storage of selectedStorage) {
@@ -18690,67 +18835,39 @@ var init_bookings = __esm({
         const taxRatePercent = kitchenDetails.taxRatePercent ? parseFloat(String(kitchenDetails.taxRatePercent)) : 0;
         const taxCents = Math.round(totalPriceCents * taxRatePercent / 100);
         const totalWithTaxCents = totalPriceCents + taxCents;
-        const booking = await bookingService.createKitchenBooking({
-          kitchenId,
-          chefId,
-          bookingDate: bookingDateObj,
-          startTime,
-          endTime,
-          selectedSlots: selectedSlots || [],
-          // Pass discrete time slots
-          status: "pending",
-          paymentStatus: "pending",
-          specialNotes,
-          selectedStorageIds: storageIds,
-          selectedEquipmentIds: selectedEquipmentIds || []
-        });
         const { calculateCheckoutFeesAsync: calculateCheckoutFeesAsync2 } = await Promise.resolve().then(() => (init_stripe_checkout_fee_service(), stripe_checkout_fee_service_exports));
         const feeCalculation = await calculateCheckoutFeesAsync2(totalWithTaxCents);
         const baseUrl = getBaseUrl(req);
-        const { createCheckoutSession: createCheckoutSession2 } = await Promise.resolve().then(() => (init_stripe_checkout_service(), stripe_checkout_service_exports));
-        const checkoutSession = await createCheckoutSession2({
+        const { createPendingCheckoutSession: createPendingCheckoutSession2 } = await Promise.resolve().then(() => (init_stripe_checkout_service(), stripe_checkout_service_exports));
+        const checkoutSession = await createPendingCheckoutSession2({
           bookingPriceInCents: totalWithTaxCents,
           platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
           managerStripeAccountId,
           customerEmail: chefEmail,
-          bookingId: booking.id,
           currency: "cad",
-          successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`,
-          cancelUrl: `${baseUrl}/booking-cancel?booking_id=${booking.id}`,
-          metadata: {
-            booking_id: booking.id.toString(),
-            kitchen_id: kitchenId.toString(),
-            chef_id: chefId.toString(),
-            type: "kitchen_booking"
+          successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${baseUrl}/dashboard?tab=kitchens`,
+          bookingData: {
+            kitchenId,
+            chefId,
+            bookingDate: bookingDateObj.toISOString(),
+            startTime,
+            endTime,
+            selectedSlots: selectedSlots || [],
+            specialNotes,
+            selectedStorage: selectedStorage || [],
+            selectedEquipmentIds: selectedEquipmentIds || [],
+            totalPriceCents,
+            taxCents,
+            hourlyRateCents: kitchenPricing.hourlyRateCents,
+            durationHours: effectiveDurationHours
+            // Use effective duration (slot count for staggered)
           }
         });
-        try {
-          const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
-          await createPaymentTransaction2({
-            bookingId: booking.id,
-            bookingType: "kitchen",
-            chefId,
-            managerId: location.managerId,
-            amount: feeCalculation.totalChargeInCents,
-            baseAmount: totalWithTaxCents,
-            serviceFee: feeCalculation.totalPlatformFeeInCents,
-            managerRevenue: feeCalculation.managerReceivesInCents,
-            currency: "CAD",
-            paymentIntentId: void 0,
-            status: "pending",
-            metadata: {
-              checkout_session_id: checkoutSession.sessionId,
-              booking_id: booking.id.toString()
-            }
-          }, db);
-          console.log(`[Checkout] Created payment_transactions record for booking ${booking.id}`);
-        } catch (ptError) {
-          console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
-        }
+        console.log(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
         res.json({
           sessionUrl: checkoutSession.sessionUrl,
           sessionId: checkoutSession.sessionId,
-          bookingId: booking.id,
           booking: {
             price: totalWithTaxCents / 100,
             platformFee: feeCalculation.totalPlatformFeeInCents / 100,
@@ -18847,7 +18964,8 @@ var init_bookings = __esm({
           paymentStatus: paymentIntentId ? "paid" : "pending",
           paymentIntentId,
           specialNotes,
-          selectedStorageIds: storageIds,
+          selectedStorage: selectedStorage || [],
+          // Pass storage with explicit dates
           selectedEquipmentIds: selectedEquipmentIds || []
         });
         if (paymentIntentId) {
@@ -18892,7 +19010,7 @@ var init_bookings = __esm({
           const kitchen = await kitchenService.getKitchenById(kitchenId);
           const chef = await userService.getUser(chefId);
           if (chef && kitchen) {
-            const { sendEmail: sendEmail2, generateBookingRequestEmail: generateBookingRequestEmail3, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+            const { sendEmail: sendEmail2, generateBookingRequestEmail: generateBookingRequestEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
             const chefEmail = generateBookingRequestEmail3({
               chefEmail: chef.username,
               chefName: chef.username,
@@ -18905,40 +19023,6 @@ var init_bookings = __esm({
               locationName: location?.name
             });
             await sendEmail2(chefEmail);
-            if (location) {
-              const notificationEmail = location.notificationEmail || location.notification_email;
-              if (notificationEmail) {
-                const managerEmail = generateBookingNotificationEmail3({
-                  managerEmail: notificationEmail,
-                  chefName: chef.username,
-                  kitchenName: kitchen.name,
-                  bookingDate: bookingDateObj,
-                  startTime,
-                  endTime,
-                  specialNotes,
-                  timezone: location?.timezone || "America/Edmonton",
-                  locationName: location?.name
-                });
-                await sendEmail2(managerEmail);
-              }
-            }
-            try {
-              const managerId = location?.managerId || location?.manager_id;
-              if (managerId && kitchen) {
-                await notificationService.notifyNewBooking({
-                  managerId,
-                  locationId: kitchen.locationId,
-                  bookingId: booking.id,
-                  chefName: chef.username || "Chef",
-                  kitchenName: kitchen.name,
-                  bookingDate: bookingDateObj.toISOString().split("T")[0],
-                  startTime,
-                  endTime
-                });
-              }
-            } catch (notifError) {
-              console.error("Error creating booking notification:", notifError);
-            }
           }
         } catch (emailError) {
           console.error("Error sending booking emails:", emailError);
@@ -19331,7 +19415,7 @@ __export(admin_exports, {
   default: () => admin_default
 });
 import { Router as Router20 } from "express";
-import { eq as eq27, sql as sql14 } from "drizzle-orm";
+import { eq as eq27, sql as sql13 } from "drizzle-orm";
 async function getAuthenticatedUser2(req) {
   if (req.neonUser) {
     return {
@@ -19368,16 +19452,16 @@ var init_admin = __esm({
         const { startDate, endDate } = req.query;
         const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
         const serviceFeeRate = await getServiceFeeRate2();
-        const conditions = [sql14`kb.status != 'cancelled'`];
+        const conditions = [sql13`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql14`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql13`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql14`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql13`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql14.join(conditions, sql14` AND `);
+        const bookingFilters = sql13.join(conditions, sql13` AND `);
         const managerRole = "manager";
-        const result = await db.execute(sql14`
+        const result = await db.execute(sql13`
         SELECT 
           u.id as manager_id,
           u.username as manager_name,
@@ -19462,17 +19546,17 @@ var init_admin = __esm({
           return;
         }
         const { startDate, endDate } = req.query;
-        const managerCountResult = await db.select({ count: sql14`count(*)::int` }).from(users).where(eq27(users.role, "manager"));
+        const managerCountResult = await db.select({ count: sql13`count(*)::int` }).from(users).where(eq27(users.role, "manager"));
         const totalManagers = managerCountResult[0]?.count || 0;
-        const conditions = [sql14`kb.status != 'cancelled'`];
+        const conditions = [sql13`kb.status != 'cancelled'`];
         if (startDate) {
-          conditions.push(sql14`kb.booking_date >= ${startDate}::date`);
+          conditions.push(sql13`kb.booking_date >= ${startDate}::date`);
         }
         if (endDate) {
-          conditions.push(sql14`kb.booking_date <= ${endDate}::date`);
+          conditions.push(sql13`kb.booking_date <= ${endDate}::date`);
         }
-        const bookingFilters = sql14.join(conditions, sql14` AND `);
-        const bookingResult = await db.execute(sql14`
+        const bookingFilters = sql13.join(conditions, sql13` AND `);
+        const bookingResult = await db.execute(sql13`
         SELECT 
           COALESCE(SUM(kb.total_price), 0)::bigint as total_revenue,
           COALESCE(SUM(kb.service_fee), 0)::bigint as platform_fee,
@@ -19764,7 +19848,7 @@ var init_admin = __esm({
         if (user.role !== "admin") {
           return res.status(403).json({ error: "Admin access required" });
         }
-        const result = await db.execute(sql14.raw(`
+        const result = await db.execute(sql13.raw(`
             SELECT 
               u.id, 
               u.username, 
@@ -19910,7 +19994,7 @@ var init_admin = __esm({
     });
     router20.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
-        const result = await db.select({ count: sql14`count(*)::int` }).from(locations).where(eq27(locations.kitchenLicenseStatus, "pending"));
+        const result = await db.select({ count: sql13`count(*)::int` }).from(locations).where(eq27(locations.kitchenLicenseStatus, "pending"));
         const count3 = result[0]?.count || 0;
         res.json({ count: count3 });
       } catch (error) {
@@ -20673,7 +20757,7 @@ var init_admin = __esm({
     router20.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const config = await getFeeConfig();
-        const settings = await db.select().from(platformSettings).where(sql14`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
+        const settings = await db.select().from(platformSettings).where(sql13`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
         const settingsMap = Object.fromEntries(settings.map((s) => [s.key, {
           value: s.value,
           description: s.description,
@@ -20881,6 +20965,130 @@ var init_admin = __esm({
   }
 });
 
+// server/services/stripe-checkout-transactions-service.ts
+var stripe_checkout_transactions_service_exports = {};
+__export(stripe_checkout_transactions_service_exports, {
+  createTransaction: () => createTransaction,
+  getTransactionBySessionId: () => getTransactionBySessionId,
+  updateTransactionBySessionId: () => updateTransactionBySessionId
+});
+import { sql as sql14 } from "drizzle-orm";
+async function createTransaction(params, db2) {
+  const {
+    bookingId,
+    stripeSessionId,
+    customerEmail,
+    bookingAmountCents,
+    platformFeePercentageCents,
+    platformFeeFlatCents,
+    totalPlatformFeeCents,
+    totalCustomerChargedCents,
+    managerReceivesCents,
+    metadata = {}
+  } = params;
+  const result = await db2.execute(sql14`
+    INSERT INTO transactions (
+      booking_id,
+      stripe_session_id,
+      customer_email,
+      booking_amount_cents,
+      platform_fee_percentage_cents,
+      platform_fee_flat_cents,
+      total_platform_fee_cents,
+      total_customer_charged_cents,
+      manager_receives_cents,
+      status,
+      metadata
+    ) VALUES (
+      ${bookingId},
+      ${stripeSessionId},
+      ${customerEmail},
+      ${bookingAmountCents},
+      ${platformFeePercentageCents},
+      ${platformFeeFlatCents},
+      ${totalPlatformFeeCents},
+      ${totalCustomerChargedCents},
+      ${managerReceivesCents},
+      ${"pending"},
+      ${JSON.stringify(metadata)}
+    )
+    RETURNING *
+  `);
+  if (result.rows.length === 0) {
+    throw new Error("Failed to create transaction record");
+  }
+  return mapRowToTransaction(result.rows[0]);
+}
+async function updateTransactionBySessionId(sessionId, params, db2) {
+  const updates = [];
+  if (params.status !== void 0) {
+    updates.push(sql14`status = ${params.status}`);
+  }
+  if (params.stripePaymentIntentId !== void 0) {
+    updates.push(sql14`stripe_payment_intent_id = ${params.stripePaymentIntentId}`);
+  }
+  if (params.stripeChargeId !== void 0) {
+    updates.push(sql14`stripe_charge_id = ${params.stripeChargeId}`);
+  }
+  if (params.completedAt !== void 0) {
+    updates.push(sql14`completed_at = ${params.completedAt}`);
+  }
+  if (params.refundedAt !== void 0) {
+    updates.push(sql14`refunded_at = ${params.refundedAt}`);
+  }
+  if (params.metadata !== void 0) {
+    updates.push(sql14`metadata = ${JSON.stringify(params.metadata)}`);
+  }
+  if (updates.length === 0) {
+    return getTransactionBySessionId(sessionId, db2);
+  }
+  const result = await db2.execute(sql14`
+    UPDATE transactions
+    SET ${sql14.join(updates, sql14`, `)}
+    WHERE stripe_session_id = ${sessionId}
+    RETURNING *
+  `);
+  if (result.rows.length === 0) {
+    return null;
+  }
+  return mapRowToTransaction(result.rows[0]);
+}
+async function getTransactionBySessionId(sessionId, db2) {
+  const result = await db2.execute(sql14`
+    SELECT * FROM transactions WHERE stripe_session_id = ${sessionId}
+  `);
+  if (result.rows.length === 0) {
+    return null;
+  }
+  return mapRowToTransaction(result.rows[0]);
+}
+function mapRowToTransaction(row) {
+  return {
+    id: row.id,
+    booking_id: row.booking_id,
+    stripe_session_id: row.stripe_session_id,
+    stripe_payment_intent_id: row.stripe_payment_intent_id,
+    stripe_charge_id: row.stripe_charge_id,
+    customer_email: row.customer_email,
+    booking_amount_cents: row.booking_amount_cents,
+    platform_fee_percentage_cents: row.platform_fee_percentage_cents,
+    platform_fee_flat_cents: row.platform_fee_flat_cents,
+    total_platform_fee_cents: row.total_platform_fee_cents,
+    total_customer_charged_cents: row.total_customer_charged_cents,
+    manager_receives_cents: row.manager_receives_cents,
+    status: row.status,
+    created_at: row.created_at,
+    completed_at: row.completed_at,
+    refunded_at: row.refunded_at,
+    metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata || {}
+  };
+}
+var init_stripe_checkout_transactions_service = __esm({
+  "server/services/stripe-checkout-transactions-service.ts"() {
+    "use strict";
+  }
+});
+
 // server/routes/webhooks.ts
 var webhooks_exports = {};
 __export(webhooks_exports, {
@@ -20888,14 +21096,19 @@ __export(webhooks_exports, {
 });
 import { Router as Router21 } from "express";
 import Stripe4 from "stripe";
-import { eq as eq28, and as and18, ne as ne5, notInArray } from "drizzle-orm";
+import { eq as eq28, and as and18, ne as ne6, notInArray } from "drizzle-orm";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
   if (!pool) {
     logger.error("Database pool not available for webhook");
     return;
   }
   try {
-    const { updateTransactionBySessionId: updateTransactionBySessionId2 } = await Promise.resolve().then(() => (init_stripe_checkout_transactions_service(), stripe_checkout_transactions_service_exports));
+    let updateTransactionBySessionId2 = null;
+    try {
+      const legacyService = await Promise.resolve().then(() => (init_stripe_checkout_transactions_service(), stripe_checkout_transactions_service_exports));
+      updateTransactionBySessionId2 = legacyService.updateTransactionBySessionId;
+    } catch {
+    }
     const stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey4) {
       logger.error("Stripe secret key not available");
@@ -20943,25 +21156,27 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     if (chargeId) {
       updateParams.stripeChargeId = chargeId;
     }
-    const updatedTransaction = await updateTransactionBySessionId2(
-      session.id,
-      updateParams,
-      db
-    );
-    if (updatedTransaction) {
-      logger.info(
-        `[Webhook] Updated transaction for Checkout session ${session.id}:`,
-        {
-          paymentIntentId,
-          chargeId,
-          amount: `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}`,
-          managerReceives: `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}`
+    if (updateTransactionBySessionId2) {
+      try {
+        const updatedTransaction = await updateTransactionBySessionId2(
+          session.id,
+          updateParams,
+          db
+        );
+        if (updatedTransaction) {
+          logger.info(
+            `[Webhook] Updated legacy transaction for Checkout session ${session.id}:`,
+            {
+              paymentIntentId,
+              chargeId,
+              amount: updatedTransaction.total_customer_charged_cents ? `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}` : "N/A",
+              managerReceives: updatedTransaction.manager_receives_cents ? `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}` : "N/A"
+            }
+          );
         }
-      );
-    } else {
-      logger.warn(
-        `[Webhook] Transaction not found for Checkout session ${session.id}`
-      );
+      } catch {
+        logger.debug(`[Webhook] Legacy transactions table not available for session ${session.id}`);
+      }
     }
     if (paymentIntentId) {
       try {
@@ -21007,6 +21222,227 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         metadata
       );
     }
+    if (metadata.type === "kitchen_booking" && !metadata.booking_id) {
+      try {
+        if (expandedSession.payment_status !== "paid") {
+          logger.info(`[Webhook] Payment not yet confirmed for session ${session.id}, status: ${expandedSession.payment_status}`);
+          return;
+        }
+        if (paymentIntentId) {
+          const [existingBooking] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq28(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
+          if (existingBooking) {
+            logger.info(`[Webhook] Booking ${existingBooking.id} already exists for payment intent ${paymentIntentId}, skipping duplicate creation`);
+            return;
+          }
+        }
+        const kitchenId = parseInt(metadata.kitchen_id);
+        const chefId = parseInt(metadata.chef_id);
+        const bookingDate = new Date(metadata.booking_date);
+        const startTime = metadata.start_time;
+        const endTime = metadata.end_time;
+        const totalPriceCents = parseInt(metadata.total_price_cents);
+        const taxCents = parseInt(metadata.tax_cents || "0");
+        const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
+        const durationHours = parseFloat(metadata.duration_hours || "1");
+        const specialNotes = metadata.special_notes || null;
+        const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
+        const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
+        const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
+        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`);
+        const { bookingService: bookingService2 } = await Promise.resolve().then(() => (init_booking_service(), booking_service_exports));
+        const booking = await bookingService2.createKitchenBooking({
+          kitchenId,
+          chefId,
+          bookingDate,
+          startTime,
+          endTime,
+          selectedSlots,
+          status: "pending",
+          // Awaiting manager approval
+          paymentStatus: "paid",
+          // Payment already confirmed
+          paymentIntentId,
+          specialNotes,
+          selectedStorage,
+          selectedEquipmentIds
+        });
+        logger.info(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
+        try {
+          const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+          const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+          const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq28(kitchens.id, kitchenId)).limit(1);
+          if (kitchen) {
+            const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq28(locations.id, kitchen.locationId)).limit(1);
+            if (location && location.managerId) {
+              const paymentIntentObj = expandedSession.payment_intent;
+              const chargeId2 = paymentIntentObj && typeof paymentIntentObj === "object" ? typeof paymentIntentObj.latest_charge === "string" ? paymentIntentObj.latest_charge : paymentIntentObj.latest_charge?.id : void 0;
+              const ptRecord = await createPaymentTransaction2({
+                bookingId: booking.id,
+                bookingType: "kitchen",
+                chefId,
+                managerId: location.managerId,
+                amount: parseInt(metadata.booking_price_cents),
+                baseAmount: totalPriceCents + taxCents,
+                serviceFee: parseInt(metadata.platform_fee_cents || "0"),
+                managerRevenue: parseInt(metadata.booking_price_cents) - parseInt(metadata.platform_fee_cents || "0"),
+                currency: "CAD",
+                paymentIntentId,
+                status: "succeeded",
+                stripeStatus: "succeeded",
+                metadata: {
+                  checkout_session_id: session.id,
+                  booking_id: booking.id.toString()
+                }
+              }, db);
+              if (ptRecord) {
+                let managerConnectAccountId;
+                try {
+                  const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, location.managerId)).limit(1);
+                  if (manager?.stripeConnectAccountId) {
+                    managerConnectAccountId = manager.stripeConnectAccountId;
+                  }
+                } catch {
+                  logger.warn(`[Webhook] Could not fetch manager Connect account`);
+                }
+                const stripeAmounts = paymentIntentId ? await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId) : null;
+                const updateParams2 = {
+                  chargeId: chargeId2,
+                  paidAt: /* @__PURE__ */ new Date(),
+                  lastSyncedAt: /* @__PURE__ */ new Date()
+                };
+                if (stripeAmounts) {
+                  updateParams2.stripeAmount = stripeAmounts.stripeAmount;
+                  updateParams2.stripeNetAmount = stripeAmounts.stripeNetAmount;
+                  updateParams2.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
+                  updateParams2.stripePlatformFee = stripeAmounts.stripePlatformFee;
+                  logger.info(`[Webhook] Syncing Stripe amounts for booking ${booking.id}:`, {
+                    amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+                    netAmount: `$${(stripeAmounts.stripeNetAmount / 100).toFixed(2)}`,
+                    processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`
+                  });
+                }
+                await updatePaymentTransaction2(ptRecord.id, updateParams2, db);
+              }
+              logger.info(`[Webhook] Created payment_transactions record for booking ${booking.id} with full Stripe data`);
+            }
+          }
+        } catch (ptError) {
+          logger.warn(`[Webhook] Could not create payment_transactions record:`, ptError);
+        }
+        try {
+          const [kitchen] = await db.select({
+            name: kitchens.name,
+            locationId: kitchens.locationId
+          }).from(kitchens).where(eq28(kitchens.id, kitchenId)).limit(1);
+          if (kitchen) {
+            const [location] = await db.select({
+              name: locations.name,
+              managerId: locations.managerId,
+              notificationEmail: locations.notificationEmail,
+              timezone: locations.timezone
+            }).from(locations).where(eq28(locations.id, kitchen.locationId)).limit(1);
+            if (location && location.managerId) {
+              let chefName = "Chef";
+              const [chef] = await db.select({ username: users.username }).from(users).where(eq28(users.id, chefId)).limit(1);
+              if (chef) chefName = chef.username;
+              let managerEmailAddress = location.notificationEmail;
+              if (!managerEmailAddress) {
+                const [manager] = await db.select({ username: users.username }).from(users).where(eq28(users.id, location.managerId)).limit(1);
+                if (manager?.username) {
+                  managerEmailAddress = manager.username;
+                  logger.info(`[Webhook] Using manager's username as notification email: ${managerEmailAddress}`);
+                }
+              }
+              if (managerEmailAddress) {
+                const { sendEmail: sendEmail2, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+                const managerEmail = generateBookingNotificationEmail3({
+                  managerEmail: managerEmailAddress,
+                  chefName,
+                  kitchenName: kitchen.name,
+                  bookingDate,
+                  startTime,
+                  endTime,
+                  specialNotes: specialNotes || void 0,
+                  timezone: location.timezone || "America/Edmonton",
+                  locationName: location.name
+                });
+                const emailSent = await sendEmail2(managerEmail);
+                if (emailSent) {
+                  logger.info(`[Webhook] \u2705 Sent manager notification email for booking ${booking.id} to ${managerEmailAddress}`);
+                } else {
+                  logger.error(`[Webhook] \u274C Failed to send manager notification email for booking ${booking.id} to ${managerEmailAddress}`);
+                }
+              } else {
+                logger.warn(`[Webhook] No manager email available for booking ${booking.id} - skipping manager notification`);
+              }
+              await notificationService.notifyNewBooking({
+                managerId: location.managerId,
+                locationId: kitchen.locationId,
+                bookingId: booking.id,
+                chefName,
+                kitchenName: kitchen.name,
+                bookingDate: bookingDate.toISOString().split("T")[0],
+                startTime,
+                endTime
+              });
+              logger.info(`[Webhook] Created in-app notification for manager for booking ${booking.id}`);
+            }
+          }
+        } catch (notifyError) {
+          logger.error(`[Webhook] Error sending manager notification:`, notifyError);
+        }
+        try {
+          const [chef] = await db.select({ username: users.username }).from(users).where(eq28(users.id, chefId)).limit(1);
+          const [kitchen] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq28(kitchens.id, kitchenId)).limit(1);
+          if (chef && kitchen) {
+            const [location] = await db.select({ name: locations.name, timezone: locations.timezone }).from(locations).where(eq28(locations.id, kitchen.locationId)).limit(1);
+            const { sendEmail: sendEmail2, generateBookingRequestEmail: generateBookingRequestEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+            const chefEmail = generateBookingRequestEmail3({
+              chefEmail: chef.username,
+              chefName: chef.username,
+              kitchenName: kitchen.name,
+              bookingDate,
+              startTime,
+              endTime,
+              specialNotes: specialNotes || void 0,
+              timezone: location?.timezone || "America/Edmonton",
+              locationName: location?.name
+            });
+            const emailSent = await sendEmail2(chefEmail);
+            if (emailSent) {
+              logger.info(`[Webhook] \u2705 Sent chef booking request email for booking ${booking.id} to ${chef.username}`);
+            } else {
+              logger.error(`[Webhook] \u274C Failed to send chef booking request email for booking ${booking.id} to ${chef.username}`);
+            }
+          } else {
+            logger.warn(`[Webhook] Chef or kitchen not found for booking ${booking.id} - chef: ${!!chef}, kitchen: ${!!kitchen}`);
+          }
+        } catch (emailError) {
+          logger.error(`[Webhook] Error sending chef email:`, emailError);
+        }
+      } catch (createError) {
+        logger.error(`[Webhook] Error creating booking from metadata:`, createError);
+      }
+    } else if (paymentIntentId && metadata.booking_id && metadata.type === "kitchen_booking") {
+      try {
+        const bookingId = parseInt(metadata.booking_id);
+        if (!isNaN(bookingId)) {
+          await db.update(kitchenBookings).set({
+            paymentIntentId,
+            paymentStatus: "processing",
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(
+            and18(
+              eq28(kitchenBookings.id, bookingId),
+              eq28(kitchenBookings.paymentStatus, "pending")
+            )
+          );
+          logger.info(`[Webhook] Updated legacy booking ${bookingId} with paymentIntentId`);
+        }
+      } catch (bookingError) {
+        logger.error(`[Webhook] Error updating legacy booking:`, bookingError);
+      }
+    }
   } catch (error) {
     logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
   }
@@ -21017,30 +21453,100 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
     const storageBookingId = parseInt(metadata.storage_booking_id);
     const newEndDate = new Date(metadata.new_end_date);
     const extensionDays = parseInt(metadata.extension_days);
+    const chefId = parseInt(metadata.chef_id);
+    const managerId = parseInt(metadata.manager_id);
+    const extensionBasePriceCents = parseInt(metadata.extension_base_price_cents || "0");
+    const extensionServiceFeeCents = parseInt(metadata.extension_service_fee_cents || "0");
+    const extensionTotalPriceCents = parseInt(metadata.extension_total_price_cents || "0");
+    const managerReceivesCents = parseInt(metadata.manager_receives_cents || "0");
     if (isNaN(storageBookingId) || isNaN(newEndDate.getTime()) || isNaN(extensionDays)) {
       logger.error("[Webhook] Invalid storage extension metadata:", metadata);
       return;
     }
-    const pendingExtension = await bookingService2.getPendingStorageExtension(
+    const existingExtension = await bookingService2.getPendingStorageExtension(
       storageBookingId,
       sessionId
     );
-    if (!pendingExtension) {
-      logger.error(
-        `[Webhook] Pending storage extension not found for session ${sessionId}`
-      );
+    if (existingExtension) {
+      if (existingExtension.status === "paid" || existingExtension.status === "completed" || existingExtension.status === "approved") {
+        logger.info(
+          `[Webhook] Storage extension already processed for session ${sessionId} (status: ${existingExtension.status})`
+        );
+        return;
+      }
+      await bookingService2.updatePendingStorageExtension(existingExtension.id, {
+        status: "paid",
+        stripePaymentIntentId: paymentIntentId
+      });
+      logger.info(`[Webhook] Updated existing storage extension ${existingExtension.id} to paid`);
       return;
     }
-    if (pendingExtension.status === "paid" || pendingExtension.status === "completed" || pendingExtension.status === "approved") {
-      logger.info(
-        `[Webhook] Storage extension already processed for session ${sessionId} (status: ${pendingExtension.status})`
-      );
-      return;
-    }
-    await bookingService2.updatePendingStorageExtension(pendingExtension.id, {
-      status: "paid",
-      stripePaymentIntentId: paymentIntentId
+    const pendingExtension = await bookingService2.createPendingStorageExtension({
+      storageBookingId,
+      newEndDate,
+      extensionDays,
+      extensionBasePriceCents,
+      extensionServiceFeeCents,
+      extensionTotalPriceCents,
+      stripeSessionId: sessionId,
+      stripePaymentIntentId: paymentIntentId,
+      status: "paid"
+      // Payment already confirmed
     });
+    logger.info(`[Webhook] Created pending_storage_extensions ${pendingExtension.id} for storage booking ${storageBookingId}`);
+    try {
+      const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+      const ptRecord = await createPaymentTransaction2({
+        bookingId: storageBookingId,
+        bookingType: "storage",
+        chefId: isNaN(chefId) ? null : chefId,
+        managerId: isNaN(managerId) ? null : managerId,
+        amount: extensionTotalPriceCents,
+        baseAmount: extensionBasePriceCents,
+        serviceFee: extensionServiceFeeCents,
+        managerRevenue: managerReceivesCents || extensionTotalPriceCents - extensionServiceFeeCents,
+        currency: "CAD",
+        paymentIntentId,
+        status: "succeeded",
+        stripeStatus: "succeeded",
+        metadata: {
+          checkout_session_id: sessionId,
+          storage_booking_id: storageBookingId.toString(),
+          storage_extension_id: pendingExtension.id.toString(),
+          extension_days: extensionDays.toString(),
+          new_end_date: newEndDate.toISOString()
+        }
+      }, db);
+      if (ptRecord && paymentIntentId) {
+        let managerConnectAccountId;
+        if (!isNaN(managerId)) {
+          try {
+            const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq28(users.id, managerId)).limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          } catch {
+            logger.warn(`[Webhook] Could not fetch manager Connect account for storage extension`);
+          }
+        }
+        const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
+        if (stripeAmounts) {
+          await updatePaymentTransaction2(ptRecord.id, {
+            paidAt: /* @__PURE__ */ new Date(),
+            lastSyncedAt: /* @__PURE__ */ new Date(),
+            stripeAmount: stripeAmounts.stripeAmount,
+            stripeNetAmount: stripeAmounts.stripeNetAmount,
+            stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+            stripePlatformFee: stripeAmounts.stripePlatformFee
+          }, db);
+          logger.info(`[Webhook] Updated payment_transactions with Stripe amounts for storage extension`);
+        }
+      }
+      logger.info(`[Webhook] Created payment_transactions for storage extension ${pendingExtension.id}`);
+    } catch (ptError) {
+      logger.warn(`[Webhook] Could not create payment_transactions for storage extension:`, ptError);
+    }
     logger.info(`[Webhook] Storage extension payment received - awaiting manager approval:`, {
       storageBookingId,
       extensionDays,
@@ -21049,6 +21555,46 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
       paymentIntentId,
       status: "paid"
     });
+    try {
+      const { sendEmail: sendEmail2, generateStorageExtensionPendingApprovalEmail: generateStorageExtensionPendingApprovalEmail2, generateStorageExtensionPaymentReceivedEmail: generateStorageExtensionPaymentReceivedEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+      const [storageBooking] = await db.select({
+        storageName: storageListings.name,
+        chefId: storageBookings.chefId,
+        chefEmail: users.username,
+        locationId: kitchens.locationId
+      }).from(storageBookings).innerJoin(storageListings, eq28(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq28(storageListings.kitchenId, kitchens.id)).innerJoin(users, eq28(storageBookings.chefId, users.id)).where(eq28(storageBookings.id, storageBookingId)).limit(1);
+      if (storageBooking) {
+        const [location] = await db.select({
+          notificationEmail: locations.notificationEmail,
+          name: locations.name
+        }).from(locations).where(eq28(locations.id, storageBooking.locationId)).limit(1);
+        if (location?.notificationEmail) {
+          const managerEmail = generateStorageExtensionPendingApprovalEmail2({
+            managerEmail: location.notificationEmail,
+            chefName: storageBooking.chefEmail,
+            storageName: storageBooking.storageName,
+            extensionDays,
+            newEndDate,
+            totalPrice: extensionTotalPriceCents,
+            locationName: location.name
+          });
+          await sendEmail2(managerEmail);
+          logger.info(`[Webhook] Sent storage extension pending approval email to manager: ${location.notificationEmail}`);
+        }
+        const chefEmail = generateStorageExtensionPaymentReceivedEmail2({
+          chefEmail: storageBooking.chefEmail,
+          chefName: storageBooking.chefEmail,
+          storageName: storageBooking.storageName,
+          extensionDays,
+          newEndDate,
+          totalPrice: extensionTotalPriceCents
+        });
+        await sendEmail2(chefEmail);
+        logger.info(`[Webhook] Sent storage extension payment received email to chef: ${storageBooking.chefEmail}`);
+      }
+    } catch (emailError) {
+      logger.error(`[Webhook] Error sending storage extension notification emails:`, emailError);
+    }
   } catch (error) {
     logger.error(
       `[Webhook] Error processing storage extension payment:`,
@@ -21113,7 +21659,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(
           and18(
             eq28(users.id, transaction.manager_id),
-            ne5(users.stripeConnectAccountId, "")
+            ne6(users.stripeConnectAccountId, "")
           )
         ).limit(1);
         if (manager?.stripeConnectAccountId) {
@@ -21169,7 +21715,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and18(
           eq28(kitchenBookings.paymentIntentId, paymentIntent.id),
-          ne5(kitchenBookings.paymentStatus, "paid")
+          ne6(kitchenBookings.paymentStatus, "paid")
         )
       );
       await tx.update(storageBookings).set({
@@ -21178,7 +21724,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and18(
           eq28(storageBookings.paymentIntentId, paymentIntent.id),
-          ne5(storageBookings.paymentStatus, "paid")
+          ne6(storageBookings.paymentStatus, "paid")
         )
       );
       await tx.update(equipmentBookings).set({
@@ -21187,7 +21733,7 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
       }).where(
         and18(
           eq28(equipmentBookings.paymentIntentId, paymentIntent.id),
-          ne5(equipmentBookings.paymentStatus, "paid")
+          ne6(equipmentBookings.paymentStatus, "paid")
         )
       );
     });
@@ -22297,12 +22843,41 @@ var init_portal = __esm({
           }
         });
         try {
-          const { sendEmail: sendEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+          const { sendEmail: sendEmail2, generateBookingNotificationEmail: generateBookingNotificationEmail3, generateBookingRequestEmail: generateBookingRequestEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
           const { sendSMS: sendSMS2, generatePortalUserBookingConfirmationSMS: generatePortalUserBookingConfirmationSMS3, generateManagerPortalBookingSMS: generateManagerPortalBookingSMS2 } = await Promise.resolve().then(() => (init_sms(), sms_exports));
           const locationData = await locationService.getLocationById(userLocationId);
           const notificationEmail = locationData?.notificationEmail;
+          const timezone = locationData?.timezone || "America/Edmonton";
+          const locationName = locationData?.name || "Location";
           if (notificationEmail) {
-            const { generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+            const managerEmail = generateBookingNotificationEmail3({
+              managerEmail: notificationEmail,
+              chefName: bookingName,
+              kitchenName: kitchen.name,
+              bookingDate: bookingDateObj,
+              startTime,
+              endTime,
+              specialNotes: specialNotes || void 0,
+              timezone,
+              locationName
+            });
+            await sendEmail2(managerEmail);
+            console.log(`\u2705 Portal booking notification email sent to manager: ${notificationEmail}`);
+          }
+          if (bookingEmail) {
+            const portalUserEmail = generateBookingRequestEmail3({
+              chefEmail: bookingEmail,
+              chefName: bookingName,
+              kitchenName: kitchen.name,
+              bookingDate: bookingDateObj,
+              startTime,
+              endTime,
+              specialNotes: specialNotes || void 0,
+              timezone,
+              locationName
+            });
+            await sendEmail2(portalUserEmail);
+            console.log(`\u2705 Portal booking confirmation email sent to user: ${bookingEmail}`);
           }
         } catch (error) {
           console.error("Error sending booking notifications:", error);
@@ -23474,7 +24049,6 @@ router3.get("/firebase/dashboard", requireFirebaseAuthWithUser, async (req, res)
   try {
     const userId = req.neonUser.id;
     const firebaseUid = req.firebaseUser.uid;
-    console.log(`\u{1F3E0} Dashboard request: Firebase UID ${firebaseUid} \u2192 Neon User ID ${userId}`);
     const [applications4, microlearningProgress] = await Promise.all([
       applicationService.getApplicationsByUserId(userId),
       microlearningService.getUserProgress(userId)
@@ -25036,13 +25610,35 @@ async function registerRoutes(app2) {
       if (decodedToken.uid !== uid) {
         return res.status(403).json({ error: "Token mismatch" });
       }
-      const existing = await userService3.getUserByFirebaseUid(uid);
-      if (existing) {
-        return res.json(existing);
+      const existingByUid = await userService3.getUserByFirebaseUid(uid);
+      if (existingByUid) {
+        console.log(`\u2705 User already exists with Firebase UID ${uid}, returning existing user`);
+        return res.json(existingByUid);
       }
+      const existingByUsername = await userService3.getUserByUsername(email);
+      if (existingByUsername) {
+        if (!existingByUsername.firebaseUid) {
+          console.log(`\u{1F517} Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
+          const updatedUser = await userService3.updateUser(existingByUsername.id, {
+            firebaseUid: uid,
+            isVerified: decodedToken.email_verified || existingByUsername.isVerified
+          });
+          return res.json(updatedUser || existingByUsername);
+        } else if (existingByUsername.firebaseUid !== uid) {
+          console.log(`\u26A0\uFE0F User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
+          console.log(`\u{1F504} Updating Firebase UID to new account (user may have re-registered in Firebase)`);
+          const updatedUser = await userService3.updateUser(existingByUsername.id, {
+            firebaseUid: uid,
+            isVerified: decodedToken.email_verified || false
+            // Reset verification for new Firebase account
+          });
+          return res.json(updatedUser || existingByUsername);
+        }
+        return res.json(existingByUsername);
+      }
+      console.log(`\u{1F4DD} Creating new user: ${email} with role: ${role || "user"}`);
       const newUser = await userService3.createUser({
         username: email,
-        email,
         firebaseUid: uid,
         role: role || "user",
         isVerified: decodedToken.email_verified || false,
@@ -25051,6 +25647,13 @@ async function registerRoutes(app2) {
       res.status(201).json(newUser);
     } catch (error) {
       console.error("Error registering user:", error);
+      if (error.message?.includes("already taken") || error.code === "23505") {
+        return res.status(409).json({
+          error: "Email already registered",
+          code: "EMAIL_EXISTS",
+          message: "This email is already registered. Please try signing in instead."
+        });
+      }
       res.status(500).json({ error: "Failed to register user" });
     }
   });

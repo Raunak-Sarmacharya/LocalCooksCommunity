@@ -144,7 +144,66 @@ export class BookingService {
         // 5. Create Storage Bookings
         let storageTotalCents = 0;
         const storageItemsForJson: Array<{id: number, storageListingId: number, name: string, storageType: string, totalPrice: number, startDate: string, endDate: string}> = [];
-        if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
+        
+        // Use selectedStorage with explicit dates if available, otherwise fall back to selectedStorageIds
+        if (data.selectedStorage && data.selectedStorage.length > 0) {
+            try {
+                const { inventoryService } = await import('../inventory/inventory.service');
+                
+                for (const storage of data.selectedStorage) {
+                    const listing = await inventoryService.getStorageListingById(storage.storageListingId);
+                    if (listing) {
+                        // DB stores basePrice in cents
+                        const listingBasePriceCents = Math.round(parseFloat(String(listing.basePrice || '0')));
+                        const minDays = listing.minimumBookingDuration || 1;
+                        
+                        const storageStartDate = new Date(storage.startDate);
+                        const storageEndDate = new Date(storage.endDate);
+                        const days = Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60 * 24));
+                        const effectiveDays = Math.max(days, minDays);
+                        
+                        let priceCents = listingBasePriceCents * effectiveDays;
+                        if (listing.pricingModel === 'hourly') {
+                            const durationHours = Math.max(1, Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1000 * 60 * 60)));
+                            priceCents = listingBasePriceCents * durationHours;
+                        } else if (listing.pricingModel === 'monthly-flat') {
+                            priceCents = listingBasePriceCents;
+                        }
+
+                        // Create Storage Booking Record with explicit dates
+                        const storageBooking = await this.repo.createStorageBooking({
+                            kitchenBookingId: booking.id,
+                            storageListingId: listing.id,
+                            chefId: data.chefId,
+                            startDate: storageStartDate,
+                            endDate: storageEndDate,
+                            status: 'confirmed',
+                            totalPrice: priceCents.toString(),
+                            pricingModel: listing.pricingModel || 'daily',
+                            serviceFee: '0',
+                            currency: pricing.currency
+                        });
+                        
+                        if (storageBooking) {
+                            storageItemsForJson.push({
+                                id: storageBooking.id,
+                                storageListingId: listing.id,
+                                name: listing.name || 'Storage',
+                                storageType: listing.storageType || 'other',
+                                totalPrice: priceCents,
+                                startDate: storageStartDate.toISOString(),
+                                endDate: storageEndDate.toISOString()
+                            });
+                        }
+                        
+                        storageTotalCents += priceCents;
+                    }
+                }
+            } catch (err) {
+                logger.error('Error creating storage bookings with explicit dates:', err);
+            }
+        } else if (data.selectedStorageIds && data.selectedStorageIds.length > 0) {
+            // Fallback: use selectedStorageIds with booking date as both start and end
             try {
                 const { inventoryService } = await import('../inventory/inventory.service');
                 
@@ -648,6 +707,39 @@ export class BookingService {
 
         const updatedBooking = await this.repo.getStorageBookingById(id);
 
+        // Also update the storageItems JSONB in the associated kitchen booking
+        // so that manager view shows the extended dates
+        if (booking.kitchenBookingId) {
+            try {
+                const kitchenBooking = await this.repo.getKitchenBookingById(booking.kitchenBookingId);
+                if (kitchenBooking && kitchenBooking.storageItems && Array.isArray(kitchenBooking.storageItems)) {
+                    // Find and update the storage item with matching storageListingId
+                    const updatedStorageItems = kitchenBooking.storageItems.map((item: any) => {
+                        if (item.storageListingId === booking.storageListingId || item.id === id) {
+                            return {
+                                ...item,
+                                endDate: newEndDate.toISOString(),
+                                totalPrice: newTotalPriceCents, // Update price too
+                            };
+                        }
+                        return item;
+                    });
+                    
+                    await this.repo.updateKitchenBooking(booking.kitchenBookingId, {
+                        storageItems: updatedStorageItems,
+                    });
+                    
+                    logger.info(`[BookingService] Updated storageItems JSONB in kitchen booking ${booking.kitchenBookingId} for storage extension`, {
+                        storageBookingId: id,
+                        newEndDate: newEndDate.toISOString(),
+                    });
+                }
+            } catch (error) {
+                // Log but don't fail the extension - the storage_bookings table is the source of truth
+                logger.warn(`[BookingService] Failed to update storageItems JSONB in kitchen booking: ${error}`);
+            }
+        }
+
         // Return structured response matching legacy format expected by frontend/logic
         return {
             ...updatedBooking,
@@ -674,6 +766,7 @@ export class BookingService {
         extensionServiceFeeCents: number;
         extensionTotalPriceCents: number;
         stripeSessionId: string;
+        stripePaymentIntentId?: string;
         status: string;
     }) {
         return this.repo.createPendingStorageExtension(data);
