@@ -70,7 +70,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     setHasAttemptedLogin?.(true);
     setFormError(null);
     setAuthState('loading');
-    
+
     // If parent provides loading overlay callback, use it (parent handles loading overlay)
     // Otherwise, use local state (backward compatibility)
     if (onRegistrationStart) {
@@ -83,10 +83,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       // SECURITY FIX: Removed email existence check to prevent enumeration attacks
       // Users should attempt registration directly, and Firebase will handle duplicate detection
       console.log(`🔒 Proceeding with registration for: ${data.email} (security: no pre-check)`);
-      
+
       // Step 2: Proceed with Firebase registration
       console.log(`✅ Proceeding with Firebase registration: ${data.email}`);
-      
+
       await Promise.all([
         signup(data.email, data.password, data.displayName),
         new Promise(resolve => setTimeout(resolve, 1200)) // Minimum loading time for UX
@@ -99,7 +99,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       console.log('✅ Registration successful, showing verification screen');
       setAuthState('success');
       setShowLoadingOverlay(false);
-      
+
       // If parent provides onRegistrationComplete callback, use it (parent handles verification screen)
       // Otherwise, use local state (backward compatibility)
       if (onRegistrationComplete) {
@@ -117,11 +117,11 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         setShowLoadingOverlay(false);
       }
       setAuthState('error');
-      
+
       // Handle Firebase-specific errors with user-friendly messages via custom alerts
       const errorTitle = "Registration Failed";
       let errorMessage = "";
-      
+
       if (e.message.includes('EMAIL_EXISTS') || e.message.includes('email-already-in-use')) {
         errorMessage = 'This email is already registered. Please try signing in instead.';
       } else if (e.message.includes('weak-password')) {
@@ -135,13 +135,13 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       } else {
         errorMessage = 'Registration failed. Please try again later.';
       }
-      
+
       showAlert({
         title: errorTitle,
         description: errorMessage,
         type: "error"
       });
-      
+
       setTimeout(() => setAuthState('idle'), 2000);
     }
   };
@@ -157,14 +157,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     try {
       // Start Google registration
       await signInWithGoogle(true); // Pass true for registration
-      
+
       // Wait for sync to complete - poll for user profile to be available
       let attempts = 0;
       const maxAttempts = 20; // 10 seconds max (20 * 500ms)
-      
+
       while (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         // Check if user profile is available
         try {
           const { auth } = await import('@/lib/firebase');
@@ -177,7 +177,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
                 'Content-Type': 'application/json'
               }
             });
-            
+
             if (response.ok) {
               // User profile is available, sync is complete
               console.log('✅ User profile available, registration complete');
@@ -187,17 +187,17 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
         } catch (err) {
           // Continue polling
         }
-        
+
         attempts++;
       }
-      
+
       if (attempts >= maxAttempts) {
         console.warn('⚠️ Registration sync timeout, but proceeding anyway');
       }
 
       setAuthState('success');
       setShowLoadingOverlay(false);
-      
+
       // Check if manager and redirect directly, otherwise call onSuccess immediately
       // Don't delay - the parent component needs to re-render to show welcome screen
       try {
@@ -211,7 +211,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
               'Content-Type': 'application/json'
             }
           });
-          
+
           if (response.ok) {
             const userData = await response.json();
             // If manager, redirect directly to manager dashboard
@@ -225,7 +225,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       } catch (err) {
         console.error('Error checking user role after registration:', err);
       }
-      
+
       // Call onSuccess immediately for non-managers to trigger welcome screen
       console.log('🎯 Calling onSuccess to trigger welcome screen');
       if (onSuccess) onSuccess();
@@ -233,11 +233,11 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     } catch (e: any) {
       setShowLoadingOverlay(false);
       setAuthState('error');
-      
+
       // Handle Google registration errors with user-friendly messages via custom alerts
       const errorTitle = "Google Registration Failed";
       let errorMessage = "";
-      
+
       if (e.message.includes('popup-closed-by-user')) {
         errorMessage = 'Registration was cancelled. Please try again.';
       } else if (e.message.includes('popup-blocked')) {
@@ -249,7 +249,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       } else {
         errorMessage = 'Unable to register with Google at this time. Please try again later.';
       }
-      
+
       showAlert({
         title: errorTitle,
         description: errorMessage,
@@ -262,21 +262,47 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
     try {
       // Get the current Firebase user (may need to sign in temporarily)
       const currentUser = auth.currentUser;
-      
+
       if (currentUser) {
         // User is still signed in, send verification directly
         console.log('📧 Resending Firebase verification email...');
         const hostname = window.location.hostname;
-        const isLocalhost = hostname === 'localhost' || 
-                           hostname === '127.0.0.1' || 
-                           hostname.endsWith('.localhost');
-        
+        const isLocalhost = hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname.endsWith('.localhost');
+
         if (isLocalhost) {
           // Simple verification without custom redirect - works on localhost
           await sendEmailVerification(currentUser);
         } else {
+          // ENTERPRISE: Determine the correct redirect URL based on subdomain/path context
+          // Production subdomains: kitchen.localcooks.ca (managers), chef.localcooks.ca (chefs), admin.localcooks.ca (admins)
+          const pathname = window.location.pathname.toLowerCase();
+          let redirectUrl = 'https://chef.localcooks.ca/auth?verified=true'; // Default for chefs
+
+          // Detect role from subdomain
+          if (hostname.includes('kitchen') || hostname.startsWith('kitchen.')) {
+            if (pathname.includes('/manager')) {
+              redirectUrl = 'https://kitchen.localcooks.ca/manager/login?verified=true';
+            } else {
+              redirectUrl = 'https://chef.localcooks.ca/auth?verified=true';
+            }
+          } else if (hostname.includes('admin') || hostname.startsWith('admin.')) {
+            redirectUrl = 'https://admin.localcooks.ca/admin/login?verified=true';
+          } else if (hostname.includes('chef') || hostname.startsWith('chef.')) {
+            redirectUrl = 'https://chef.localcooks.ca/auth?verified=true';
+          } else {
+            // Fallback: detect from path
+            if (pathname.includes('/admin')) {
+              redirectUrl = 'https://admin.localcooks.ca/admin/login?verified=true';
+            } else if (pathname.includes('/manager')) {
+              redirectUrl = 'https://kitchen.localcooks.ca/manager/login?verified=true';
+            }
+          }
+
+          console.log(`📧 Using redirect URL: ${redirectUrl}`);
           await sendEmailVerification(currentUser, {
-            url: `${window.location.origin}/auth?verified=true`,
+            url: redirectUrl,
             handleCodeInApp: false,
           });
         }
@@ -304,7 +330,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
   const getFieldValidationState = (fieldName: keyof RegisterFormData) => {
     const error = form.formState.errors[fieldName];
     const value = form.watch(fieldName);
-    
+
     if (error) return 'invalid';
     if (value && !error) return 'valid';
     return 'idle';
@@ -325,7 +351,7 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
 
   return (
     <>
-      <LoadingOverlay 
+      <LoadingOverlay
         isVisible={showLoadingOverlay}
         message={authState === 'loading' ? "Creating your account..." : "Account created!"}
         submessage={authState === 'loading' ? "Please wait while we set up your account securely." : "Check your email to verify your account."}
@@ -349,10 +375,10 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
           >
             <div className="flex items-center gap-3">
               <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
               </svg>
               <span>Continue with Google</span>
             </div>
