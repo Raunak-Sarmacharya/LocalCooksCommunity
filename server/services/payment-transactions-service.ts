@@ -31,6 +31,7 @@ export interface UpdatePaymentTransactionParams {
   status?: TransactionStatus;
   stripeStatus?: string;
   paymentIntentId?: string;
+  paymentMethodId?: string;
   chargeId?: string;
   refundId?: string;
   refundAmount?: number;
@@ -196,6 +197,14 @@ export async function updatePaymentTransaction(
 
   if (params.stripeStatus !== undefined) {
     updates.push(sql`stripe_status = ${params.stripeStatus}`);
+  }
+
+  if (params.paymentIntentId !== undefined) {
+    updates.push(sql`payment_intent_id = ${params.paymentIntentId}`);
+  }
+
+  if (params.paymentMethodId !== undefined) {
+    updates.push(sql`payment_method_id = ${params.paymentMethodId}`);
   }
 
   if (params.chargeId !== undefined) {

@@ -14,8 +14,7 @@ router.get('/firebase/dashboard', requireFirebaseAuthWithUser, async (req: Reque
         const userId = req.neonUser!.id; // Neon user ID
         const firebaseUid = req.firebaseUser!.uid; // Firebase UID
 
-        console.log(`🏠 Dashboard request: Firebase UID ${firebaseUid} → Neon User ID ${userId}`);
-
+      
         // Fetch data from multiple sources using Neon user ID
         const [applications, microlearningProgress] = await Promise.all([
             applicationService.getApplicationsByUserId(userId),
