@@ -42,7 +42,9 @@ export function getR2ProxyUrl(fileUrl: string | null | undefined): string {
 
   // If it's a private R2 URL or custom domain, convert to proxy URL
   if (isPrivateR2Url) {
-    return `/api/files/r2-proxy?url=${encodeURIComponent(fileUrl)}`;
+    // Add https:// if missing (handles URLs like "files.localcooks.ca/...")
+    const fullUrl = fileUrl.startsWith('http') ? fileUrl : `https://${fileUrl}`;
+    return `/api/files/r2-proxy?url=${encodeURIComponent(fullUrl)}`;
   }
 
   // For other URLs (including public URLs), return as-is

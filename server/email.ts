@@ -3076,3 +3076,134 @@ export const generateLocationEmailChangedEmail = (data: { email: string; locatio
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Location Notification Email Updated</h2><p class="message">This email address has been set as the notification email for <strong>${data.locationName}</strong>.</p><div class="info-box"><strong>📍 Location:</strong> ${data.locationName}<br><strong>📧 Notification Email:</strong> ${data.email}</div><p class="message">You will now receive email notifications for bookings, cancellations, and other important updates for this location.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you didn't make this change, please contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
   return { to: data.email, subject, text: `Location Notification Email Updated - This email address has been set as the notification email for ${data.locationName}. You will now receive email notifications for bookings, cancellations, and other important updates for this location.`, html };
 };
+
+// ===================================
+// STORAGE EXTENSION EMAILS
+// ===================================
+
+// Storage extension payment received - notify manager
+export const generateStorageExtensionPendingApprovalEmail = (data: {
+  managerEmail: string;
+  chefName: string;
+  storageName: string;
+  extensionDays: number;
+  newEndDate: Date;
+  totalPrice: number;
+  locationName?: string;
+}): EmailContent => {
+  const subject = `Storage Extension Request - ${data.storageName}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/manager/storage`;
+  const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
+  const formattedDate = data.newEndDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Storage Extension Request</h2><p class="message">A chef has requested to extend their storage booking. Payment has been received and is awaiting your approval.</p><div class="info-box"><strong>👨‍🍳 Chef:</strong> ${data.chefName}<br><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 Extension:</strong> ${data.extensionDays} days<br><strong>📆 New End Date:</strong> ${formattedDate}<br><strong>💰 Amount Paid:</strong> ${formattedPrice}<br><strong>📊 Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Approval</span></div><p class="message">Please review and approve or reject this extension request from your manager dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Extension Request</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.managerEmail,
+    subject,
+    text: `Storage Extension Request - Chef: ${data.chefName}, Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}, Amount: ${formattedPrice}. Status: Awaiting Approval. Please review from your manager dashboard.`,
+    html
+  };
+};
+
+// Storage extension payment received - notify chef
+export const generateStorageExtensionPaymentReceivedEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  storageName: string;
+  extensionDays: number;
+  newEndDate: Date;
+  totalPrice: number;
+}): EmailContent => {
+  const subject = `Storage Extension Payment Received - ${data.storageName}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/bookings`;
+  const formattedPrice = `$${(data.totalPrice / 100).toFixed(2)}`;
+  const formattedDate = data.newEndDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Your payment for the storage extension has been received! The manager has been notified and will review your request shortly.</p><div class="info-box"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 Extension:</strong> ${data.extensionDays} days<br><strong>📆 New End Date:</strong> ${formattedDate}<br><strong>💰 Amount Paid:</strong> ${formattedPrice}<br><strong>📊 Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Awaiting Manager Approval</span></div><p class="message">You'll receive a confirmation email once the manager approves your extension.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, Your payment for the storage extension has been received! Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}, Amount: ${formattedPrice}. Status: Awaiting Manager Approval.`,
+    html
+  };
+};
+
+// Storage extension approved - notify chef
+export const generateStorageExtensionApprovedEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  storageName: string;
+  extensionDays: number;
+  newEndDate: Date;
+}): EmailContent => {
+  const subject = `Storage Extension Approved - ${data.storageName}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/bookings`;
+  const formattedDate = data.newEndDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! Your storage extension has been <strong style="color: #16a34a;">APPROVED</strong> ✅</p><div class="info-box"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 Extension:</strong> ${data.extensionDays} days<br><strong>📆 New End Date:</strong> ${formattedDate}<br><strong>📊 Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">Your storage booking has been extended. You can continue using the storage until the new end date.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, Great news! Your storage extension has been APPROVED! Storage: ${data.storageName}, Extension: ${data.extensionDays} days, New End Date: ${formattedDate}.`,
+    html
+  };
+};
+
+// Storage extension rejected - notify chef
+export const generateStorageExtensionRejectedEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  storageName: string;
+  extensionDays: number;
+  rejectionReason?: string;
+  refundAmount?: number;
+}): EmailContent => {
+  const subject = `Storage Extension Declined - ${data.storageName}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/bookings`;
+  const refundText = data.refundAmount ? `A refund of $${(data.refundAmount / 100).toFixed(2)} has been processed and will be credited to your original payment method within 5-10 business days.` : 'A refund will be processed shortly.';
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Unfortunately, your storage extension request has been declined.</p><div class="info-box"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 Requested Extension:</strong> ${data.extensionDays} days<br><strong>📊 Status:</strong> <span style="color: #dc2626; font-weight: 600;">Declined</span>${data.rejectionReason ? `<br><br><strong>📝 Reason:</strong> ${data.rejectionReason}` : ''}</div><p class="message">${refundText}</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, Unfortunately, your storage extension request has been declined. Storage: ${data.storageName}, Requested Extension: ${data.extensionDays} days.${data.rejectionReason ? ` Reason: ${data.rejectionReason}.` : ''} ${refundText}`,
+    html
+  };
+};
+
+// ===================================
+// NEW USER REGISTRATION NOTIFICATION EMAILS
+// ===================================
+
+// Notify admin about new user registration
+export const generateNewUserRegistrationAdminEmail = (data: {
+  adminEmail: string;
+  newUserName: string;
+  newUserEmail: string;
+  userRole: 'admin' | 'manager' | 'chef';
+  registrationDate: Date;
+}): EmailContent => {
+  const subject = `New ${data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1)} Registration - ${data.newUserName}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/admin/users`;
+  const formattedDate = data.registrationDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const roleColor = data.userRole === 'admin' ? '#dc2626' : data.userRole === 'manager' ? '#2563eb' : '#16a34a';
+  const roleLabel = data.userRole.charAt(0).toUpperCase() + data.userRole.slice(1);
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New User Registration</h2><p class="message">A new user has registered on the platform:</p><div class="info-box"><strong>👤 Name:</strong> ${data.newUserName}<br><strong>📧 Email:</strong> ${data.newUserEmail}<br><strong>🏷️ Role:</strong> <span style="color: ${roleColor}; font-weight: 600;">${roleLabel}</span><br><strong>📅 Registered:</strong> ${formattedDate}</div><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Users</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.adminEmail,
+    subject,
+    text: `New ${roleLabel} Registration - Name: ${data.newUserName}, Email: ${data.newUserEmail}, Registered: ${formattedDate}`,
+    html
+  };
+};

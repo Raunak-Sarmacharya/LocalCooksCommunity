@@ -41,6 +41,172 @@ export interface CheckoutSessionResult {
 }
 
 /**
+ * ENTERPRISE-GRADE: Checkout session params for payment-first flow
+ * Booking is NOT created before checkout - all data is passed in metadata
+ * Booking is created in webhook when payment succeeds
+ */
+export interface CreatePendingCheckoutSessionParams {
+  bookingPriceInCents: number;
+  platformFeeInCents: number;
+  managerStripeAccountId: string;
+  customerEmail: string;
+  currency?: string;
+  successUrl: string;
+  cancelUrl: string;
+  /** All booking data to be stored in metadata - booking created in webhook */
+  bookingData: {
+    kitchenId: number;
+    chefId: number;
+    bookingDate: string; // ISO date string
+    startTime: string;
+    endTime: string;
+    selectedSlots?: Array<{ startTime: string; endTime: string }>;
+    specialNotes?: string;
+    selectedStorage?: Array<{ storageListingId: number; startDate: string; endDate: string }>;
+    selectedEquipmentIds?: number[];
+    totalPriceCents: number;
+    taxCents: number;
+    hourlyRateCents: number;
+    durationHours: number;
+  };
+  /** Custom line item name shown to customer (default: 'Kitchen Session Booking') */
+  lineItemName?: string;
+}
+
+/**
+ * ENTERPRISE-GRADE: Create checkout session WITHOUT creating booking first
+ * 
+ * This follows Stripe's recommended pattern:
+ * 1. Pass all booking data in session metadata
+ * 2. Create booking in webhook when checkout.session.completed fires
+ * 3. Only fulfill (notify manager) when payment_status === 'paid'
+ * 
+ * This eliminates orphan bookings from abandoned checkouts.
+ */
+export async function createPendingCheckoutSession(
+  params: CreatePendingCheckoutSessionParams
+): Promise<CheckoutSessionResult> {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  }
+
+  const {
+    bookingPriceInCents,
+    platformFeeInCents,
+    managerStripeAccountId,
+    customerEmail,
+    currency = 'cad',
+    successUrl,
+    cancelUrl,
+    bookingData,
+    lineItemName = 'Kitchen Session Booking',
+  } = params;
+
+  // Validate amounts
+  if (bookingPriceInCents <= 0) {
+    throw new Error('Booking price must be greater than 0');
+  }
+  if (platformFeeInCents < 0) {
+    throw new Error('Platform fee cannot be negative');
+  }
+  if (platformFeeInCents >= bookingPriceInCents) {
+    throw new Error('Platform fee must be less than booking price');
+  }
+  if (!managerStripeAccountId) {
+    throw new Error('Manager Stripe account ID is required');
+  }
+  if (!customerEmail) {
+    throw new Error('Customer email is required');
+  }
+
+  try {
+    const lineItems = [
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: { name: lineItemName },
+          unit_amount: bookingPriceInCents,
+        },
+        quantity: 1,
+      },
+    ];
+
+    const paymentIntentData: {
+      transfer_data: { destination: string };
+      metadata: Record<string, string>;
+      application_fee_amount?: number;
+    } = {
+      transfer_data: { destination: managerStripeAccountId },
+      metadata: {
+        type: 'kitchen_booking',
+        kitchen_id: bookingData.kitchenId.toString(),
+        chef_id: bookingData.chefId.toString(),
+      },
+    };
+
+    if (platformFeeInCents > 0) {
+      paymentIntentData.application_fee_amount = platformFeeInCents;
+    }
+
+    // CRITICAL: Store all booking data in session metadata
+    // This data will be used to create the booking in the webhook
+    const sessionMetadata: Record<string, string> = {
+      type: 'kitchen_booking',
+      kitchen_id: bookingData.kitchenId.toString(),
+      chef_id: bookingData.chefId.toString(),
+      booking_date: bookingData.bookingDate,
+      start_time: bookingData.startTime,
+      end_time: bookingData.endTime,
+      total_price_cents: bookingData.totalPriceCents.toString(),
+      tax_cents: bookingData.taxCents.toString(),
+      hourly_rate_cents: bookingData.hourlyRateCents.toString(),
+      duration_hours: bookingData.durationHours.toString(),
+      booking_price_cents: bookingPriceInCents.toString(),
+      platform_fee_cents: platformFeeInCents.toString(),
+      manager_account_id: managerStripeAccountId,
+    };
+
+    // Store optional fields as JSON strings (Stripe metadata values must be strings)
+    if (bookingData.specialNotes) {
+      sessionMetadata.special_notes = bookingData.specialNotes;
+    }
+    if (bookingData.selectedSlots && bookingData.selectedSlots.length > 0) {
+      sessionMetadata.selected_slots = JSON.stringify(bookingData.selectedSlots);
+    }
+    if (bookingData.selectedStorage && bookingData.selectedStorage.length > 0) {
+      sessionMetadata.selected_storage = JSON.stringify(bookingData.selectedStorage);
+    }
+    if (bookingData.selectedEquipmentIds && bookingData.selectedEquipmentIds.length > 0) {
+      sessionMetadata.selected_equipment_ids = JSON.stringify(bookingData.selectedEquipmentIds);
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      customer_email: customerEmail,
+      line_items: lineItems,
+      payment_intent_data: paymentIntentData,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: sessionMetadata,
+    });
+
+    if (!session.url) {
+      throw new Error('Failed to create checkout session URL');
+    }
+
+    console.log(`[Stripe Checkout] Created pending checkout session ${session.id} for kitchen ${bookingData.kitchenId}`);
+
+    return {
+      sessionId: session.id,
+      sessionUrl: session.url,
+    };
+  } catch (error: any) {
+    console.error('Error creating Stripe Checkout session:', error);
+    throw new Error(`Failed to create checkout session: ${error.message}`);
+  }
+}
+
+/**
  * Create a Stripe Checkout session with two line items and Connect split payment
  * 
  * @param params - Checkout session parameters

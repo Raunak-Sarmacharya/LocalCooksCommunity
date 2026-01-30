@@ -38,7 +38,8 @@ export const equipmentPricingModelEnum = pgEnum('equipment_pricing_model', ['hou
 export const equipmentAvailabilityTypeEnum = pgEnum('equipment_availability_type', ['included', 'rental']);
 
 // Define enum for payment status
-export const paymentStatusEnum = pgEnum('payment_status', ['pending', 'paid', 'refunded', 'failed', 'partially_refunded']);
+// 'processing' = checkout completed, payment received but awaiting final confirmation from Stripe
+export const paymentStatusEnum = pgEnum('payment_status', ['pending', 'processing', 'paid', 'refunded', 'failed', 'partially_refunded']);
 
 // Define enum for transaction status (more comprehensive than payment_status)
 export const transactionStatusEnum = pgEnum('transaction_status', ['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded', 'partially_refunded']);
@@ -1044,7 +1045,7 @@ export const insertStorageBookingSchema = createInsertSchema(storageBookings, {
   status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
   totalPrice: z.number().int().positive("Total price must be positive"),
   pricingModel: z.enum(["monthly-flat", "per-cubic-foot", "hourly", "daily"]),
-  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentStatus: z.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
   paymentIntentId: z.string().optional(),
   serviceFee: z.number().int().min(0).optional(),
 }).omit({
@@ -1057,7 +1058,7 @@ export const insertStorageBookingSchema = createInsertSchema(storageBookings, {
 export const updateStorageBookingSchema = z.object({
   id: z.number(),
   status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
-  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentStatus: z.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
   paymentIntentId: z.string().optional(),
   serviceFee: z.number().int().min(0).optional(),
 });
@@ -1109,7 +1110,7 @@ export const insertEquipmentBookingSchema = createInsertSchema(equipmentBookings
   totalPrice: z.number().int().positive("Total price must be positive"),
   pricingModel: z.enum(["hourly", "daily", "weekly", "monthly"]),
   damageDeposit: z.number().int().min(0).optional(),
-  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentStatus: z.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
   paymentIntentId: z.string().optional(),
   serviceFee: z.number().int().min(0).optional(),
 }).omit({
@@ -1122,7 +1123,7 @@ export const insertEquipmentBookingSchema = createInsertSchema(equipmentBookings
 export const updateEquipmentBookingSchema = z.object({
   id: z.number(),
   status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
-  paymentStatus: z.enum(["pending", "paid", "refunded", "failed", "partially_refunded"]).optional(),
+  paymentStatus: z.enum(["pending", "processing", "paid", "refunded", "failed", "partially_refunded"]).optional(),
   paymentIntentId: z.string().optional(),
   damageDeposit: z.number().int().min(0).optional(),
   serviceFee: z.number().int().min(0).optional(),
