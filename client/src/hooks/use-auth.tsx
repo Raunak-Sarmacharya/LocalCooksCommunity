@@ -478,15 +478,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // CRITICAL: Send Firebase's built-in email verification
       console.log('📧 Sending Firebase email verification...');
+      let emailSent = false;
       try {
-        await sendEmailVerification(updatedUser, {
-          url: `${window.location.origin}/email-action`,
-          handleCodeInApp: true,
-        });
+        // For localhost development, don't include actionCodeSettings to avoid domain whitelist issues
+        // Firebase will use its default email template which works without domain configuration
+        // Check for localhost, 127.0.0.1, and any subdomain of localhost (e.g., kitchen.localhost)
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || 
+                           hostname === '127.0.0.1' || 
+                           hostname.endsWith('.localhost');
+        
+        if (isLocalhost) {
+          // Simple verification without custom redirect - works on localhost
+          console.log('📧 Using simple email verification (localhost mode)');
+          await sendEmailVerification(updatedUser);
+        } else {
+          // ENTERPRISE: Determine the correct redirect URL based on user role
+          // Production subdomains: kitchen.localcooks.ca (managers), chef.localcooks.ca (chefs), admin.localcooks.ca (admins)
+          let redirectUrl = `${window.location.origin}/auth?verified=true`;
+          
+          // Determine redirect based on detected role
+          if (detectedRole === 'manager') {
+            redirectUrl = 'https://kitchen.localcooks.ca/manager/login?verified=true';
+          } else if (detectedRole === 'chef') {
+            redirectUrl = 'https://chef.localcooks.ca/auth?verified=true';
+          } else if (detectedRole === 'admin') {
+            redirectUrl = 'https://admin.localcooks.ca/admin/login?verified=true';
+          }
+          
+          console.log(`📧 Using redirect URL for ${detectedRole}: ${redirectUrl}`);
+          
+          await sendEmailVerification(updatedUser, {
+            url: redirectUrl,
+            handleCodeInApp: false,
+          });
+        }
         console.log('✅ Firebase email verification sent successfully');
-      } catch (emailError) {
+        emailSent = true;
+      } catch (emailError: any) {
         console.error('❌ Failed to send Firebase verification email:', emailError);
-        // Still continue with registration, user can request resend later
+        console.error('❌ Error code:', emailError?.code);
+        console.error('❌ Error message:', emailError?.message);
+        
+        // If domain not whitelisted, try without actionCodeSettings
+        if (emailError?.code === 'auth/unauthorized-continue-uri') {
+          console.log('🔄 Retrying email verification without custom redirect...');
+          try {
+            await sendEmailVerification(updatedUser);
+            console.log('✅ Firebase email verification sent (fallback mode)');
+            emailSent = true;
+          } catch (retryError) {
+            console.error('❌ Fallback email verification also failed:', retryError);
+          }
+        }
+      }
+      
+      if (!emailSent) {
+        console.warn('⚠️ Verification email was not sent - user will need to request resend');
       }
 
       // CRITICAL: Sign out the user immediately after registration and sync

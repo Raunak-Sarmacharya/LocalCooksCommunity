@@ -378,3 +378,11 @@ scripts/.sync-cache/
 .windsurf/skills/tailwind-react-guidelines/resources/styling-guide.md
 .windsurf/skills/tailwind-react-guidelines/resources/testing.md
 .windsurf/skills/tailwind-react-guidelines/resources/typescript-standards.md
+.windsurf/skills/firebase-auth/README.md
+.windsurf/skills/firebase-auth/SKILL.md
+.windsurf/skills/firebase-auth/.claude-plugin/plugin.json
+.windsurf/skills/firebase-auth/rules/firebase-auth.md
+.windsurf/skills/firebase-auth/templates/api-session.ts
+.windsurf/skills/firebase-auth/templates/auth-context.tsx
+.windsurf/skills/firebase-auth/templates/middleware.ts
+.windsurf/skills/firebase-auth/templates/protected-route.tsx

@@ -1,5 +1,7 @@
 import { useCustomAlerts } from '@/components/ui/custom-alerts';
 import { useFirebaseAuth } from "@/hooks/use-auth";
+import { auth } from "@/lib/firebase";
+import { sendEmailVerification } from "firebase/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import { Lock, Mail, User } from "lucide-react";
@@ -26,6 +28,9 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 interface EnhancedRegisterFormProps {
   onSuccess?: () => void;
   setHasAttemptedLogin?: (v: boolean) => void;
+  onRegistrationStart?: () => void; // Called when registration starts, parent shows loading overlay
+  onRegistrationComplete?: (email: string) => void; // Called when registration succeeds, parent handles verification screen
+  onRegistrationError?: () => void; // Called when registration fails, parent hides loading overlay
 }
 
 type AuthState = 'idle' | 'loading' | 'success' | 'error' | 'email-verification';
@@ -47,7 +52,7 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 }
 };
 
-export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }: EnhancedRegisterFormProps) {
+export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, onRegistrationStart, onRegistrationComplete, onRegistrationError }: EnhancedRegisterFormProps) {
   const { signup, signInWithGoogle, loading, error } = useFirebaseAuth();
   const [authState, setAuthState] = useState<AuthState>('idle');
   const [formError, setFormError] = useState<string | null>(null);
@@ -65,7 +70,14 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
     setHasAttemptedLogin?.(true);
     setFormError(null);
     setAuthState('loading');
-    setShowLoadingOverlay(true);
+    
+    // If parent provides loading overlay callback, use it (parent handles loading overlay)
+    // Otherwise, use local state (backward compatibility)
+    if (onRegistrationStart) {
+      onRegistrationStart();
+    } else {
+      setShowLoadingOverlay(true);
+    }
 
     try {
       // SECURITY FIX: Removed email existence check to prevent enumeration attacks
@@ -87,11 +99,23 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
       console.log('✅ Registration successful, showing verification screen');
       setAuthState('success');
       setShowLoadingOverlay(false);
-      setEmailForVerification(data.email);
-      setShowEmailVerification(true);
+      
+      // If parent provides onRegistrationComplete callback, use it (parent handles verification screen)
+      // Otherwise, use local state (backward compatibility)
+      if (onRegistrationComplete) {
+        onRegistrationComplete(data.email);
+      } else {
+        setEmailForVerification(data.email);
+        setShowEmailVerification(true);
+      }
 
     } catch (e: any) {
-      setShowLoadingOverlay(false);
+      // Hide loading overlay (parent or local)
+      if (onRegistrationError) {
+        onRegistrationError();
+      } else {
+        setShowLoadingOverlay(false);
+      }
       setAuthState('error');
       
       // Handle Firebase-specific errors with user-friendly messages via custom alerts
@@ -235,10 +259,39 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin }
   };
 
   const handleResendVerification = async () => {
-    // This will be handled by EmailVerificationScreen calling resendFirebaseVerification
-    // from useFirebaseAuth hook
-    console.log('Resend verification requested - will be handled by Firebase');
-    return Promise.resolve();
+    try {
+      // Get the current Firebase user (may need to sign in temporarily)
+      const currentUser = auth.currentUser;
+      
+      if (currentUser) {
+        // User is still signed in, send verification directly
+        console.log('📧 Resending Firebase verification email...');
+        const hostname = window.location.hostname;
+        const isLocalhost = hostname === 'localhost' || 
+                           hostname === '127.0.0.1' || 
+                           hostname.endsWith('.localhost');
+        
+        if (isLocalhost) {
+          // Simple verification without custom redirect - works on localhost
+          await sendEmailVerification(currentUser);
+        } else {
+          await sendEmailVerification(currentUser, {
+            url: `${window.location.origin}/auth?verified=true`,
+            handleCodeInApp: false,
+          });
+        }
+        console.log('✅ Firebase verification email resent successfully');
+      } else {
+        // User is signed out - they need to use the "resend" flow
+        // which requires them to enter their email again
+        console.log('⚠️ User is signed out - cannot resend verification email directly');
+        console.log('📧 User should check their inbox or try registering again');
+        // Don't throw - just log. The email was already sent during registration.
+      }
+    } catch (error: any) {
+      console.error('❌ Failed to resend Firebase verification email:', error);
+      throw error; // Re-throw so EmailVerificationScreen can show error
+    }
   };
 
   const getButtonState = () => {
