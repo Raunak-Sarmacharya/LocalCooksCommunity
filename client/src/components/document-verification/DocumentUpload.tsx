@@ -605,10 +605,12 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
   // If not fully verified, show the new streamlined form
   return (
     <div className="space-y-6">
-      {/* Special alert for documents under review */}
+      {/* Special alert for documents under review - Only show when documents are ACTUALLY uploaded and pending */}
       {verification && (() => {
-        const hasDocumentsPending = (verification.foodSafetyLicenseStatus === "pending") ||
-          (verification.foodEstablishmentCertUrl && verification.foodEstablishmentCertStatus === "pending");
+        // Check if documents are actually uploaded AND pending review
+        const hasFoodSafetyPending = verification.foodSafetyLicenseUrl && verification.foodSafetyLicenseStatus === "pending";
+        const hasEstablishmentPending = verification.foodEstablishmentCertUrl && verification.foodEstablishmentCertStatus === "pending";
+        const hasDocumentsPending = hasFoodSafetyPending || hasEstablishmentPending;
 
         if (hasDocumentsPending) {
           return (
@@ -703,7 +705,7 @@ export default function DocumentUpload({ openInModal = false, forceShowForm = fa
                     {verification.foodEstablishmentCertStatus && getStatusBadge(verification.foodEstablishmentCertStatus)}
                   </>
                 ) : (
-                  <span className="text-sm text-gray-500">Optional</span>
+                  <span className="text-sm text-gray-500">Not uploaded</span>
                 )}
               </div>
             </div>

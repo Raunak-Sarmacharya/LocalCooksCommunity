@@ -69,6 +69,8 @@ import TrainingOverviewPanel from "@/components/training/TrainingOverviewPanel";
 import ApplicationFormPanel from "@/components/application/ApplicationFormPanel";
 import ChefSupportPage from "@/components/chef/ChefSupportPage";
 import TidioController from "@/components/chat/TidioController";
+import { useDocumentVerification } from "@/hooks/use-document-verification";
+import DocumentUpload, { DocumentManagementModal } from "@/components/document-verification/DocumentUpload";
 
 // Type alias for application
 type AnyApplication = Application;
@@ -99,8 +101,8 @@ export default function ApplicantDashboard() {
   
   const [activeTab, setActiveTab] = useState(getInitialTab);
   
-  // Application form view mode - 'list' shows applications, 'form' shows the application form
-  const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form'>('list');
+  // Application form view mode - 'list' shows applications, 'form' shows the application form, 'documents' shows document verification
+  const [applicationViewMode, setApplicationViewMode] = useState<'list' | 'form' | 'documents'>('list');
   
   // Update activeTab and applicationViewMode when URL changes (for notification clicks and deep links)
   useEffect(() => {
@@ -115,6 +117,10 @@ export default function ApplicantDashboard() {
       if (view === 'applications' && action === 'new') {
         setApplicationViewMode('form');
       }
+      // If navigating to applications with action=documents, open document verification
+      if (view === 'applications' && action === 'documents') {
+        setApplicationViewMode('documents');
+      }
     }
   }, [location]);
 
@@ -125,6 +131,12 @@ export default function ApplicantDashboard() {
     name: string;
     address?: string;
   } | null>(null);
+
+  // Document management modal state for seller application
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+
+  // Get document verification status for seller application
+  const { verification: documentVerification, loading: docVerificationLoading } = useDocumentVerification();
 
   // Get chef applications for chat access
   const { applications: kitchenApplications } = useChefKitchenApplications();
@@ -921,154 +933,265 @@ export default function ApplicantDashboard() {
     );
   }, [userDisplayInfo.applications]);
 
-  const applicationsTabContent = applicationViewMode === 'form' ? (
-    <ApplicationFormPanel onBack={() => setApplicationViewMode('list')} />
-  ) : (
-    <div className="space-y-8">
+  // Helper to check if user has an active kitchen application (not cancelled/rejected)
+  const hasActiveKitchenApplication = useMemo(() => {
+    if (!kitchenApplications || kitchenApplications.length === 0) return false;
+    return kitchenApplications.some((app) => 
+      app.status !== 'cancelled' && app.status !== 'rejected'
+    );
+  }, [kitchenApplications]);
+
+  // Get the most recent kitchen application for status display
+  const getMostRecentKitchenApplication = () => {
+    if (!kitchenApplications || kitchenApplications.length === 0) return null;
+    return kitchenApplications.reduce((latest, current) => {
+      const latestDate = new Date(latest.createdAt || 0);
+      const currentDate = new Date(current.createdAt || 0);
+      return currentDate > latestDate ? current : latest;
+    });
+  };
+
+  // Get kitchen application status configuration
+  const getKitchenApplicationStatusConfig = (app: typeof kitchenApplications[0]) => {
+    if (app.status === 'inReview') {
+      return { 
+        label: 'In Review', 
+        variant: 'secondary' as const, 
+        bgColor: 'bg-amber-500',
+        icon: Clock,
+        description: 'Your application is being reviewed by the kitchen manager.'
+      };
+    }
+    if (app.status === 'rejected') {
+      return { 
+        label: 'Rejected', 
+        variant: 'destructive' as const, 
+        bgColor: 'bg-red-500',
+        icon: XCircle,
+        description: app.feedback || 'Your application was not approved. You may submit a new application.'
+      };
+    }
+    if (app.status === 'cancelled') {
+      return { 
+        label: 'Cancelled', 
+        variant: 'outline' as const, 
+        bgColor: 'bg-gray-500',
+        icon: AlertCircle,
+        description: 'This application was cancelled.'
+      };
+    }
+    if (app.status === 'approved') {
+      const tier = app.current_tier ?? 1;
+      if (tier >= 3) {
+        return { 
+          label: 'Fully Approved', 
+          variant: 'default' as const, 
+          bgColor: 'bg-green-600',
+          icon: CheckCircle,
+          description: 'Your application is fully approved. You can now book kitchens!'
+        };
+      }
+      if (tier === 2 && app.tier2_completed_at) {
+        return { 
+          label: 'Step 2 Under Review', 
+          variant: 'secondary' as const, 
+          bgColor: 'bg-orange-500',
+          icon: Clock,
+          description: 'Your Step 2 documents are being reviewed.'
+        };
+      }
+      if (tier === 2 && !app.tier2_completed_at) {
+        return { 
+          label: 'Step 2 Required', 
+          variant: 'secondary' as const, 
+          bgColor: 'bg-blue-500',
+          icon: FileText,
+          description: 'Step 1 approved! Please complete Step 2 requirements.'
+        };
+      }
+      return { 
+        label: 'Step 1 Approved', 
+        variant: 'default' as const, 
+        bgColor: 'bg-blue-600',
+        icon: CheckCircle,
+        description: 'Step 1 approved. Continue to the next step.'
+      };
+    }
+    return { 
+      label: 'Unknown', 
+      variant: 'outline' as const, 
+      bgColor: 'bg-gray-500',
+      icon: AlertCircle,
+      description: 'Status unknown.'
+    };
+  };
+
+  // Document Verification View within My Application tab
+  // Check if documents are actually uploaded and pending review
+  const hasUploadedDocuments = documentVerification?.foodSafetyLicenseUrl || documentVerification?.foodEstablishmentCertUrl;
+  const documentsArePending = hasUploadedDocuments && documentVerification?.foodSafetyLicenseStatus === 'pending';
+
+  const documentVerificationView = (
+    <div className="space-y-6">
+      {/* Header with Back Button - No redundant breadcrumbs since dashboard already has them */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={() => setApplicationViewMode('list')}
+            className="rounded-xl"
+          >
+            <ArrowRight className="h-5 w-5 rotate-180" />
+          </Button>
           <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-            <Store className="h-6 w-6 text-primary" />
+            <Shield className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Sell on LocalCooks</h2>
-            <p className="text-muted-foreground mt-1">Your seller application and verification status</p>
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">Document Verification</h2>
+            <p className="text-muted-foreground mt-1">Upload and manage your chef certificates</p>
           </div>
         </div>
-        {!hasActiveSellerApplication && (
-          <Button 
-            size="lg" 
-            onClick={() => setApplicationViewMode('form')}
-            className="rounded-xl shadow-lg shadow-primary/10"
-          >
-            Start New Application
-          </Button>
-        )}
       </div>
 
-      {/* Stripe Connect Payment Setup - Only visible after chef's seller application is FULLY approved */}
-      {/* Enterprise requirement: Application status must be 'approved' AND both documents must be approved */}
-      {/* Until fully approved, chef cannot use Stripe Connect anyway (no login creds sent) */}
-      {isSellerApplicationFullyApproved && (
-        <ChefStripeConnectSetup isApproved={true} />
+      {/* Document Verification Status Overview */}
+      <Card className="border-0 shadow-lg overflow-hidden">
+        <div className="h-1.5 w-full bg-gradient-to-r from-primary via-amber-500 to-green-500" />
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="h-5 w-5 text-primary" />
+                Verification Status
+              </CardTitle>
+              <CardDescription>Track your document verification progress</CardDescription>
+            </div>
+            {documentVerification && (
+              <Badge 
+                variant={
+                  documentVerification.foodSafetyLicenseStatus === 'approved' ? 'default' :
+                  documentVerification.foodSafetyLicenseStatus === 'pending' ? 'secondary' :
+                  'destructive'
+                }
+                className="text-xs"
+              >
+                {documentVerification.foodSafetyLicenseStatus === 'approved' ? 'Verified' :
+                 documentVerification.foodSafetyLicenseStatus === 'pending' ? 'Under Review' :
+                 documentVerification.foodSafetyLicenseStatus === 'rejected' ? 'Needs Attention' :
+                 'Not Started'}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Progress Steps */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col items-center gap-2 flex-1">
+              <div className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold",
+                documentVerification?.foodSafetyLicenseUrl ? "bg-green-500 text-white" : "bg-primary/10 text-primary"
+              )}>
+                {documentVerification?.foodSafetyLicenseUrl ? <CheckCircle className="h-5 w-5" /> : "1"}
+              </div>
+              <span className="text-xs text-center text-muted-foreground">Upload</span>
+            </div>
+            <div className="flex-1 h-0.5 bg-gradient-to-r from-green-500 to-amber-400 mx-2" />
+            <div className="flex flex-col items-center gap-2 flex-1">
+              <div className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold",
+                documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-green-500 text-white" :
+                documentVerification?.foodSafetyLicenseStatus === 'pending' ? "bg-amber-100 border-2 border-amber-400 text-amber-600" :
+                "bg-gray-100 text-gray-400"
+              )}>
+                {documentVerification?.foodSafetyLicenseStatus === 'approved' ? <CheckCircle className="h-5 w-5" /> : "2"}
+              </div>
+              <span className="text-xs text-center text-muted-foreground">Review</span>
+            </div>
+            <div className={cn(
+              "flex-1 h-0.5 mx-2",
+              documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-gradient-to-r from-amber-400 to-green-500" : "bg-gray-200"
+            )} />
+            <div className="flex flex-col items-center gap-2 flex-1">
+              <div className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold",
+                documentVerification?.foodSafetyLicenseStatus === 'approved' ? "bg-green-500 text-white" : "bg-gray-100 text-gray-400"
+              )}>
+                {documentVerification?.foodSafetyLicenseStatus === 'approved' ? <CheckCircle className="h-5 w-5" /> : "3"}
+              </div>
+              <span className="text-xs text-center text-muted-foreground">Verified</span>
+            </div>
+          </div>
+
+          <p className="text-sm text-muted-foreground text-center">
+            Verification typically takes 1-3 business days. You'll receive email notifications at each step.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Documents Under Review Notice - Only show when documents are ACTUALLY uploaded and pending */}
+      {documentsArePending && (
+        <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 flex items-start gap-3">
+          <Clock className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-amber-800">Documents Under Review</p>
+            <p className="text-sm text-amber-700 mt-1">
+              We're currently reviewing your submitted documents. You'll receive an email notification once the review is complete.
+              Until then, you have full access to your dashboard.
+            </p>
+            <p className="text-sm text-amber-600 mt-2">
+              You can still update or replace your documents below if needed.
+            </p>
+          </div>
+        </div>
       )}
 
-      {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
-        <div className="grid gap-6">
-          {userDisplayInfo.applications.map((app: AnyApplication) => (
-            <Card key={app.id} className="overflow-hidden border-border/50 shadow-sm transition-all hover:shadow-md h-full flex flex-col">
-              <div className="h-1.5 w-full bg-primary" />
-              <CardHeader className="pb-4">
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <CardTitle className="text-xl font-bold">Application #{app.id}</CardTitle>
-                    <CardDescription className="flex items-center gap-2">
-                       <Calendar className="h-3.5 w-3.5" />
-                       Submitted on {new Date(app.createdAt || "").toLocaleDateString()}
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant={getStatusVariant(app.status)} className="px-3 py-1 text-xs uppercase tracking-wider font-bold">
-                       {formatApplicationStatus(app.status)}
-                    </Badge>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" asChild>
-                        <Link href="/document-verification"><FileText className="h-4 w-4" /></Link>
-                      </Button>
-                      {app.status !== 'approved' && app.status !== 'cancelled' && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                          onClick={() => handleCancelApplication('chef', app.id)}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="flex-1 space-y-6 pt-0">
-                <Separator className="bg-border/50" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                   <div className="space-y-4">
-                     <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-[0.2em]">General Info</p>
-                     <div className="space-y-3">
-                        <div className="flex flex-col">
-                          <span className="text-xs text-muted-foreground">Full Name</span>
-                          <span className="text-sm font-medium">{app.fullName}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs text-muted-foreground">Phone Number</span>
-                          <span className="text-sm font-medium">{app.phone || "Not provided"}</span>
-                        </div>
-                     </div>
-                   </div>
-
-                   <div className="space-y-4">
-                     <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-[0.2em]">Preferences</p>
-                     <div className="space-y-3">
-                        <div className="flex flex-col">
-                          <span className="text-xs text-muted-foreground">Kitchen Preference</span>
-                          <span className="text-sm font-medium capitalize">{app.kitchenPreference || "Not specified"}</span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs text-muted-foreground">License Info</span>
-                          <span className="text-sm font-medium">{app.foodSafetyLicense || "N/A"}</span>
-                        </div>
-                     </div>
-                   </div>
-
-                   <div className="space-y-4">
-                      <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-[0.2em]">Compliance Checks</p>
-                      <div className="space-y-3">
-                         <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30 border border-border/40">
-                           <span className="text-xs font-medium">Safety License</span>
-                           <Badge variant="outline" className="text-[9px] h-4 font-bold tracking-tighter">
-                              {('foodSafetyLicenseStatus' in app ? (app as any).foodSafetyLicenseStatus : "N/A")}
-                           </Badge>
-                         </div>
-                         <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30 border border-border/40">
-                           <span className="text-xs font-medium">Establishment Cert</span>
-                           <Badge variant="outline" className="text-[9px] h-4 font-bold tracking-tighter">
-                              {('foodEstablishmentCertStatus' in app ? (app as any).foodEstablishmentCertStatus : "N/A")}
-                           </Badge>
-                         </div>
-                      </div>
-                   </div>
-                </div>
-
-                {app.feedback && (
-                  <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-foreground">Reviewer Feedback</p>
-                      <p className="text-sm text-foreground/70 italic leading-relaxed">{app.feedback}</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-              <CardFooter className="bg-muted/5 py-4 border-t border-border/30">
-                 <Button variant="link" className="text-primary p-0 h-auto font-bold uppercase text-[10px] tracking-widest" asChild>
-                    <Link href={`/document-verification`}>Manage Verification Documents <ChevronRight className="h-3 w-3 ml-1" /></Link>
-                 </Button>
-              </CardFooter>
-            </Card>
-          ))}
+      {/* Documents Not Uploaded Notice - Show when no documents have been uploaded yet */}
+      {!hasUploadedDocuments && (
+        <div className="p-4 bg-blue-50 rounded-xl border border-blue-200 flex items-start gap-3">
+          <FileText className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-blue-800">Documents Required</p>
+            <p className="text-sm text-blue-700 mt-1">
+              Please upload your Food Safety License to complete your verification. This is required before you can start selling on LocalCooks.
+            </p>
+          </div>
         </div>
-      ) : (
-        <Card className="border-dashed border-2 py-20 bg-muted/5">
-          <CardContent className="text-center flex flex-col items-center gap-6">
-            <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center border-4 border-background text-muted-foreground/30">
-              <FileText className="h-10 w-10" />
+      )}
+
+      {/* Document Upload Component */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-lg">Required Documents</CardTitle>
+          <CardDescription>Upload your food safety certifications to complete verification</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DocumentUpload forceShowForm={true} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const applicationsTabContent = applicationViewMode === 'form' ? (
+    <ApplicationFormPanel onBack={() => setApplicationViewMode('list')} />
+  ) : applicationViewMode === 'documents' ? (
+    documentVerificationView
+  ) : (
+    <div className="space-y-8">
+      {/* ============================================== */}
+      {/* SELLER APPLICATION SECTION (TOP) */}
+      {/* ============================================== */}
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
+              <Store className="h-6 w-6 text-primary" />
             </div>
-            <div className="space-y-2">
-              <CardTitle className="text-2xl">No applications found</CardTitle>
-              <CardDescription className="max-w-xs mx-auto">
-                You haven&apos;t submitted any applications for chef verification yet.
-              </CardDescription>
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">Sell on LocalCooks</h2>
+              <p className="text-muted-foreground mt-1">Your seller application and verification status</p>
             </div>
+          </div>
+          {!hasActiveSellerApplication && (
             <Button 
               size="lg" 
               onClick={() => setApplicationViewMode('form')}
@@ -1076,9 +1199,513 @@ export default function ApplicantDashboard() {
             >
               Start New Application
             </Button>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </div>
+
+        {/* Stripe Connect Payment Setup - Only visible after chef's seller application is FULLY approved */}
+        {isSellerApplicationFullyApproved && (
+          <ChefStripeConnectSetup isApproved={true} />
+        )}
+
+        {userDisplayInfo.applications && userDisplayInfo.applications.length > 0 ? (
+          <div className="grid gap-6">
+            {userDisplayInfo.applications.map((app: AnyApplication) => {
+              // Get document status badge styling
+              const getDocStatusBadge = (status: string | undefined) => {
+                if (!status || status === 'N/A') return { variant: 'outline' as const, className: 'bg-gray-100 text-gray-600' };
+                if (status === 'approved') return { variant: 'default' as const, className: 'bg-green-100 text-green-800 border-green-200' };
+                if (status === 'pending') return { variant: 'secondary' as const, className: 'bg-amber-100 text-amber-800 border-amber-200' };
+                if (status === 'rejected') return { variant: 'destructive' as const, className: 'bg-red-100 text-red-800 border-red-200' };
+                return { variant: 'outline' as const, className: '' };
+              };
+
+              const foodSafetyStatus = ('foodSafetyLicenseStatus' in app ? (app as any).foodSafetyLicenseStatus : undefined);
+              const establishmentStatus = ('foodEstablishmentCertStatus' in app ? (app as any).foodEstablishmentCertStatus : undefined);
+              const foodSafetyUrl = ('foodSafetyLicenseUrl' in app ? (app as any).foodSafetyLicenseUrl : undefined);
+              const establishmentUrl = ('foodEstablishmentCertUrl' in app ? (app as any).foodEstablishmentCertUrl : undefined);
+
+              return (
+                <Card key={app.id} className="overflow-hidden border-border/50 shadow-sm transition-all hover:shadow-md">
+                  <div className="h-1.5 w-full bg-primary" />
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Store className="h-5 w-5 text-primary" />
+                          <CardTitle className="text-xl font-bold">Seller Application #{app.id}</CardTitle>
+                        </div>
+                        <CardDescription className="flex items-center gap-2">
+                          <Calendar className="h-3.5 w-3.5" />
+                          Submitted on {new Date(app.createdAt || "").toLocaleDateString()}
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant={getStatusVariant(app.status)} className="px-3 py-1 text-xs uppercase tracking-wider font-bold">
+                          {formatApplicationStatus(app.status)}
+                        </Badge>
+                        {app.status !== 'approved' && app.status !== 'cancelled' && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                            onClick={() => handleCancelApplication('chef', app.id)}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6 pt-0">
+                    <Separator className="bg-border/50" />
+                    
+                    {/* Application Status Description */}
+                    <div className={cn(
+                      "flex items-start gap-3 p-4 rounded-lg border",
+                      app.status === 'approved' ? "bg-green-50 border-green-200" :
+                      app.status === 'inReview' ? "bg-amber-50 border-amber-200" :
+                      app.status === 'rejected' ? "bg-red-50 border-red-200" :
+                      "bg-gray-50 border-gray-200"
+                    )}>
+                      {app.status === 'approved' ? <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" /> :
+                       app.status === 'inReview' ? <Clock className="h-5 w-5 text-amber-600 mt-0.5" /> :
+                       app.status === 'rejected' ? <XCircle className="h-5 w-5 text-red-600 mt-0.5" /> :
+                       <AlertCircle className="h-5 w-5 text-gray-600 mt-0.5" />}
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {app.status === 'approved' ? 'Application Approved' :
+                           app.status === 'inReview' ? 'Application Under Review' :
+                           app.status === 'rejected' ? 'Application Rejected' :
+                           app.status === 'cancelled' ? 'Application Cancelled' : 'Application Status'}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {app.status === 'approved' ? 'Your seller application has been approved. Complete document verification to start selling.' :
+                           app.status === 'inReview' ? 'Our team is reviewing your application. You will be notified once a decision is made.' :
+                           app.status === 'rejected' ? 'Your application was not approved. Please review the feedback and submit a new application.' :
+                           app.status === 'cancelled' ? 'This application has been cancelled.' : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Submitted Application Details - What the chef submitted */}
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Submitted Information
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="p-3 bg-muted/30 rounded-lg border border-border/40">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Full Name</p>
+                          <p className="text-sm font-medium mt-1">{app.fullName || 'Not provided'}</p>
+                        </div>
+                        <div className="p-3 bg-muted/30 rounded-lg border border-border/40">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Email</p>
+                          <p className="text-sm font-medium mt-1">{app.email || 'Not provided'}</p>
+                        </div>
+                        <div className="p-3 bg-muted/30 rounded-lg border border-border/40">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Phone Number</p>
+                          <p className="text-sm font-medium mt-1">{app.phone || 'Not provided'}</p>
+                        </div>
+                        <div className="p-3 bg-muted/30 rounded-lg border border-border/40">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Kitchen Preference</p>
+                          <p className="text-sm font-medium mt-1 capitalize">{app.kitchenPreference || 'Not specified'}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Document Verification Section */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-bold uppercase text-muted-foreground tracking-wider flex items-center gap-2">
+                          <Shield className="h-4 w-4" />
+                          Document Verification
+                        </h4>
+                        {app.status !== 'cancelled' && app.status !== 'rejected' && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setApplicationViewMode('documents')}
+                            className="text-xs"
+                          >
+                            <FileText className="h-3 w-3 mr-1" />
+                            Manage Documents
+                          </Button>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Food Safety License */}
+                        <div className="p-4 rounded-lg border border-border/50 bg-card">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                                <FileText className="h-5 w-5 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">Food Safety License</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {foodSafetyUrl ? 'Required document' : 'Not uploaded'}
+                                </p>
+                              </div>
+                            </div>
+                            {/* Only show status badge if document is actually uploaded */}
+                            {foodSafetyUrl ? (
+                              <Badge 
+                                variant={getDocStatusBadge(foodSafetyStatus).variant}
+                                className={cn("text-[10px] uppercase", getDocStatusBadge(foodSafetyStatus).className)}
+                              >
+                                {foodSafetyStatus === 'approved' && <CheckCircle className="h-3 w-3 mr-1" />}
+                                {foodSafetyStatus === 'pending' && <Clock className="h-3 w-3 mr-1" />}
+                                {foodSafetyStatus === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
+                                {foodSafetyStatus || 'Pending'}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] uppercase bg-gray-100 text-gray-600">
+                                Not Uploaded
+                              </Badge>
+                            )}
+                          </div>
+                          {foodSafetyUrl && (
+                            <div className="mt-3 pt-3 border-t border-border/30">
+                              <Button variant="ghost" size="sm" className="text-xs h-7 px-2" asChild>
+                                <a href={foodSafetyUrl} target="_blank" rel="noopener noreferrer">
+                                  <FileText className="h-3 w-3 mr-1" />
+                                  View Document
+                                </a>
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Food Establishment Certificate */}
+                        <div className="p-4 rounded-lg border border-border/50 bg-card">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                                <FileText className="h-5 w-5 text-green-600" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">Food Establishment Cert</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {establishmentUrl ? 'Document uploaded' : 'Not uploaded'}
+                                </p>
+                              </div>
+                            </div>
+                            {/* Only show status badge if document is actually uploaded */}
+                            {establishmentUrl ? (
+                              <Badge 
+                                variant={getDocStatusBadge(establishmentStatus).variant}
+                                className={cn("text-[10px] uppercase", getDocStatusBadge(establishmentStatus).className)}
+                              >
+                                {establishmentStatus === 'approved' && <CheckCircle className="h-3 w-3 mr-1" />}
+                                {establishmentStatus === 'pending' && <Clock className="h-3 w-3 mr-1" />}
+                                {establishmentStatus === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
+                                {establishmentStatus || 'Pending'}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] uppercase bg-gray-100 text-gray-600">
+                                Not Uploaded
+                              </Badge>
+                            )}
+                          </div>
+                          {establishmentUrl && (
+                            <div className="mt-3 pt-3 border-t border-border/30">
+                              <Button variant="ghost" size="sm" className="text-xs h-7 px-2" asChild>
+                                <a href={establishmentUrl} target="_blank" rel="noopener noreferrer">
+                                  <FileText className="h-3 w-3 mr-1" />
+                                  View Document
+                                </a>
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Document Update Notice */}
+                      {app.status !== 'cancelled' && app.status !== 'rejected' && (
+                        <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <p className="text-xs text-blue-800">
+                            <strong>Update Documents:</strong> You can update your documents anytime. New uploads will reset your verification status to "pending review" for security.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Reviewer Feedback */}
+                    {app.feedback && (
+                      <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 flex items-start gap-3">
+                        <MessageCircle className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-foreground">Reviewer Feedback</p>
+                          <p className="text-sm text-foreground/70 italic leading-relaxed">{app.feedback}</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                  <CardFooter className="bg-muted/5 py-4 border-t border-border/30 flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setApplicationViewMode('documents')}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Manage Documents
+                    </Button>
+                    <Button 
+                      variant="link" 
+                      className="text-primary p-0 h-auto font-medium text-sm"
+                      onClick={() => setApplicationViewMode('documents')}
+                    >
+                      View Document Verification
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
+        ) : (
+          /* ============================================== */
+          /* EMPTY STATE - NO APPLICATIONS YET */
+          /* Award-winning UI/UX design with dual-path CTAs */
+          /* ============================================== */
+          <div className="space-y-8">
+            {/* Hero Welcome Section */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary/5 via-primary/10 to-blue-500/5 border border-primary/10 p-8 md:p-12">
+              {/* Decorative background elements */}
+              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-primary/10 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-blue-500/10 to-transparent rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
+              
+              <div className="relative z-10 text-center max-w-2xl mx-auto">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
+                  <ChefHat className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium text-primary">Welcome to LocalCooks</span>
+                </div>
+                
+                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground mb-4">
+                  Start Your Culinary Journey
+                </h2>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Whether you want to sell your homemade food or cook in professional kitchens, 
+                  LocalCooks has the perfect path for you. Choose how you'd like to get started.
+                </p>
+              </div>
+            </div>
+
+            {/* Dual Path Cards - Side by Side */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Path 1: Sell on LocalCooks */}
+              <Card className="group relative overflow-hidden border-2 border-primary/20 hover:border-primary/40 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5">
+                {/* Top accent bar */}
+                <div className="h-1.5 w-full bg-gradient-to-r from-primary via-primary/80 to-primary/60" />
+                
+                {/* Floating badge */}
+                <div className="absolute top-6 right-6">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-xs font-semibold">
+                    Recommended
+                  </Badge>
+                </div>
+
+                <CardHeader className="pb-4 pt-8">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                    <Store className="h-8 w-8 text-primary" />
+                  </div>
+                  <CardTitle className="text-2xl font-bold">Sell on LocalCooks</CardTitle>
+                  <CardDescription className="text-base">
+                    Become a verified seller and share your culinary creations with customers in your area.
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent className="space-y-6">
+                  {/* Benefits list */}
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Reach Local Customers</p>
+                        <p className="text-xs text-muted-foreground">Connect with food lovers in your community</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Secure Payments</p>
+                        <p className="text-xs text-muted-foreground">Get paid directly via Stripe Connect</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Build Your Brand</p>
+                        <p className="text-xs text-muted-foreground">Create your own storefront and menu</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Process steps */}
+                  <div className="p-4 bg-muted/30 rounded-xl border border-border/50">
+                    <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider mb-3">How it works</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">1</div>
+                        <span className="text-muted-foreground">Apply</span>
+                      </div>
+                      <div className="flex-1 h-px bg-border mx-2" />
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">2</div>
+                        <span className="text-muted-foreground">Verify</span>
+                      </div>
+                      <div className="flex-1 h-px bg-border mx-2" />
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">3</div>
+                        <span className="text-muted-foreground">Sell</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+
+                <CardFooter className="pt-2 pb-6">
+                  <Button 
+                    size="lg" 
+                    onClick={() => setApplicationViewMode('form')}
+                    className="w-full rounded-xl shadow-lg shadow-primary/20 group-hover:shadow-primary/30 transition-all"
+                  >
+                    <Store className="h-5 w-5 mr-2" />
+                    Start Seller Application
+                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              {/* Path 2: Cook at Commercial Kitchens */}
+              <Card className="group relative overflow-hidden border-2 border-blue-500/20 hover:border-blue-500/40 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/5">
+                {/* Top accent bar */}
+                <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400" />
+                
+                {/* Floating badge */}
+                <div className="absolute top-6 right-6">
+                  <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-xs font-semibold">
+                    Popular
+                  </Badge>
+                </div>
+
+                <CardHeader className="pb-4 pt-8">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                    <Building className="h-8 w-8 text-blue-600" />
+                  </div>
+                  <CardTitle className="text-2xl font-bold">Cook at Commercial Kitchens</CardTitle>
+                  <CardDescription className="text-base">
+                    Access professional kitchen spaces to prepare your food in a certified environment.
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent className="space-y-6">
+                  {/* Benefits list */}
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Professional Equipment</p>
+                        <p className="text-xs text-muted-foreground">Access commercial-grade kitchen tools</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Flexible Booking</p>
+                        <p className="text-xs text-muted-foreground">Book time slots that fit your schedule</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Certified Spaces</p>
+                        <p className="text-xs text-muted-foreground">Meet health & safety requirements</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Process steps */}
+                  <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+                    <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider mb-3">How it works</p>
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">1</div>
+                        <span className="text-muted-foreground">Discover</span>
+                      </div>
+                      <div className="flex-1 h-px bg-blue-200 mx-2" />
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">2</div>
+                        <span className="text-muted-foreground">Apply</span>
+                      </div>
+                      <div className="flex-1 h-px bg-blue-200 mx-2" />
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">3</div>
+                        <span className="text-muted-foreground">Book</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+
+                <CardFooter className="pt-2 pb-6">
+                  <Button 
+                    size="lg" 
+                    onClick={() => setActiveTab("discover-kitchens")}
+                    className="w-full rounded-xl shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/30 transition-all bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Building className="h-5 w-5 mr-2" />
+                    Discover Kitchens
+                    <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
+
+            {/* Bottom info section */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 p-6 bg-muted/30 rounded-2xl border border-border/50">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Shield className="h-5 w-5" />
+                <span className="text-sm">Secure & Verified</span>
+              </div>
+              <div className="hidden sm:block w-px h-4 bg-border" />
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Clock className="h-5 w-5" />
+                <span className="text-sm">Quick Approval Process</span>
+              </div>
+              <div className="hidden sm:block w-px h-4 bg-border" />
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <MessageCircle className="h-5 w-5" />
+                <span className="text-sm">24/7 Support Available</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Duplicate Application Prevention Notice */}
+        {hasActiveSellerApplication && (
+          <div className="p-4 bg-amber-50 rounded-lg border border-amber-200 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">Active Application in Progress</p>
+              <p className="text-sm text-amber-700 mt-1">
+                You already have an active seller application. You cannot submit another application until the current one is resolved.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Document Management Modal */}
+      <DocumentManagementModal open={showDocumentModal} onOpenChange={setShowDocumentModal} />
     </div>
   );
 
@@ -1417,11 +2044,44 @@ export default function ApplicantDashboard() {
     }
   };
 
+  // Generate dynamic breadcrumbs based on current view and sub-view
+  const getBreadcrumbs = () => {
+    const baseBreadcrumbs = [{ label: "Chef Portal", href: "#" }];
+    
+    // If in applications tab with documents view, add nested breadcrumb
+    if (activeTab === 'applications' && applicationViewMode === 'documents') {
+      return [
+        ...baseBreadcrumbs,
+        { label: "My Application", onClick: () => setApplicationViewMode('list') },
+        { label: "Document Verification" }
+      ];
+    }
+    
+    // If in applications tab with form view
+    if (activeTab === 'applications' && applicationViewMode === 'form') {
+      return [
+        ...baseBreadcrumbs,
+        { label: "My Application", onClick: () => setApplicationViewMode('list') },
+        { label: "New Application" }
+      ];
+    }
+    
+    // Default: just show the current tab
+    return undefined; // Let the layout generate default breadcrumbs
+  };
+
   return (
     <ChefDashboardLayout
       activeView={activeTab}
-      onViewChange={setActiveTab}
+      onViewChange={(view) => {
+        setActiveTab(view);
+        // Reset application view mode when changing tabs
+        if (view !== 'applications') {
+          setApplicationViewMode('list');
+        }
+      }}
       messageBadgeCount={0}
+      breadcrumbs={getBreadcrumbs()}
     >
       {/* Tidio Chat Controller - manages widget visibility based on current view */}
       <TidioController
