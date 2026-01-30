@@ -1746,6 +1746,8 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         const { sessionId } = req.params;
         const chefId = req.neonUser!.id;
 
+        console.log(`[by-session] Request received for session ${sessionId}, chefId=${chefId}`);
+
         if (!sessionId) {
             return res.status(400).json({ error: "Session ID is required" });
         }
@@ -1758,9 +1760,17 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
 
         const Stripe = (await import("stripe")).default;
         const stripe = new Stripe(stripeSecretKey, { apiVersion: "2025-12-15.clover" });
-        const session = await stripe.checkout.sessions.retrieve(sessionId, {
-            expand: ["payment_intent"],
-        });
+        
+        let session;
+        try {
+            session = await stripe.checkout.sessions.retrieve(sessionId, {
+                expand: ["payment_intent"],
+            });
+            console.log(`[by-session] Retrieved Stripe session: payment_status=${session.payment_status}, metadata_type=${session.metadata?.type}`);
+        } catch (stripeError: any) {
+            console.error(`[by-session] Failed to retrieve Stripe session ${sessionId}:`, stripeError.message);
+            return res.status(404).json({ error: "Invalid or expired session ID" });
+        }
 
         let paymentIntentId: string | undefined;
         if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
@@ -1794,12 +1804,96 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                 return res.status(403).json({ error: "This booking does not belong to you" });
             }
             
-            // Booking found and chef matches - return it with kitchen name
+            // Booking found and chef matches - get kitchen name
             const [kitchen] = await db
-                .select({ name: kitchens.name })
+                .select({ name: kitchens.name, locationId: kitchens.locationId })
                 .from(kitchens)
                 .where(eq(kitchens.id, bookingByIntent.kitchenId))
                 .limit(1);
+            
+            // Send manager notification if booking was created recently (within 5 min) 
+            // This handles cases where webhook didn't fire (local dev) or email failed
+            const bookingAge = Date.now() - new Date(bookingByIntent.createdAt).getTime();
+            const FIVE_MINUTES = 5 * 60 * 1000;
+            if (bookingAge < FIVE_MINUTES && kitchen?.locationId) {
+                console.log(`[by-session] Booking ${bookingByIntent.id} is recent (${Math.round(bookingAge/1000)}s old), sending manager notification as fallback`);
+                try {
+                    const [location] = await db
+                        .select({ 
+                            name: locations.name, 
+                            managerId: locations.managerId,
+                            notificationEmail: locations.notificationEmail,
+                            timezone: locations.timezone,
+                        })
+                        .from(locations)
+                        .where(eq(locations.id, kitchen.locationId))
+                        .limit(1);
+                    
+                    if (location && location.managerId) {
+                        const [chef] = await db
+                            .select({ username: users.username })
+                            .from(users)
+                            .where(eq(users.id, chefId))
+                            .limit(1);
+                        
+                        const chefName = chef?.username || "Chef";
+                        
+                        // Get manager email
+                        let managerEmailAddress = location.notificationEmail;
+                        if (!managerEmailAddress) {
+                            const [manager] = await db
+                                .select({ username: users.username })
+                                .from(users)
+                                .where(eq(users.id, location.managerId))
+                                .limit(1);
+                            managerEmailAddress = manager?.username;
+                        }
+                        
+                        if (managerEmailAddress) {
+                            const { sendEmail, generateBookingNotificationEmail } = await import('../email');
+                            const managerEmail = generateBookingNotificationEmail({
+                                managerEmail: managerEmailAddress,
+                                chefName,
+                                kitchenName: kitchen.name,
+                                bookingDate: bookingByIntent.bookingDate,
+                                startTime: bookingByIntent.startTime,
+                                endTime: bookingByIntent.endTime,
+                                specialNotes: bookingByIntent.specialNotes || undefined,
+                                timezone: location.timezone || "America/Edmonton",
+                                locationName: location.name,
+                            });
+                            const emailSent = await sendEmail(managerEmail, { trackingId: `booking_${bookingByIntent.id}_manager` });
+                            if (emailSent) {
+                                console.log(`[by-session] ✅ Sent manager notification for booking ${bookingByIntent.id}`);
+                            } else {
+                                console.log(`[by-session] ❌ Failed to send manager notification for booking ${bookingByIntent.id}`);
+                            }
+                        }
+                        
+                        // Also send chef confirmation email
+                        if (chef?.username) {
+                            const { sendEmail, generateBookingRequestEmail } = await import('../email');
+                            const chefEmail = generateBookingRequestEmail({
+                                chefEmail: chef.username,
+                                chefName: chef.username,
+                                kitchenName: kitchen.name,
+                                bookingDate: bookingByIntent.bookingDate,
+                                startTime: bookingByIntent.startTime,
+                                endTime: bookingByIntent.endTime,
+                                specialNotes: bookingByIntent.specialNotes || undefined,
+                                timezone: location.timezone || "America/Edmonton",
+                                locationName: location.name,
+                            });
+                            const chefEmailSent = await sendEmail(chefEmail, { trackingId: `booking_${bookingByIntent.id}_chef` });
+                            if (chefEmailSent) {
+                                console.log(`[by-session] ✅ Sent chef confirmation for booking ${bookingByIntent.id}`);
+                            }
+                        }
+                    }
+                } catch (emailError) {
+                    console.error(`[by-session] Error sending fallback emails:`, emailError);
+                }
+            }
             
             return res.json({
                 ...bookingByIntent,
@@ -2004,7 +2098,21 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         }
 
         if (!booking) {
-            return res.status(404).json({ error: "Booking not found for this session" });
+            // Log why fallback didn't trigger
+            console.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
+                paymentStatus: session.payment_status,
+                metadataType: session.metadata?.type,
+                hasMetadata: !!session.metadata,
+                paymentIntentId,
+                chefId,
+            });
+            return res.status(404).json({ 
+                error: "Booking not found for this session",
+                debug: {
+                    paymentStatus: session.payment_status,
+                    metadataType: session.metadata?.type,
+                }
+            });
         }
 
         // Get kitchen details

@@ -68,6 +68,7 @@ function AuthenticatedDocumentLink({ url, className, children }: { url: string |
 }
 
 // Base schema for kitchen application form (used as fallback)
+// Make experience optional by default since it's conditional based on requirements
 const baseKitchenApplicationSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
@@ -75,7 +76,7 @@ const baseKitchenApplicationSchema = z.object({
   phone: phoneNumberSchema,
   businessName: z.string().min(1, "Business name is required"),
   businessType: z.string().min(1, "Please select a business type"),
-  experience: z.string().min(1, "Please select your experience level"),
+  experience: z.string().optional(), // Make optional by default
   businessDescription: z.string().optional(),
   foodHandlerCertExpiry: z.string().min(1, "Certificate expiry date is required"),
   foodEstablishmentCertExpiry: z.string().optional(),
@@ -225,7 +226,7 @@ export default function KitchenApplicationForm({
       businessType: (!isTier2OrHigher && requirements.requireBusinessType)
         ? z.string().min(1, "Please select a business type")
         : z.string().optional().or(z.literal('')),
-      experience: (!isTier2OrHigher && requirements.requireExperience)
+      experience: (!isTier2OrHigher && requirements.tier1_years_experience_required)
         ? z.string().min(1, "Please select your experience level")
         : z.string().optional().or(z.literal('')),
       businessDescription: (!isTier2OrHigher && requirements.requireBusinessDescription)
@@ -414,16 +415,21 @@ export default function KitchenApplicationForm({
     return defaults;
   }, [requirements, defaultFirstName, defaultLastName, user?.email, application, currentTier]);
 
+  // Create a stable resolver that updates when dynamicSchema changes
+  const resolver = useMemo(() => zodResolver(dynamicSchema), [dynamicSchema]);
+
   const form = useForm<KitchenApplicationFormData>({
-    resolver: zodResolver(dynamicSchema),
+    resolver,
     defaultValues: getDefaultValues,
     mode: "onChange",
   });
 
-  // Re-initialize form when requirements change
+  // Re-initialize form when requirements change - also trigger revalidation with new schema
   useEffect(() => {
     if (requirements) {
       form.reset(getDefaultValues);
+      // Trigger revalidation with the new schema
+      form.trigger();
     }
   }, [requirements, getDefaultValues, form]);
 
@@ -1081,8 +1087,8 @@ export default function KitchenApplicationForm({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-sm font-medium">
-                            Years of Experience {requirements?.requireExperience && <span className="text-red-500">*</span>}
-                            {!requirements?.requireExperience && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
+                            Years of Experience {requirements?.tier1_years_experience_required && <span className="text-red-500">*</span>}
+                            {!requirements?.tier1_years_experience_required && <span className="text-gray-500 text-xs ml-2">(Optional)</span>}
                           </FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>

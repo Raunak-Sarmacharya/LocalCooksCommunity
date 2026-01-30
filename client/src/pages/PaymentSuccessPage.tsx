@@ -37,8 +37,25 @@ export default function PaymentSuccessPage() {
     const fetchBooking = async (retryCount = 0): Promise<void> => {
       try {
         const { auth } = await import('@/lib/firebase');
-        const currentUser = auth.currentUser;
+        
+        // Wait for auth state to be ready (Firebase may still be initializing after redirect)
+        let currentUser = auth.currentUser;
         if (!currentUser) {
+          // Wait up to 5 seconds for auth state to initialize
+          for (let i = 0; i < 10; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            currentUser = auth.currentUser;
+            if (currentUser) break;
+          }
+        }
+        
+        if (!currentUser) {
+          console.log('[PaymentSuccess] No user after waiting, will retry fetch');
+          // Instead of showing error immediately, retry the whole fetch
+          if (retryCount < 3) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return fetchBooking(retryCount + 1);
+          }
           setError('Please log in to view booking details');
           setIsLoading(false);
           return;

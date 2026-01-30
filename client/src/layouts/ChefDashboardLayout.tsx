@@ -41,6 +41,7 @@ const viewLabels: Record<string, string> = {
     training: "Training",
     messages: "Messages",
     discover: "Discover Kitchens",
+    "discover-kitchens": "Discover Kitchens",
     profile: "Profile",
     support: "Support",
     feedback: "Feedback",
@@ -57,7 +58,7 @@ export default function ChefDashboardLayout({
 
     // Generate breadcrumbs based on active view if not provided
     const displayBreadcrumbs = breadcrumbs || [
-        { label: "Chef Portal", href: "#" },
+        { label: "Dashboard", href: "#" },
         { label: viewLabels[activeView] || activeView },
     ]
 

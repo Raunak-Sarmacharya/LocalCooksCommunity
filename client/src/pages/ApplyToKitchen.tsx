@@ -4,11 +4,13 @@ import Footer from "@/components/layout/Footer";
 import KitchenApplicationForm from "@/components/kitchen-application/KitchenApplicationForm";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { ArrowLeft, Building2, Loader2, MapPin } from "lucide-react";
+import { Building2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface PublicLocation {
   id: number;
@@ -26,6 +28,7 @@ export default function ApplyToKitchen() {
   const [, navigate] = useLocation();
   const params = useParams<{ locationId: string }>();
   const locationId = params.locationId ? parseInt(params.locationId) : null;
+  const [activeView, setActiveView] = useState("discover-kitchens");
 
   // Scroll to top on mount
   useEffect(() => {
@@ -59,105 +62,106 @@ export default function ApplyToKitchen() {
 
   const isLoading = authLoading || locationLoading;
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Header />
-        <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
-          <div className="container mx-auto px-4 max-w-3xl">
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-            </div>
-          </div>
-        </main>
-        <Footer />
+  // Loading content
+  const loadingContent = (
+    <div className="space-y-6">
+      <Skeleton className="h-10 w-1/2" />
+      <Skeleton className="h-[400px] w-full rounded-xl" />
+    </div>
+  );
+
+  // Not found content
+  const notFoundContent = (
+    <Card className="border-0 shadow-lg">
+      <CardContent className="p-8 text-center">
+        <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+          <Building2 className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-semibold mb-2">Location Not Found</h2>
+        <p className="text-muted-foreground mb-6">
+          {locationError?.message || "The kitchen location you're looking for doesn't exist or has been removed."}
+        </p>
+        <Button onClick={() => navigate("/dashboard?view=discover-kitchens")}>
+          Find Kitchens
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+  // Main application form content
+  const mainContent = (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      {/* Application Form */}
+      <KitchenApplicationForm
+        location={location!}
+        onSuccess={() => navigate("/dashboard?view=kitchen-applications")}
+        onCancel={() => navigate(`/kitchen-requirements/${locationId}`)}
+      />
+
+      {/* Help Section */}
+      <div className="text-center text-sm text-muted-foreground py-4">
+        <p>
+          Need help? Contact us at{" "}
+          <a href="mailto:support@localcooks.ca" className="text-primary hover:underline">
+            support@localcooks.ca
+          </a>
+        </p>
       </div>
+    </motion.div>
+  );
+
+  // Determine what content to show
+  const getContent = () => {
+    if (isLoading) return loadingContent;
+    if (!locationId || locationError || !location) return notFoundContent;
+    return mainContent;
+  };
+
+  // If not authenticated, redirect (handled by useEffect)
+  if (!user && !authLoading) {
+    return null;
+  }
+
+  // If user is authenticated, wrap in ChefDashboardLayout
+  if (user) {
+    return (
+      <ChefDashboardLayout
+        activeView={activeView}
+        onViewChange={(view) => {
+          setActiveView(view);
+          if (view === 'overview') navigate('/dashboard');
+          else if (view === 'discover-kitchens') navigate('/dashboard?view=discover-kitchens');
+          else if (view === 'kitchen-applications') navigate('/dashboard?view=kitchen-applications');
+          else if (view === 'bookings') navigate('/dashboard?view=bookings');
+          else if (view === 'applications') navigate('/dashboard?view=applications');
+          else if (view === 'messages') navigate('/dashboard?view=messages');
+          else if (view === 'training') navigate('/dashboard?view=training');
+        }}
+        breadcrumbs={[
+          { label: "Dashboard", onClick: () => navigate('/dashboard') },
+          { label: "Discover Kitchens", onClick: () => navigate('/dashboard?view=discover-kitchens') },
+          { label: location?.name || 'Kitchen', onClick: () => navigate(`/kitchen-requirements/${locationId}`) },
+          { label: "Apply" },
+        ]}
+      >
+        {getContent()}
+      </ChefDashboardLayout>
     );
   }
 
-  if (!user) {
-    return null; // Redirecting to auth
-  }
-
-  if (!locationId || locationError || !location) {
-    return (
-      <div className="min-h-screen flex flex-col bg-gray-50">
-        <Header />
-        <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
-          <div className="container mx-auto px-4 max-w-3xl">
-            <Card>
-              <CardContent className="p-8 text-center">
-                <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h2 className="text-xl font-semibold mb-2">Location Not Found</h2>
-                <p className="text-gray-600 mb-6">
-                  {locationError?.message || "The kitchen location you're looking for doesn't exist or has been removed."}
-                </p>
-                <div className="flex gap-3 justify-center">
-                  <Button variant="outline" onClick={() => navigate("/dashboard")}>
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Dashboard
-                  </Button>
-                  <Button onClick={() => navigate("/compare-kitchens")}>
-                    Find Kitchens
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
+  // Fallback for loading state before auth is determined
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
       <main className="flex-1 pt-20 sm:pt-24 lg:pt-28 pb-12">
         <div className="container mx-auto px-4 max-w-3xl">
-          {/* Breadcrumb */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <Button
-              variant="ghost"
-              onClick={() => window.history.back()}
-              className="text-gray-600 hover:text-gray-900"
-            >
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-          </motion.div>
-
-          {/* Application Form */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <KitchenApplicationForm
-              location={location}
-              onSuccess={() => navigate("/dashboard")}
-              onCancel={() => window.history.back()}
-            />
-          </motion.div>
-
-          {/* Help Section */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="mt-8 text-center text-sm text-gray-600"
-          >
-            <p>
-              Need help? Contact us at{" "}
-              <a href="mailto:support@localcooks.ca" className="text-blue-600 hover:underline">
-                support@localcooks.ca
-              </a>
-            </p>
-          </motion.div>
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          </div>
         </div>
       </main>
       <Footer />

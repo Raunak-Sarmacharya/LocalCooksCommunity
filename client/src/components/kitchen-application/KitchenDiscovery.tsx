@@ -362,8 +362,8 @@ export default function KitchenDiscovery({ compact = false }: KitchenDiscoveryPr
                   const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
                   const priceDisplay = kitchen.hourlyRate ? formatPrice(kitchen.hourlyRate) : null;
 
-                  // Determine application URL - use custom onboarding link if available
-                  const applicationUrl = kitchen.customOnboardingLink || `/kitchen-requirements/${kitchen.locationId}`;
+                  // Always use the internal application URL
+                  const applicationUrl = `/kitchen-requirements/${kitchen.locationId}`;
 
                   return (
                     <motion.div key={kitchen.id} variants={itemVariants}>
