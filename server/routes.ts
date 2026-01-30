@@ -143,7 +143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/firebase-sync-user", requireFirebaseAuthWithUser, async (req, res) => {
     try {
       let user = req.neonUser!;
-      
+
       // CRITICAL: Update is_verified status if Firebase reports email is verified
       const firebaseEmailVerified = req.firebaseUser?.email_verified;
       if (firebaseEmailVerified && !user.isVerified) {
@@ -151,9 +151,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updatedUser = await userService.updateUser(user.id, { isVerified: true });
         if (updatedUser) {
           user = updatedUser;
+
+          // Send welcome email now that user is verified
+          try {
+            const { sendEmail, generateWelcomeEmail } = await import('./email');
+            console.log(`📧 Sending welcome email to newly verified user: ${user.username}`);
+            const welcomeEmail = generateWelcomeEmail({
+              fullName: req.firebaseUser?.name || user.username.split('@')[0],
+              email: user.username
+            });
+            await sendEmail(welcomeEmail, {
+              trackingId: `welcome_verified_${user.id}_${Date.now()}`
+            });
+          } catch (emailError) {
+            console.error('❌ Error sending welcome email on sync verification:', emailError);
+          }
         }
       }
-      
+
       res.json(user);
     } catch (error) {
       console.error("Error syncing user:", error);
@@ -199,7 +214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Link the new Firebase account to existing Neon user
         if (!existingByUsername.firebaseUid) {
           console.log(`🔗 Linking Firebase UID ${uid} to existing Neon user ${existingByUsername.id}`);
-          const updatedUser = await userService.updateUser(existingByUsername.id, { 
+          const updatedUser = await userService.updateUser(existingByUsername.id, {
             firebaseUid: uid,
             isVerified: decodedToken.email_verified || existingByUsername.isVerified
           });
@@ -209,7 +224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // The old Firebase account may have been deleted and user is re-registering
           console.log(`⚠️ User ${email} exists with different Firebase UID. Old: ${existingByUsername.firebaseUid}, New: ${uid}`);
           console.log(`🔄 Updating Firebase UID to new account (user may have re-registered in Firebase)`);
-          const updatedUser = await userService.updateUser(existingByUsername.id, { 
+          const updatedUser = await userService.updateUser(existingByUsername.id, {
             firebaseUid: uid,
             isVerified: decodedToken.email_verified || false // Reset verification for new Firebase account
           });
@@ -236,30 +251,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { db } = await import('./db');
         const { users } = await import('@shared/schema');
         const { eq } = await import('drizzle-orm');
-        
+
         const displayName = otherData.displayName || email.split('@')[0];
-        
-        // Always send welcome email to new users (all roles: chef, manager, admin)
-        console.log(`📧 Sending welcome email to new ${finalRole}: ${email}`);
-        const welcomeEmail = generateWelcomeEmail({
-          fullName: displayName,
-          email
-        });
-        const welcomeSent = await sendEmail(welcomeEmail, {
-          trackingId: `welcome_${finalRole}_${email}_${Date.now()}`
-        });
-        if (welcomeSent) {
-          console.log(`✅ Welcome email sent to new ${finalRole}: ${email}`);
+
+        // Only send welcome email if the user is verified (e.g. Google Auth)
+        // For email/password users, they will get this email after they verify
+        if (decodedToken.email_verified) {
+          console.log(`📧 Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
+          const welcomeEmail = generateWelcomeEmail({
+            fullName: displayName,
+            email
+          });
+          const welcomeSent = await sendEmail(welcomeEmail, {
+            trackingId: `welcome_${finalRole}_${email}_${Date.now()}`
+          });
+          if (welcomeSent) {
+            console.log(`✅ Welcome email sent to new ${finalRole}: ${email}`);
+          } else {
+            console.log(`❌ Failed to send welcome email to ${email}`);
+          }
         } else {
-          console.log(`❌ Failed to send welcome email to ${email}`);
+          console.log(`ℹ️ Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - waiting for verification`);
         }
-        
+
         // Send notification to admins about new user registration
         const admins = await db
           .select({ username: users.username })
           .from(users)
           .where(eq(users.role, 'admin'));
-        
+
         for (const admin of admins) {
           if (admin.username && admin.username !== email) {
             const adminEmail = generateNewUserRegistrationAdminEmail({
@@ -285,16 +305,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(newUser);
     } catch (error: any) {
       console.error("Error registering user:", error);
-      
+
       // Provide more specific error messages
       if (error.message?.includes('already taken') || error.code === '23505') {
-        return res.status(409).json({ 
-          error: "Email already registered", 
+        return res.status(409).json({
+          error: "Email already registered",
           code: "EMAIL_EXISTS",
           message: "This email is already registered. Please try signing in instead."
         });
       }
-      
+
       res.status(500).json({ error: "Failed to register user" });
     }
   });
@@ -490,7 +510,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===================================
   // All manager routes are now handled in ./routes/manager.ts
   app.use("/api/manager", (await import("./routes/manager")).default);
-  
+
   // Manager notifications routes
   app.use("/api/manager/notifications", (await import("./routes/notifications")).default);
 
