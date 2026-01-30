@@ -84,7 +84,7 @@ export async function processManagerPayout(
     }
 
     // Get account balance
-    const { getAccountBalance } = await import('./stripe-connect-service.js');
+    const { getAccountBalance } = await import('./stripe-connect-service');
     const balance = await getAccountBalance(accountId);
 
     // Get available balance (amount available for payout)
@@ -223,7 +223,7 @@ export async function getPayoutSummary(db: any): Promise<{
     let totalAvailableBalance = 0;
     let managersWithBalance = 0;
 
-    const { getAccountBalance } = await import('./stripe-connect-service.js');
+    const { getAccountBalance } = await import('./stripe-connect-service');
 
     for (const manager of (managersResult.rows as any[])) {
       try {

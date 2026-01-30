@@ -89,6 +89,12 @@ interface ManagerOnboardingContextType {
     isUploading: boolean;
   };
 
+  termsForm: {
+    file: File | null;
+    setFile: (file: File | null) => void;
+    isUploading: boolean;
+  };
+
   kitchenForm: {
     data: {
       name: string;
@@ -158,6 +164,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
   const [uploadingLicense, setUploadingLicense] = useState(false);
+
+  // Terms Form State
+  const [termsFile, setTermsFile] = useState<File | null>(null);
+  const [uploadingTerms, setUploadingTerms] = useState(false);
 
   // Kitchen Form State
   const [showCreateKitchen, setShowCreateKitchen] = useState(false);
@@ -687,6 +697,13 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
 
     try {
+      console.log('[Onboarding] updateLocation called', { 
+        licenseFile: licenseFile?.name, 
+        termsFile: termsFile?.name,
+        selectedLocationId,
+        locationsLength: locations.length
+      });
+
       let licenseUrl = null;
       if (licenseFile) {
         if (!licenseExpiryDate) {
@@ -694,6 +711,29 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           return;
         }
         licenseUrl = await uploadLicense();
+        console.log('[Onboarding] License uploaded:', licenseUrl);
+      }
+
+      // Upload terms file if provided
+      let termsUrl = null;
+      if (termsFile) {
+        console.log('[Onboarding] Uploading terms file:', termsFile.name);
+        setUploadingTerms(true);
+        const token = await auth.currentUser?.getIdToken();
+        const formData = new FormData();
+        formData.append("file", termsFile);
+        const uploadRes = await fetch("/api/files/upload-file", {
+          method: "POST",
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData
+        });
+        if (!uploadRes.ok) throw new Error("Failed to upload terms file");
+        const uploadResult = await uploadRes.json();
+        termsUrl = uploadResult.url;
+        console.log('[Onboarding] Terms uploaded:', termsUrl);
+        setUploadingTerms(false);
+      } else {
+        console.log('[Onboarding] No terms file to upload');
       }
 
       const token = await auth.currentUser?.getIdToken();
@@ -719,10 +759,21 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         body.kitchenLicenseExpiry = licenseExpiryDate;
       }
 
+      // Add terms URL if uploaded
+      if (termsUrl) {
+        body.kitchenTermsUrl = termsUrl;
+      }
+
+      console.log('[Onboarding] Request body:', JSON.stringify(body, null, 2));
+      console.log('[Onboarding] termsUrl value:', termsUrl);
+      console.log('[Onboarding] body.kitchenTermsUrl:', body.kitchenTermsUrl);
+
       const endpoint = (!selectedLocationId || locations.length === 0)
         ? `/api/manager/locations`
         : `/api/manager/locations/${selectedLocationId}`;
       const method = (!selectedLocationId || locations.length === 0) ? "POST" : "PUT";
+
+      console.log('[Onboarding] Using endpoint:', endpoint, 'method:', method);
 
       const res = await fetch(endpoint, {
         method,
@@ -730,8 +781,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         body: JSON.stringify(body)
       });
 
-      if (!res.ok) throw new Error("Failed to save location");
       const data = await res.json();
+      console.log('[Onboarding] Response:', res.status, data);
+
+      if (!res.ok) throw new Error(data.error || "Failed to save location");
 
       if (method === "POST") setSelectedLocationId(data.id);
 
@@ -953,6 +1006,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       expiryDate: licenseExpiryDate, setExpiryDate: setLicenseExpiryDate,
       isUploading: uploadingLicense
     },
+    termsForm: {
+      file: termsFile, setFile: setTermsFile,
+      isUploading: uploadingTerms
+    },
     kitchenForm: {
       data: kitchenFormData, setData: setKitchenFormData,
       showCreate: showCreateKitchen, setShowCreate: setShowCreateKitchen,
@@ -970,6 +1027,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setNotificationPhone("");
       setLicenseFile(null);
       setLicenseExpiryDate("");
+      setTermsFile(null);
       setIsAddingLocation(true);
       // setIsOpen(true); // OLD MODAL
       setLocation('/manager/setup'); // NEW FULL PAGE

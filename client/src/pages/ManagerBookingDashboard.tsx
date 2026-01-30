@@ -85,6 +85,8 @@ interface Location {
   kitchenLicenseFeedback?: string;
   kitchenLicenseExpiry?: string;
   kitchenLicenseUploadedAt?: string;
+  kitchenTermsUrl?: string;
+  kitchenTermsUploadedAt?: string;
   description?: string;
   customOnboardingLink?: string;
 }
@@ -1989,6 +1991,128 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       )}
                     </div>
                   )}
+                </div>
+              </div>
+
+              {/* Kitchen Terms & Policies Section */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <FileText className="h-5 w-5 text-blue-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Kitchen Terms & Policies</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Upload your kitchen-specific terms, house rules, and policies that chefs must review when applying.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 md:p-6 space-y-4 shadow-md">
+                  {/* Show existing terms if uploaded */}
+                  {location.kitchenTermsUrl && (
+                    <div className="bg-white border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center gap-2 font-medium text-blue-800 mb-2">
+                        <CheckCircle className="h-5 w-5 text-blue-600" />
+                        <span>Terms Document Uploaded</span>
+                      </div>
+                      <div className="text-sm text-blue-700 space-y-1">
+                        <p>Document: <span className="font-medium">{getDocumentFilename(location.kitchenTermsUrl)}</span></p>
+                        {location.kitchenTermsUploadedAt && (
+                          <p>Uploaded: <span className="font-medium">{new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}</span></p>
+                        )}
+                      </div>
+                      <AuthenticatedDocumentLink
+                        url={location.kitchenTermsUrl}
+                        className="text-sm text-blue-600 hover:text-blue-700 mt-2 inline-block"
+                      >
+                        View Terms Document →
+                      </AuthenticatedDocumentLink>
+                    </div>
+                  )}
+
+                  {/* Upload section */}
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-900 mb-2">
+                      {location.kitchenTermsUrl ? 'Replace Terms Document' : 'Upload Terms Document'}
+                    </label>
+                    <p className="text-xs text-gray-600 mb-3">
+                      Include house rules, equipment usage policies, liability waivers, and any other terms chefs should agree to.
+                    </p>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          
+                          if (file.size > 10 * 1024 * 1024) {
+                            toast({
+                              title: "File Too Large",
+                              description: "Please upload a file smaller than 10MB",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+
+                          try {
+                            const currentFirebaseUser = auth.currentUser;
+                            if (!currentFirebaseUser) {
+                              throw new Error("Firebase user not available");
+                            }
+                            const token = await currentFirebaseUser.getIdToken();
+
+                            // Upload file
+                            const formData = new FormData();
+                            formData.append('file', file);
+                            const uploadRes = await fetch('/api/files/upload-file', {
+                              method: 'POST',
+                              headers: { 'Authorization': `Bearer ${token}` },
+                              body: formData,
+                            });
+                            if (!uploadRes.ok) throw new Error("Upload failed");
+                            const { url } = await uploadRes.json();
+
+                            // Update location with terms URL
+                            const updateRes = await fetch(`/api/manager/locations/${location.id}`, {
+                              method: 'PUT',
+                              headers: { 
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                              },
+                              credentials: 'include',
+                              body: JSON.stringify({ kitchenTermsUrl: url }),
+                            });
+                            if (!updateRes.ok) throw new Error("Update failed");
+
+                            queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+                            queryClient.invalidateQueries({ queryKey: ['locationDetails', location.id] });
+                            toast({ 
+                              title: "Terms Uploaded", 
+                              description: "Kitchen terms & policies saved successfully." 
+                            });
+                          } catch (err: any) {
+                            toast({ 
+                              title: "Error", 
+                              description: err.message || "Failed to upload terms", 
+                              variant: "destructive" 
+                            });
+                          }
+                        }}
+                        className="hidden"
+                        id="terms-upload"
+                      />
+                      <label
+                        htmlFor="terms-upload"
+                        className="cursor-pointer flex flex-col items-center gap-3"
+                      >
+                        <Upload className="h-8 w-8 text-gray-400" />
+                        <span className="text-sm font-medium text-blue-600 mb-1">
+                          {location.kitchenTermsUrl ? "Click to replace terms" : "Click to upload terms"}
+                        </span>
+                        <span className="text-xs text-gray-500">PDF, JPG, PNG, or DOC (max 10MB)</span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
               </div>
             </TabsContent>

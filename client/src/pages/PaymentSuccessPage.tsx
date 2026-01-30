@@ -16,6 +16,8 @@ export default function PaymentSuccessPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [pollingAttempt, setPollingAttempt] = useState(0);
 
   // Get booking ID or session ID from URL
   // Enterprise-grade flow: booking is created in webhook, so we may need to poll
@@ -80,10 +82,12 @@ export default function PaymentSuccessPage() {
             return;
           }
 
-          // If 404, booking may not be created yet - retry
-          if (response.status === 404 && retryCount < 10) {
-            console.log(`[PaymentSuccess] Booking not found yet, retrying (${retryCount + 1}/10)...`);
-            await new Promise(resolve => setTimeout(resolve, 1500));
+          // If 404 or other error, booking may not be created yet - retry
+          if ((response.status === 404 || response.status >= 500) && retryCount < 15) {
+            console.log(`[PaymentSuccess] Booking not found yet (status: ${response.status}), retrying (${retryCount + 1}/15)...`);
+            setIsPolling(true);
+            setPollingAttempt(retryCount + 1);
+            await new Promise(resolve => setTimeout(resolve, 2000));
             return fetchBooking(retryCount + 1);
           }
         }
@@ -114,20 +118,31 @@ export default function PaymentSuccessPage() {
         }
 
         // If booking not found yet and we have retries left, wait and retry
-        if (retryCount < 10) {
-          await new Promise(resolve => setTimeout(resolve, 1500));
+        if (retryCount < 15) {
+          setIsPolling(true);
+          setPollingAttempt(retryCount + 1);
+          await new Promise(resolve => setTimeout(resolve, 2000));
           return fetchBooking(retryCount + 1);
         }
 
-        // After retries, show error
-        setError('Booking is being processed. Please check your dashboard in a moment.');
+        // After retries, show success with processing message (payment was successful)
+        setIsPolling(false);
         setIsLoading(false);
+        // Don't set error - show payment success with processing message instead
       } catch (err: any) {
         console.error('Error fetching booking:', err);
-        // Don't show error for enterprise flow - booking may still be processing
+        // For enterprise flow, retry on errors (webhook may still be processing)
+        if (!bookingId && retryCount < 15) {
+          console.log(`[PaymentSuccess] Error occurred, retrying (${retryCount + 1}/15)...`);
+          setIsPolling(true);
+          setPollingAttempt(retryCount + 1);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return fetchBooking(retryCount + 1);
+        }
         if (bookingId) {
           setError(err.message || 'Failed to load booking details');
         }
+        setIsPolling(false);
         setIsLoading(false);
       }
     };
@@ -277,7 +292,11 @@ export default function PaymentSuccessPage() {
         <main className="flex-grow pt-20 md:pt-24 pb-12 md:pb-16 flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-            <p className="text-gray-600">Loading booking details...</p>
+            <p className="text-gray-600">
+              {isPolling 
+                ? `Processing your booking... (${pollingAttempt}/15)`
+                : 'Loading booking details...'}
+            </p>
           </div>
         </main>
         <Footer />
@@ -285,7 +304,8 @@ export default function PaymentSuccessPage() {
     );
   }
 
-  if (error || !booking) {
+  // Show error only if there's an explicit error message
+  if (error) {
     return (
       <div className="min-h-screen flex flex-col bg-gray-50">
         <Header />
@@ -297,11 +317,68 @@ export default function PaymentSuccessPage() {
                   <FileText className="h-12 w-12 mx-auto" />
                 </div>
                 <h1 className="text-2xl font-bold mb-4">Booking Not Found</h1>
-                <p className="text-gray-600 mb-6">{error || 'Unable to load booking details'}</p>
+                <p className="text-gray-600 mb-6">{error}</p>
                 <Button onClick={() => navigate('/dashboard')} variant="outline">
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Go to Dashboard
                 </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Payment succeeded but booking details not yet available (webhook still processing)
+  if (!booking) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <Header />
+        <main className="flex-grow pt-20 md:pt-24 pb-12 md:pb-16">
+          <div className="container mx-auto px-4">
+            <Card className="max-w-3xl mx-auto bg-white shadow-lg">
+              <CardContent className="p-6 md:p-8">
+                <div className="text-center mb-8">
+                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="h-10 w-10 text-green-500" />
+                  </div>
+                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Payment Successful!</h1>
+                  <p className="text-lg text-gray-600">
+                    Your payment has been processed successfully.
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Finalizing Your Booking
+                  </h3>
+                  <p className="text-sm text-blue-800">
+                    Your booking is being created. This usually takes just a few seconds. 
+                    You can view your booking details in your dashboard.
+                  </p>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-green-900 mb-2">What happens next?</h3>
+                  <ul className="text-sm text-green-800 space-y-1">
+                    <li>• Your booking will appear in your dashboard shortly</li>
+                    <li>• The kitchen manager will review and approve your booking</li>
+                    <li>• You&apos;ll receive an email confirmation once approved</li>
+                  </ul>
+                </div>
+
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => navigate('/dashboard')}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    size="lg"
+                  >
+                    Go to Dashboard
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>

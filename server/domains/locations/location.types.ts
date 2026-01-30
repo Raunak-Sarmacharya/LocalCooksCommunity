@@ -23,6 +23,7 @@ export interface CreateLocationDTO {
   kitchenLicenseUrl?: string;
   kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
   kitchenLicenseExpiry?: string;
+  kitchenTermsUrl?: string;
 }
 
 /**
@@ -47,6 +48,8 @@ export interface UpdateLocationDTO {
   kitchenLicenseUrl?: string;
   kitchenLicenseStatus?: 'pending' | 'approved' | 'rejected';
   kitchenLicenseExpiry?: string;
+  kitchenTermsUrl?: string;
+  kitchenTermsUploadedAt?: Date;
 }
 
 /**
@@ -85,6 +88,8 @@ export interface LocationDTO {
   kitchenLicenseApprovedAt: Date | null;
   kitchenLicenseFeedback: string | null;
   kitchenLicenseExpiry: string | null;
+  kitchenTermsUrl: string | null;
+  kitchenTermsUploadedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

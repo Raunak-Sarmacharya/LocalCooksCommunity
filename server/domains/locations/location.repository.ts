@@ -84,6 +84,8 @@ export class LocationRepository {
           kitchenLicenseUrl: dto.kitchenLicenseUrl || null,
           kitchenLicenseStatus: dto.kitchenLicenseStatus || 'pending',
           kitchenLicenseExpiry: dto.kitchenLicenseExpiry || null,
+          kitchenTermsUrl: dto.kitchenTermsUrl || null,
+          kitchenTermsUploadedAt: dto.kitchenTermsUrl ? new Date() : null,
         })
         .returning();
 
@@ -123,6 +125,8 @@ export class LocationRepository {
           kitchenLicenseUrl: dto.kitchenLicenseUrl,
           kitchenLicenseStatus: dto.kitchenLicenseStatus,
           kitchenLicenseExpiry: dto.kitchenLicenseExpiry,
+          kitchenTermsUrl: dto.kitchenTermsUrl,
+          kitchenTermsUploadedAt: dto.kitchenTermsUploadedAt,
         })
         .where(eq(locations.id, id))
         .returning();

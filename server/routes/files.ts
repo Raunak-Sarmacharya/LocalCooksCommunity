@@ -157,23 +157,32 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
             return res.status(400).send("Missing path parameter");
         }
 
+        // Decode the path parameter - it may be URL-encoded (e.g., public%2Fkitchens%2F...)
+        // This happens when normalizeImageUrl uses encodeURIComponent on the path
+        const decodedPath = decodeURIComponent(pathParam);
+
         // SECURITY CHECK:
-        // If the file is in 'public/' or 'kitchens/' folder, allow access without auth
-        // If it is in 'documents/' or other protected folders, require authentication
-        const isPublic = pathParam.includes('public/') || pathParam.includes('kitchens/');
+        // Allow public access to:
+        // - Files in 'public/' or 'kitchens/' folders
+        // - Image files (jpg, jpeg, png, gif, webp, svg) - these are safe to display
+        // Require auth only for sensitive documents (PDFs, certificates, etc.)
+        const isPublicPath = decodedPath.includes('public/') || decodedPath.includes('kitchens/');
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(decodedPath);
+        const isPublic = isPublicPath || isImageFile;
 
         // Debug logging for auth issues
-        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, path: ${pathParam}`);
+        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, path: ${decodedPath}`);
 
         if (!isPublic && !req.neonUser) {
-            console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${pathParam}`);
+            console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${decodedPath}`);
             return res.status(401).send("Authentication required for protected files");
         }
 
         // Reconstruct the original R2 custom domain URL to satisfy getPresignedUrl logic
-        const fullR2Url = `https://files.localcooks.ca/${pathParam}`;
+        // Use the decoded path to ensure proper URL construction
+        const fullR2Url = `https://files.localcooks.ca/${decodedPath}`;
 
-        console.log(`[R2 Images Proxy] Request for: ${pathParam} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'})`);
+        console.log(`[R2 Images Proxy] Request for: ${decodedPath} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'})`);
 
         // Generate a presigned URL
         const presignedUrl = await getPresignedUrl(fullR2Url); // uses 1 hour expiry by default

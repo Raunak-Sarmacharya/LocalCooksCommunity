@@ -2275,6 +2275,63 @@ function KitchenLicenseApprovalView() {
                             View License
                           </Button>
 
+                          {/* Kitchen Terms & Policies Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              if (!license.kitchenTermsUrl) {
+                                toast({
+                                  title: "No Terms Document",
+                                  description: "No kitchen terms & policies document has been uploaded for this location.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+
+                              try {
+                                const token = await auth.currentUser?.getIdToken();
+                                let viewUrl = license.kitchenTermsUrl;
+                                
+                                // For local/protected files, append auth token
+                                if (viewUrl.includes('/api/files/documents/')) {
+                                   if (viewUrl.includes('?')) {
+                                     viewUrl += `&token=${token}`;
+                                   } else {
+                                     viewUrl += `?token=${token}`;
+                                   }
+                                } 
+                                // If it's an R2 URL that needs presigned URL (documents require auth)
+                                else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
+                                  // Fetch presigned URL with authentication
+                                  const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(viewUrl)}`, {
+                                    method: 'GET',
+                                    headers: { 'Authorization': `Bearer ${token}` },
+                                    credentials: 'include',
+                                  });
+                                  if (response.ok) {
+                                    const data = await response.json();
+                                    viewUrl = data.url;
+                                  }
+                                }
+                                
+                                window.open(viewUrl, '_blank');
+                              } catch (error) {
+                                console.error("Error opening terms:", error);
+                                toast({
+                                  title: "Error",
+                                  description: "Failed to open terms document. Please try again.",
+                                  variant: "destructive"
+                                });
+                              }
+                            }}
+                            className={`inline-flex items-center gap-2 ${license.kitchenTermsUrl ? '' : 'opacity-50'}`}
+                            disabled={!license.kitchenTermsUrl}
+                          >
+                            <FileText className="h-4 w-4" />
+                            {license.kitchenTermsUrl ? 'View Terms' : 'No Terms'}
+                          </Button>
+
                           {license.kitchenLicenseExpiry && (
                             <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200">
                               <Calendar className="h-4 w-4 text-gray-500" />
@@ -2286,11 +2343,11 @@ function KitchenLicenseApprovalView() {
                             </div>
                           )}
 
-                          {license.kitchenLicenseUploadedAt && (
-                            <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-gray-50 rounded-md border border-gray-200">
-                              <Clock className="h-4 w-4 text-gray-500" />
-                              <span className="text-gray-600">Uploaded:</span>
-                              <span className="font-medium">{new Date(license.kitchenLicenseUploadedAt).toLocaleDateString()}</span>
+                          {license.kitchenTermsUploadedAt && (
+                            <div className="flex items-center gap-2 text-sm px-3 py-1.5 bg-blue-50 rounded-md border border-blue-200">
+                              <Clock className="h-4 w-4 text-blue-500" />
+                              <span className="text-blue-600">Terms:</span>
+                              <span className="font-medium text-blue-700">{new Date(license.kitchenTermsUploadedAt).toLocaleDateString()}</span>
                             </div>
                           )}
                         </div>

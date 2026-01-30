@@ -914,7 +914,7 @@ router.put("/chef/bookings/:id/cancel", requireChef, async (req: Request, res: R
                             const chefPhone = await getChefPhone(booking.chefId as number, pool);
 
                             // Import email functions
-                            const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../email.js');
+                            const { sendEmail, generateBookingCancellationEmail, generateBookingCancellationNotificationEmail } = await import('../email');
 
                             // Send email to chef
                             try {
@@ -1776,27 +1776,38 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         // Find booking by payment intent ID
         console.log(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
         
-        // First, check if booking exists with this payment intent (regardless of chef)
+        // Query by payment intent ID only, then verify chef ownership
         const [bookingByIntent] = await db
             .select()
             .from(kitchenBookings)
             .where(eq(kitchenBookings.paymentIntentId, paymentIntentId))
             .limit(1);
         
+        let booking = bookingByIntent;
+        
         if (bookingByIntent) {
             console.log(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
+            
+            // Verify chef ownership
+            if (bookingByIntent.chefId !== chefId) {
+                console.log(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
+                return res.status(403).json({ error: "This booking does not belong to you" });
+            }
+            
+            // Booking found and chef matches - return it with kitchen name
+            const [kitchen] = await db
+                .select({ name: kitchens.name })
+                .from(kitchens)
+                .where(eq(kitchens.id, bookingByIntent.kitchenId))
+                .limit(1);
+            
+            return res.json({
+                ...bookingByIntent,
+                kitchenName: kitchen?.name || 'Kitchen',
+            });
         } else {
             console.log(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
         }
-        
-        let [booking] = await db
-            .select()
-            .from(kitchenBookings)
-            .where(and(
-                eq(kitchenBookings.paymentIntentId, paymentIntentId),
-                eq(kitchenBookings.chefId, chefId)
-            ))
-            .limit(1);
 
         // FALLBACK: If booking doesn't exist but payment was successful, create it from session metadata
         // This handles cases where the webhook failed to process
@@ -1812,33 +1823,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                 return res.status(403).json({ error: "Session does not belong to this chef" });
             }
             
-            // Check if booking already exists (idempotency)
-            const [existingByIntent] = await db
-                .select()
-                .from(kitchenBookings)
-                .where(eq(kitchenBookings.paymentIntentId, paymentIntentId))
-                .limit(1);
-            
-            if (existingByIntent) {
-                // Booking exists - verify it belongs to this chef and return it
-                if (existingByIntent.chefId === chefId) {
-                    console.log(`[Fallback] Booking ${existingByIntent.id} found for chef ${chefId}, returning it`);
-                    const [kitchen] = await db
-                        .select({ name: kitchens.name })
-                        .from(kitchens)
-                        .where(eq(kitchens.id, existingByIntent.kitchenId))
-                        .limit(1);
-                    return res.json({
-                        ...existingByIntent,
-                        kitchenName: kitchen?.name || 'Kitchen',
-                    });
-                }
-                // Booking exists but for a different chef - shouldn't happen
-                console.log(`[Fallback] Booking ${existingByIntent.id} exists but chef_id=${existingByIntent.chefId} != requested chefId=${chefId}`);
-                return res.status(404).json({ error: "Booking not found for this chef" });
-            }
-            
-            // Create the booking from metadata
+            // Create the booking from metadata (webhook hasn't created it yet)
             const bookingDate = new Date(metadata.booking_date);
             const startTime = metadata.start_time;
             const endTime = metadata.end_time;

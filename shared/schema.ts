@@ -278,6 +278,9 @@ export const locations = pgTable("locations", {
   kitchenLicenseApprovedAt: timestamp("kitchen_license_approved_at"), // When license was approved/rejected
   kitchenLicenseFeedback: text("kitchen_license_feedback"), // Admin feedback on license
   kitchenLicenseExpiry: date("kitchen_license_expiry"), // Expiration date of the kitchen license
+  // Kitchen terms and policies (uploaded alongside license)
+  kitchenTermsUrl: text("kitchen_terms_url"), // URL to uploaded kitchen terms & policies document
+  kitchenTermsUploadedAt: timestamp("kitchen_terms_uploaded_at"), // When terms were uploaded
   description: text("description"), // Description of the location
   customOnboardingLink: text("custom_onboarding_link"), // Custom link for onboarding
   createdAt: timestamp("created_at").defaultNow().notNull(),

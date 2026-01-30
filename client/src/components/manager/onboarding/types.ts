@@ -20,6 +20,8 @@ export interface Location {
   kitchenLicenseApprovedAt?: string;
   kitchenLicenseFeedback?: string;
   kitchenLicenseExpiry?: string;
+  kitchenTermsUrl?: string;
+  kitchenTermsUploadedAt?: string;
 }
 
 export interface Kitchen {

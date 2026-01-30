@@ -293,7 +293,7 @@ router.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async
         
         // Try to use payment_transactions first (actual Stripe data)
         try {
-            const { getRevenueByDateFromTransactions } = await import('../services/revenue-service-v2.js');
+            const { getRevenueByDateFromTransactions } = await import('../services/revenue-service-v2');
             data = await getRevenueByDateFromTransactions(
                 managerId,
                 db,
@@ -304,7 +304,7 @@ router.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async
             // If payment_transactions returns empty, fallback to booking tables
             if (!data || data.length === 0) {
                 console.log('[Revenue Charts] payment_transactions empty, falling back to booking tables');
-                const { getRevenueByDate } = await import('../services/revenue-service.js');
+                const { getRevenueByDate } = await import('../services/revenue-service');
                 data = await getRevenueByDate(
                     managerId,
                     db,
@@ -317,7 +317,7 @@ router.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async
         } catch (v2Error) {
             // Fallback to legacy method if payment_transactions fails
             console.warn('[Revenue Charts] Falling back to booking tables:', v2Error);
-            const { getRevenueByDate } = await import('../services/revenue-service.js');
+            const { getRevenueByDate } = await import('../services/revenue-service');
             data = await getRevenueByDate(
                 managerId,
                 db,
@@ -816,7 +816,7 @@ router.post("/revenue/sync-stripe", requireFirebaseAuthWithUser, requireManager,
         console.log(`[Stripe Sync] Starting sync for manager ${managerId}...`);
 
         // First, backfill payment_transactions from existing bookings that don't have records
-        const { backfillPaymentTransactionsFromBookings } = await import('../services/payment-transactions-backfill.js');
+        const { backfillPaymentTransactionsFromBookings } = await import('../services/payment-transactions-backfill');
         const backfillResult = await backfillPaymentTransactionsFromBookings(managerId, db, { limit });
 
         console.log(`[Stripe Sync] Backfill complete:`, backfillResult);
@@ -2271,6 +2271,10 @@ router.get("/locations", requireFirebaseAuthWithUser, requireManager, async (req
             kitchenLicenseApprovedBy: (loc as any).kitchenLicenseApprovedBy || (loc as any).kitchen_license_approved_by || null,
             kitchenLicenseApprovedAt: (loc as any).kitchenLicenseApprovedAt || (loc as any).kitchen_license_approved_at || null,
             kitchenLicenseFeedback: (loc as any).kitchenLicenseFeedback || (loc as any).kitchen_license_feedback || null,
+            kitchenLicenseExpiry: (loc as any).kitchenLicenseExpiry || (loc as any).kitchen_license_expiry || null,
+            // Kitchen terms and policies fields
+            kitchenTermsUrl: (loc as any).kitchenTermsUrl || (loc as any).kitchen_terms_url || null,
+            kitchenTermsUploadedAt: (loc as any).kitchenTermsUploadedAt || (loc as any).kitchen_terms_uploaded_at || null,
         }));
 
         // Log to verify logoUrl is included in response
@@ -2303,8 +2307,12 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
             notificationPhone,
             kitchenLicenseUrl,
             kitchenLicenseStatus,
-            kitchenLicenseExpiry
+            kitchenLicenseExpiry,
+            kitchenTermsUrl
         } = req.body;
+
+        console.log('[POST /locations] Request body:', JSON.stringify(req.body, null, 2));
+        console.log('[POST /locations] kitchenTermsUrl:', kitchenTermsUrl);
 
         if (!name || !address) {
             return res.status(400).json({ error: "Name and address are required" });
@@ -2341,7 +2349,8 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
             notificationPhone: normalizedNotificationPhone,
             kitchenLicenseUrl: kitchenLicenseUrl || undefined,
             kitchenLicenseStatus: kitchenLicenseStatus || 'pending',
-            kitchenLicenseExpiry: kitchenLicenseExpiry || undefined
+            kitchenLicenseExpiry: kitchenLicenseExpiry || undefined,
+            kitchenTermsUrl: kitchenTermsUrl || undefined
         });
 
         // Map snake_case to camelCase for consistent API response
@@ -2390,7 +2399,8 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
             notificationPhone,
             kitchenLicenseUrl,
             kitchenLicenseStatus,
-            kitchenLicenseExpiry
+            kitchenLicenseExpiry,
+            kitchenTermsUrl
         } = req.body;
 
         const updates: any = {};
@@ -2437,6 +2447,15 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
         }
         if (kitchenLicenseExpiry !== undefined) {
             updates.kitchenLicenseExpiry = kitchenLicenseExpiry || null;
+        }
+
+        // Handle kitchen terms and policies
+        if (kitchenTermsUrl !== undefined) {
+            updates.kitchenTermsUrl = kitchenTermsUrl || null;
+            // Set uploaded_at timestamp when terms URL is provided
+            if (kitchenTermsUrl) {
+                updates.kitchenTermsUploadedAt = new Date();
+            }
         }
 
         console.log(`💾 Updating location ${locationId} with:`, updates);
