@@ -8162,6 +8162,9 @@ function normalizeImageUrl(url, req) {
   };
   if (url.startsWith("https://files.localcooks.ca/")) {
     const r2Path = url.replace("https://files.localcooks.ca/", "");
+    if (r2Path.startsWith("documents/") || r2Path.startsWith("documents%2F")) {
+      return url;
+    }
     const origin = getOrigin();
     return `${origin}/api/files/images/r2/${encodeURIComponent(r2Path)}`;
   }
@@ -21458,14 +21461,61 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         } catch (bookingError) {
           const errorMessage = bookingError instanceof Error ? bookingError.message : String(bookingError);
           const errorStack = bookingError instanceof Error ? bookingError.stack : void 0;
-          logger.error(`[Webhook] CRITICAL: Failed to create booking from session ${session.id}:`, {
-            error: errorMessage,
+          logger.error(`[Webhook] BookingService failed, attempting direct DB insert. Error: ${errorMessage}`, {
             stack: errorStack,
             kitchenId,
             chefId,
             paymentIntentId
           });
-          throw bookingError;
+          try {
+            const [directBooking] = await db.insert(kitchenBookings).values({
+              kitchenId,
+              chefId,
+              bookingDate,
+              startTime,
+              endTime,
+              status: "pending",
+              paymentStatus: "paid",
+              paymentIntentId,
+              specialNotes,
+              totalPrice: totalPriceCents.toString(),
+              serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
+              currency: "CAD",
+              selectedSlots,
+              storageItems: [],
+              equipmentItems: []
+            }).returning();
+            if (directBooking) {
+              booking = {
+                id: directBooking.id,
+                kitchenId: directBooking.kitchenId,
+                chefId: directBooking.chefId,
+                bookingDate: directBooking.bookingDate,
+                startTime: directBooking.startTime,
+                endTime: directBooking.endTime,
+                status: directBooking.status,
+                paymentStatus: directBooking.paymentStatus,
+                paymentIntentId: directBooking.paymentIntentId
+              };
+              logger.info(`[Webhook] Direct DB insert succeeded, booking ${directBooking.id} created`);
+            } else {
+              throw new Error("Direct DB insert returned no result");
+            }
+          } catch (directInsertError) {
+            const directErrorMessage = directInsertError instanceof Error ? directInsertError.message : String(directInsertError);
+            logger.error(`[Webhook] CRITICAL: Both booking service and direct insert failed for session ${session.id}:`, {
+              serviceError: errorMessage,
+              directError: directErrorMessage,
+              kitchenId,
+              chefId,
+              paymentIntentId
+            });
+            throw directInsertError;
+          }
+        }
+        if (!booking || !booking.id) {
+          logger.error(`[Webhook] CRITICAL: No booking was created for session ${session.id}`);
+          throw new Error("No booking was created");
         }
         logger.info(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
         const [verifiedBooking] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq28(kitchenBookings.id, booking.id)).limit(1);

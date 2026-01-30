@@ -36,6 +36,16 @@ export function normalizeImageUrl(url: string | null | undefined, req: Request):
     if (url.startsWith('https://files.localcooks.ca/')) {
         // Extract the path (e.g., "documents/221_file_1768267179125_cafeteria3.jpg")
         const r2Path = url.replace('https://files.localcooks.ca/', '');
+        
+        // IMPORTANT: Document URLs require authentication which browsers can't provide
+        // in direct requests (e.g., <img> tags). For documents, return the original URL
+        // and let the client handle it via presigned URL hooks.
+        // Only proxy public paths (kitchens/, public/) that don't require auth.
+        if (r2Path.startsWith('documents/') || r2Path.startsWith('documents%2F')) {
+            // Return original URL - client will use usePresignedDocumentUrl hook
+            return url;
+        }
+        
         const origin = getOrigin();
         return `${origin}/api/files/images/r2/${encodeURIComponent(r2Path)}`;
     }
