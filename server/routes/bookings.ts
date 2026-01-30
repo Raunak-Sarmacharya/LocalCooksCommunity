@@ -1774,6 +1774,21 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         }
 
         // Find booking by payment intent ID
+        console.log(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
+        
+        // First, check if booking exists with this payment intent (regardless of chef)
+        const [bookingByIntent] = await db
+            .select()
+            .from(kitchenBookings)
+            .where(eq(kitchenBookings.paymentIntentId, paymentIntentId))
+            .limit(1);
+        
+        if (bookingByIntent) {
+            console.log(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
+        } else {
+            console.log(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
+        }
+        
         let [booking] = await db
             .select()
             .from(kitchenBookings)
@@ -1799,13 +1814,27 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
             
             // Check if booking already exists (idempotency)
             const [existingByIntent] = await db
-                .select({ id: kitchenBookings.id })
+                .select()
                 .from(kitchenBookings)
                 .where(eq(kitchenBookings.paymentIntentId, paymentIntentId))
                 .limit(1);
             
             if (existingByIntent) {
+                // Booking exists - verify it belongs to this chef and return it
+                if (existingByIntent.chefId === chefId) {
+                    console.log(`[Fallback] Booking ${existingByIntent.id} found for chef ${chefId}, returning it`);
+                    const [kitchen] = await db
+                        .select({ name: kitchens.name })
+                        .from(kitchens)
+                        .where(eq(kitchens.id, existingByIntent.kitchenId))
+                        .limit(1);
+                    return res.json({
+                        ...existingByIntent,
+                        kitchenName: kitchen?.name || 'Kitchen',
+                    });
+                }
                 // Booking exists but for a different chef - shouldn't happen
+                console.log(`[Fallback] Booking ${existingByIntent.id} exists but chef_id=${existingByIntent.chefId} != requested chefId=${chefId}`);
                 return res.status(404).json({ error: "Booking not found for this chef" });
             }
             
