@@ -103,7 +103,7 @@ export async function getRevenueMetrics(
     const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service.js');
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate();
 
     // Debug: Check if there are any bookings for this manager
@@ -625,7 +625,7 @@ export async function getRevenueByLocation(
     const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service.js');
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate();
 
     // Query revenue by location
@@ -722,7 +722,7 @@ export async function getRevenueByDate(
     const endParam = end ? sql`${end}::date` : sql`CURRENT_DATE`;
 
     // Get service fee rate (for reference, but we use direct subtraction now)
-    const { getServiceFeeRate } = await import('./pricing-service.js');
+    const { getServiceFeeRate } = await import('./pricing-service');
     const serviceFeeRate = await getServiceFeeRate();
 
     // Query revenue by date
@@ -1013,7 +1013,7 @@ export async function getCompleteRevenueMetrics(
 
     // Try to use payment_transactions first (more accurate and faster)
     try {
-      const { getRevenueMetricsFromTransactions } = await import('./revenue-service-v2.js');
+      const { getRevenueMetricsFromTransactions } = await import('./revenue-service-v2');
       const metrics = await getRevenueMetricsFromTransactions(managerId, db, startDate, endDate, locationId);
       console.log('[Revenue Service] Using payment_transactions for revenue metrics');
       return metrics;

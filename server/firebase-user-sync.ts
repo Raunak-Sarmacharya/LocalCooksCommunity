@@ -128,7 +128,7 @@ export async function syncFirebaseUserToNeon(params: {
       console.log(`📧 SENDING WELCOME EMAIL for Google user: ${email}`);
       try {
         // Send welcome email for Google users since they don't get verification emails
-        const { sendEmail, generateWelcomeEmail } = await import('./email.js');
+        const { sendEmail, generateWelcomeEmail } = await import('./email');
         const emailContent = generateWelcomeEmail({
           fullName: displayName || email.split('@')[0],
           email
@@ -151,8 +151,8 @@ export async function syncFirebaseUserToNeon(params: {
 
     // Send notification to admins about new user registration
     try {
-      const { sendEmail, generateNewUserRegistrationAdminEmail } = await import('./email.js');
-      const { db } = await import('./db.js');
+      const { sendEmail, generateNewUserRegistrationAdminEmail } = await import('./email');
+      const { db } = await import('./db');
       const { users } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
       

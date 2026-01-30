@@ -10,6 +10,7 @@ export default function LocationStep() {
   const {
     locationForm,
     licenseForm,
+    termsForm,
     selectedLocation,
     handleNext,
     handleBack,
@@ -20,6 +21,14 @@ export default function LocationStep() {
     const file = e.target.files?.[0];
     if (file) {
       licenseForm.setFile(file);
+    }
+  };
+
+  const handleTermsFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      console.log('[LocationStep] Terms file selected:', file.name, file.size);
+      termsForm.setFile(file);
     }
   };
 
@@ -139,11 +148,69 @@ export default function LocationStep() {
         </div>
       </div>
 
+      {/* Kitchen Terms & Policies Section */}
+      <div className="border-t pt-4 mt-4">
+        <h4 className="text-sm font-semibold text-foreground mb-3">Kitchen Terms & Policies <span className="text-destructive">*</span></h4>
+
+        {selectedLocation?.kitchenTermsUrl && (
+          <Alert className="mb-4 border-blue-200 bg-blue-50 text-blue-800 [&>svg]:text-blue-600">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription>
+              <span className="font-medium">Terms Uploaded</span> - Document on file
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="space-y-4">
+          <div className="grid gap-2">
+            <Label htmlFor="terms-file">Kitchen Terms & Policies File <span className="text-destructive">*</span></Label>
+            <p className="text-xs text-muted-foreground">
+              Upload your kitchen house rules, usage policies, and terms that chefs must agree to.
+            </p>
+            <div className="border-2 border-dashed border-border rounded-lg p-4 mt-1 hover:bg-muted/50 transition-colors">
+              <input
+                type="file"
+                id="terms-file"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                onChange={handleTermsFileChange}
+                className="hidden"
+              />
+              <label htmlFor="terms-file" className="cursor-pointer block text-center w-full h-full">
+                {termsForm.file ? (
+                  <div className="flex items-center justify-center gap-2 text-sm text-foreground">
+                    <FileText className="h-4 w-4" />
+                    <span>{termsForm.file.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        termsForm.setFile(null);
+                      }}
+                      className="ml-2 h-6 px-2"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <span className="text-sm text-primary hover:text-primary/80 font-medium">Click to upload terms</span>
+                    <p className="text-xs text-muted-foreground mt-1">PDF, JPG, PNG, or DOC (max 10MB)</p>
+                  </>
+                )}
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
         showBack={!isFirstStep}
-        isNextDisabled={!locationForm.name || !locationForm.address || (!licenseForm.file && !selectedLocation?.kitchenLicenseUrl)}
+        isNextDisabled={!locationForm.name || !locationForm.address || (!licenseForm.file && !selectedLocation?.kitchenLicenseUrl) || (!termsForm.file && !selectedLocation?.kitchenTermsUrl)}
       />
     </div>
   );

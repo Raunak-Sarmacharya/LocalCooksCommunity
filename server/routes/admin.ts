@@ -700,6 +700,8 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
             kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
             kitchenLicenseApprovedAt: locations.kitchenLicenseApprovedAt,
+            kitchenTermsUrl: locations.kitchenTermsUrl,
+            kitchenTermsUploadedAt: locations.kitchenTermsUploadedAt,
             managerName: users.username,
             managerEmail: users.username // simplified for now
         })
@@ -724,6 +726,8 @@ router.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, asy
             kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
             kitchenLicenseFeedback: loc.kitchenLicenseFeedback,
             kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt,
+            kitchenTermsUrl: loc.kitchenTermsUrl,
+            kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt,
         }));
 
         res.json(licenses);

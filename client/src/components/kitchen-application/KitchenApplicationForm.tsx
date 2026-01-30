@@ -47,6 +47,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { usePresignedDocumentUrl } from "@/hooks/use-presigned-document-url";
+
+// Helper component for authenticated document links
+function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
+  const { url: presignedUrl } = usePresignedDocumentUrl(url);
+  
+  if (!url) return null;
+  
+  return (
+    <a 
+      href={presignedUrl || url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className={className}
+    >
+      {children}
+    </a>
+  );
+}
 
 // Base schema for kitchen application form (used as fallback)
 const baseKitchenApplicationSchema = z.object({
@@ -85,6 +104,7 @@ interface LocationInfo {
   address: string;
   city?: string;
   brandImageUrl?: string | null;
+  kitchenTermsUrl?: string | null;
 }
 
 interface KitchenApplicationFormProps {
@@ -1495,6 +1515,30 @@ export default function KitchenApplicationForm({
                   </div>
 
                   <div className="space-y-4">
+                    {/* Kitchen-specific Terms & Policies */}
+                    {location.kitchenTermsUrl && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-start gap-3">
+                          <FileText className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <h4 className="font-medium text-blue-900 mb-1">
+                              {location.name} Kitchen Terms & Policies
+                            </h4>
+                            <p className="text-sm text-blue-700 mb-2">
+                              Please review the kitchen-specific terms, house rules, and policies before proceeding.
+                            </p>
+                            <AuthenticatedDocumentLink
+                              url={location.kitchenTermsUrl}
+                              className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              <FileText className="h-4 w-4" />
+                              View Kitchen Terms & Policies →
+                            </AuthenticatedDocumentLink>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <FormField
                       control={form.control}
                       name="termsAgree"
@@ -1509,7 +1553,8 @@ export default function KitchenApplicationForm({
                           </FormControl>
                           <div className="space-y-1 leading-none">
                             <FormLabel className="text-sm text-gray-700 font-normal cursor-pointer">
-                              I agree to Local Cooks' kitchen usage policies and food safety standards,
+                              I agree to Local Cooks&apos; kitchen usage policies and food safety standards
+                              {location.kitchenTermsUrl && ", including the kitchen-specific terms and policies above"},
                               and understand that all chefs must maintain current food safety certifications.
                             </FormLabel>
                             <FormMessage />

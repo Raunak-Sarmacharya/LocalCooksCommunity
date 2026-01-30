@@ -40,6 +40,8 @@ interface Location {
     kitchenLicenseExpiry?: string;
     kitchenLicenseUploadedAt?: string;
     kitchenLicenseFeedback?: string;
+    kitchenTermsUrl?: string;
+    kitchenTermsUploadedAt?: string;
 }
 
 interface Kitchen {
@@ -89,6 +91,10 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
     const [isUploadingLicense, setIsUploadingLicense] = useState(false);
     const [licenseExpiryDate, setLicenseExpiryDate] = useState<string>(location.kitchenLicenseExpiry || '');
     const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+    // Kitchen terms state
+    const [termsFile, setTermsFile] = useState<File | null>(null);
+    const [isUploadingTerms, setIsUploadingTerms] = useState(false);
 
     // Sync state when location prop updates
     useEffect(() => {
@@ -223,6 +229,42 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
         }
     };
 
+    const handleTermsUpload = async (file: File) => {
+        setIsUploadingTerms(true);
+        try {
+            const currentFirebaseUser = auth.currentUser;
+            if (!currentFirebaseUser) throw new Error("Auth failed");
+            const token = await currentFirebaseUser.getIdToken();
+
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadRes = await fetch('/api/files/upload-file', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData,
+            });
+            if (!uploadRes.ok) throw new Error("Upload failed");
+            const { url } = await uploadRes.json();
+
+            const updateRes = await fetch(`/api/manager/locations/${location.id}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    kitchenTermsUrl: url,
+                }),
+            });
+            if (!updateRes.ok) throw new Error("Update failed");
+
+            queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+            toast({ title: "Terms Uploaded", description: "Kitchen terms & policies saved successfully." });
+            setTermsFile(null);
+        } catch (err: any) {
+            toast({ title: "Error", description: err.message, variant: "destructive" });
+        } finally {
+            setIsUploadingTerms(false);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="bg-card rounded-lg shadow-sm border border-border">
@@ -234,7 +276,7 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                 <div className="p-6">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 mb-6">
-                            <TabsTrigger value="setup">License</TabsTrigger>
+                            <TabsTrigger value="setup">Documents</TabsTrigger>
                             <TabsTrigger value="branding">Kitchen</TabsTrigger>
                             <TabsTrigger value="notifications">Notifications</TabsTrigger>
                             <TabsTrigger value="booking-rules">Rules</TabsTrigger>
@@ -314,6 +356,77 @@ export function LocationSettingsView({ location, onUpdateSettings, isUpdating }:
                                             </div>
                                         </div>
                                     )}
+                                </CardContent>
+                            </Card>
+
+                            {/* Kitchen Terms & Policies Card - shown alongside license */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg flex items-center gap-2">
+                                        <FileText className="h-5 w-5 text-primary" />
+                                        Kitchen Terms & Policies
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Upload your kitchen-specific terms, house rules, and policies that chefs must review when applying.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    {/* Show existing terms if uploaded */}
+                                    {location.kitchenTermsUrl && (
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                            <div className="flex items-center gap-2 font-medium text-blue-800 mb-2">
+                                                <CheckCircle className="h-5 w-5 text-blue-600" />
+                                                <span>Terms Document Uploaded</span>
+                                            </div>
+                                            <div className="text-sm text-blue-700">
+                                                <p>Document: <span className="font-medium">{getDocumentFilename(location.kitchenTermsUrl)}</span></p>
+                                                {location.kitchenTermsUploadedAt && (
+                                                    <p>Uploaded: <span className="font-medium">{new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}</span></p>
+                                                )}
+                                            </div>
+                                            <a 
+                                                href={location.kitchenTermsUrl} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="text-sm text-blue-600 hover:underline mt-2 inline-block"
+                                            >
+                                                View Document →
+                                            </a>
+                                        </div>
+                                    )}
+
+                                    {/* Upload section */}
+                                    <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+                                        <div className="space-y-2">
+                                            <Label>{location.kitchenTermsUrl ? 'Replace Terms Document' : 'Upload Terms Document'}</Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                Include house rules, equipment usage policies, liability waivers, and any other terms chefs should agree to.
+                                            </p>
+                                            <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
+                                                <input
+                                                    type="file"
+                                                    accept=".pdf,.jpg,.png,.doc,.docx"
+                                                    className="hidden"
+                                                    id="terms-upload-input"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) setTermsFile(file);
+                                                    }}
+                                                    disabled={isUploadingTerms}
+                                                />
+                                                <label htmlFor="terms-upload-input" className="cursor-pointer flex flex-col items-center gap-2">
+                                                    {isUploadingTerms ? <Loader2 className="h-8 w-8 animate-spin text-primary" /> : <Upload className="h-8 w-8 text-muted-foreground" />}
+                                                    <span className="text-sm font-medium">{termsFile ? termsFile.name : "Click to upload"}</span>
+                                                    <span className="text-xs text-muted-foreground">PDF, JPG, PNG, DOC (max 10MB)</span>
+                                                </label>
+                                                {termsFile && !isUploadingTerms && (
+                                                    <Button size="sm" className="mt-4" onClick={() => handleTermsUpload(termsFile)}>
+                                                        Upload Terms Document
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </CardContent>
                             </Card>
                         </TabsContent>

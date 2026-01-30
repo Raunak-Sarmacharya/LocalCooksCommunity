@@ -83,7 +83,9 @@ router.get('/public/locations', async (req: Request, res: Response) => {
                 minHourlyRate: minRate,
                 maxHourlyRate: maxRate,
                 canAcceptBookings,
-                isApproved
+                isApproved,
+                // Kitchen terms and policies for chef applications
+                kitchenTermsUrl: location.kitchenTermsUrl || null
             };
         });
 
@@ -280,7 +282,9 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             logo_url: logoUrl, // compatibility
             description: location.description || null,
             customOnboardingLink: location.customOnboardingLink || null,
-            kitchens: sanitizedKitchens
+            kitchens: sanitizedKitchens,
+            // Kitchen terms and policies for chef applications
+            kitchenTermsUrl: location.kitchenTermsUrl || null
         });
 
     } catch (error) {

@@ -162,7 +162,7 @@ router.post('/firebase/chef/kitchen-applications',
                     });
                 }
                 // Validate phone format using the required phone schema
-                const { phoneNumberSchema } = await import('@shared/phone-validation.js');
+                const { phoneNumberSchema } = await import('@shared/phone-validation');
                 const phoneValidation = phoneNumberSchema.safeParse(phoneInput);
                 if (!phoneValidation.success) {
                     const validationError = fromZodError(phoneValidation.error);
@@ -176,7 +176,7 @@ router.post('/firebase/chef/kitchen-applications',
             } else {
                 // Phone is optional - validate format only if provided
                 if (phoneInput && phoneInput !== '') {
-                    const { optionalPhoneNumberSchema } = await import('@shared/phone-validation.js');
+                    const { optionalPhoneNumberSchema } = await import('@shared/phone-validation');
                     const phoneValidation = optionalPhoneNumberSchema.safeParse(phoneInput);
                     if (!phoneValidation.success) {
                         const validationError = fromZodError(phoneValidation.error);
