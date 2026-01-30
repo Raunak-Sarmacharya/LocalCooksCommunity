@@ -2245,9 +2245,18 @@ function KitchenLicenseApprovalView() {
                                      viewUrl += `?token=${token}`;
                                    }
                                 } 
-                                // If it's an R2 URL that needs proxying
+                                // If it's an R2 URL that needs presigned URL (documents require auth)
                                 else if (viewUrl.includes('r2.cloudflarestorage.com') || viewUrl.includes('files.localcooks.ca')) {
-                                  viewUrl = `/api/files/r2-proxy?url=${encodeURIComponent(viewUrl)}`;
+                                  // Fetch presigned URL with authentication
+                                  const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(viewUrl)}`, {
+                                    method: 'GET',
+                                    headers: { 'Authorization': `Bearer ${token}` },
+                                    credentials: 'include',
+                                  });
+                                  if (response.ok) {
+                                    const data = await response.json();
+                                    viewUrl = data.url;
+                                  }
                                 }
                                 
                                 window.open(viewUrl, '_blank');

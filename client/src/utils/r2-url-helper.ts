@@ -10,6 +10,8 @@ function isPublicUrl(url: string): boolean {
  * Utility function to convert R2 URLs to proxy URLs for secure access
  * This ensures all R2 files are accessible even if the bucket is private
  * NOTE: For protected documents, use getAuthenticatedR2ProxyUrl instead
+ * IMPORTANT: Document URLs (documents/) require authentication - this function
+ * returns them as-is so they can be handled by usePresignedDocumentUrl hook
  */
 export function getR2ProxyUrl(fileUrl: string | null | undefined): string {
   if (!fileUrl) {
@@ -41,7 +43,12 @@ export function getR2ProxyUrl(fileUrl: string | null | undefined): string {
     fileUrl.includes('files.localcooks.ca');
 
   // If it's a private R2 URL or custom domain, convert to proxy URL
+  // EXCEPT for document URLs which require authentication
   if (isPrivateR2Url) {
+    // Document URLs require auth - return as-is for usePresignedDocumentUrl to handle
+    if (fileUrl.includes('/documents/') || fileUrl.includes('/documents%2F')) {
+      return fileUrl;
+    }
     return `/api/files/r2-proxy?url=${encodeURIComponent(fileUrl)}`;
   }
 
