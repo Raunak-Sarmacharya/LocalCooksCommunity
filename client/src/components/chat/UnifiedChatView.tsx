@@ -128,11 +128,11 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
           }
         }
 
-        // Fill in any missing location names
+        // Fill in any missing location names (only fetch if not already known)
         const locationPromises = conversations
           .filter(conv => {
             if (locations[conv.locationId]) return false;
-            if (locationNames[conv.locationId] && !locationNames[conv.locationId].startsWith('Unknown')) return false;
+            if (locationNames[conv.locationId] && !locationNames[conv.locationId].startsWith('Location #')) return false;
             if (failedLocationIds.current.has(conv.locationId)) return false;
             return true;
           })
@@ -143,19 +143,22 @@ export default function UnifiedChatView({ userId, role, initialConversationId }:
               });
               if (locationResponse.ok) {
                 const locationData = await locationResponse.json();
-                if (locationData?.location?.name) {
-                  locations[conv.locationId] = locationData.location.name;
+                // API returns name directly at root level, not nested under location
+                const locationName = locationData?.name || locationData?.location?.name;
+                if (locationName) {
+                  locations[conv.locationId] = locationName;
                 } else {
-                  locations[conv.locationId] = "Unknown Location (No Name)";
+                  locations[conv.locationId] = "Unknown Location";
                   failedLocationIds.current.add(conv.locationId);
                 }
               } else {
-                locations[conv.locationId] = "Unknown Location (Not Found)";
+                // Location not found - use a friendly fallback
+                locations[conv.locationId] = `Location #${conv.locationId}`;
                 failedLocationIds.current.add(conv.locationId);
               }
             } catch (error) {
               console.error(`Error fetching location ${conv.locationId}:`, error);
-              locations[conv.locationId] = "Unknown Location (Error)";
+              locations[conv.locationId] = `Location #${conv.locationId}`;
               failedLocationIds.current.add(conv.locationId);
             }
           });
