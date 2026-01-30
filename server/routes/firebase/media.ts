@@ -6,9 +6,10 @@ import { handleFileUpload } from '../../upload-handler';
 const router = Router();
 
 // 🔥 File Upload Endpoint (Firebase Auth, NO SESSIONS) - Uses Cloudflare R2
+// IMPORTANT: Auth middleware MUST run BEFORE multer to prevent consuming request body before auth check
 const handleUpload = [
-    upload.single('file'),
     requireFirebaseAuthWithUser,
+    upload.single('file'),
     handleFileUpload
 ];
 

@@ -1739,6 +1739,8 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
     }
 });
 // Get booking by Stripe session ID (for payment success page)
+// CRITICAL: This endpoint also serves as a FALLBACK if the webhook failed to create the booking
+// It will create the booking from the Stripe session metadata if payment was successful but booking doesn't exist
 router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Request, res: Response) => {
     try {
         const { sessionId } = req.params;
@@ -1772,7 +1774,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
         }
 
         // Find booking by payment intent ID
-        const [booking] = await db
+        let [booking] = await db
             .select()
             .from(kitchenBookings)
             .where(and(
@@ -1780,6 +1782,194 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                 eq(kitchenBookings.chefId, chefId)
             ))
             .limit(1);
+
+        // FALLBACK: If booking doesn't exist but payment was successful, create it from session metadata
+        // This handles cases where the webhook failed to process
+        if (!booking && session.payment_status === 'paid' && session.metadata?.type === 'kitchen_booking') {
+            console.log(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
+            
+            const metadata = session.metadata;
+            const kitchenIdFromMeta = parseInt(metadata.kitchen_id);
+            const chefIdFromMeta = parseInt(metadata.chef_id);
+            
+            // Verify the chef ID matches
+            if (chefIdFromMeta !== chefId) {
+                return res.status(403).json({ error: "Session does not belong to this chef" });
+            }
+            
+            // Check if booking already exists (idempotency)
+            const [existingByIntent] = await db
+                .select({ id: kitchenBookings.id })
+                .from(kitchenBookings)
+                .where(eq(kitchenBookings.paymentIntentId, paymentIntentId))
+                .limit(1);
+            
+            if (existingByIntent) {
+                // Booking exists but for a different chef - shouldn't happen
+                return res.status(404).json({ error: "Booking not found for this chef" });
+            }
+            
+            // Create the booking from metadata
+            const bookingDate = new Date(metadata.booking_date);
+            const startTime = metadata.start_time;
+            const endTime = metadata.end_time;
+            const specialNotes = metadata.special_notes || null;
+            const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
+            const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
+            const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
+            
+            console.log(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
+            
+            const newBooking = await bookingService.createKitchenBooking({
+                kitchenId: kitchenIdFromMeta,
+                chefId: chefIdFromMeta,
+                bookingDate,
+                startTime,
+                endTime,
+                selectedSlots,
+                status: "pending", // Awaiting manager approval
+                paymentStatus: "paid", // Payment already confirmed
+                paymentIntentId: paymentIntentId,
+                specialNotes,
+                selectedStorage,
+                selectedEquipmentIds,
+            });
+            
+            console.log(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
+            
+            // Create payment_transactions record
+            try {
+                const { createPaymentTransaction } = await import('../services/payment-transactions-service');
+                
+                const [kitchen] = await db
+                    .select({ locationId: kitchens.locationId })
+                    .from(kitchens)
+                    .where(eq(kitchens.id, kitchenIdFromMeta))
+                    .limit(1);
+                
+                if (kitchen) {
+                    const [location] = await db
+                        .select({ managerId: locations.managerId })
+                        .from(locations)
+                        .where(eq(locations.id, kitchen.locationId))
+                        .limit(1);
+                    
+                    if (location && location.managerId) {
+                        const chargeId = session.payment_intent && typeof session.payment_intent === 'object'
+                            ? (typeof session.payment_intent.latest_charge === 'string'
+                                ? session.payment_intent.latest_charge
+                                : session.payment_intent.latest_charge?.id)
+                            : undefined;
+                        
+                        await createPaymentTransaction({
+                            bookingId: newBooking.id,
+                            bookingType: "kitchen",
+                            chefId: chefIdFromMeta,
+                            managerId: location.managerId,
+                            amount: parseInt(metadata.booking_price_cents || "0"),
+                            baseAmount: parseInt(metadata.total_price_cents || "0") + parseInt(metadata.tax_cents || "0"),
+                            serviceFee: parseInt(metadata.platform_fee_cents || "0"),
+                            managerRevenue: parseInt(metadata.booking_price_cents || "0") - parseInt(metadata.platform_fee_cents || "0"),
+                            currency: "CAD",
+                            paymentIntentId,
+                            status: "succeeded",
+                            stripeStatus: "succeeded",
+                            metadata: {
+                                checkout_session_id: sessionId,
+                                booking_id: newBooking.id.toString(),
+                                created_via: "fallback_endpoint",
+                            },
+                        }, db);
+                        
+                        console.log(`[Fallback] Created payment_transactions for booking ${newBooking.id}`);
+                    }
+                }
+            } catch (ptError) {
+                console.warn(`[Fallback] Could not create payment_transactions:`, ptError);
+            }
+            
+            // Send manager notification
+            try {
+                const [kitchen] = await db
+                    .select({ name: kitchens.name, locationId: kitchens.locationId })
+                    .from(kitchens)
+                    .where(eq(kitchens.id, kitchenIdFromMeta))
+                    .limit(1);
+                
+                if (kitchen) {
+                    const [location] = await db
+                        .select({ 
+                            name: locations.name, 
+                            managerId: locations.managerId,
+                            notificationEmail: locations.notificationEmail,
+                            timezone: locations.timezone,
+                        })
+                        .from(locations)
+                        .where(eq(locations.id, kitchen.locationId))
+                        .limit(1);
+                    
+                    if (location && location.managerId) {
+                        const [chef] = await db
+                            .select({ username: users.username })
+                            .from(users)
+                            .where(eq(users.id, chefIdFromMeta))
+                            .limit(1);
+                        
+                        const chefName = chef?.username || "Chef";
+                        
+                        // Send manager email
+                        let managerEmailAddress = location.notificationEmail;
+                        if (!managerEmailAddress) {
+                            const [manager] = await db
+                                .select({ username: users.username })
+                                .from(users)
+                                .where(eq(users.id, location.managerId))
+                                .limit(1);
+                            managerEmailAddress = manager?.username;
+                        }
+                        
+                        if (managerEmailAddress) {
+                            const { sendEmail, generateBookingNotificationEmail } = await import('../email');
+                            const managerEmail = generateBookingNotificationEmail({
+                                managerEmail: managerEmailAddress,
+                                chefName,
+                                kitchenName: kitchen.name,
+                                bookingDate,
+                                startTime,
+                                endTime,
+                                specialNotes: specialNotes || undefined,
+                                timezone: location.timezone || "America/Edmonton",
+                                locationName: location.name,
+                            });
+                            await sendEmail(managerEmail);
+                            console.log(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
+                        }
+                        
+                        // Create in-app notification
+                        const { notificationService } = await import('../services/notification.service');
+                        await notificationService.notifyNewBooking({
+                            managerId: location.managerId,
+                            locationId: kitchen.locationId,
+                            bookingId: newBooking.id,
+                            chefName,
+                            kitchenName: kitchen.name,
+                            bookingDate: bookingDate.toISOString().split("T")[0],
+                            startTime,
+                            endTime,
+                        });
+                    }
+                }
+            } catch (notifyError) {
+                console.error(`[Fallback] Error sending notifications:`, notifyError);
+            }
+            
+            // Fetch the created booking
+            [booking] = await db
+                .select()
+                .from(kitchenBookings)
+                .where(eq(kitchenBookings.id, newBooking.id))
+                .limit(1);
+        }
 
         if (!booking) {
             return res.status(404).json({ error: "Booking not found for this session" });

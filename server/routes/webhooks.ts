@@ -23,12 +23,25 @@ const router = Router();
 
 // Stripe webhook handler for payment events
 router.post("/stripe", async (req: Request, res: Response) => {
+  // Log webhook receipt immediately for debugging
+  logger.info(`[Webhook] Received Stripe webhook request`);
+  
   try {
     const sig = req.headers["stripe-signature"];
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
+    // Log request details for debugging
+    logger.info(`[Webhook] Request details:`, {
+      hasSignature: !!sig,
+      hasWebhookSecret: !!webhookSecret,
+      bodyType: typeof req.body,
+      isBuffer: Buffer.isBuffer(req.body),
+      bodyLength: Buffer.isBuffer(req.body) ? req.body.length : (typeof req.body === 'string' ? req.body.length : JSON.stringify(req.body).length),
+    });
+
     if (!stripeSecretKey) {
+      logger.error("[Webhook] STRIPE_SECRET_KEY not configured");
       return res.status(500).json({ error: "Stripe not configured" });
     }
 
@@ -55,6 +68,8 @@ router.post("/stripe", async (req: Request, res: Response) => {
     const rawBody = Buffer.isBuffer(req.body) 
       ? req.body 
       : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+    
+    logger.info(`[Webhook] Raw body prepared, length: ${rawBody.length}`);
 
     // Verify webhook signature if secret is configured
     if (webhookSecret && sig) {
@@ -150,13 +165,18 @@ router.post("/stripe", async (req: Request, res: Response) => {
   }
 });
 
-// DEVELOPMENT ONLY: Manual webhook trigger for testing
+// Manual webhook trigger for syncing failed webhook deliveries
 // This endpoint allows triggering the checkout.session.completed handler manually
-// when Stripe webhooks can't reach localhost
+// when Stripe webhooks fail to reach the server or fail to process
+// In production, requires admin secret for security
 router.post("/stripe/manual-process-session", async (req: Request, res: Response) => {
-  // Only allow in development
+  // In production, require admin secret for security
   if (process.env.NODE_ENV === "production") {
-    return res.status(403).json({ error: "Not available in production" });
+    const adminSecret = req.headers['x-admin-secret'] || req.body.adminSecret;
+    const expectedSecret = process.env.ADMIN_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
+    if (!adminSecret || adminSecret !== expectedSecret) {
+      return res.status(403).json({ error: "Unauthorized - admin secret required" });
+    }
   }
 
   try {
@@ -408,26 +428,68 @@ async function handleCheckoutSessionCompleted(
         const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
         const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
 
-        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`);
-
-        // Create the booking with payment already confirmed
-        const { bookingService } = await import("../domains/bookings/booking.service");
-        const booking = await bookingService.createKitchenBooking({
-          kitchenId,
-          chefId,
-          bookingDate,
+        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`, {
+          sessionId: session.id,
+          paymentIntentId,
+          bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
-          selectedSlots,
-          status: "pending", // Awaiting manager approval
-          paymentStatus: "paid", // Payment already confirmed
-          paymentIntentId: paymentIntentId,
-          specialNotes,
-          selectedStorage,
-          selectedEquipmentIds,
+          selectedSlotsCount: selectedSlots.length,
+          selectedStorageCount: selectedStorage.length,
+          selectedEquipmentCount: selectedEquipmentIds.length,
         });
 
+        // Create the booking with payment already confirmed
+        let booking;
+        try {
+          const { bookingService } = await import("../domains/bookings/booking.service");
+          booking = await bookingService.createKitchenBooking({
+            kitchenId,
+            chefId,
+            bookingDate,
+            startTime,
+            endTime,
+            selectedSlots,
+            status: "pending", // Awaiting manager approval
+            paymentStatus: "paid", // Payment already confirmed
+            paymentIntentId: paymentIntentId,
+            specialNotes,
+            selectedStorage,
+            selectedEquipmentIds,
+          });
+          
+          if (!booking || !booking.id) {
+            logger.error(`[Webhook] CRITICAL: bookingService.createKitchenBooking returned invalid booking`, { booking, sessionId: session.id });
+            throw new Error("Booking creation returned invalid result");
+          }
+        } catch (bookingError: unknown) {
+          const errorMessage = bookingError instanceof Error ? bookingError.message : String(bookingError);
+          const errorStack = bookingError instanceof Error ? bookingError.stack : undefined;
+          logger.error(`[Webhook] CRITICAL: Failed to create booking from session ${session.id}:`, {
+            error: errorMessage,
+            stack: errorStack,
+            kitchenId,
+            chefId,
+            paymentIntentId,
+          });
+          throw bookingError;
+        }
+
         logger.info(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
+
+        // CRITICAL: Verify booking was actually persisted to database before creating payment_transactions
+        const [verifiedBooking] = await db
+          .select({ id: kitchenBookings.id })
+          .from(kitchenBookings)
+          .where(eq(kitchenBookings.id, booking.id))
+          .limit(1);
+        
+        if (!verifiedBooking) {
+          logger.error(`[Webhook] CRITICAL: Booking ${booking.id} was not persisted to database! Session: ${session.id}`);
+          throw new Error(`Booking ${booking.id} was not persisted to database`);
+        }
+        
+        logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
 
         // Create payment_transactions record with all Stripe data populated
         try {

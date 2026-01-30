@@ -7018,6 +7018,10 @@ var init_logger = __esm({
 });
 
 // server/services/notification.service.ts
+var notification_service_exports = {};
+__export(notification_service_exports, {
+  notificationService: () => notificationService
+});
 import { sql as sql3 } from "drizzle-orm";
 async function createNotification(params) {
   const {
@@ -8855,7 +8859,6 @@ var init_files = __esm({
     init_fileUpload();
     init_firebase_auth_middleware();
     init_user_service();
-    init_r2_storage();
     router12 = Router12();
     router12.post(
       "/upload-file",
@@ -8956,26 +8959,34 @@ var init_files = __esm({
         if (!pathParam) {
           return res.status(400).send("Missing path parameter");
         }
+        const isPublic = pathParam.includes("public/") || pathParam.includes("kitchens/");
+        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, path: ${pathParam}`);
+        if (!isPublic && !req.neonUser) {
+          console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${pathParam}`);
+          return res.status(401).send("Authentication required for protected files");
+        }
         const fullR2Url = `https://files.localcooks.ca/${pathParam}`;
+        console.log(`[R2 Images Proxy] Request for: ${pathParam} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"})`);
         const presignedUrl = await getPresignedUrl(fullR2Url);
         res.redirect(307, presignedUrl);
       } catch (error) {
-        console.error("[R2 Proxy] Error:", error);
+        console.error("[R2 Images Proxy] Error:", error);
         res.status(404).send("File not found or access denied");
       }
     });
-    router12.get("/r2-proxy", optionalFirebaseAuth, async (req, res) => {
+    router12.get("/r2-proxy", async (req, res) => {
       try {
         const { url } = req.query;
         if (!url || typeof url !== "string") {
           return res.status(400).send("Missing or invalid url parameter");
         }
         const isPublic = url.includes("/public/") || url.includes("/kitchens/");
+        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}`);
         if (!isPublic && !req.neonUser) {
           console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${url}`);
           return res.status(401).send("Authentication required for protected files");
         }
-        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, public: ${isPublic})`);
+        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
         const presignedUrl = await getPresignedUrl(url);
         res.redirect(307, presignedUrl);
       } catch (error) {
@@ -8988,18 +8999,19 @@ var init_files = __esm({
         res.status(500).send("Failed to proxy image");
       }
     });
-    router12.get("/r2-presigned", optionalFirebaseAuth, async (req, res) => {
+    router12.get("/r2-presigned", async (req, res) => {
       try {
         const { url } = req.query;
         if (!url || typeof url !== "string") {
           return res.status(400).json({ error: "Missing or invalid url parameter" });
         }
         const isPublic = url.includes("/public/") || url.includes("/kitchens/");
+        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}`);
         if (!isPublic && !req.neonUser) {
           console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
           return res.status(401).json({ error: "Not authenticated" });
         }
-        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, public: ${isPublic})`);
+        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
         const presignedUrl = await getPresignedUrl(url);
         return res.json({ url: presignedUrl });
       } catch (error) {
@@ -19033,6 +19045,168 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
+    router17.get("/chef/bookings/by-session/:sessionId", requireChef, async (req, res) => {
+      try {
+        const { sessionId } = req.params;
+        const chefId = req.neonUser.id;
+        if (!sessionId) {
+          return res.status(400).json({ error: "Session ID is required" });
+        }
+        const stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
+        if (!stripeSecretKey4) {
+          return res.status(500).json({ error: "Stripe configuration error" });
+        }
+        const Stripe5 = (await import("stripe")).default;
+        const stripe4 = new Stripe5(stripeSecretKey4, { apiVersion: "2025-12-15.clover" });
+        const session = await stripe4.checkout.sessions.retrieve(sessionId, {
+          expand: ["payment_intent"]
+        });
+        let paymentIntentId;
+        if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
+          paymentIntentId = session.payment_intent.id;
+        } else if (typeof session.payment_intent === "string") {
+          paymentIntentId = session.payment_intent;
+        }
+        if (!paymentIntentId) {
+          return res.status(404).json({ error: "Payment intent not found for session" });
+        }
+        let [booking] = await db.select().from(kitchenBookings).where(and17(
+          eq26(kitchenBookings.paymentIntentId, paymentIntentId),
+          eq26(kitchenBookings.chefId, chefId)
+        )).limit(1);
+        if (!booking && session.payment_status === "paid" && session.metadata?.type === "kitchen_booking") {
+          console.log(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
+          const metadata = session.metadata;
+          const kitchenIdFromMeta = parseInt(metadata.kitchen_id);
+          const chefIdFromMeta = parseInt(metadata.chef_id);
+          if (chefIdFromMeta !== chefId) {
+            return res.status(403).json({ error: "Session does not belong to this chef" });
+          }
+          const [existingByIntent] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq26(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
+          if (existingByIntent) {
+            return res.status(404).json({ error: "Booking not found for this chef" });
+          }
+          const bookingDate = new Date(metadata.booking_date);
+          const startTime = metadata.start_time;
+          const endTime = metadata.end_time;
+          const specialNotes = metadata.special_notes || null;
+          const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
+          const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
+          const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
+          console.log(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
+          const newBooking = await bookingService.createKitchenBooking({
+            kitchenId: kitchenIdFromMeta,
+            chefId: chefIdFromMeta,
+            bookingDate,
+            startTime,
+            endTime,
+            selectedSlots,
+            status: "pending",
+            // Awaiting manager approval
+            paymentStatus: "paid",
+            // Payment already confirmed
+            paymentIntentId,
+            specialNotes,
+            selectedStorage,
+            selectedEquipmentIds
+          });
+          console.log(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
+          try {
+            const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+            const [kitchen2] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq26(kitchens.id, kitchenIdFromMeta)).limit(1);
+            if (kitchen2) {
+              const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq26(locations.id, kitchen2.locationId)).limit(1);
+              if (location && location.managerId) {
+                const chargeId = session.payment_intent && typeof session.payment_intent === "object" ? typeof session.payment_intent.latest_charge === "string" ? session.payment_intent.latest_charge : session.payment_intent.latest_charge?.id : void 0;
+                await createPaymentTransaction2({
+                  bookingId: newBooking.id,
+                  bookingType: "kitchen",
+                  chefId: chefIdFromMeta,
+                  managerId: location.managerId,
+                  amount: parseInt(metadata.booking_price_cents || "0"),
+                  baseAmount: parseInt(metadata.total_price_cents || "0") + parseInt(metadata.tax_cents || "0"),
+                  serviceFee: parseInt(metadata.platform_fee_cents || "0"),
+                  managerRevenue: parseInt(metadata.booking_price_cents || "0") - parseInt(metadata.platform_fee_cents || "0"),
+                  currency: "CAD",
+                  paymentIntentId,
+                  status: "succeeded",
+                  stripeStatus: "succeeded",
+                  metadata: {
+                    checkout_session_id: sessionId,
+                    booking_id: newBooking.id.toString(),
+                    created_via: "fallback_endpoint"
+                  }
+                }, db);
+                console.log(`[Fallback] Created payment_transactions for booking ${newBooking.id}`);
+              }
+            }
+          } catch (ptError) {
+            console.warn(`[Fallback] Could not create payment_transactions:`, ptError);
+          }
+          try {
+            const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq26(kitchens.id, kitchenIdFromMeta)).limit(1);
+            if (kitchen2) {
+              const [location] = await db.select({
+                name: locations.name,
+                managerId: locations.managerId,
+                notificationEmail: locations.notificationEmail,
+                timezone: locations.timezone
+              }).from(locations).where(eq26(locations.id, kitchen2.locationId)).limit(1);
+              if (location && location.managerId) {
+                const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefIdFromMeta)).limit(1);
+                const chefName = chef?.username || "Chef";
+                let managerEmailAddress = location.notificationEmail;
+                if (!managerEmailAddress) {
+                  const [manager] = await db.select({ username: users.username }).from(users).where(eq26(users.id, location.managerId)).limit(1);
+                  managerEmailAddress = manager?.username;
+                }
+                if (managerEmailAddress) {
+                  const { sendEmail: sendEmail2, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+                  const managerEmail = generateBookingNotificationEmail3({
+                    managerEmail: managerEmailAddress,
+                    chefName,
+                    kitchenName: kitchen2.name,
+                    bookingDate,
+                    startTime,
+                    endTime,
+                    specialNotes: specialNotes || void 0,
+                    timezone: location.timezone || "America/Edmonton",
+                    locationName: location.name
+                  });
+                  await sendEmail2(managerEmail);
+                  console.log(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
+                }
+                const { notificationService: notificationService2 } = await Promise.resolve().then(() => (init_notification_service(), notification_service_exports));
+                await notificationService2.notifyNewBooking({
+                  managerId: location.managerId,
+                  locationId: kitchen2.locationId,
+                  bookingId: newBooking.id,
+                  chefName,
+                  kitchenName: kitchen2.name,
+                  bookingDate: bookingDate.toISOString().split("T")[0],
+                  startTime,
+                  endTime
+                });
+              }
+            }
+          } catch (notifyError) {
+            console.error(`[Fallback] Error sending notifications:`, notifyError);
+          }
+          [booking] = await db.select().from(kitchenBookings).where(eq26(kitchenBookings.id, newBooking.id)).limit(1);
+        }
+        if (!booking) {
+          return res.status(404).json({ error: "Booking not found for this session" });
+        }
+        const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq26(kitchens.id, booking.kitchenId)).limit(1);
+        res.json({
+          ...booking,
+          kitchenName: kitchen?.name || "Kitchen"
+        });
+      } catch (error) {
+        console.error("Error fetching booking by session:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch booking" });
+      }
+    });
     router17.get("/chef/bookings", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
@@ -21248,25 +21422,58 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
         const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
         const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
-        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`);
-        const { bookingService: bookingService2 } = await Promise.resolve().then(() => (init_booking_service(), booking_service_exports));
-        const booking = await bookingService2.createKitchenBooking({
-          kitchenId,
-          chefId,
-          bookingDate,
+        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`, {
+          sessionId: session.id,
+          paymentIntentId,
+          bookingDate: bookingDate.toISOString(),
           startTime,
           endTime,
-          selectedSlots,
-          status: "pending",
-          // Awaiting manager approval
-          paymentStatus: "paid",
-          // Payment already confirmed
-          paymentIntentId,
-          specialNotes,
-          selectedStorage,
-          selectedEquipmentIds
+          selectedSlotsCount: selectedSlots.length,
+          selectedStorageCount: selectedStorage.length,
+          selectedEquipmentCount: selectedEquipmentIds.length
         });
+        let booking;
+        try {
+          const { bookingService: bookingService2 } = await Promise.resolve().then(() => (init_booking_service(), booking_service_exports));
+          booking = await bookingService2.createKitchenBooking({
+            kitchenId,
+            chefId,
+            bookingDate,
+            startTime,
+            endTime,
+            selectedSlots,
+            status: "pending",
+            // Awaiting manager approval
+            paymentStatus: "paid",
+            // Payment already confirmed
+            paymentIntentId,
+            specialNotes,
+            selectedStorage,
+            selectedEquipmentIds
+          });
+          if (!booking || !booking.id) {
+            logger.error(`[Webhook] CRITICAL: bookingService.createKitchenBooking returned invalid booking`, { booking, sessionId: session.id });
+            throw new Error("Booking creation returned invalid result");
+          }
+        } catch (bookingError) {
+          const errorMessage = bookingError instanceof Error ? bookingError.message : String(bookingError);
+          const errorStack = bookingError instanceof Error ? bookingError.stack : void 0;
+          logger.error(`[Webhook] CRITICAL: Failed to create booking from session ${session.id}:`, {
+            error: errorMessage,
+            stack: errorStack,
+            kitchenId,
+            chefId,
+            paymentIntentId
+          });
+          throw bookingError;
+        }
         logger.info(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
+        const [verifiedBooking] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq28(kitchenBookings.id, booking.id)).limit(1);
+        if (!verifiedBooking) {
+          logger.error(`[Webhook] CRITICAL: Booking ${booking.id} was not persisted to database! Session: ${session.id}`);
+          throw new Error(`Booking ${booking.id} was not persisted to database`);
+        }
+        logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
         try {
           const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
           const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
@@ -22127,11 +22334,20 @@ var init_webhooks = __esm({
     init_notification_service();
     router21 = Router21();
     router21.post("/stripe", async (req, res) => {
+      logger.info(`[Webhook] Received Stripe webhook request`);
       try {
         const sig = req.headers["stripe-signature"];
         const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
         const stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
+        logger.info(`[Webhook] Request details:`, {
+          hasSignature: !!sig,
+          hasWebhookSecret: !!webhookSecret,
+          bodyType: typeof req.body,
+          isBuffer: Buffer.isBuffer(req.body),
+          bodyLength: Buffer.isBuffer(req.body) ? req.body.length : typeof req.body === "string" ? req.body.length : JSON.stringify(req.body).length
+        });
         if (!stripeSecretKey4) {
+          logger.error("[Webhook] STRIPE_SECRET_KEY not configured");
           return res.status(500).json({ error: "Stripe not configured" });
         }
         const stripe4 = new Stripe4(stripeSecretKey4, {
@@ -22149,10 +22365,12 @@ var init_webhooks = __esm({
           );
         }
         let event;
+        const rawBody = Buffer.isBuffer(req.body) ? req.body : typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+        logger.info(`[Webhook] Raw body prepared, length: ${rawBody.length}`);
         if (webhookSecret && sig) {
           try {
             event = stripe4.webhooks.constructEvent(
-              req.body,
+              rawBody,
               sig,
               webhookSecret
             );
@@ -22161,7 +22379,9 @@ var init_webhooks = __esm({
             return res.status(400).json({ error: `Webhook Error: ${err.message}` });
           }
         } else {
-          event = req.body;
+          const bodyStr = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : req.body;
+          event = typeof bodyStr === "string" ? JSON.parse(bodyStr) : bodyStr;
+          logger.warn("\u26A0\uFE0F Processing webhook without signature verification (development mode)");
         }
         const webhookEventId = event.id;
         switch (event.type) {
@@ -22229,6 +22449,43 @@ var init_webhooks = __esm({
       } catch (err) {
         logger.error("Unhandled webhook error:", err);
         return errorResponse(res, err);
+      }
+    });
+    router21.post("/stripe/manual-process-session", async (req, res) => {
+      if (process.env.NODE_ENV === "production") {
+        const adminSecret = req.headers["x-admin-secret"] || req.body.adminSecret;
+        const expectedSecret = process.env.ADMIN_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
+        if (!adminSecret || adminSecret !== expectedSecret) {
+          return res.status(403).json({ error: "Unauthorized - admin secret required" });
+        }
+      }
+      try {
+        const { sessionId } = req.body;
+        if (!sessionId) {
+          return res.status(400).json({ error: "sessionId is required" });
+        }
+        const stripeSecretKey4 = process.env.STRIPE_SECRET_KEY;
+        if (!stripeSecretKey4) {
+          return res.status(500).json({ error: "Stripe not configured" });
+        }
+        const stripe4 = new Stripe4(stripeSecretKey4, {
+          apiVersion: "2025-12-15.clover"
+        });
+        const session = await stripe4.checkout.sessions.retrieve(sessionId, {
+          expand: ["payment_intent"]
+        });
+        logger.info(`[Manual Webhook] Processing session ${sessionId}, payment_status: ${session.payment_status}`);
+        await handleCheckoutSessionCompleted(session, `manual_${Date.now()}`);
+        res.json({
+          success: true,
+          message: "Session processed successfully",
+          sessionId,
+          paymentStatus: session.payment_status,
+          metadata: session.metadata
+        });
+      } catch (err) {
+        logger.error("Error in manual session processing:", err);
+        return res.status(500).json({ error: err.message });
       }
     });
     webhooks_default = router21;
@@ -24174,8 +24431,8 @@ async function handleFileUpload(req, res) {
 // server/routes/firebase/media.ts
 var router4 = Router4();
 var handleUpload = [
-  upload.single("file"),
   requireFirebaseAuthWithUser,
+  upload.single("file"),
   handleFileUpload
 ];
 router4.post("/upload", ...handleUpload);
@@ -25914,6 +26171,7 @@ function serveStatic(app2) {
 // server/index.ts
 var app = express3();
 app.set("env", process.env.NODE_ENV || "development");
+app.post("/api/webhooks/stripe", express3.raw({ type: "application/json" }));
 app.use(express3.json({ limit: "12mb" }));
 app.use(express3.urlencoded({ limit: "12mb", extended: true }));
 initializeFirebaseAdmin();

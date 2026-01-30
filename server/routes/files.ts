@@ -1,15 +1,10 @@
-
 import express, { Router, Request, Response } from "express";
 import path from "path";
 import fs from "fs";
-import { getPresignedUrl } from "../r2-storage"; // Used by lines 120-169 logic
-import { upload, uploadToBlob, getFileUrl } from "../fileUpload";
-import { optionalFirebaseAuth, requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
-import { storage } from "../storage";
+import { getPresignedUrl, isR2Configured } from "../r2-storage";
+import { upload, uploadToBlob } from "../fileUpload";
+import { optionalFirebaseAuth } from "../firebase-auth-middleware";
 import { userService } from "../domains/users/user.service";
-import * as admin from "firebase-admin";
-import { getPresignedUrl as getPresignedUrlR2, isR2Configured } from "../r2-storage"; // Renamed to avoid collision with prev import if needed, or just use one.
-// Both imports are same function.
 
 const router = Router();
 
@@ -154,6 +149,7 @@ router.post("/images/presigned-url", optionalFirebaseAuth, async (req: Request, 
 
 // R2 Proxy Endpoint (For development/local use with normalizeImageUrl)
 // Handles requests like /api/files/images/r2/documents%2Ffilename.jpg
+// Note: optionalFirebaseAuth is already applied globally in routes.ts
 router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
     try {
         const pathParam = req.params.path;
@@ -161,11 +157,23 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
             return res.status(400).send("Missing path parameter");
         }
 
+        // SECURITY CHECK:
+        // If the file is in 'public/' or 'kitchens/' folder, allow access without auth
+        // If it is in 'documents/' or other protected folders, require authentication
+        const isPublic = pathParam.includes('public/') || pathParam.includes('kitchens/');
+
+        // Debug logging for auth issues
+        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}, path: ${pathParam}`);
+
+        if (!isPublic && !req.neonUser) {
+            console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${pathParam}`);
+            return res.status(401).send("Authentication required for protected files");
+        }
+
         // Reconstruct the original R2 custom domain URL to satisfy getPresignedUrl logic
         const fullR2Url = `https://files.localcooks.ca/${pathParam}`;
 
-        // Only log in development to reduce noise, or if strict logging needed
-        // console.log(`[R2 Proxy] Proxying path: ${pathParam} -> ${fullR2Url}`);
+        console.log(`[R2 Images Proxy] Request for: ${pathParam} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'})`);
 
         // Generate a presigned URL
         const presignedUrl = await getPresignedUrl(fullR2Url); // uses 1 hour expiry by default
@@ -173,14 +181,14 @@ router.get("/images/r2/:path(*)", async (req: Request, res: Response) => {
         // Redirect the client to the presigned URL
         res.redirect(307, presignedUrl);
     } catch (error) {
-        console.error("[R2 Proxy] Error:", error);
+        console.error("[R2 Images Proxy] Error:", error);
         res.status(404).send("File not found or access denied");
     }
 });
 
 // R2 Proxy Endpoint (Legacy/Simple)
-// Uses optionalFirebaseAuth to support both authenticated and public access
-router.get("/r2-proxy", optionalFirebaseAuth, async (req: Request, res: Response) => {
+// Note: optionalFirebaseAuth is already applied globally in routes.ts
+router.get("/r2-proxy", async (req: Request, res: Response) => {
     try {
         const { url } = req.query;
 
@@ -193,12 +201,15 @@ router.get("/r2-proxy", optionalFirebaseAuth, async (req: Request, res: Response
         // If it is in 'documents/' or other protected folders, require authentication
         const isPublic = url.includes('/public/') || url.includes('/kitchens/');
 
+        // Debug logging for auth issues
+        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}`);
+
         if (!isPublic && !req.neonUser) {
             console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${url}`);
             return res.status(401).send("Authentication required for protected files");
         }
 
-        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, public: ${isPublic})`);
+        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
 
         // Generate a presigned URL (valid for 1 hour)
         const presignedUrl = await getPresignedUrl(url);
@@ -219,8 +230,8 @@ router.get("/r2-proxy", optionalFirebaseAuth, async (req: Request, res: Response
 });
 
 // Get Presigned URL Endpoint (Legacy/Simple)
-// Uses optionalFirebaseAuth to support both authenticated and public access
-router.get("/r2-presigned", optionalFirebaseAuth, async (req: Request, res: Response) => {
+// Note: optionalFirebaseAuth is already applied globally in routes.ts, no need to apply again
+router.get("/r2-presigned", async (req: Request, res: Response) => {
     try {
         const { url } = req.query;
 
@@ -233,12 +244,15 @@ router.get("/r2-presigned", optionalFirebaseAuth, async (req: Request, res: Resp
         // If it is in 'documents/' or other protected folders, require authentication
         const isPublic = url.includes('/public/') || url.includes('/kitchens/');
 
+        // Debug logging for auth issues
+        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || 'none'}, role: ${req.neonUser?.role || 'none'}, isPublic: ${isPublic}`);
+
         if (!isPublic && !req.neonUser) {
             console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
             return res.status(401).json({ error: "Not authenticated" });
         }
 
-        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, public: ${isPublic})`);
+        console.log(`[R2 Presigned] Request for: ${url} (user: ${req.neonUser?.id || 'anonymous'}, role: ${req.neonUser?.role || 'none'}, public: ${isPublic})`);
 
         // Generate a presigned URL (valid for 1 hour)
         const presignedUrl = await getPresignedUrl(url);
