@@ -105,69 +105,10 @@ router.post("/bookings/checkout", async (req: Request, res: Response) => {
             },
         });
 
-        // Save transaction to database (legacy table)
-        const { createTransaction } = await import('../services/stripe-checkout-transactions-service');
-        await createTransaction(
-            {
-                bookingId,
-                stripeSessionId: checkoutSession.sessionId,
-                customerEmail,
-                bookingAmountCents: feeCalculation.bookingPriceInCents,
-                platformFeePercentageCents: feeCalculation.percentageFeeInCents,
-                platformFeeFlatCents: feeCalculation.flatFeeInCents,
-                totalPlatformFeeCents: feeCalculation.totalPlatformFeeInCents,
-                totalCustomerChargedCents: feeCalculation.totalChargeInCents,
-                managerReceivesCents: feeCalculation.managerReceivesInCents, // Manager receives booking minus platform fee
-                metadata: {
-                    booking_id: bookingId.toString(),
-                    kitchen_id: (booking.kitchenId || '').toString(),
-                    manager_account_id: managerStripeAccountId,
-                },
-            },
-            db
-        );
-
-        // Also create payment_transactions record for accurate revenue tracking
-        // This record will be updated with actual Stripe fees when payment succeeds
-        try {
-            const { createPaymentTransaction } = await import('../services/payment-transactions-service');
-            
-            // Get manager ID and chef ID from booking
-            const [bookingDetails] = await db
-                .select({
-                    chefId: kitchenBookings.chefId,
-                    managerId: locations.managerId,
-                })
-                .from(kitchenBookings)
-                .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
-                .innerJoin(locations, eq(kitchens.locationId, locations.id))
-                .where(eq(kitchenBookings.id, bookingId))
-                .limit(1);
-
-            if (bookingDetails) {
-                await createPaymentTransaction({
-                    bookingId,
-                    bookingType: 'kitchen',
-                    chefId: bookingDetails.chefId,
-                    managerId: bookingDetails.managerId,
-                    amount: feeCalculation.totalChargeInCents,
-                    baseAmount: feeCalculation.bookingPriceInCents,
-                    serviceFee: feeCalculation.totalPlatformFeeInCents,
-                    managerRevenue: feeCalculation.managerReceivesInCents,
-                    currency: 'CAD',
-                    paymentIntentId: undefined, // Will be set when checkout completes
-                    status: 'pending',
-                    metadata: {
-                        checkout_session_id: checkoutSession.sessionId,
-                        booking_id: bookingId.toString(),
-                    },
-                }, db);
-                console.log(`[Checkout] Created payment_transactions record for booking ${bookingId}`);
-            }
-        } catch (ptError) {
-            // Don't fail checkout if payment_transactions creation fails
-            console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
-        }
+        // DEPRECATED: This legacy endpoint expects booking to already exist
+        // The new enterprise-grade flow is /chef/bookings/checkout which creates booking in webhook
+        // payment_transactions will be created in webhook when payment succeeds
+        console.warn(`[DEPRECATED] Legacy /bookings/checkout endpoint used for booking ${bookingId}`);
 
         // Return response
         res.json({
@@ -472,8 +413,11 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
         // Get base URL for success/cancel URLs
         const baseUrl = getBaseUrl(req);
 
-        // Create Stripe Checkout session (same pattern as kitchen bookings)
-        // Customer pays: base + tax. Platform fee is deducted from manager's share.
+        // ENTERPRISE-GRADE: Do NOT create pending_storage_extensions or payment_transactions here
+        // These will be created in webhook when payment succeeds
+        // This follows Stripe's recommended pattern and eliminates orphan records from abandoned checkouts
+
+        // Create Stripe Checkout session with all extension data in metadata
         const { createCheckoutSession } = await import('../services/stripe-checkout-service');
 
         const checkoutSession = await createCheckoutSession({
@@ -481,7 +425,7 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
             platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
-            bookingId: id, // Using storage booking ID
+            bookingId: id, // Using storage booking ID for legacy compatibility
             currency: 'cad',
             successUrl: `${baseUrl}/dashboard?storage_extended=true&storage_booking_id=${id}`,
             cancelUrl: `${baseUrl}/dashboard?storage_extension_cancelled=true&storage_booking_id=${id}`,
@@ -495,56 +439,17 @@ router.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async 
                 chef_id: req.neonUser!.id.toString(),
                 kitchen_id: kitchen.id.toString(),
                 location_id: location.id.toString(),
+                manager_id: location.managerId.toString(),
+                extension_base_price_cents: extensionBasePriceCents.toString(),
+                extension_service_fee_cents: feeCalculation.totalPlatformFeeInCents.toString(),
+                extension_total_price_cents: totalWithTaxCents.toString(),
+                manager_receives_cents: feeCalculation.managerReceivesInCents.toString(),
                 tax_cents: extensionTaxCents.toString(),
                 tax_rate_percent: taxRatePercent.toString(),
             },
         });
 
-        // Store pending extension in database for webhook to process
-        // We'll update the booking when payment succeeds via webhook
-        const pendingExtension = await bookingService.createPendingStorageExtension({
-            storageBookingId: id,
-            newEndDate: newEndDateObj,
-            extensionDays,
-            extensionBasePriceCents: extensionBasePriceCents,
-            extensionServiceFeeCents: feeCalculation.totalPlatformFeeInCents,
-            extensionTotalPriceCents: totalWithTaxCents,
-            stripeSessionId: checkoutSession.sessionId,
-            status: 'pending',
-        });
-
-        // Create payment_transactions record for accurate revenue tracking
-        // Note: We skip the legacy 'transactions' table for storage extensions because it has
-        // a foreign key constraint to kitchen_bookings. payment_transactions supports all booking types.
-        try {
-            const { createPaymentTransaction } = await import('../services/payment-transactions-service');
-            await createPaymentTransaction({
-                bookingId: id,
-                bookingType: 'storage',
-                chefId: req.neonUser!.id,
-                managerId: location.managerId,
-                amount: totalWithTaxCents,
-                baseAmount: extensionBasePriceCents,
-                serviceFee: feeCalculation.totalPlatformFeeInCents,
-                managerRevenue: feeCalculation.managerReceivesInCents,
-                currency: 'CAD',
-                paymentIntentId: undefined, // Will be set when checkout completes
-                status: 'pending',
-                metadata: {
-                    checkout_session_id: checkoutSession.sessionId,
-                    storage_booking_id: id.toString(),
-                    storage_extension_id: pendingExtension.id.toString(),
-                    extension_days: extensionDays.toString(),
-                    new_end_date: newEndDateObj.toISOString(),
-                    tax_cents: extensionTaxCents.toString(),
-                    tax_rate_percent: taxRatePercent.toString(),
-                },
-            }, db);
-            console.log(`[Storage Extension Checkout] Created payment_transactions record for storage booking ${id}, extension ${pendingExtension.id}`);
-        } catch (ptError) {
-            // Don't fail checkout if payment_transactions creation fails
-            console.warn(`[Storage Extension Checkout] Could not create payment_transactions record:`, ptError);
-        }
+        console.log(`[Storage Extension Checkout] Created pending checkout session ${checkoutSession.sessionId} - extension will be created in webhook`);
 
         // Return response (consistent with kitchen bookings - shows base + tax, not platform fee)
         res.json({
@@ -1490,8 +1395,24 @@ router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Re
         const chefEmail = chef.username;
 
         // Calculate total price
+        // IMPORTANT: When staggered slots are selected, use slot count for pricing
+        // not the duration from startTime to endTime (which would overcharge)
         const kitchenPricing = await calculateKitchenBookingPrice(kitchenId, startTime, endTime);
-        let totalPriceCents = kitchenPricing.totalPriceCents;
+        
+        let totalPriceCents: number;
+        let effectiveDurationHours: number;
+        
+        if (selectedSlots && Array.isArray(selectedSlots) && selectedSlots.length > 0) {
+            // Staggered slots: price based on number of slots (each slot = 1 hour)
+            const minimumBookingHours = kitchenDetails.minimumBookingHours || 1;
+            effectiveDurationHours = Math.max(selectedSlots.length, minimumBookingHours);
+            totalPriceCents = Math.round(kitchenPricing.hourlyRateCents * effectiveDurationHours);
+            console.log(`[Checkout] Staggered slots pricing: ${selectedSlots.length} slots, effective ${effectiveDurationHours} hours, $${(totalPriceCents / 100).toFixed(2)}`);
+        } else {
+            // Contiguous booking: use standard duration calculation
+            effectiveDurationHours = kitchenPricing.durationHours;
+            totalPriceCents = kitchenPricing.totalPriceCents;
+        }
 
         // Calculate storage add-ons
         const storageIds: number[] = [];
@@ -1543,20 +1464,9 @@ router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Re
         const taxCents = Math.round((totalPriceCents * taxRatePercent) / 100);
         const totalWithTaxCents = totalPriceCents + taxCents;
 
-        // Create booking with pending_payment status
-        const booking = await bookingService.createKitchenBooking({
-            kitchenId,
-            chefId,
-            bookingDate: bookingDateObj,
-            startTime,
-            endTime,
-            selectedSlots: selectedSlots || [], // Pass discrete time slots
-            status: 'pending',
-            paymentStatus: 'pending',
-            specialNotes,
-            selectedStorageIds: storageIds,
-            selectedEquipmentIds: selectedEquipmentIds || []
-        });
+        // ENTERPRISE-GRADE: Do NOT create booking here
+        // Booking will be created in webhook when payment succeeds
+        // This follows Stripe's recommended pattern and eliminates orphan bookings
 
         // Calculate fees for Stripe Checkout
         const { calculateCheckoutFeesAsync } = await import('../services/stripe-checkout-fee-service');
@@ -1565,55 +1475,41 @@ router.post("/chef/bookings/checkout", requireChef, async (req: Request, res: Re
         // Get base URL for success/cancel URLs
         const baseUrl = getBaseUrl(req);
 
-        // Create Stripe Checkout session
-        const { createCheckoutSession } = await import('../services/stripe-checkout-service');
-        const checkoutSession = await createCheckoutSession({
+        // Create Stripe Checkout session with booking data in metadata
+        // Booking will be created from this metadata in the webhook
+        const { createPendingCheckoutSession } = await import('../services/stripe-checkout-service');
+        const checkoutSession = await createPendingCheckoutSession({
             bookingPriceInCents: totalWithTaxCents,
             platformFeeInCents: feeCalculation.totalPlatformFeeInCents,
             managerStripeAccountId,
             customerEmail: chefEmail,
-            bookingId: booking.id,
             currency: 'cad',
-            successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}&booking_id=${booking.id}`,
-            cancelUrl: `${baseUrl}/booking-cancel?booking_id=${booking.id}`,
-            metadata: {
-                booking_id: booking.id.toString(),
-                kitchen_id: kitchenId.toString(),
-                chef_id: chefId.toString(),
-                type: 'kitchen_booking',
+            successUrl: `${baseUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${baseUrl}/dashboard?tab=kitchens`,
+            bookingData: {
+                kitchenId,
+                chefId,
+                bookingDate: bookingDateObj.toISOString(),
+                startTime,
+                endTime,
+                selectedSlots: selectedSlots || [],
+                specialNotes,
+                selectedStorage: selectedStorage || [],
+                selectedEquipmentIds: selectedEquipmentIds || [],
+                totalPriceCents,
+                taxCents,
+                hourlyRateCents: kitchenPricing.hourlyRateCents,
+                durationHours: effectiveDurationHours, // Use effective duration (slot count for staggered)
             },
         });
 
-        // Create payment_transactions record
-        try {
-            const { createPaymentTransaction } = await import('../services/payment-transactions-service');
-            await createPaymentTransaction({
-                bookingId: booking.id,
-                bookingType: 'kitchen',
-                chefId,
-                managerId: (location as any).managerId,
-                amount: feeCalculation.totalChargeInCents,
-                baseAmount: totalWithTaxCents,
-                serviceFee: feeCalculation.totalPlatformFeeInCents,
-                managerRevenue: feeCalculation.managerReceivesInCents,
-                currency: 'CAD',
-                paymentIntentId: undefined,
-                status: 'pending',
-                metadata: {
-                    checkout_session_id: checkoutSession.sessionId,
-                    booking_id: booking.id.toString(),
-                },
-            }, db);
-            console.log(`[Checkout] Created payment_transactions record for booking ${booking.id}`);
-        } catch (ptError) {
-            console.warn(`[Checkout] Could not create payment_transactions record:`, ptError);
-        }
+        console.log(`[Checkout] Created pending checkout session ${checkoutSession.sessionId} - booking will be created in webhook`);
 
         // Return checkout URL for redirect
+        // Note: No bookingId returned since booking doesn't exist yet
         res.json({
             sessionUrl: checkoutSession.sessionUrl,
             sessionId: checkoutSession.sessionId,
-            bookingId: booking.id,
             booking: {
                 price: totalWithTaxCents / 100,
                 platformFee: feeCalculation.totalPlatformFeeInCents / 100,
@@ -1752,7 +1648,7 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
             paymentStatus: paymentIntentId ? 'paid' : 'pending',
             paymentIntentId,
             specialNotes,
-            selectedStorageIds: storageIds,
+            selectedStorage: selectedStorage || [], // Pass storage with explicit dates
             selectedEquipmentIds: selectedEquipmentIds || []
         });
 
@@ -1809,9 +1705,11 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
 
             if (chef && kitchen) {
                 // Send booking request email to chef (pending approval)
-                const { sendEmail, generateBookingRequestEmail, generateBookingNotificationEmail } = await import('../email');
+                const { sendEmail, generateBookingRequestEmail } = await import('../email');
 
                 // Send "Booking Request Received" email to chef (not confirmation - that comes when manager approves)
+                // NOTE: This is sent immediately so chef knows their booking request was received
+                // Manager notification is sent ONLY after payment completes (via webhook)
                 const chefEmail = generateBookingRequestEmail({
                     chefEmail: chef.username,
                     chefName: chef.username,
@@ -1825,42 +1723,9 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
                 });
                 await sendEmail(chefEmail);
 
-                // Notify manager about pending booking that needs approval
-                if (location) {
-                    const notificationEmail = (location as any).notificationEmail || (location as any).notification_email;
-                    if (notificationEmail) {
-                        const managerEmail = generateBookingNotificationEmail({
-                            managerEmail: notificationEmail,
-                            chefName: chef.username,
-                            kitchenName: kitchen.name,
-                            bookingDate: bookingDateObj,
-                            startTime,
-                            endTime,
-                            specialNotes,
-                            timezone: (location as any)?.timezone || 'America/Edmonton',
-                            locationName: (location as any)?.name
-                        });
-                        await sendEmail(managerEmail);
-                    }
-                }
-            // Create in-app notification for manager
-                try {
-                    const managerId = (location as any)?.managerId || (location as any)?.manager_id;
-                    if (managerId && kitchen) {
-                        await notificationService.notifyNewBooking({
-                            managerId,
-                            locationId: kitchen.locationId,
-                            bookingId: booking.id,
-                            chefName: chef.username || 'Chef',
-                            kitchenName: kitchen.name,
-                            bookingDate: bookingDateObj.toISOString().split('T')[0],
-                            startTime,
-                            endTime
-                        });
-                    }
-                } catch (notifError) {
-                    console.error("Error creating booking notification:", notifError);
-                }
+                // CRITICAL FIX: Manager notification is now sent from webhook after payment completes
+                // This prevents managers from seeing/receiving notifications for abandoned checkouts
+                // See: handleCheckoutSessionCompleted in webhooks.ts
             }
         } catch (emailError) {
             console.error("Error sending booking emails:", emailError);
@@ -1873,6 +1738,70 @@ router.post("/chef/bookings", requireChef, async (req: Request, res: Response) =
         res.status(500).json({ error: error.message || "Failed to create booking" });
     }
 });
+// Get booking by Stripe session ID (for payment success page)
+router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Request, res: Response) => {
+    try {
+        const { sessionId } = req.params;
+        const chefId = req.neonUser!.id;
+
+        if (!sessionId) {
+            return res.status(400).json({ error: "Session ID is required" });
+        }
+
+        // Retrieve the session from Stripe to get the payment intent ID
+        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+        if (!stripeSecretKey) {
+            return res.status(500).json({ error: "Stripe configuration error" });
+        }
+
+        const Stripe = (await import("stripe")).default;
+        const stripe = new Stripe(stripeSecretKey, { apiVersion: "2025-12-15.clover" });
+        const session = await stripe.checkout.sessions.retrieve(sessionId, {
+            expand: ["payment_intent"],
+        });
+
+        let paymentIntentId: string | undefined;
+        if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
+            paymentIntentId = session.payment_intent.id;
+        } else if (typeof session.payment_intent === "string") {
+            paymentIntentId = session.payment_intent;
+        }
+
+        if (!paymentIntentId) {
+            return res.status(404).json({ error: "Payment intent not found for session" });
+        }
+
+        // Find booking by payment intent ID
+        const [booking] = await db
+            .select()
+            .from(kitchenBookings)
+            .where(and(
+                eq(kitchenBookings.paymentIntentId, paymentIntentId),
+                eq(kitchenBookings.chefId, chefId)
+            ))
+            .limit(1);
+
+        if (!booking) {
+            return res.status(404).json({ error: "Booking not found for this session" });
+        }
+
+        // Get kitchen details
+        const [kitchen] = await db
+            .select({ name: kitchens.name })
+            .from(kitchens)
+            .where(eq(kitchens.id, booking.kitchenId))
+            .limit(1);
+
+        res.json({
+            ...booking,
+            kitchenName: kitchen?.name || 'Kitchen',
+        });
+    } catch (error: any) {
+        console.error("Error fetching booking by session:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch booking" });
+    }
+});
+
 // Get chef's bookings
 router.get("/chef/bookings", requireChef, async (req: Request, res: Response) => {
     try {

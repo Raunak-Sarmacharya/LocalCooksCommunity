@@ -8,6 +8,7 @@ import {
   equipmentBookings,
   locations,
   kitchens,
+  storageListings,
 } from "@shared/schema";
 import { eq, and, ne, notInArray } from "drizzle-orm";
 import { logger } from "../logger";
@@ -49,11 +50,17 @@ router.post("/stripe", async (req: Request, res: Response) => {
 
     let event: Stripe.Event;
 
+    // Get raw body - with express.raw() middleware, req.body is a Buffer
+    // If it's already parsed JSON (fallback), convert appropriately
+    const rawBody = Buffer.isBuffer(req.body) 
+      ? req.body 
+      : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+
     // Verify webhook signature if secret is configured
     if (webhookSecret && sig) {
       try {
         event = stripe.webhooks.constructEvent(
-          req.body,
+          rawBody,
           sig as string,
           webhookSecret,
         );
@@ -62,8 +69,11 @@ router.post("/stripe", async (req: Request, res: Response) => {
         return res.status(400).json({ error: `Webhook Error: ${err.message}` });
       }
     } else {
-      // In development, handle it as body cast if no secret
-      event = req.body as Stripe.Event;
+      // In development without webhook secret, parse the body
+      // req.body is a Buffer from express.raw(), so we need to parse it
+      const bodyStr = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : req.body;
+      event = typeof bodyStr === 'string' ? JSON.parse(bodyStr) : bodyStr as Stripe.Event;
+      logger.warn("⚠️ Processing webhook without signature verification (development mode)");
     }
 
     // Handle different event types
@@ -140,6 +150,53 @@ router.post("/stripe", async (req: Request, res: Response) => {
   }
 });
 
+// DEVELOPMENT ONLY: Manual webhook trigger for testing
+// This endpoint allows triggering the checkout.session.completed handler manually
+// when Stripe webhooks can't reach localhost
+router.post("/stripe/manual-process-session", async (req: Request, res: Response) => {
+  // Only allow in development
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ error: "Not available in production" });
+  }
+
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId is required" });
+    }
+
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      return res.status(500).json({ error: "Stripe not configured" });
+    }
+
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2025-12-15.clover",
+    });
+
+    // Retrieve the session from Stripe
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["payment_intent"],
+    });
+
+    logger.info(`[Manual Webhook] Processing session ${sessionId}, payment_status: ${session.payment_status}`);
+
+    // Call the same handler as the webhook
+    await handleCheckoutSessionCompleted(session, `manual_${Date.now()}`);
+
+    res.json({ 
+      success: true, 
+      message: "Session processed successfully",
+      sessionId,
+      paymentStatus: session.payment_status,
+      metadata: session.metadata,
+    });
+  } catch (err: any) {
+    logger.error("Error in manual session processing:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Webhook event handlers
 async function handleCheckoutSessionCompleted(
   session: Stripe.Checkout.Session,
@@ -151,9 +208,16 @@ async function handleCheckoutSessionCompleted(
   }
 
   try {
-    const { updateTransactionBySessionId } = await import(
-      "../services/stripe-checkout-transactions-service"
-    );
+    // NOTE: The legacy 'transactions' table has been dropped
+    // updateTransactionBySessionId will fail silently - this is expected
+    // All payment tracking now uses payment_transactions table
+    let updateTransactionBySessionId: ((sessionId: string, params: Record<string, unknown>, db: unknown) => Promise<unknown>) | null = null;
+    try {
+      const legacyService = await import("../services/stripe-checkout-transactions-service");
+      updateTransactionBySessionId = legacyService.updateTransactionBySessionId;
+    } catch {
+      // Legacy service may fail if transactions table doesn't exist - this is fine
+    }
 
     // Retrieve full session with expanded line_items and payment_intent
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -221,26 +285,34 @@ async function handleCheckoutSessionCompleted(
       updateParams.stripeChargeId = chargeId;
     }
 
-    const updatedTransaction = await updateTransactionBySessionId(
-      session.id,
-      updateParams,
-      db,
-    );
+    // Legacy transactions table update (table was dropped, so this may fail)
+    if (updateTransactionBySessionId) {
+      try {
+        const updatedTransaction = await updateTransactionBySessionId(
+          session.id,
+          updateParams,
+          db,
+        ) as { total_customer_charged_cents?: number; manager_receives_cents?: number } | null;
 
-    if (updatedTransaction) {
-      logger.info(
-        `[Webhook] Updated transaction for Checkout session ${session.id}:`,
-        {
-          paymentIntentId,
-          chargeId,
-          amount: `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}`,
-          managerReceives: `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}`,
-        },
-      );
-    } else {
-      logger.warn(
-        `[Webhook] Transaction not found for Checkout session ${session.id}`,
-      );
+        if (updatedTransaction) {
+          logger.info(
+            `[Webhook] Updated legacy transaction for Checkout session ${session.id}:`,
+            {
+              paymentIntentId,
+              chargeId,
+              amount: updatedTransaction.total_customer_charged_cents 
+                ? `$${(updatedTransaction.total_customer_charged_cents / 100).toFixed(2)}`
+                : 'N/A',
+              managerReceives: updatedTransaction.manager_receives_cents
+                ? `$${(updatedTransaction.manager_receives_cents / 100).toFixed(2)}`
+                : 'N/A',
+            },
+          );
+        }
+      } catch {
+        // Legacy transactions table was dropped - this is expected
+        logger.debug(`[Webhook] Legacy transactions table not available for session ${session.id}`);
+      }
     }
 
     // Also update payment_transactions record with paymentIntentId
@@ -293,13 +365,336 @@ async function handleCheckoutSessionCompleted(
         metadata,
       );
     }
+
+    // ENTERPRISE-GRADE: Create booking from metadata when payment succeeds
+    // This follows Stripe's recommended pattern - booking is ONLY created after payment
+    // Eliminates orphan bookings from abandoned checkouts
+    if (metadata.type === "kitchen_booking" && !metadata.booking_id) {
+      // New flow: Create booking from metadata (booking_id not present means new enterprise flow)
+      try {
+        // Check payment status - only create booking if paid
+        if (expandedSession.payment_status !== "paid") {
+          logger.info(`[Webhook] Payment not yet confirmed for session ${session.id}, status: ${expandedSession.payment_status}`);
+          // For async payments, booking will be created when async_payment_succeeded fires
+          return;
+        }
+
+        // IDEMPOTENCY: Check if booking already exists for this payment intent
+        if (paymentIntentId) {
+          const [existingBooking] = await db
+            .select({ id: kitchenBookings.id })
+            .from(kitchenBookings)
+            .where(eq(kitchenBookings.paymentIntentId, paymentIntentId))
+            .limit(1);
+
+          if (existingBooking) {
+            logger.info(`[Webhook] Booking ${existingBooking.id} already exists for payment intent ${paymentIntentId}, skipping duplicate creation`);
+            return;
+          }
+        }
+
+        // Extract booking data from metadata
+        const kitchenId = parseInt(metadata.kitchen_id);
+        const chefId = parseInt(metadata.chef_id);
+        const bookingDate = new Date(metadata.booking_date);
+        const startTime = metadata.start_time;
+        const endTime = metadata.end_time;
+        const totalPriceCents = parseInt(metadata.total_price_cents);
+        const taxCents = parseInt(metadata.tax_cents || "0");
+        const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
+        const durationHours = parseFloat(metadata.duration_hours || "1");
+        const specialNotes = metadata.special_notes || null;
+        const selectedSlots = metadata.selected_slots ? JSON.parse(metadata.selected_slots) : [];
+        const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
+        const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
+
+        logger.info(`[Webhook] Creating booking from metadata for kitchen ${kitchenId}, chef ${chefId}`);
+
+        // Create the booking with payment already confirmed
+        const { bookingService } = await import("../domains/bookings/booking.service");
+        const booking = await bookingService.createKitchenBooking({
+          kitchenId,
+          chefId,
+          bookingDate,
+          startTime,
+          endTime,
+          selectedSlots,
+          status: "pending", // Awaiting manager approval
+          paymentStatus: "paid", // Payment already confirmed
+          paymentIntentId: paymentIntentId,
+          specialNotes,
+          selectedStorage,
+          selectedEquipmentIds,
+        });
+
+        logger.info(`[Webhook] Created booking ${booking.id} from checkout session ${session.id}`);
+
+        // Create payment_transactions record with all Stripe data populated
+        try {
+          const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+          const { getStripePaymentAmounts } = await import("../services/stripe-service");
+          
+          const [kitchen] = await db
+            .select({ locationId: kitchens.locationId })
+            .from(kitchens)
+            .where(eq(kitchens.id, kitchenId))
+            .limit(1);
+
+          if (kitchen) {
+            const [location] = await db
+              .select({ managerId: locations.managerId })
+              .from(locations)
+              .where(eq(locations.id, kitchen.locationId))
+              .limit(1);
+
+            if (location && location.managerId) {
+              // Get charge ID from the expanded session
+              const paymentIntentObj = expandedSession.payment_intent;
+              const chargeId = paymentIntentObj && typeof paymentIntentObj === 'object' 
+                ? (typeof paymentIntentObj.latest_charge === 'string' 
+                    ? paymentIntentObj.latest_charge 
+                    : paymentIntentObj.latest_charge?.id)
+                : undefined;
+
+              const ptRecord = await createPaymentTransaction({
+                bookingId: booking.id,
+                bookingType: "kitchen",
+                chefId,
+                managerId: location.managerId,
+                amount: parseInt(metadata.booking_price_cents),
+                baseAmount: totalPriceCents + taxCents,
+                serviceFee: parseInt(metadata.platform_fee_cents || "0"),
+                managerRevenue: parseInt(metadata.booking_price_cents) - parseInt(metadata.platform_fee_cents || "0"),
+                currency: "CAD",
+                paymentIntentId,
+                status: "succeeded",
+                stripeStatus: "succeeded",
+                metadata: {
+                  checkout_session_id: session.id,
+                  booking_id: booking.id.toString(),
+                },
+              }, db);
+              
+              // Update with additional Stripe data (charge_id, paid_at, stripe fees)
+              if (ptRecord) {
+                // Get manager's Stripe Connect account for fee lookup
+                let managerConnectAccountId: string | undefined;
+                try {
+                  const [manager] = await db
+                    .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+                    .from(users)
+                    .where(eq(users.id, location.managerId))
+                    .limit(1);
+                  if (manager?.stripeConnectAccountId) {
+                    managerConnectAccountId = manager.stripeConnectAccountId;
+                  }
+                } catch {
+                  logger.warn(`[Webhook] Could not fetch manager Connect account`);
+                }
+
+                // Fetch actual Stripe amounts
+                const stripeAmounts = paymentIntentId 
+                  ? await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
+                  : null;
+
+                const updateParams: Record<string, unknown> = {
+                  chargeId,
+                  paidAt: new Date(),
+                  lastSyncedAt: new Date(),
+                };
+
+                if (stripeAmounts) {
+                  updateParams.stripeAmount = stripeAmounts.stripeAmount;
+                  updateParams.stripeNetAmount = stripeAmounts.stripeNetAmount;
+                  updateParams.stripeProcessingFee = stripeAmounts.stripeProcessingFee;
+                  updateParams.stripePlatformFee = stripeAmounts.stripePlatformFee;
+                  logger.info(`[Webhook] Syncing Stripe amounts for booking ${booking.id}:`, {
+                    amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+                    netAmount: `$${(stripeAmounts.stripeNetAmount / 100).toFixed(2)}`,
+                    processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+                  });
+                }
+
+                await updatePaymentTransaction(ptRecord.id, updateParams, db);
+              }
+              
+              logger.info(`[Webhook] Created payment_transactions record for booking ${booking.id} with full Stripe data`);
+            }
+          }
+        } catch (ptError) {
+          logger.warn(`[Webhook] Could not create payment_transactions record:`, ptError as any);
+        }
+
+        // Send manager notification - payment is confirmed
+        try {
+          const [kitchen] = await db
+            .select({
+              name: kitchens.name,
+              locationId: kitchens.locationId,
+            })
+            .from(kitchens)
+            .where(eq(kitchens.id, kitchenId))
+            .limit(1);
+
+          if (kitchen) {
+            const [location] = await db
+              .select({
+                name: locations.name,
+                managerId: locations.managerId,
+                notificationEmail: locations.notificationEmail,
+                timezone: locations.timezone,
+              })
+              .from(locations)
+              .where(eq(locations.id, kitchen.locationId))
+              .limit(1);
+
+            if (location && location.managerId) {
+              // Get chef details
+              let chefName = "Chef";
+              const [chef] = await db
+                .select({ username: users.username })
+                .from(users)
+                .where(eq(users.id, chefId))
+                .limit(1);
+              if (chef) chefName = chef.username;
+
+              // Get manager's email as fallback if notificationEmail is not set
+              let managerEmailAddress = location.notificationEmail;
+              if (!managerEmailAddress) {
+                const [manager] = await db
+                  .select({ username: users.username })
+                  .from(users)
+                  .where(eq(users.id, location.managerId))
+                  .limit(1);
+                if (manager?.username) {
+                  managerEmailAddress = manager.username;
+                  logger.info(`[Webhook] Using manager's username as notification email: ${managerEmailAddress}`);
+                }
+              }
+
+              // Send manager email notification
+              if (managerEmailAddress) {
+                const { sendEmail, generateBookingNotificationEmail } = await import("../email");
+                const managerEmail = generateBookingNotificationEmail({
+                  managerEmail: managerEmailAddress,
+                  chefName,
+                  kitchenName: kitchen.name,
+                  bookingDate,
+                  startTime,
+                  endTime,
+                  specialNotes: specialNotes || undefined,
+                  timezone: location.timezone || "America/Edmonton",
+                  locationName: location.name,
+                });
+                const emailSent = await sendEmail(managerEmail);
+                if (emailSent) {
+                  logger.info(`[Webhook] ✅ Sent manager notification email for booking ${booking.id} to ${managerEmailAddress}`);
+                } else {
+                  logger.error(`[Webhook] ❌ Failed to send manager notification email for booking ${booking.id} to ${managerEmailAddress}`);
+                }
+              } else {
+                logger.warn(`[Webhook] No manager email available for booking ${booking.id} - skipping manager notification`);
+              }
+
+              // Create in-app notification for manager
+              await notificationService.notifyNewBooking({
+                managerId: location.managerId,
+                locationId: kitchen.locationId,
+                bookingId: booking.id,
+                chefName,
+                kitchenName: kitchen.name,
+                bookingDate: bookingDate.toISOString().split("T")[0],
+                startTime,
+                endTime,
+              });
+              logger.info(`[Webhook] Created in-app notification for manager for booking ${booking.id}`);
+            }
+          }
+        } catch (notifyError) {
+          logger.error(`[Webhook] Error sending manager notification:`, notifyError as any);
+        }
+
+        // Send chef confirmation email
+        try {
+          const [chef] = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(eq(users.id, chefId))
+            .limit(1);
+
+          const [kitchen] = await db
+            .select({ name: kitchens.name, locationId: kitchens.locationId })
+            .from(kitchens)
+            .where(eq(kitchens.id, kitchenId))
+            .limit(1);
+
+          if (chef && kitchen) {
+            const [location] = await db
+              .select({ name: locations.name, timezone: locations.timezone })
+              .from(locations)
+              .where(eq(locations.id, kitchen.locationId))
+              .limit(1);
+
+            const { sendEmail, generateBookingRequestEmail } = await import("../email");
+            const chefEmail = generateBookingRequestEmail({
+              chefEmail: chef.username,
+              chefName: chef.username,
+              kitchenName: kitchen.name,
+              bookingDate,
+              startTime,
+              endTime,
+              specialNotes: specialNotes || undefined,
+              timezone: location?.timezone || "America/Edmonton",
+              locationName: location?.name,
+            });
+            const emailSent = await sendEmail(chefEmail);
+            if (emailSent) {
+              logger.info(`[Webhook] ✅ Sent chef booking request email for booking ${booking.id} to ${chef.username}`);
+            } else {
+              logger.error(`[Webhook] ❌ Failed to send chef booking request email for booking ${booking.id} to ${chef.username}`);
+            }
+          } else {
+            logger.warn(`[Webhook] Chef or kitchen not found for booking ${booking.id} - chef: ${!!chef}, kitchen: ${!!kitchen}`);
+          }
+        } catch (emailError) {
+          logger.error(`[Webhook] Error sending chef email:`, emailError as any);
+        }
+
+      } catch (createError) {
+        logger.error(`[Webhook] Error creating booking from metadata:`, createError as any);
+      }
+    } else if (paymentIntentId && metadata.booking_id && metadata.type === "kitchen_booking") {
+      // Legacy flow: Update existing booking (for backward compatibility)
+      try {
+        const bookingId = parseInt(metadata.booking_id);
+        if (!isNaN(bookingId)) {
+          await db
+            .update(kitchenBookings)
+            .set({
+              paymentIntentId: paymentIntentId,
+              paymentStatus: "processing",
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(kitchenBookings.id, bookingId),
+                eq(kitchenBookings.paymentStatus, "pending"),
+              ),
+            );
+          logger.info(`[Webhook] Updated legacy booking ${bookingId} with paymentIntentId`);
+        }
+      } catch (bookingError) {
+        logger.error(`[Webhook] Error updating legacy booking:`, bookingError as any);
+      }
+    }
   } catch (error: any) {
     logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
   }
 }
 
 // Handle storage extension payment completion
-// Enterprise-grade: Payment success sets status to 'paid', manager must approve before date extends
+// ENTERPRISE-GRADE: Create pending_storage_extensions and payment_transactions ONLY when payment succeeds
+// This eliminates orphan records from abandoned checkouts
 async function handleStorageExtensionPaymentCompleted(
   sessionId: string,
   paymentIntentId: string | undefined,
@@ -313,6 +708,12 @@ async function handleStorageExtensionPaymentCompleted(
     const storageBookingId = parseInt(metadata.storage_booking_id);
     const newEndDate = new Date(metadata.new_end_date);
     const extensionDays = parseInt(metadata.extension_days);
+    const chefId = parseInt(metadata.chef_id);
+    const managerId = parseInt(metadata.manager_id);
+    const extensionBasePriceCents = parseInt(metadata.extension_base_price_cents || "0");
+    const extensionServiceFeeCents = parseInt(metadata.extension_service_fee_cents || "0");
+    const extensionTotalPriceCents = parseInt(metadata.extension_total_price_cents || "0");
+    const managerReceivesCents = parseInt(metadata.manager_receives_cents || "0");
 
     if (
       isNaN(storageBookingId) ||
@@ -323,33 +724,108 @@ async function handleStorageExtensionPaymentCompleted(
       return;
     }
 
-    // Get the pending extension record
-    const pendingExtension = await bookingService.getPendingStorageExtension(
+    // Check if extension already exists for this session (idempotency)
+    const existingExtension = await bookingService.getPendingStorageExtension(
       storageBookingId,
       sessionId,
     );
 
-    if (!pendingExtension) {
-      logger.error(
-        `[Webhook] Pending storage extension not found for session ${sessionId}`,
-      );
+    if (existingExtension) {
+      // Already processed - skip
+      if (existingExtension.status === "paid" || existingExtension.status === "completed" || existingExtension.status === "approved") {
+        logger.info(
+          `[Webhook] Storage extension already processed for session ${sessionId} (status: ${existingExtension.status})`,
+        );
+        return;
+      }
+      // Update existing record if it was somehow created with pending status
+      await bookingService.updatePendingStorageExtension(existingExtension.id, {
+        status: "paid",
+        stripePaymentIntentId: paymentIntentId,
+      });
+      logger.info(`[Webhook] Updated existing storage extension ${existingExtension.id} to paid`);
       return;
     }
 
-    // Skip if already processed
-    if (pendingExtension.status === "paid" || pendingExtension.status === "completed" || pendingExtension.status === "approved") {
-      logger.info(
-        `[Webhook] Storage extension already processed for session ${sessionId} (status: ${pendingExtension.status})`,
-      );
-      return;
-    }
-
-    // Update status to 'paid' - awaiting manager approval
-    // The storage booking date will NOT be extended until manager approves
-    await bookingService.updatePendingStorageExtension(pendingExtension.id, {
-      status: "paid",
+    // ENTERPRISE-GRADE: Create pending_storage_extensions record NOW (after payment succeeds)
+    const pendingExtension = await bookingService.createPendingStorageExtension({
+      storageBookingId,
+      newEndDate,
+      extensionDays,
+      extensionBasePriceCents,
+      extensionServiceFeeCents,
+      extensionTotalPriceCents,
+      stripeSessionId: sessionId,
       stripePaymentIntentId: paymentIntentId,
+      status: "paid", // Payment already confirmed
     });
+
+    logger.info(`[Webhook] Created pending_storage_extensions ${pendingExtension.id} for storage booking ${storageBookingId}`);
+
+    // Create payment_transactions record with full Stripe data
+    try {
+      const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+      const { getStripePaymentAmounts } = await import("../services/stripe-service");
+
+      const ptRecord = await createPaymentTransaction({
+        bookingId: storageBookingId,
+        bookingType: "storage",
+        chefId: isNaN(chefId) ? null : chefId,
+        managerId: isNaN(managerId) ? null : managerId,
+        amount: extensionTotalPriceCents,
+        baseAmount: extensionBasePriceCents,
+        serviceFee: extensionServiceFeeCents,
+        managerRevenue: managerReceivesCents || (extensionTotalPriceCents - extensionServiceFeeCents),
+        currency: "CAD",
+        paymentIntentId,
+        status: "succeeded",
+        stripeStatus: "succeeded",
+        metadata: {
+          checkout_session_id: sessionId,
+          storage_booking_id: storageBookingId.toString(),
+          storage_extension_id: pendingExtension.id.toString(),
+          extension_days: extensionDays.toString(),
+          new_end_date: newEndDate.toISOString(),
+        },
+      }, db);
+
+      // Update with Stripe amounts if available
+      if (ptRecord && paymentIntentId) {
+        // Get manager's Stripe Connect account for fee lookup
+        let managerConnectAccountId: string | undefined;
+        if (!isNaN(managerId)) {
+          try {
+            const [manager] = await db
+              .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+              .from(users)
+              .where(eq(users.id, managerId))
+              .limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          } catch {
+            logger.warn(`[Webhook] Could not fetch manager Connect account for storage extension`);
+          }
+        }
+
+        const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
+        if (stripeAmounts) {
+          await updatePaymentTransaction(ptRecord.id, {
+            paidAt: new Date(),
+            lastSyncedAt: new Date(),
+            stripeAmount: stripeAmounts.stripeAmount,
+            stripeNetAmount: stripeAmounts.stripeNetAmount,
+            stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+            stripePlatformFee: stripeAmounts.stripePlatformFee,
+          }, db);
+          logger.info(`[Webhook] Updated payment_transactions with Stripe amounts for storage extension`);
+        }
+      }
+
+      logger.info(`[Webhook] Created payment_transactions for storage extension ${pendingExtension.id}`);
+    } catch (ptError) {
+      logger.warn(`[Webhook] Could not create payment_transactions for storage extension:`, ptError as any);
+    }
 
     logger.info(`[Webhook] Storage extension payment received - awaiting manager approval:`, {
       storageBookingId,
@@ -360,8 +836,66 @@ async function handleStorageExtensionPaymentCompleted(
       status: "paid",
     });
 
-    // TODO: Send notification to manager about pending extension approval
-    // TODO: Send notification to chef that payment received, awaiting approval
+    // Send notification emails for storage extension payment
+    try {
+      const { sendEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail } = await import("../email");
+      
+      // Get storage booking details for email
+      const [storageBooking] = await db
+        .select({
+          storageName: storageListings.name,
+          chefId: storageBookings.chefId,
+          chefEmail: users.username,
+          locationId: kitchens.locationId,
+        })
+        .from(storageBookings)
+        .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+        .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+        .innerJoin(users, eq(storageBookings.chefId, users.id))
+        .where(eq(storageBookings.id, storageBookingId))
+        .limit(1);
+
+      if (storageBooking) {
+        // Get location notification email
+        const [location] = await db
+          .select({
+            notificationEmail: locations.notificationEmail,
+            name: locations.name,
+          })
+          .from(locations)
+          .where(eq(locations.id, storageBooking.locationId))
+          .limit(1);
+
+        // Send email to manager
+        if (location?.notificationEmail) {
+          const managerEmail = generateStorageExtensionPendingApprovalEmail({
+            managerEmail: location.notificationEmail,
+            chefName: storageBooking.chefEmail,
+            storageName: storageBooking.storageName,
+            extensionDays,
+            newEndDate,
+            totalPrice: extensionTotalPriceCents,
+            locationName: location.name,
+          });
+          await sendEmail(managerEmail);
+          logger.info(`[Webhook] Sent storage extension pending approval email to manager: ${location.notificationEmail}`);
+        }
+
+        // Send email to chef
+        const chefEmail = generateStorageExtensionPaymentReceivedEmail({
+          chefEmail: storageBooking.chefEmail,
+          chefName: storageBooking.chefEmail,
+          storageName: storageBooking.storageName,
+          extensionDays,
+          newEndDate,
+          totalPrice: extensionTotalPriceCents,
+        });
+        await sendEmail(chefEmail);
+        logger.info(`[Webhook] Sent storage extension payment received email to chef: ${storageBooking.chefEmail}`);
+      }
+    } catch (emailError) {
+      logger.error(`[Webhook] Error sending storage extension notification emails:`, emailError as any);
+    }
   } catch (error: any) {
     logger.error(
       `[Webhook] Error processing storage extension payment:`,

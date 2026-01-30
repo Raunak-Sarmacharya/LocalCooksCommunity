@@ -27,6 +27,7 @@ export const createKitchenBookingSchema = createInsertSchema(kitchenBookings).om
 
 export type CreateKitchenBookingDTO = z.infer<typeof createKitchenBookingSchema> & {
     selectedStorageIds?: number[];
+    selectedStorage?: Array<{ storageListingId: number; startDate: string; endDate: string }>; // Storage with explicit date ranges
     selectedEquipmentIds?: number[];
     selectedSlots?: Array<{ startTime: string; endTime: string }>; // Array of discrete 1-hour time slots, e.g., [{startTime: "09:00", endTime: "10:00"}]
 };
