@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import crypto from 'crypto';
 import { db } from '../db';
-import { sendEmail, generateEmailVerificationEmail } from '../email';
+import { sendEmail, generateEmailVerificationEmail, generateWelcomeEmail } from '../email';
 import { storage } from "../storage";
 import { getAuthenticatedUser } from "./middleware";
 import { emailVerificationTokens, users } from "@shared/schema";
@@ -114,6 +114,20 @@ router.get("/verify-email", async (req: Request, res: Response) => {
       .where(eq(emailVerificationTokens.token, token));
 
     console.log(`Email verified successfully: ${email}`);
+
+    // Send welcome email now that user is verified
+    try {
+      const welcomeEmail = generateWelcomeEmail({
+        fullName: email.split('@')[0], // Best effort name from email since we don't have it easily here
+        email
+      });
+      await sendEmail(welcomeEmail, {
+        trackingId: `welcome_verified_legacy_${email}_${Date.now()}`
+      });
+      console.log(`✅ Welcome email sent to verified user: ${email}`);
+    } catch (error) {
+      console.error("Error sending welcome email in legacy verification:", error);
+    }
 
     // Redirect to success page
     return res.redirect(`${process.env.BASE_URL || 'http://localhost:5000'}/auth?verified=true`);

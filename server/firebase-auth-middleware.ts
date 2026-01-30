@@ -11,6 +11,8 @@ declare global {
         uid: string;
         email?: string;
         email_verified?: boolean;
+        name?: string;
+        picture?: string;
       };
       neonUser?: UserWithFlags;
     }
@@ -52,6 +54,8 @@ export async function verifyFirebaseAuth(req: Request, res: Response, next: Next
       uid: decodedToken.uid,
       email: decodedToken.email,
       email_verified: decodedToken.email_verified,
+      name: decodedToken.name,
+      picture: decodedToken.picture,
     };
 
     next();
@@ -107,6 +111,8 @@ export async function requireFirebaseAuthWithUser(req: Request, res: Response, n
       uid: decodedToken.uid,
       email: decodedToken.email,
       email_verified: decodedToken.email_verified,
+      name: decodedToken.name,
+      picture: decodedToken.picture,
     };
 
     // Now translate Firebase UID to Neon user (NO SESSIONS)
@@ -169,6 +175,8 @@ export async function optionalFirebaseAuth(req: Request, res: Response, next: Ne
         uid: decodedToken.uid,
         email: decodedToken.email,
         email_verified: decodedToken.email_verified,
+        name: decodedToken.name,
+        picture: decodedToken.picture,
       };
 
       // Try to load Neon user (NO SESSIONS)
