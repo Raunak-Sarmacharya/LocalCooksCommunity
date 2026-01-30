@@ -12,6 +12,7 @@ import {
     LifeBuoy,
     Send,
     ChefHat,
+    Shield,
 } from "lucide-react"
 
 import {

@@ -29,7 +29,7 @@ interface ChefDashboardLayoutProps {
     activeView: string
     onViewChange: (view: string) => void
     messageBadgeCount?: number
-    breadcrumbs?: Array<{ label: string; href?: string }>
+    breadcrumbs?: Array<{ label: string; href?: string; onClick?: () => void }>
 }
 
 // View labels for breadcrumb generation
@@ -88,12 +88,16 @@ export default function ChefDashboardLayout({
                                 {displayBreadcrumbs.map((crumb, index) => (
                                     <React.Fragment key={index}>
                                         <BreadcrumbItem className="hidden md:block">
-                                            {crumb.href ? (
+                                            {crumb.href || crumb.onClick ? (
                                                 <BreadcrumbLink
                                                     href="#"
                                                     onClick={(e) => {
                                                         e.preventDefault()
-                                                        onViewChange("overview")
+                                                        if (crumb.onClick) {
+                                                            crumb.onClick()
+                                                        } else {
+                                                            onViewChange("overview")
+                                                        }
                                                     }}
                                                 >
                                                     {crumb.label}
