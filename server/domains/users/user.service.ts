@@ -46,10 +46,16 @@ export class UserService {
       );
     }
 
+    // Hash password if provided
+    let hashedPassword = '';
+    if (data.password) {
+      hashedPassword = await hashPassword(data.password);
+    }
+
     // Ensure default values match legacy behavior
     const userToCreate = {
       ...data,
-      password: data.password || '',
+      password: hashedPassword,
       isVerified: data.isVerified ?? false,
       has_seen_welcome: data.has_seen_welcome ?? false,
       isChef: data.isChef ?? false,
@@ -61,6 +67,10 @@ export class UserService {
   }
 
   async updateUser(id: number, data: UpdateUserDTO): Promise<User | null> {
+    // Hash password if it's being updated
+    if (data.password) {
+      data.password = await hashPassword(data.password);
+    }
     return this.repo.update(id, data);
   }
 
