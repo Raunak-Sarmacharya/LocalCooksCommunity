@@ -16770,6 +16770,17 @@ var init_manager = __esm({
         }
         await bookingService.updateBookingStatus(id, status);
         try {
+          const storageBookings2 = await bookingService.getStorageBookingsByKitchenBooking(id);
+          if (storageBookings2 && storageBookings2.length > 0) {
+            for (const storageBooking of storageBookings2) {
+              await bookingService.updateStorageBooking(storageBooking.id, { status });
+              logger.info(`[Manager] Updated storage booking ${storageBooking.id} to ${status} for kitchen booking ${id}`);
+            }
+          }
+        } catch (storageUpdateError) {
+          logger.error(`[Manager] Error updating storage bookings for kitchen booking ${id}:`, storageUpdateError);
+        }
+        try {
           let chef = null;
           if (booking.chefId) {
             chef = await userService.getUser(booking.chefId);
