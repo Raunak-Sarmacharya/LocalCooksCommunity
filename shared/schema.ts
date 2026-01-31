@@ -76,6 +76,8 @@ export const users = pgTable("users", {
   // Stripe Connect fields for manager payments
   stripeConnectAccountId: text("stripe_connect_account_id").unique(), // Stripe Connect Express account ID
   stripeConnectOnboardingStatus: text("stripe_connect_onboarding_status").default("not_started").notNull(), // Status: 'not_started', 'in_progress', 'complete', 'failed'
+  // Stripe Customer ID for off-session payments (penalties, recurring charges)
+  stripeCustomerId: text("stripe_customer_id").unique(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
@@ -287,6 +289,13 @@ export const locations = pgTable("locations", {
   kitchenTermsUploadedAt: timestamp("kitchen_terms_uploaded_at"), // When terms were uploaded
   description: text("description"), // Description of the location
   customOnboardingLink: text("custom_onboarding_link"), // Custom link for onboarding
+  
+  // Location-level overstay penalty defaults (manager-controlled, used when storage listing doesn't have custom values)
+  overstayGracePeriodDays: integer("overstay_grace_period_days"), // Days before penalties apply
+  overstayPenaltyRate: numeric("overstay_penalty_rate"), // Penalty rate as decimal (0.10 = 10%)
+  overstayMaxPenaltyDays: integer("overstay_max_penalty_days"), // Max days penalties can accrue
+  overstayPolicyText: text("overstay_policy_text"), // Default policy text for all storage at this location
+  
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -867,6 +876,12 @@ export const storageListings = pgTable("storage_listings", {
   prohibitedItems: jsonb("prohibited_items").default([]),
   insuranceRequired: boolean("insurance_required").default(false),
 
+  // Overstay penalty configuration (manager-controlled)
+  overstayGracePeriodDays: integer("overstay_grace_period_days").default(3).notNull(), // Days before penalties apply (industry standard: 3-5)
+  overstayPenaltyRate: numeric("overstay_penalty_rate").default("0.10").notNull(), // Penalty rate as decimal (0.10 = 10% of daily rate per day)
+  overstayMaxPenaltyDays: integer("overstay_max_penalty_days").default(30).notNull(), // Max days penalties can accrue
+  overstayPolicyText: text("overstay_policy_text"), // Custom policy text shown to chefs
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1038,6 +1053,9 @@ export const storageBookings = pgTable("storage_bookings", {
   paymentIntentId: text("payment_intent_id"), // Stripe PaymentIntent ID
   serviceFee: numeric("service_fee").default("0"), // Platform commission in cents
   currency: text("currency").default("CAD").notNull(),
+  // Stripe fields for off-session penalty charging
+  stripePaymentMethodId: text("stripe_payment_method_id"), // Saved payment method for penalties
+  stripeCustomerId: text("stripe_customer_id"), // Denormalized for quick access
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1406,3 +1424,128 @@ export const pendingStorageExtensions = pgTable("pending_storage_extensions", {
 // Type exports for pending storage extensions
 export type PendingStorageExtension = typeof pendingStorageExtensions.$inferSelect;
 export type InsertPendingStorageExtension = typeof pendingStorageExtensions.$inferInsert;
+
+// ===== OVERSTAY STATUS ENUM =====
+export const overstayStatusEnum = pgEnum('overstay_status', [
+  'detected',           // System detected overstay
+  'grace_period',       // Within grace period, no penalty yet
+  'pending_review',     // Grace period ended, awaiting manager review
+  'penalty_approved',   // Manager approved penalty charge
+  'penalty_waived',     // Manager waived penalty
+  'charge_pending',     // Stripe charge initiated
+  'charge_succeeded',   // Stripe charge successful
+  'charge_failed',      // Stripe charge failed
+  'resolved',           // Chef extended or removed items
+  'escalated'           // Sent to legal/collections
+]);
+
+// ===== STORAGE OVERSTAY RECORDS TABLE =====
+// Tracks storage booking overstays with full manager approval workflow
+// CRITICAL: Penalties are NEVER auto-charged - manager must approve
+export const storageOverstayRecords = pgTable("storage_overstay_records", {
+  id: serial("id").primaryKey(),
+  storageBookingId: integer("storage_booking_id").references(() => storageBookings.id, { onDelete: "cascade" }).notNull(),
+  
+  // Detection info
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  endDate: timestamp("end_date").notNull(), // Original booking end date
+  daysOverdue: integer("days_overdue").default(0).notNull(),
+  gracePeriodEndsAt: timestamp("grace_period_ends_at").notNull(),
+  
+  // Status tracking
+  status: overstayStatusEnum("status").default("detected").notNull(),
+  
+  // Calculated penalty (system suggestion)
+  calculatedPenaltyCents: integer("calculated_penalty_cents").default(0).notNull(),
+  dailyRateCents: integer("daily_rate_cents").notNull(),
+  penaltyRate: numeric("penalty_rate").notNull(), // Rate used for calculation
+  
+  // Manager decision fields
+  finalPenaltyCents: integer("final_penalty_cents"), // NULL until manager decides
+  penaltyApprovedBy: integer("penalty_approved_by").references(() => users.id, { onDelete: "set null" }),
+  penaltyApprovedAt: timestamp("penalty_approved_at"),
+  penaltyWaived: boolean("penalty_waived").default(false).notNull(),
+  waiveReason: text("waive_reason"),
+  managerNotes: text("manager_notes"),
+  
+  // Stripe charge tracking
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  stripeChargeId: text("stripe_charge_id"),
+  chargeAttemptedAt: timestamp("charge_attempted_at"),
+  chargeSucceededAt: timestamp("charge_succeeded_at"),
+  chargeFailedAt: timestamp("charge_failed_at"),
+  chargeFailureReason: text("charge_failure_reason"),
+  
+  // Resolution tracking
+  resolvedAt: timestamp("resolved_at"),
+  resolutionType: text("resolution_type"), // 'extended', 'removed', 'paid', 'waived', 'escalated'
+  resolutionNotes: text("resolution_notes"),
+  
+  // Notification tracking
+  chefWarningSentAt: timestamp("chef_warning_sent_at"),
+  chefPenaltyNoticeSentAt: timestamp("chef_penalty_notice_sent_at"),
+  managerNotifiedAt: timestamp("manager_notified_at"),
+  
+  // Idempotency key to prevent duplicate records
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ===== STORAGE OVERSTAY HISTORY TABLE =====
+// Complete audit trail for all overstay record changes
+export const storageOverstayHistory = pgTable("storage_overstay_history", {
+  id: serial("id").primaryKey(),
+  overstayRecordId: integer("overstay_record_id").references(() => storageOverstayRecords.id, { onDelete: "cascade" }).notNull(),
+  previousStatus: overstayStatusEnum("previous_status"),
+  newStatus: overstayStatusEnum("new_status").notNull(),
+  eventType: text("event_type").notNull(), // 'status_change', 'penalty_adjusted', 'charge_attempt', 'notification_sent'
+  eventSource: text("event_source").notNull(), // 'system', 'manager', 'chef', 'stripe_webhook', 'cron'
+  description: text("description"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+// Zod validation schemas for overstay records
+export const insertStorageOverstayRecordSchema = z.object({
+  storageBookingId: z.number(),
+  endDate: z.date(),
+  gracePeriodEndsAt: z.date(),
+  dailyRateCents: z.number().int().min(0),
+  penaltyRate: z.string(),
+  idempotencyKey: z.string(),
+  status: z.enum(['detected', 'grace_period', 'pending_review', 'penalty_approved', 'penalty_waived', 'charge_pending', 'charge_succeeded', 'charge_failed', 'resolved', 'escalated']).optional(),
+});
+
+export const updateStorageOverstayRecordSchema = z.object({
+  status: z.enum(['detected', 'grace_period', 'pending_review', 'penalty_approved', 'penalty_waived', 'charge_pending', 'charge_succeeded', 'charge_failed', 'resolved', 'escalated']).optional(),
+  daysOverdue: z.number().int().min(0).optional(),
+  calculatedPenaltyCents: z.number().int().min(0).optional(),
+  finalPenaltyCents: z.number().int().min(0).optional(),
+  penaltyApprovedBy: z.number().optional(),
+  penaltyApprovedAt: z.date().optional(),
+  penaltyWaived: z.boolean().optional(),
+  waiveReason: z.string().optional(),
+  managerNotes: z.string().optional(),
+  stripePaymentIntentId: z.string().optional(),
+  stripeChargeId: z.string().optional(),
+  chargeAttemptedAt: z.date().optional(),
+  chargeSucceededAt: z.date().optional(),
+  chargeFailedAt: z.date().optional(),
+  chargeFailureReason: z.string().optional(),
+  resolvedAt: z.date().optional(),
+  resolutionType: z.string().optional(),
+  resolutionNotes: z.string().optional(),
+  chefWarningSentAt: z.date().optional(),
+  chefPenaltyNoticeSentAt: z.date().optional(),
+  managerNotifiedAt: z.date().optional(),
+});
+
+// Type exports for overstay records
+export type StorageOverstayRecord = typeof storageOverstayRecords.$inferSelect;
+export type InsertStorageOverstayRecord = z.infer<typeof insertStorageOverstayRecordSchema>;
+export type UpdateStorageOverstayRecord = z.infer<typeof updateStorageOverstayRecordSchema>;
+export type StorageOverstayHistory = typeof storageOverstayHistory.$inferSelect;
+export type OverstayStatus = 'detected' | 'grace_period' | 'pending_review' | 'penalty_approved' | 'penalty_waived' | 'charge_pending' | 'charge_succeeded' | 'charge_failed' | 'resolved' | 'escalated';

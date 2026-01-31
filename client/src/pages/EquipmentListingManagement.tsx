@@ -26,14 +26,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ManagerPageLayout } from "@/components/layout/ManagerPageLayout";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -688,42 +682,132 @@ function EquipmentListingContent({
         </TabsContent>
       </Tabs>
 
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Edit Equipment</DialogTitle><DialogDescription>Update the details for this equipment listing</DialogDescription></DialogHeader>
+      <Sheet open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col">
+          <SheetHeader className="p-6 pb-4 border-b">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4] flex items-center justify-center">
+                <Wrench className="w-5 h-5 text-[#F51042]" />
+              </div>
+              <div>
+                <SheetTitle className="text-lg">Edit Equipment</SheetTitle>
+                <SheetDescription>Update the details for this equipment listing</SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+          
           {editingListing && (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2"><Label>Equipment Name</Label><Input value={editingListing.equipmentType} onChange={(e) => setEditingListing({ ...editingListing, equipmentType: e.target.value })} /></div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Equipment Name</Label>
+                <div className="relative">
+                  <Wrench className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input 
+                    value={editingListing.equipmentType} 
+                    onChange={(e) => setEditingListing({ ...editingListing, equipmentType: e.target.value })}
+                    className="pl-10"
+                    placeholder="Equipment name"
+                  />
+                </div>
+              </div>
+              
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><Label>Brand</Label><Input value={editingListing.brand || ''} onChange={(e) => setEditingListing({ ...editingListing, brand: e.target.value })} placeholder="Optional" /></div>
-                <div className="space-y-2"><Label>Condition</Label>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Brand</Label>
+                  <div className="relative">
+                    <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input 
+                      value={editingListing.brand || ''} 
+                      onChange={(e) => setEditingListing({ ...editingListing, brand: e.target.value })}
+                      className="pl-10"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Condition</Label>
                   <Select value={editingListing.condition} onValueChange={(v: EquipmentListing['condition']) => setEditingListing({ ...editingListing, condition: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="excellent">Excellent</SelectItem><SelectItem value="good">Good</SelectItem><SelectItem value="fair">Fair</SelectItem><SelectItem value="needs-repair">Needs Repair</SelectItem></SelectContent>
+                    <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="excellent">Excellent</SelectItem>
+                      <SelectItem value="good">Good</SelectItem>
+                      <SelectItem value="fair">Fair</SelectItem>
+                      <SelectItem value="needs-repair">Needs Repair</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
               </div>
-              <div className="space-y-2"><Label>Availability Type</Label>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Availability Type</Label>
                 <Select value={editingListing.availabilityType} onValueChange={(v: 'included' | 'rental') => setEditingListing({ ...editingListing, availabilityType: v, sessionRate: v === 'included' ? 0 : editingListing.sessionRate })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="included">Included (Free with kitchen)</SelectItem><SelectItem value="rental">Rental (Paid addon)</SelectItem></SelectContent>
+                  <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="included">Included (Free with kitchen)</SelectItem>
+                    <SelectItem value="rental">Rental (Paid addon)</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
+              
               {editingListing.availabilityType === 'rental' && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Session Rate (CAD)</Label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span><Input type="number" min="0" step="0.01" value={editingListing.sessionRate || ''} onChange={(e) => setEditingListing({ ...editingListing, sessionRate: parseFloat(e.target.value) || 0 })} className="pl-7" /></div></div>
-                  <div className="space-y-2"><Label>Damage Deposit</Label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span><Input type="number" min="0" step="0.01" value={editingListing.damageDeposit || ''} onChange={(e) => setEditingListing({ ...editingListing, damageDeposit: parseFloat(e.target.value) || 0 })} className="pl-7" placeholder="0.00" /></div></div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Session Rate (CAD)</Label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        value={editingListing.sessionRate || ''} 
+                        onChange={(e) => setEditingListing({ ...editingListing, sessionRate: parseFloat(e.target.value) || 0 })}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Damage Deposit</Label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        value={editingListing.damageDeposit || ''} 
+                        onChange={(e) => setEditingListing({ ...editingListing, damageDeposit: parseFloat(e.target.value) || 0 })}
+                        className="pl-10"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
-              <div className="space-y-2"><Label>Description</Label><Textarea value={editingListing.description || ''} onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })} placeholder="Optional description..." rows={3} /></div>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Description</Label>
+                <Textarea 
+                  value={editingListing.description || ''} 
+                  onChange={(e) => setEditingListing({ ...editingListing, description: e.target.value })}
+                  placeholder="Optional description..."
+                  rows={3}
+                  className="min-h-[80px] resize-none"
+                />
+              </div>
             </div>
           )}
-          <DialogFooter>
+          
+          <SheetFooter className="p-6 pt-4 border-t gap-2">
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-            <Button onClick={saveEditedListing} disabled={isSaving}>{isSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Changes'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <Button 
+              onClick={saveEditedListing} 
+              disabled={isSaving}
+              className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
+            >
+              {isSaving ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : <><Check className="h-4 w-4" />Save Changes</>}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>

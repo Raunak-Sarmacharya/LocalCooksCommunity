@@ -3178,6 +3178,133 @@ export const generateStorageExtensionRejectedEmail = (data: {
 };
 
 // ===================================
+// OVERSTAY PENALTY NOTIFICATION EMAILS
+// ===================================
+
+// Chef warning: Storage booking is expiring soon
+export const generateStorageExpiringWarningEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  storageName: string;
+  endDate: Date;
+  daysUntilExpiry: number;
+  gracePeriodDays: number;
+  penaltyRate: number;
+  dailyRateCents: number;
+}): EmailContent => {
+  const subject = `⚠️ Storage Booking Expiring ${data.daysUntilExpiry === 0 ? 'Today' : `in ${data.daysUntilExpiry} Day${data.daysUntilExpiry > 1 ? 's' : ''}`}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/chef/bookings`;
+  const formattedEndDate = data.endDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const dailyRate = (data.dailyRateCents / 100).toFixed(2);
+  const penaltyPerDay = ((data.dailyRateCents * data.penaltyRate) / 100).toFixed(2);
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Your storage booking is ${data.daysUntilExpiry === 0 ? '<strong style="color: #dc2626;">expiring today</strong>' : `expiring in <strong>${data.daysUntilExpiry} day${data.daysUntilExpiry > 1 ? 's' : ''}</strong>`}. Please take action to avoid overstay penalties.</p><div class="info-box"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 End Date:</strong> ${formattedEndDate}<br><strong>💰 Daily Rate:</strong> $${dailyRate} CAD</div><div class="info-box" style="background-color: #fef3c7; border-color: #f59e0b;"><strong>⚠️ Overstay Policy:</strong><br>• <strong>Grace Period:</strong> ${data.gracePeriodDays} days after end date<br>• <strong>Penalty Rate:</strong> ${(data.penaltyRate * 100).toFixed(0)}% of daily rate per day ($${penaltyPerDay}/day)<br>• Penalties require manager approval before charging</div><p class="message">To avoid penalties, please either:</p><ul style="margin: 16px 0; padding-left: 20px;"><li>Extend your storage booking</li><li>Remove your items before the end date</li></ul><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Manage My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, Your storage booking for ${data.storageName} is expiring on ${formattedEndDate}. Please extend or remove your items to avoid overstay penalties. Grace period: ${data.gracePeriodDays} days. Penalty rate: ${(data.penaltyRate * 100).toFixed(0)}% of daily rate per day.`,
+    html
+  };
+};
+
+// Chef notice: Overstay detected, penalty pending manager review
+export const generateOverstayDetectedEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  storageName: string;
+  endDate: Date;
+  daysOverdue: number;
+  gracePeriodEndsAt: Date;
+  isInGracePeriod: boolean;
+  calculatedPenaltyCents: number;
+}): EmailContent => {
+  const subject = data.isInGracePeriod 
+    ? `📦 Storage Overstay - Grace Period Active` 
+    : `⚠️ Storage Overstay - Penalty Pending Review`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/chef/bookings`;
+  const formattedEndDate = data.endDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const formattedGraceEnd = data.gracePeriodEndsAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const penaltyAmount = (data.calculatedPenaltyCents / 100).toFixed(2);
+  
+  const graceMessage = data.isInGracePeriod 
+    ? `<p class="message">You are currently in the <strong>grace period</strong>. No penalties will be charged if you resolve this before <strong>${formattedGraceEnd}</strong>.</p>`
+    : `<p class="message" style="color: #dc2626;">The grace period has ended. A penalty of <strong>$${penaltyAmount} CAD</strong> has been calculated and is pending manager review.</p>`;
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Your storage booking has exceeded its end date.</p><div class="info-box" style="background-color: ${data.isInGracePeriod ? '#fef3c7' : '#fee2e2'}; border-color: ${data.isInGracePeriod ? '#f59e0b' : '#dc2626'};"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>📅 End Date:</strong> ${formattedEndDate}<br><strong>⏰ Days Overdue:</strong> ${data.daysOverdue}<br><strong>🛡️ Grace Period Ends:</strong> ${formattedGraceEnd}${!data.isInGracePeriod ? `<br><strong>💰 Calculated Penalty:</strong> $${penaltyAmount} CAD` : ''}</div>${graceMessage}<p class="message">To resolve this overstay, please:</p><ul style="margin: 16px 0; padding-left: 20px;"><li>Extend your storage booking, or</li><li>Contact the kitchen manager to arrange item removal</li></ul><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Manage My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, Your storage booking for ${data.storageName} has exceeded its end date (${formattedEndDate}). Days overdue: ${data.daysOverdue}. ${data.isInGracePeriod ? `Grace period ends: ${formattedGraceEnd}. No penalties yet.` : `Calculated penalty: $${penaltyAmount} CAD (pending manager review).`}`,
+    html
+  };
+};
+
+// Chef notice: Penalty charged
+export const generatePenaltyChargedEmail = (data: {
+  chefEmail: string;
+  chefName: string;
+  storageName: string;
+  penaltyAmountCents: number;
+  daysOverdue: number;
+  chargeDate: Date;
+}): EmailContent => {
+  const subject = `💳 Overstay Penalty Charged - $${(data.penaltyAmountCents / 100).toFixed(2)} CAD`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/chef/bookings`;
+  const formattedDate = data.chargeDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const penaltyAmount = (data.penaltyAmountCents / 100).toFixed(2);
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">An overstay penalty has been charged to your payment method.</p><div class="info-box" style="background-color: #fee2e2; border-color: #dc2626;"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>⏰ Days Overdue:</strong> ${data.daysOverdue}<br><strong>💰 Penalty Amount:</strong> $${penaltyAmount} CAD<br><strong>📅 Charge Date:</strong> ${formattedDate}</div><p class="message">This charge was approved by the kitchen manager after the grace period ended. If you believe this charge is in error, please contact the kitchen manager directly.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.chefEmail,
+    subject,
+    text: `Hello ${data.chefName}, An overstay penalty of $${penaltyAmount} CAD has been charged for ${data.storageName}. Days overdue: ${data.daysOverdue}. Charge date: ${formattedDate}.`,
+    html
+  };
+};
+
+// Manager notice: New overstay requires review
+export const generateOverstayManagerNotificationEmail = (data: {
+  managerEmail: string;
+  chefName: string;
+  chefEmail: string;
+  storageName: string;
+  kitchenName: string;
+  endDate: Date;
+  daysOverdue: number;
+  gracePeriodEndsAt: Date;
+  isInGracePeriod: boolean;
+  calculatedPenaltyCents: number;
+}): EmailContent => {
+  const subject = data.isInGracePeriod 
+    ? `📦 Storage Overstay Detected - ${data.storageName}` 
+    : `⚠️ Overstay Pending Review - ${data.storageName}`;
+  const baseUrl = getWebsiteUrl();
+  const dashboardUrl = `${baseUrl}/manager/overstays`;
+  const formattedEndDate = data.endDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const formattedGraceEnd = data.gracePeriodEndsAt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const penaltyAmount = (data.calculatedPenaltyCents / 100).toFixed(2);
+  
+  const actionMessage = data.isInGracePeriod 
+    ? `<p class="message">The chef is currently in the grace period (ends ${formattedGraceEnd}). No action required yet, but you may want to reach out to the chef.</p>`
+    : `<p class="message" style="color: #dc2626;"><strong>Action Required:</strong> The grace period has ended. Please review and decide whether to approve, adjust, or waive the penalty.</p>`;
+  
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Overstay Alert</h2><p class="message">A storage booking at <strong>${data.kitchenName}</strong> has exceeded its end date.</p><div class="info-box" style="background-color: ${data.isInGracePeriod ? '#fef3c7' : '#fee2e2'}; border-color: ${data.isInGracePeriod ? '#f59e0b' : '#dc2626'};"><strong>📦 Storage:</strong> ${data.storageName}<br><strong>👤 Chef:</strong> ${data.chefName} (${data.chefEmail})<br><strong>📅 End Date:</strong> ${formattedEndDate}<br><strong>⏰ Days Overdue:</strong> ${data.daysOverdue}<br><strong>🛡️ Grace Period Ends:</strong> ${formattedGraceEnd}<br><strong>💰 Calculated Penalty:</strong> $${penaltyAmount} CAD</div>${actionMessage}<a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Overstays</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${new Date().getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+  
+  return {
+    to: data.managerEmail,
+    subject,
+    text: `Overstay Alert: ${data.storageName} at ${data.kitchenName}. Chef: ${data.chefName}. Days overdue: ${data.daysOverdue}. Calculated penalty: $${penaltyAmount} CAD. ${data.isInGracePeriod ? 'Grace period active.' : 'Action required - please review.'}`,
+    html
+  };
+};
+
+// ===================================
 // NEW USER REGISTRATION NOTIFICATION EMAILS
 // ===================================
 

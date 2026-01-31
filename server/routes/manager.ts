@@ -3201,5 +3201,522 @@ router.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requi
 });
 
 
+// ============================================================================
+// OVERSTAY PENALTY MANAGEMENT ENDPOINTS
+// ============================================================================
+
+import {
+    overstayPenaltyService,
+    type ManagerPenaltyDecision,
+} from "../services/overstay-penalty-service";
+
+/**
+ * GET /manager/overstays
+ * Get all pending overstay records for manager's locations
+ */
+router.get("/overstays", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        
+        // Get manager's location IDs
+        const managerLocations = await db
+            .select({ id: locations.id })
+            .from(locations)
+            .where(eq(locations.managerId, managerId));
+        
+        const locationIds = managerLocations.map(l => l.id);
+        
+        if (locationIds.length === 0) {
+            return res.json({ overstays: [], stats: null });
+        }
+
+        // Get pending overstays for all manager's locations
+        const allOverstays = await overstayPenaltyService.getPendingOverstayReviews();
+        const filteredOverstays = allOverstays.filter(o => locationIds.includes(o.locationId));
+
+        // Get stats
+        const stats = await overstayPenaltyService.getOverstayStats();
+
+        res.json({
+            overstays: filteredOverstays,
+            stats,
+        });
+    } catch (error) {
+        logger.error("Error fetching overstays:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * GET /manager/overstays/:id
+ * Get a single overstay record with full details
+ */
+router.get("/overstays/:id", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const overstayId = parseInt(req.params.id);
+        if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+        }
+
+        const record = await overstayPenaltyService.getOverstayRecord(overstayId);
+        if (!record) {
+            return res.status(404).json({ error: "Overstay record not found" });
+        }
+
+        // Get history
+        const history = await overstayPenaltyService.getOverstayHistory(overstayId);
+
+        res.json({
+            overstay: record,
+            history,
+        });
+    } catch (error) {
+        logger.error("Error fetching overstay record:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/overstays/:id/approve
+ * Approve a penalty charge (optionally with adjusted amount)
+ */
+router.post("/overstays/:id/approve", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const overstayId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const { finalPenaltyCents, managerNotes } = req.body;
+
+        if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+        }
+
+        // Validate penalty amount if provided
+        if (finalPenaltyCents !== undefined) {
+            if (typeof finalPenaltyCents !== 'number' || finalPenaltyCents < 0) {
+                return res.status(400).json({ error: "Invalid penalty amount" });
+            }
+        }
+
+        const decision: ManagerPenaltyDecision = {
+            overstayRecordId: overstayId,
+            managerId,
+            action: finalPenaltyCents !== undefined ? 'adjust' : 'approve',
+            finalPenaltyCents,
+            managerNotes,
+        };
+
+        const result = await overstayPenaltyService.processManagerDecision(decision);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        // Optionally auto-charge if requested
+        const { autoCharge } = req.body;
+        let chargeResult = null;
+        if (autoCharge) {
+            chargeResult = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
+        }
+
+        res.json({
+            success: true,
+            message: "Penalty approved successfully",
+            chargeResult,
+        });
+    } catch (error) {
+        logger.error("Error approving penalty:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/overstays/:id/waive
+ * Waive a penalty charge
+ */
+router.post("/overstays/:id/waive", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const overstayId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const { waiveReason, managerNotes } = req.body;
+
+        if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+        }
+
+        if (!waiveReason || typeof waiveReason !== 'string' || waiveReason.trim().length === 0) {
+            return res.status(400).json({ error: "Waive reason is required" });
+        }
+
+        const decision: ManagerPenaltyDecision = {
+            overstayRecordId: overstayId,
+            managerId,
+            action: 'waive',
+            waiveReason: waiveReason.trim(),
+            managerNotes,
+        };
+
+        const result = await overstayPenaltyService.processManagerDecision(decision);
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            message: "Penalty waived successfully",
+        });
+    } catch (error) {
+        logger.error("Error waiving penalty:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/overstays/:id/charge
+ * Charge an approved penalty
+ */
+router.post("/overstays/:id/charge", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const overstayId = parseInt(req.params.id);
+
+        if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+        }
+
+        const result = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
+
+        if (!result.success) {
+            return res.status(400).json({ 
+                error: result.error,
+                message: "Failed to charge penalty. The chef may need to update their payment method.",
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "Penalty charged successfully",
+            paymentIntentId: result.paymentIntentId,
+            chargeId: result.chargeId,
+        });
+    } catch (error) {
+        logger.error("Error charging penalty:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * POST /manager/overstays/:id/resolve
+ * Mark an overstay as resolved (chef extended or removed items)
+ */
+router.post("/overstays/:id/resolve", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const overstayId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const { resolutionType, resolutionNotes } = req.body;
+
+        if (isNaN(overstayId)) {
+            return res.status(400).json({ error: "Invalid overstay ID" });
+        }
+
+        const validTypes = ['extended', 'removed', 'escalated'];
+        if (!resolutionType || !validTypes.includes(resolutionType)) {
+            return res.status(400).json({ error: "Invalid resolution type. Must be: extended, removed, or escalated" });
+        }
+
+        const result = await overstayPenaltyService.resolveOverstay(
+            overstayId,
+            resolutionType,
+            resolutionNotes,
+            managerId
+        );
+
+        if (!result.success) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({
+            success: true,
+            message: `Overstay marked as ${resolutionType}`,
+        });
+    } catch (error) {
+        logger.error("Error resolving overstay:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * GET /manager/overstays/stats
+ * Get overstay statistics for manager's locations
+ */
+router.get("/overstays-stats", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+        
+        // Get manager's location IDs
+        const managerLocations = await db
+            .select({ id: locations.id })
+            .from(locations)
+            .where(eq(locations.managerId, managerId));
+        
+        const locationIds = managerLocations.map(l => l.id);
+        
+        if (locationIds.length === 0) {
+            return res.json({ stats: null });
+        }
+
+        // For now, get global stats (could be filtered by location in future)
+        const stats = await overstayPenaltyService.getOverstayStats();
+
+        res.json({ stats });
+    } catch (error) {
+        logger.error("Error fetching overstay stats:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * PUT /manager/storage-listings/:id/penalty-config
+ * Update overstay penalty configuration for a storage listing
+ */
+router.put("/storage-listings/:id/penalty-config", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const listingId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const { 
+            overstayGracePeriodDays, 
+            overstayPenaltyRate, 
+            overstayMaxPenaltyDays,
+            overstayPolicyText 
+        } = req.body;
+
+        if (isNaN(listingId)) {
+            return res.status(400).json({ error: "Invalid listing ID" });
+        }
+
+        // Verify manager owns this listing
+        const [listing] = await db
+            .select({
+                id: storageListings.id,
+                managerId: locations.managerId,
+            })
+            .from(storageListings)
+            .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+            .innerJoin(locations, eq(kitchens.locationId, locations.id))
+            .where(eq(storageListings.id, listingId))
+            .limit(1);
+
+        if (!listing) {
+            return res.status(404).json({ error: "Storage listing not found" });
+        }
+
+        if (listing.managerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to update this listing" });
+        }
+
+        // Validate inputs
+        const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+        if (overstayGracePeriodDays !== undefined) {
+            const days = parseInt(overstayGracePeriodDays);
+            if (isNaN(days) || days < 0 || days > 14) {
+                return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
+            }
+            updates.overstayGracePeriodDays = days;
+        }
+
+        if (overstayPenaltyRate !== undefined) {
+            const rate = parseFloat(overstayPenaltyRate);
+            if (isNaN(rate) || rate < 0 || rate > 0.50) {
+                return res.status(400).json({ error: "Penalty rate must be between 0 and 0.50 (50%)" });
+            }
+            updates.overstayPenaltyRate = rate.toString();
+        }
+
+        if (overstayMaxPenaltyDays !== undefined) {
+            const maxDays = parseInt(overstayMaxPenaltyDays);
+            if (isNaN(maxDays) || maxDays < 1 || maxDays > 90) {
+                return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
+            }
+            updates.overstayMaxPenaltyDays = maxDays;
+        }
+
+        if (overstayPolicyText !== undefined) {
+            updates.overstayPolicyText = overstayPolicyText || null;
+        }
+
+        await db
+            .update(storageListings)
+            .set(updates)
+            .where(eq(storageListings.id, listingId));
+
+        logger.info(`[Manager] Updated penalty config for storage listing ${listingId}`, {
+            managerId,
+            updates,
+        });
+
+        res.json({
+            success: true,
+            message: "Penalty configuration updated successfully",
+        });
+    } catch (error) {
+        logger.error("Error updating penalty config:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * GET /manager/locations/:id/overstay-penalty-defaults
+ * Get location-level overstay penalty defaults
+ */
+router.get("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const locationId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+
+        if (isNaN(locationId)) {
+            return res.status(400).json({ error: "Invalid location ID" });
+        }
+
+        // Verify manager owns this location
+        const [location] = await db
+            .select({
+                id: locations.id,
+                managerId: locations.managerId,
+                overstayGracePeriodDays: locations.overstayGracePeriodDays,
+                overstayPenaltyRate: locations.overstayPenaltyRate,
+                overstayMaxPenaltyDays: locations.overstayMaxPenaltyDays,
+                overstayPolicyText: locations.overstayPolicyText,
+            })
+            .from(locations)
+            .where(eq(locations.id, locationId))
+            .limit(1);
+
+        if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+        }
+
+        if (location.managerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to access this location" });
+        }
+
+        // Get platform defaults for reference
+        const { getOverstayPlatformDefaults } = await import("../services/overstay-defaults-service");
+        const platformDefaults = await getOverstayPlatformDefaults();
+
+        res.json({
+            locationDefaults: {
+                gracePeriodDays: location.overstayGracePeriodDays,
+                penaltyRate: location.overstayPenaltyRate ? parseFloat(location.overstayPenaltyRate.toString()) : null,
+                maxPenaltyDays: location.overstayMaxPenaltyDays,
+                policyText: location.overstayPolicyText,
+            },
+            platformDefaults,
+            isUsingDefaults: location.overstayGracePeriodDays === null && 
+                            location.overstayPenaltyRate === null && 
+                            location.overstayMaxPenaltyDays === null,
+        });
+    } catch (error) {
+        logger.error("Error getting location overstay penalty defaults:", error);
+        return errorResponse(res, error);
+    }
+});
+
+/**
+ * PUT /manager/locations/:id/overstay-penalty-defaults
+ * Update location-level overstay penalty defaults
+ */
+router.put("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const locationId = parseInt(req.params.id);
+        const managerId = req.neonUser!.id;
+        const {
+            gracePeriodDays,
+            penaltyRate,
+            maxPenaltyDays,
+            policyText,
+        } = req.body;
+
+        if (isNaN(locationId)) {
+            return res.status(400).json({ error: "Invalid location ID" });
+        }
+
+        // Verify manager owns this location
+        const [location] = await db
+            .select({ id: locations.id, managerId: locations.managerId })
+            .from(locations)
+            .where(eq(locations.id, locationId))
+            .limit(1);
+
+        if (!location) {
+            return res.status(404).json({ error: "Location not found" });
+        }
+
+        if (location.managerId !== managerId) {
+            return res.status(403).json({ error: "Not authorized to update this location" });
+        }
+
+        // Build updates object
+        const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+        if (gracePeriodDays !== undefined) {
+            if (gracePeriodDays !== null) {
+                const days = parseInt(gracePeriodDays);
+                if (isNaN(days) || days < 0 || days > 14) {
+                    return res.status(400).json({ error: "Grace period must be between 0 and 14 days" });
+                }
+                updates.overstayGracePeriodDays = days;
+            } else {
+                updates.overstayGracePeriodDays = null;
+            }
+        }
+
+        if (penaltyRate !== undefined) {
+            if (penaltyRate !== null) {
+                const rate = parseFloat(penaltyRate);
+                if (isNaN(rate) || rate < 0 || rate > 0.50) {
+                    return res.status(400).json({ error: "Penalty rate must be between 0 and 0.50 (50%)" });
+                }
+                updates.overstayPenaltyRate = rate.toString();
+            } else {
+                updates.overstayPenaltyRate = null;
+            }
+        }
+
+        if (maxPenaltyDays !== undefined) {
+            if (maxPenaltyDays !== null) {
+                const maxDays = parseInt(maxPenaltyDays);
+                if (isNaN(maxDays) || maxDays < 1 || maxDays > 90) {
+                    return res.status(400).json({ error: "Max penalty days must be between 1 and 90" });
+                }
+                updates.overstayMaxPenaltyDays = maxDays;
+            } else {
+                updates.overstayMaxPenaltyDays = null;
+            }
+        }
+
+        if (policyText !== undefined) {
+            updates.overstayPolicyText = policyText || null;
+        }
+
+        await db
+            .update(locations)
+            .set(updates)
+            .where(eq(locations.id, locationId));
+
+        logger.info(`[Manager] Updated location ${locationId} overstay penalty defaults`, {
+            managerId,
+            updates,
+        });
+
+        res.json({
+            success: true,
+            message: "Location overstay penalty defaults updated successfully",
+        });
+    } catch (error) {
+        logger.error("Error updating location overstay penalty defaults:", error);
+        return errorResponse(res, error);
+    }
+});
+
 export default router;
 

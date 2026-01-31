@@ -66,6 +66,7 @@ const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
 const StripeConnectReturn = lazy(() => import("@/pages/StripeConnectReturn"));
+const ManagerOverstaysPage = lazy(() => import("@/pages/ManagerOverstaysPage"));
 
 
 // Loading component
@@ -367,6 +368,13 @@ function Router() {
           {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
             <ManagerProtectedRoute>
               <BookingDetailsPage />
+            </ManagerProtectedRoute>
+          ) : null}
+        </Route>
+        <Route path="/manager/overstays">
+          {(subdomain === 'kitchen' || subdomain === 'admin' || !subdomain) ? (
+            <ManagerProtectedRoute>
+              <ManagerOverstaysPage />
             </ManagerProtectedRoute>
           ) : null}
         </Route>

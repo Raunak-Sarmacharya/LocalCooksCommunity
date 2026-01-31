@@ -199,4 +199,175 @@ router.put('/admin/platform-settings/service-fee-rate', requireFirebaseAuthWithU
     }
 });
 
+// 🔥 Public Platform Settings Endpoint - Overstay Penalty Defaults
+// Returns the current overstay penalty defaults for client-side display
+router.get('/platform-settings/overstay-penalties', async (req: Request, res: Response) => {
+    try {
+        const [gracePeriodSetting] = await db
+            .select()
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'overstay_grace_period_days'))
+            .limit(1);
+        
+        const [penaltyRateSetting] = await db
+            .select()
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'overstay_penalty_rate'))
+            .limit(1);
+        
+        const [maxDaysSetting] = await db
+            .select()
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'overstay_max_penalty_days'))
+            .limit(1);
+
+        const gracePeriodDays = gracePeriodSetting ? parseInt(gracePeriodSetting.value) : 3;
+        const penaltyRate = penaltyRateSetting ? parseFloat(penaltyRateSetting.value) : 0.10;
+        const maxPenaltyDays = maxDaysSetting ? parseInt(maxDaysSetting.value) : 30;
+
+        return res.json({
+            gracePeriodDays,
+            penaltyRate,
+            maxPenaltyDays,
+            penaltyRatePercent: (penaltyRate * 100).toFixed(0),
+            description: 'Platform default overstay penalty settings. Managers can override per storage listing.',
+        });
+    } catch (error) {
+        console.error('Error getting overstay penalty defaults:', error);
+        // Return defaults on error
+        return res.json({
+            gracePeriodDays: 3,
+            penaltyRate: 0.10,
+            maxPenaltyDays: 30,
+            penaltyRatePercent: '10',
+            description: 'Platform default overstay penalty settings. Managers can override per storage listing.',
+        });
+    }
+});
+
+// 🔥 Admin Platform Settings Endpoints - Overstay Penalty Defaults
+// Get all overstay penalty defaults (admin)
+router.get('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const [gracePeriodSetting] = await db
+            .select()
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'overstay_grace_period_days'))
+            .limit(1);
+        
+        const [penaltyRateSetting] = await db
+            .select()
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'overstay_penalty_rate'))
+            .limit(1);
+        
+        const [maxDaysSetting] = await db
+            .select()
+            .from(platformSettings)
+            .where(eq(platformSettings.key, 'overstay_max_penalty_days'))
+            .limit(1);
+
+        return res.json({
+            gracePeriodDays: {
+                key: 'overstay_grace_period_days',
+                value: gracePeriodSetting?.value || '3',
+                intValue: gracePeriodSetting ? parseInt(gracePeriodSetting.value) : 3,
+                description: 'Default grace period before penalties apply (days)',
+                updatedAt: gracePeriodSetting?.updatedAt,
+            },
+            penaltyRate: {
+                key: 'overstay_penalty_rate',
+                value: penaltyRateSetting?.value || '0.10',
+                decimalValue: penaltyRateSetting ? parseFloat(penaltyRateSetting.value) : 0.10,
+                percentValue: penaltyRateSetting ? (parseFloat(penaltyRateSetting.value) * 100).toFixed(0) : '10',
+                description: 'Default penalty rate as decimal (e.g., 0.10 for 10%)',
+                updatedAt: penaltyRateSetting?.updatedAt,
+            },
+            maxPenaltyDays: {
+                key: 'overstay_max_penalty_days',
+                value: maxDaysSetting?.value || '30',
+                intValue: maxDaysSetting ? parseInt(maxDaysSetting.value) : 30,
+                description: 'Default maximum days penalties can accrue',
+                updatedAt: maxDaysSetting?.updatedAt,
+            },
+        });
+    } catch (error) {
+        console.error('Error getting overstay penalty settings:', error);
+        res.status(500).json({ error: 'Failed to get overstay penalty settings' });
+    }
+});
+
+// Update overstay penalty defaults
+router.put('/admin/platform-settings/overstay-penalties', requireFirebaseAuthWithUser, requireAdmin, async (req: Request, res: Response) => {
+    try {
+        const { gracePeriodDays, penaltyRate, maxPenaltyDays } = req.body;
+        const userId = req.neonUser!.id;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
+
+        const results: Record<string, any> = {};
+
+        // Update grace period days
+        if (gracePeriodDays !== undefined) {
+            const days = parseInt(gracePeriodDays);
+            if (isNaN(days) || days < 0 || days > 14) {
+                return res.status(400).json({ error: 'Grace period must be between 0 and 14 days' });
+            }
+            
+            const [existing] = await db.select().from(platformSettings).where(eq(platformSettings.key, 'overstay_grace_period_days')).limit(1);
+            if (existing) {
+                const [updated] = await db.update(platformSettings).set({ value: days.toString(), updatedBy: userId, updatedAt: new Date() }).where(eq(platformSettings.key, 'overstay_grace_period_days')).returning();
+                results.gracePeriodDays = { value: days, updated: true };
+            } else {
+                await db.insert(platformSettings).values({ key: 'overstay_grace_period_days', value: days.toString(), description: 'Default grace period before penalties apply (days)', updatedBy: userId });
+                results.gracePeriodDays = { value: days, created: true };
+            }
+        }
+
+        // Update penalty rate
+        if (penaltyRate !== undefined) {
+            const rate = typeof penaltyRate === 'string' ? parseFloat(penaltyRate) : penaltyRate;
+            if (isNaN(rate) || rate < 0 || rate > 0.50) {
+                return res.status(400).json({ error: 'Penalty rate must be between 0 and 0.50 (0% to 50%)' });
+            }
+            
+            const [existing] = await db.select().from(platformSettings).where(eq(platformSettings.key, 'overstay_penalty_rate')).limit(1);
+            if (existing) {
+                const [updated] = await db.update(platformSettings).set({ value: rate.toString(), updatedBy: userId, updatedAt: new Date() }).where(eq(platformSettings.key, 'overstay_penalty_rate')).returning();
+                results.penaltyRate = { value: rate, percent: (rate * 100).toFixed(0), updated: true };
+            } else {
+                await db.insert(platformSettings).values({ key: 'overstay_penalty_rate', value: rate.toString(), description: 'Default penalty rate as decimal (e.g., 0.10 for 10%)', updatedBy: userId });
+                results.penaltyRate = { value: rate, percent: (rate * 100).toFixed(0), created: true };
+            }
+        }
+
+        // Update max penalty days
+        if (maxPenaltyDays !== undefined) {
+            const days = parseInt(maxPenaltyDays);
+            if (isNaN(days) || days < 1 || days > 90) {
+                return res.status(400).json({ error: 'Max penalty days must be between 1 and 90' });
+            }
+            
+            const [existing] = await db.select().from(platformSettings).where(eq(platformSettings.key, 'overstay_max_penalty_days')).limit(1);
+            if (existing) {
+                const [updated] = await db.update(platformSettings).set({ value: days.toString(), updatedBy: userId, updatedAt: new Date() }).where(eq(platformSettings.key, 'overstay_max_penalty_days')).returning();
+                results.maxPenaltyDays = { value: days, updated: true };
+            } else {
+                await db.insert(platformSettings).values({ key: 'overstay_max_penalty_days', value: days.toString(), description: 'Default maximum days penalties can accrue', updatedBy: userId });
+                results.maxPenaltyDays = { value: days, created: true };
+            }
+        }
+
+        return res.json({
+            message: 'Overstay penalty defaults updated successfully',
+            results,
+        });
+    } catch (error) {
+        console.error('Error updating overstay penalty defaults:', error);
+        res.status(500).json({ error: 'Failed to update overstay penalty defaults' });
+    }
+});
+
 export const platformRouter = router;

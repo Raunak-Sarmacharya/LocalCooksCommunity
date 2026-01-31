@@ -99,6 +99,7 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
       managerProfileData: {},
       welcomeEmailSentAt: null,
+      stripeCustomerId: null,
     };
     this.users.set(adminUser.id, adminUser);
     console.log("Development: Default admin user created (username: admin, password: localcooks)");
@@ -178,6 +179,7 @@ export class MemStorage implements IStorage {
       managerProfileData: (insertUser as any).managerProfileData || {},
       updatedAt: new Date(),
       welcomeEmailSentAt: (insertUser as any).welcomeEmailSentAt || null,
+      stripeCustomerId: null,
     };
 
     this.users.set(user.id, user);
