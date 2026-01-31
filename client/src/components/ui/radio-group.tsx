@@ -1,6 +1,8 @@
+"use client"
+
 import * as React from "react"
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group"
-// import { Circle } from "lucide-react" // Not needed for a simple circle outline
+import { CircleIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -26,19 +28,21 @@ const RadioGroupItem = React.forwardRef<
     <RadioGroupPrimitive.Item
       ref={ref}
       className={cn(
-        // Always a small circle
-        "h-4 w-4 rounded-full border border-gray-300 bg-white shadow-sm transition-colors duration-200",
-        "aspect-square shrink-0 inline-flex items-center justify-center cursor-pointer",
-        "data-[state=checked]:border-primary data-[state=checked]:ring-2 data-[state=checked]:ring-primary",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        "aspect-square shrink-0 rounded-full border border-input text-primary shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
+      style={{ 
+        width: '16px', 
+        height: '16px', 
+        minWidth: '16px', 
+        minHeight: '16px',
+        maxWidth: '16px',
+        maxHeight: '16px'
+      }}
       {...props}
     >
       <RadioGroupPrimitive.Indicator className="flex items-center justify-center">
-        {/* Minimal filled dot for checked state */}
-        <div className="h-2 w-2 rounded-full bg-primary transition-all duration-200 scale-100 data-[state=unchecked]:scale-0" />
+        <CircleIcon className="h-2.5 w-2.5 fill-primary" />
       </RadioGroupPrimitive.Indicator>
     </RadioGroupPrimitive.Item>
   )

@@ -58,6 +58,7 @@ export const users = pgTable("users", {
   firebaseUid: text("firebase_uid").unique(),
   isVerified: boolean("is_verified").default(false).notNull(),
   has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
+  welcomeEmailSentAt: timestamp("welcome_email_sent_at"), // Track when welcome email was sent (null = not sent, prevents duplicates)
   // Support dual roles - users can be both chef and manager
   isChef: boolean("is_chef").default(false).notNull(),
   isManager: boolean("is_manager").default(false).notNull(),
@@ -264,6 +265,9 @@ export const locations = pgTable("locations", {
   managerId: integer("manager_id").references(() => users.id),
   notificationEmail: text("notification_email"), // Email where notifications will be sent
   notificationPhone: text("notification_phone"), // Phone number where SMS notifications will be sent
+  contactEmail: text("contact_email"), // Primary business contact email
+  contactPhone: text("contact_phone"), // Primary business contact phone
+  preferredContactMethod: text("preferred_contact_method").default("email").notNull(), // email, phone, or both
   cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
   cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
   defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),

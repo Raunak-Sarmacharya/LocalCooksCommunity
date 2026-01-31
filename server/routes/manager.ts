@@ -637,8 +637,10 @@ router.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requi
 
         const { createAccountLink } = await import('../services/stripe-connect-service');
         const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
+        // Check if request came from setup flow
+        const fromSetup = req.query.from === 'setup' ? '&from=setup' : '';
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
 
         const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
@@ -674,8 +676,10 @@ router.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requir
             return res.json({ url: link.url });
         } else {
             const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-            const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
-            const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
+            // Check if request came from setup flow
+            const fromSetup = req.query.from === 'setup' ? '&from=setup' : '';
+            const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
+            const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
 
             const link = await createAccountLink(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
 
@@ -2096,6 +2100,33 @@ router.put("/locations/:locationId/cancellation-policy", requireFirebaseAuthWith
                 (updates as any).notificationPhone = null;
             }
         }
+        // Handle contact fields
+        const { contactEmail, contactPhone, preferredContactMethod } = req.body;
+        if (contactEmail !== undefined) {
+            if (contactEmail && contactEmail.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+                return res.status(400).json({ error: "Invalid contact email format" });
+            }
+            (updates as any).contactEmail = contactEmail && contactEmail.trim() !== '' ? contactEmail.trim() : null;
+        }
+        if (contactPhone !== undefined) {
+            if (contactPhone && contactPhone.trim() !== '') {
+                const normalized = normalizePhoneForStorage(contactPhone);
+                if (!normalized) {
+                    return res.status(400).json({
+                        error: "Invalid contact phone number format. Please enter a valid phone number"
+                    });
+                }
+                (updates as any).contactPhone = normalized;
+            } else {
+                (updates as any).contactPhone = null;
+            }
+        }
+        if (preferredContactMethod !== undefined) {
+            if (!['email', 'phone', 'both'].includes(preferredContactMethod)) {
+                return res.status(400).json({ error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'" });
+            }
+            (updates as any).preferredContactMethod = preferredContactMethod;
+        }
         if (logoUrl !== undefined) {
             // Set to null if empty string, otherwise use the value
             // Use the schema field name (logoUrl) - Drizzle will map it to logo_url column
@@ -2305,6 +2336,9 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
             address,
             notificationEmail,
             notificationPhone,
+            contactEmail,
+            contactPhone,
+            preferredContactMethod,
             kitchenLicenseUrl,
             kitchenLicenseStatus,
             kitchenLicenseExpiry,
@@ -2333,11 +2367,24 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
             normalizedNotificationPhone = normalized;
         }
 
+        // Normalize contact phone if provided
+        let normalizedContactPhone: string | undefined = undefined;
+        if (contactPhone && contactPhone.trim() !== '') {
+            const normalized = normalizePhoneForStorage(contactPhone);
+            if (!normalized) {
+                return res.status(400).json({
+                    error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+                });
+            }
+            normalizedContactPhone = normalized;
+        }
+
         console.log('Creating location for manager:', {
             managerId: user.id,
             name,
             address,
             notificationPhone: normalizedNotificationPhone,
+            contactPhone: normalizedContactPhone,
             kitchenLicenseUrl: kitchenLicenseUrl ? 'Provided' : 'Not provided'
         });
 
@@ -2347,6 +2394,9 @@ router.post("/locations", requireFirebaseAuthWithUser, requireManager, async (re
             managerId: user.id,
             notificationEmail: notificationEmail || undefined,
             notificationPhone: normalizedNotificationPhone,
+            contactEmail: contactEmail || undefined,
+            contactPhone: normalizedContactPhone,
+            preferredContactMethod: preferredContactMethod || 'email',
             kitchenLicenseUrl: kitchenLicenseUrl || undefined,
             kitchenLicenseStatus: kitchenLicenseStatus || 'pending',
             kitchenLicenseExpiry: kitchenLicenseExpiry || undefined,

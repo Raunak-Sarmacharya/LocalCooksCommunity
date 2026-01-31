@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle, Loader2, Plus, Settings, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Trash2 } from "lucide-react";
+import { CheckCircle, Loader2, Plus, ChefHat, Edit2, ChevronDown, ChevronUp, Image, DollarSign, Clock, Sparkles, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,14 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { KitchenGalleryImages } from "@/components/manager/kitchen/KitchenGalleryImages";
 import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
+import { cn } from "@/lib/utils";
 
-
+// Enterprise-grade Kitchen Card Component
 interface KitchenCardProps {
   kitchen: any;
   locationId: number;
@@ -30,74 +31,81 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
     : 'Not set';
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="border-slate-200/60 dark:border-slate-700/60 shadow-sm overflow-hidden transition-all hover:shadow-md">
       <Collapsible open={isExpanded} onOpenChange={onToggle}>
         <CollapsibleTrigger asChild>
-          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+          <CardHeader className="cursor-pointer hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors pb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 {/* Kitchen Thumbnail */}
-                <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                <div className="w-14 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
                   {kitchen.imageUrl || (kitchen.galleryImages && kitchen.galleryImages.length > 0) ? (
                     <img
                       src={kitchen.imageUrl || kitchen.galleryImages[0]}
                       alt={kitchen.name}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
                     />
                   ) : (
-                    <Settings className="w-6 h-6 text-muted-foreground" />
+                    <ChefHat className="w-6 h-6 text-slate-400" />
                   )}
                 </div>
 
                 <div>
-                  <CardTitle className="text-base">{kitchen.name}</CardTitle>
-                  <CardDescription className="flex items-center gap-3 mt-1">
-                    <span className="flex items-center gap-1">
-                      <DollarSign className="w-3 h-3" />
+                  <CardTitle className="text-base font-semibold text-slate-900 dark:text-slate-100">{kitchen.name}</CardTitle>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <Badge variant="secondary" className="text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                      <DollarSign className="w-3 h-3 mr-0.5" />
                       {hourlyRateDisplay}
-                    </span>
+                    </Badge>
                     {kitchen.minimumBookingHours && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
+                      <Badge variant="secondary" className="text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                        <Clock className="w-3 h-3 mr-0.5" />
                         Min {kitchen.minimumBookingHours}h
-                      </span>
-                    )}
-                    {!hasImage && (
-                      <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
-                        <Image className="w-3 h-3 mr-1" />
-                        No photos
                       </Badge>
                     )}
-                  </CardDescription>
+                    {!hasImage && (
+                      <Badge variant="outline" className="text-xs text-amber-600 border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                        <Image className="w-3 h-3 mr-1" />
+                        Add photos
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {isExpanded ? (
-                  <ChevronUp className="w-5 h-5 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                )}
+                <div className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
+                  isExpanded ? "bg-slate-100 dark:bg-slate-800" : "bg-transparent"
+                )}>
+                  {isExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-slate-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-500" />
+                  )}
+                </div>
               </div>
             </div>
           </CardHeader>
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <CardContent className="pt-0 space-y-6">
-            <Separator />
-
+          <CardContent className="pt-0 space-y-5 border-t border-slate-100 dark:border-slate-800">
             {/* Description */}
-            <div>
-              <h4 className="text-sm font-medium mb-2">Description</h4>
-              <p className="text-sm text-muted-foreground">
-                {kitchen.description || "No description provided. You can add one from the Kitchen Settings page."}
+            <div className="pt-4">
+              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Description</Label>
+              <p className="text-sm text-slate-700 dark:text-slate-300 mt-1.5">
+                {kitchen.description || "No description provided yet."}
               </p>
             </div>
 
             {/* Gallery Images */}
             <div>
-              <h4 className="text-sm font-medium mb-3">Gallery Images</h4>
+              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3 block">Gallery Images</Label>
               <KitchenGalleryImages
                 kitchenId={kitchen.id}
                 galleryImages={kitchen.galleryImages || []}
@@ -107,10 +115,10 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
 
             {/* Quick Actions */}
             <div className="flex justify-end pt-2">
-              <Button variant="outline" size="sm" asChild>
+              <Button variant="outline" size="sm" className="text-slate-600 dark:text-slate-400" asChild>
                 <a href={`/manager/dashboard?location=${locationId}&kitchen=${kitchen.id}&tab=settings`}>
-                  <Edit2 className="w-4 h-4 mr-2" />
-                  Edit Kitchen Details
+                  <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+                  Edit Details
                 </a>
               </Button>
             </div>
@@ -120,6 +128,7 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
     </Card>
   );
 }
+
 
 export default function CreateKitchenStep() {
   const {
@@ -139,29 +148,18 @@ export default function CreateKitchenStep() {
     setExpandedKitchenId(prev => prev === kitchenId ? null : kitchenId);
   };
 
-
-
-
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-      {/* Header */}
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight">Kitchen Spaces</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage your kitchen spaces for this location. Add photos and details to attract chefs.
-        </p>
-      </div>
-
-      {/* Existing Kitchens */}
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Existing Kitchens - Success State */}
       {kitchens.length > 0 && (
         <div className="space-y-4">
-          <Alert className="border-green-200 bg-green-50 text-green-800 [&>svg]:text-green-600">
-            <CheckCircle className="h-4 w-4" />
-            <AlertDescription>
+          <Alert className="border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/50">
+            <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <AlertDescription className="text-sm text-emerald-700 dark:text-emerald-300">
               <span className="font-medium">
                 {kitchens.length} kitchen{kitchens.length > 1 ? 's' : ''} configured
               </span>
-              {' '}— Click a kitchen below to add photos or view details.
+              {' '}— Expand to add photos or edit details.
             </AlertDescription>
           </Alert>
 
@@ -180,70 +178,96 @@ export default function CreateKitchenStep() {
 
           {/* Add Another Kitchen Button */}
           {!showCreate && (
-            <Button variant="outline" onClick={() => setShowCreate(true)} className="w-full">
-              <Plus className="h-4 w-4 mr-2" /> Add Another Kitchen
+            <Button 
+              variant="outline" 
+              onClick={() => setShowCreate(true)} 
+              className="w-full border-dashed border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600 text-slate-600 dark:text-slate-400"
+            >
+              <Plus className="h-4 w-4 mr-2" /> Add Another Kitchen Space
             </Button>
           )}
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State - Enterprise Design */}
       {kitchens.length === 0 && !showCreate && (
-        <Card className="border-dashed">
-          <CardContent className="p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-              <Settings className="h-8 w-8 text-muted-foreground" />
+        <Card className="border-dashed border-2 border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+          <CardContent className="py-12 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center mx-auto mb-5">
+              <ChefHat className="h-8 w-8 text-[#F51042]" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">No kitchen created yet</h3>
-            <p className="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
-              Create your first kitchen space to start accepting bookings from chefs. You can add more kitchens later.
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">Create Your Kitchen Space</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">
+              Set up your first kitchen to start receiving booking requests from chefs in your area.
             </p>
-            <Button onClick={() => setShowCreate(true)} size="lg">
-              <Plus className="h-4 w-4 mr-2" /> Create Your First Kitchen
+            <Button onClick={() => setShowCreate(true)} size="lg" className="bg-[#F51042] hover:bg-[#d90e39]">
+              <Plus className="h-4 w-4 mr-2" /> Create Kitchen Space
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Create Kitchen Form */}
+      {/* Create Kitchen Form - Enterprise Design */}
       {showCreate && (
-        <Card className="animate-in fade-in zoom-in-95 duration-200 border-primary/20">
-          <CardHeader>
-            <CardTitle className="text-lg">New Kitchen Space</CardTitle>
-            <CardDescription>Enter the basic details for your new kitchen. You can add photos and more details after creation.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="kitchen-name">Kitchen Name <span className="text-destructive">*</span></Label>
+        <Card className="border-slate-200/60 dark:border-slate-700/60 shadow-sm animate-in fade-in zoom-in-95 duration-200">
+          <CardContent className="space-y-6 pt-6">
+            {/* Basic Information Section */}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="kitchen-name" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Kitchen Name
+                  <span className="text-destructive ml-1">*</span>
+                </Label>
                 <Input
                   id="kitchen-name"
                   value={data.name}
                   onChange={(e) => setData({ ...data, name: e.target.value })}
                   placeholder="e.g., Main Kitchen, Prep Area, Bakery Station"
+                  className="h-10"
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="kitchen-description">Description <span className="text-muted-foreground font-normal ml-1">(Optional)</span></Label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="kitchen-description" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Description
+                  </Label>
+                  <span className="text-xs text-slate-400">(Optional)</span>
+                </div>
                 <Textarea
                   id="kitchen-description"
                   value={data.description}
                   onChange={(e) => setData({ ...data, description: e.target.value })}
-                  placeholder="Describe your kitchen space, equipment, and what makes it special..."
+                  placeholder="Describe your kitchen space, equipment, and what makes it special for chefs..."
                   rows={3}
+                  className="resize-none"
                 />
               </div>
 
-              {/* Image Upload Section */}
-              <div className="grid gap-2">
-                <Label>Cover Image <span className="text-muted-foreground font-normal ml-1">(Optional)</span></Label>
+              {/* Cover Image */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Cover Image
+                  </Label>
+                  <span className="text-xs text-slate-400">(Optional)</span>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="w-3.5 h-3.5 text-slate-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p className="text-xs">A great cover photo helps attract more chefs to your space.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <div className="max-w-md">
                   <ImageWithReplace
                     imageUrl={data.imageUrl || undefined}
                     onImageChange={(url) => setData({ ...data, imageUrl: url || '' })}
                     onRemove={() => setData({ ...data, imageUrl: '' })}
-                    className="h-48 object-cover rounded-lg"
+                    className="h-40 object-cover rounded-lg"
                     aspectRatio="16/9"
                     fieldName="kitchen-cover"
                   />
@@ -251,62 +275,72 @@ export default function CreateKitchenStep() {
               </div>
             </div>
 
-            <Separator />
-
-            <div>
-              <h5 className="text-sm font-semibold text-foreground mb-3">Pricing</h5>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="grid gap-2">
-                  <Label>Hourly Rate <span className="text-destructive">*</span></Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">$</span>
+            {/* Pricing Section */}
+            <Card className="border-slate-200/60 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/30">
+              <CardContent className="py-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Hourly Rate (CAD)
+                      <span className="text-destructive ml-1">*</span>
+                    </Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={data.hourlyRate}
+                        onChange={(e) => setData({ ...data, hourlyRate: e.target.value })}
+                        placeholder="25.00"
+                        className="pl-7 h-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Minimum Booking
+                      <span className="text-xs text-slate-400 font-normal ml-1">(hours)</span>
+                    </Label>
                     <Input
                       type="number"
-                      step="0.01"
-                      min="0"
-                      value={data.hourlyRate}
-                      onChange={(e) => setData({ ...data, hourlyRate: e.target.value })}
-                      placeholder="25.00"
+                      min="0.25"
+                      step="0.25"
+                      value={data.minimumBookingHours}
+                      onChange={(e) => setData({ ...data, minimumBookingHours: e.target.value })}
+                      placeholder="1"
+                      className="h-10"
                     />
                   </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label>Currency</Label>
-                  <Select
-                    value={data.currency}
-                    onValueChange={(val) => setData({ ...data, currency: val })}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CAD">CAD ($)</SelectItem>
-                      <SelectItem value="USD">USD ($)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Min. Hours</Label>
-                  <Input
-                    type="number"
-                    min="0.25"
-                    step="0.25"
-                    value={data.minimumBookingHours}
-                    onChange={(e) => setData({ ...data, minimumBookingHours: e.target.value })}
-                    placeholder="1"
-                  />
-                </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
-            <div className="flex gap-2 pt-4">
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-2">
               <Button
                 onClick={() => createKitchen()}
                 disabled={isCreating || !data.name || !data.hourlyRate}
-                className="flex-1"
+                className="flex-1 bg-[#F51042] hover:bg-[#d90e39]"
               >
-                {isCreating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                {isCreating ? "Creating..." : "Create Kitchen"}
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Create Kitchen
+                  </>
+                )}
               </Button>
-              <Button variant="outline" onClick={() => setShowCreate(false)} disabled={isCreating}>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowCreate(false)} 
+                disabled={isCreating}
+                className="text-slate-600 dark:text-slate-400"
+              >
                 Cancel
               </Button>
             </div>

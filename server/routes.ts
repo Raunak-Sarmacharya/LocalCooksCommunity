@@ -95,6 +95,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true, message: "Logged out successfully" });
   });
 
+  // ENTERPRISE: Top-level alias for sync-verification-status endpoint
+  // Client calls /api/sync-verification-status, routes to /api/user/sync-verification-status
+  const userRouter = (await import("./routes/user")).default;
+  app.use("/api/sync-verification-status", (req, res, next) => {
+    // Rewrite the URL to route through the user router's sync-verification-status handler
+    req.url = "/sync-verification-status";
+    userRouter(req, res, next);
+  });
+
   // Mount Applications Router
   app.use("/api/applications", (await import("./routes/applications")).default);
 
@@ -138,8 +147,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Sync User (Firebase -> Neon) - Legacy endpoint, delegates to /api/user/sync
+  // Sync User (Firebase -> Neon) - Legacy endpoint
   // Called after Firebase login to ensure user exists in Neon and update metadata
+  // ENTERPRISE: Uses idempotent welcome email logic (checks welcomeEmailSentAt)
   app.post("/api/firebase-sync-user", requireFirebaseAuthWithUser, async (req, res) => {
     try {
       let user = req.neonUser!;
@@ -151,21 +161,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updatedUser = await userService.updateUser(user.id, { isVerified: true });
         if (updatedUser) {
           user = updatedUser;
+        }
+      }
 
-          // Send welcome email now that user is verified
-          try {
-            const { sendEmail, generateWelcomeEmail } = await import('./email');
-            console.log(`📧 Sending welcome email to newly verified user: ${user.username}`);
-            const welcomeEmail = generateWelcomeEmail({
-              fullName: req.firebaseUser?.name || user.username.split('@')[0],
-              email: user.username
-            });
-            await sendEmail(welcomeEmail, {
-              trackingId: `welcome_verified_${user.id}_${Date.now()}`
-            });
-          } catch (emailError) {
-            console.error('❌ Error sending welcome email on sync verification:', emailError);
+      // ENTERPRISE: Send welcome email ONLY if not already sent (idempotency check)
+      // This prevents duplicate welcome emails across multiple sync calls
+      if (firebaseEmailVerified && user.isVerified && !user.welcomeEmailSentAt) {
+        try {
+          const { sendEmail, generateWelcomeEmail } = await import('./email');
+          console.log(`📧 Sending welcome email to newly verified user: ${user.username}`);
+          const welcomeEmail = generateWelcomeEmail({
+            fullName: req.firebaseUser?.name || user.username.split('@')[0],
+            email: user.username
+          });
+          const emailResult = await sendEmail(welcomeEmail, {
+            trackingId: `welcome_verified_${user.id}_${Date.now()}`
+          });
+          
+          if (emailResult) {
+            // Mark welcome email as sent with timestamp (idempotency)
+            await userService.updateUser(user.id, { welcomeEmailSentAt: new Date() });
+            console.log(`✅ Welcome email sent successfully to ${user.username}`);
           }
+        } catch (emailError) {
+          console.error('❌ Error sending welcome email on sync verification:', emailError);
         }
       }
 
@@ -254,8 +273,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const displayName = otherData.displayName || email.split('@')[0];
 
-        // Only send welcome email if the user is verified (e.g. Google Auth)
-        // For email/password users, they will get this email after they verify
+        // ENTERPRISE: Only send welcome email if the user is verified (e.g. Google Auth)
+        // For email/password users, they will get this email after they verify via /api/sync-verification-status
         if (decodedToken.email_verified) {
           console.log(`📧 Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail({
@@ -266,12 +285,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             trackingId: `welcome_${finalRole}_${email}_${Date.now()}`
           });
           if (welcomeSent) {
+            // ENTERPRISE: Mark welcome email as sent with timestamp (idempotency)
+            await userService.updateUser(newUser.id, { welcomeEmailSentAt: new Date() });
             console.log(`✅ Welcome email sent to new ${finalRole}: ${email}`);
           } else {
             console.log(`❌ Failed to send welcome email to ${email}`);
           }
         } else {
-          console.log(`ℹ️ Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - waiting for verification`);
+          console.log(`ℹ️ Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - will be sent after verification`);
         }
 
         // Send notification to admins about new user registration

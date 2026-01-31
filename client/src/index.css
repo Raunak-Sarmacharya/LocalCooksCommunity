@@ -147,42 +147,13 @@
     animation-duration: 0.001s;
   }
 
-  /* Enhanced Input Text Centering */
+  /* Consistent input height for all input types */
   input[type="text"],
   input[type="email"],
-  input[type="password"] {
-    display: flex;
-    align-items: center;
-    line-height: 1.5 !important;
-    text-align: left;
-    vertical-align: middle;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+  input[type="password"],
+  input[type="tel"] {
+    height: 40px;
     box-sizing: border-box;
-  }
-
-  /* Ensure input text is properly centered when typing */
-  input[type="text"]:not(:placeholder-shown),
-  input[type="email"]:not(:placeholder-shown),
-  input[type="password"]:not(:placeholder-shown) {
-    line-height: 1.5 !important;
-    display: flex;
-    align-items: center;
-  }
-
-  /* Fix input vertical alignment for all states */
-  input[type="text"],
-  input[type="email"],
-  input[type="password"] {
-    /* Force consistent vertical centering */
-    height: 56px !important;
-    /* Match h-14 */
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start;
-    text-align: left;
-    line-height: normal !important;
-    vertical-align: middle;
   }
 }
 
@@ -603,13 +574,23 @@ textarea:focus {
 }
 
 /* Mobile-friendly button size */
-button,
+button:not([data-radix-collection-item]),
 .button,
 a[role="button"],
 [type="button"],
 [type="submit"] {
   @apply min-h-[44px];
   /* Minimum height for touch targets */
+}
+
+/* Radio button specific styles - ensure circular shape */
+[data-radix-collection-item][role="radio"] {
+  min-height: 16px !important;
+  max-height: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  height: 16px !important;
+  width: 16px !important;
 }
 
 /* Enhanced Mobile Responsiveness */

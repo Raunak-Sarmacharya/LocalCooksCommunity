@@ -51,7 +51,7 @@ export default function EquipmentListingsStep() {
     kitchens,
     selectedKitchenId,
     setSelectedKitchenId,
-    equipmentForm: { listings, isLoading },
+    equipmentForm: { listings, isLoading, refresh: refreshListings },
     handleNext,
     handleBack 
   } = useManagerOnboarding();
@@ -188,6 +188,8 @@ export default function EquipmentListingsStep() {
         description: `Successfully added ${successCount} equipment listing${successCount > 1 ? 's' : ''}.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
       setSelectedEquipment({});
+      // Refresh listings to show the new ones immediately
+      await refreshListings();
     } else {
       toast({
         title: "Error",
@@ -231,6 +233,8 @@ export default function EquipmentListingsStep() {
       toast({ title: "Equipment Added", description: `Successfully added "${equipmentName}"` });
       setCustomEquipment({ name: '', category: 'cooking', condition: 'good', availabilityType: 'included', sessionRate: 0, damageDeposit: 0, brand: '' });
       setSearchQuery('');
+      // Refresh listings to show the new one immediately
+      await refreshListings();
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to add equipment", variant: "destructive" });
     } finally {
@@ -287,14 +291,14 @@ export default function EquipmentListingsStep() {
                 <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="h-5 w-5 text-green-600" />
-                    <h4 className="font-semibold text-gray-900">Existing Equipment ({listings.length})</h4>
+                    <h4 className="font-semibold text-gray-900">Active Equipment ({listings.length})</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {listings.map(l => (
                       <div key={l.id} className="bg-white rounded p-2 border border-green-200 text-sm">
                         <p className="font-medium truncate">{l.name}</p>
                         <p className="text-xs text-gray-600">
-                          {l.availabilityType === 'rental' ? `$${Number(l.sessionRate).toFixed(2)}/session` : 'Included'}
+                          {l.availabilityType === 'rental' ? `$${(Number(l.sessionRate) / 100).toFixed(2)}/session` : 'Included'}
                         </p>
                       </div>
                     ))}

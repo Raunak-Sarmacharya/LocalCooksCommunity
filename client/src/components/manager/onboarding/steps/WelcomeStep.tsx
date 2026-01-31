@@ -1,72 +1,152 @@
 import React from "react";
-import { Sparkles, ChevronRight } from "lucide-react";
+import { ArrowRight, Building, ChefHat, Clock, CreditCard, Package, Wrench, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
+import { cn } from "@/lib/utils";
+
+// Notion-inspired minimal step data
+const SETUP_STEPS = [
+  { 
+    icon: Building, 
+    title: "Business", 
+    description: "Add your business details and contact info",
+    required: true 
+  },
+  { 
+    icon: ChefHat, 
+    title: "Kitchen Space", 
+    description: "Configure your kitchen details and pricing",
+    required: true 
+  },
+  { 
+    icon: Clock, 
+    title: "Availability", 
+    description: "Set when chefs can book your space",
+    required: true 
+  },
+  { 
+    icon: CreditCard, 
+    title: "Payments", 
+    description: "Connect Stripe to receive payouts",
+    required: true 
+  },
+  { 
+    icon: Package, 
+    title: "Storage", 
+    description: "Offer storage options for chefs",
+    required: false 
+  },
+  { 
+    icon: Wrench, 
+    title: "Equipment", 
+    description: "List available equipment rentals",
+    required: false 
+  },
+];
 
 export default function WelcomeStep() {
   const { handleNext } = useManagerOnboarding();
 
   return (
-    <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-      <Card className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-background to-background border-primary/20">
-        {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-primary/5 rounded-full blur-3xl"></div>
+    <div className="animate-in fade-in duration-500">
+      {/* Hero Section - Compact & Clean */}
+      <div className="text-center mb-8">
+        <h2 className="text-lg font-medium text-slate-900 dark:text-slate-100 tracking-tight mb-1">
+          Let's set up your kitchen
+        </h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          A few quick steps to get your space ready for chefs to discover and book.
+        </p>
+      </div>
 
-        <CardContent className="relative z-10 p-8">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="p-3 bg-primary rounded-2xl shadow-lg">
-              <Sparkles className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <div>
-              <h3 className="text-2xl font-bold text-foreground">Getting Started</h3>
-              <p className="text-muted-foreground mt-1">
-                We&apos;ll help you set up your kitchen space so chefs can start booking
-              </p>
-            </div>
-          </div>
+      {/* Time Estimate - Subtle */}
+      <div className="flex items-center justify-center gap-2 mb-8">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs">
+          <Clock className="w-3.5 h-3.5" />
+          <span>About 5 minutes</span>
+        </div>
+      </div>
 
-          <div className="bg-background/80 backdrop-blur-sm rounded-xl p-4 mb-6 border border-primary/20">
-            <p className="text-foreground font-medium">
-              ⏱️ This process takes about <span className="text-primary font-semibold">5-10 minutes</span>
-            </p>
-          </div>
+      {/* Steps Grid - Notion-style minimal cards */}
+      <div className="grid gap-2 mb-10">
+        {SETUP_STEPS.map((step, index) => (
+          <StepCard 
+            key={step.title}
+            icon={step.icon}
+            title={step.title}
+            description={step.description}
+            required={step.required}
+            index={index}
+          />
+        ))}
+      </div>
 
-          <div className="space-y-3 mt-6">
-            <StepPreview number={1} title="Location & Contact Info" desc="Tell us about your kitchen location, contact info, and upload your license (optional)" />
-            <StepPreview number={2} title="Create Your Kitchen" desc="Set up your first kitchen space (you can add more later)" />
-            <StepPreview number={3} title="Availability" desc="Set your opening hours" />
-            <StepPreview number={4} title="Payments" desc="Connect your Stripe account to receive payouts" />
-            <StepPreview number={5} title="Storage Listings" desc="Add storage options that chefs can book (Optional)" isOptional />
-            <StepPreview number={6} title="Equipment Listings" desc="Add equipment options - you can skip and add these later (Optional)" isOptional />
-          </div>
-
-          <div className="mt-8 flex justify-end">
-            <Button
-              size="lg"
-              onClick={() => handleNext()}
-            >
-              Start Setup <ChevronRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* CTA Section */}
+      <div className="flex flex-col items-center gap-4">
+        <Button
+          size="lg"
+          onClick={() => handleNext()}
+          className={cn(
+            "h-12 px-8 text-base font-medium",
+            "bg-[#F51042] hover:bg-[#E10F38] text-white",
+            "shadow-sm hover:shadow-md transition-all duration-200"
+          )}
+        >
+          Get Started
+          <ArrowRight className="ml-2 w-4 h-4" />
+        </Button>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          You can save and continue anytime
+        </p>
+      </div>
     </div>
   );
 }
 
-function StepPreview({ number, title, desc, isOptional }: { number: number, title: string, desc: string, isOptional?: boolean }) {
+interface StepCardProps {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  required: boolean;
+  index: number;
+}
+
+function StepCard({ icon: Icon, title, description, required, index }: StepCardProps) {
   return (
-    <div className="flex items-start gap-4 p-4 bg-background/90 backdrop-blur-sm rounded-xl border border-border hover:shadow-md hover:border-primary/30 transition-all duration-200 group">
-      <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-primary-foreground font-bold shadow-lg transition-transform group-hover:scale-110 ${isOptional ? 'bg-muted-foreground' : 'bg-primary'}`}>
-        {number}
+    <div 
+      className={cn(
+        "group flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
+        "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+      )}
+    >
+      {/* Icon */}
+      <div className={cn(
+        "w-8 h-8 rounded-md flex items-center justify-center shrink-0",
+        required 
+          ? "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400" 
+          : "bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500"
+      )}>
+        <Icon className="w-4 h-4" />
       </div>
-      <div className="flex-1">
-        <h4 className="font-bold text-foreground mb-1">
-          {title} {isOptional && <span className="text-xs font-normal text-muted-foreground">(Optional)</span>}
-        </h4>
-        <p className="text-sm text-muted-foreground">{desc}</p>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={cn(
+            "text-sm font-medium",
+            required ? "text-slate-700 dark:text-slate-300" : "text-slate-500 dark:text-slate-400"
+          )}>
+            {title}
+          </span>
+          {!required && (
+            <span className="text-[10px] text-slate-400 dark:text-slate-500">
+              Optional
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          {description}
+        </p>
       </div>
     </div>
   );

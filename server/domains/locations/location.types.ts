@@ -11,6 +11,9 @@ export interface CreateLocationDTO {
   managerId?: number;
   notificationEmail?: string;
   notificationPhone?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  preferredContactMethod?: 'email' | 'phone' | 'both';
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
   defaultDailyBookingLimit?: number;
@@ -36,6 +39,9 @@ export interface UpdateLocationDTO {
   managerId?: number;
   notificationEmail?: string;
   notificationPhone?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  preferredContactMethod?: 'email' | 'phone' | 'both';
   cancellationPolicyHours?: number;
   cancellationPolicyMessage?: string;
   defaultDailyBookingLimit?: number;
@@ -73,6 +79,9 @@ export interface LocationDTO {
   managerId: number;
   notificationEmail: string | null;
   notificationPhone: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  preferredContactMethod: string;
   cancellationPolicyHours: number;
   cancellationPolicyMessage: string;
   defaultDailyBookingLimit: number;

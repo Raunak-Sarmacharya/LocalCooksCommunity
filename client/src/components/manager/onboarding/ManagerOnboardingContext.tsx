@@ -75,10 +75,16 @@ interface ManagerOnboardingContextType {
     address: string;
     notificationEmail: string;
     notificationPhone: string;
+    contactEmail: string;
+    contactPhone: string;
+    preferredContactMethod: "email" | "phone" | "both";
     setName: (val: string) => void;
     setAddress: (val: string) => void;
     setNotificationEmail: (val: string) => void;
     setNotificationPhone: (val: string) => void;
+    setContactEmail: (val: string) => void;
+    setContactPhone: (val: string) => void;
+    setPreferredContactMethod: (val: "email" | "phone" | "both") => void;
   };
 
   licenseForm: {
@@ -113,11 +119,13 @@ interface ManagerOnboardingContextType {
   storageForm: {
     listings: StorageListing[];
     isLoading: boolean;
+    refresh: () => Promise<void>;
   };
 
   equipmentForm: {
     listings: EquipmentListing[];
     isLoading: boolean;
+    refresh: () => Promise<void>;
   };
 
   // Actions
@@ -159,6 +167,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [locationAddress, setLocationAddress] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationPhone, setNotificationPhone] = useState("");
+  // Contact fields (separate from notification)
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [preferredContactMethod, setPreferredContactMethod] = useState<"email" | "phone" | "both">("email");
 
   // License Form State
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
@@ -333,24 +345,23 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     visibleStepsFiltered = visibleStepsFiltered.filter(step => step.id !== 'welcome');
   }
 
-  // Skip payment setup if already completed globally
-  if (isStripeOnboardingComplete) {
-    visibleStepsFiltered = visibleStepsFiltered.filter(step => step.id !== 'payment-setup');
-  }
+  // [FIX] Keep payment step visible even when complete - just show it as completed
+  // This prevents the confusing UX where the step disappears from the sidebar
 
   // CRITICAL FIX: Compute the correct index in the visible steps array
   // OnboardJS currentStep is index in ORIGINAL steps array, we need index in FILTERED array
   const currentStepId = currentStep?.id;
   const currentVisibleStepIndex = visibleStepsFiltered.findIndex(step => step.id === currentStepId);
 
-  // AUTO-SKIP: If OnboardJS navigates to a step that should be hidden, skip it
-  // Only skip steps that are EXPLICITLY filtered out, not due to timing issues
+  // AUTO-SKIP: Only skip welcome step for returning users with location
+  // [FIX] We no longer auto-skip payment-setup - users can view it even when complete
+  // This allows them to see their completed status and access Stripe dashboard
   useEffect(() => {
     if (!currentStepId || isCompleted) return;
 
-    // Define which steps CAN be skipped based on current conditions
+    // Only auto-skip welcome for returning users who are adding a new location
+    // Payment step should stay visible even when complete (user can see status)
     const stepsToSkip: string[] = [];
-    if (isStripeOnboardingComplete) stepsToSkip.push('payment-setup');
     if (hasExistingLocation && !isAddingLocation) stepsToSkip.push('welcome');
 
     // Only auto-skip if current step is in the explicit skip list
@@ -359,7 +370,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       console.log(`[Onboarding] Auto-skipping step: ${stepIdStr}`);
       next();
     }
-  }, [currentStepId, isCompleted, isStripeOnboardingComplete, hasExistingLocation, isAddingLocation, next]);
+  }, [currentStepId, isCompleted, hasExistingLocation, isAddingLocation, next]);
 
   // Auto-open logic: show onboarding if manager hasn't completed it and has no locations
   useEffect(() => {
@@ -372,6 +383,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
     }
   }, [userData, isLoadingLocations, locations, setIsOpen]);
+
+  // Auto-populate email fields from account email for new users (no existing location)
+  useEffect(() => {
+    if (firebaseUser?.email && !isLoadingLocations && locations.length === 0 && !notificationEmail && !contactEmail) {
+      const accountEmail = firebaseUser.email;
+      setNotificationEmail(accountEmail);
+      setContactEmail(accountEmail);
+    }
+  }, [firebaseUser?.email, isLoadingLocations, locations.length, notificationEmail, contactEmail]);
 
   // Listen for manual trigger from Help Center or other parts of the app
   useEffect(() => {
@@ -398,12 +418,16 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // Auto-select location
   useEffect(() => {
     if (!isLoadingLocations && hasExistingLocation && !selectedLocationId && locations.length > 0) {
-      const loc = locations[0];
+      const loc = locations[0] as any;
       setSelectedLocationId(loc.id);
       setLocationName(loc.name || "");
       setLocationAddress(loc.address || "");
       setNotificationEmail(loc.notificationEmail || "");
       setNotificationPhone(loc.notificationPhone || "");
+      // Contact fields
+      setContactEmail(loc.contactEmail || "");
+      setContactPhone(loc.contactPhone || "");
+      setPreferredContactMethod(loc.preferredContactMethod || "email");
 
       // Reset loading flags when location switches/initializes
       setKitchensLoaded(false);
@@ -458,20 +482,18 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     const isCurrentStepComplete = completedSteps[String(currentId)];
 
     // Only auto-skip from these steps when they're complete
-    const autoSkipFromSteps = ['welcome', 'location', 'create-kitchen', 'application-requirements', 'availability', 'payment-setup'];
+    // [FIX] Removed payment-setup from auto-skip list - users should be able to view it
+    const autoSkipFromSteps = ['welcome', 'location', 'create-kitchen', 'application-requirements', 'availability'];
     if (!autoSkipFromSteps.includes(String(currentId))) return;
 
     // Only proceed if current step is complete
     if (!isCurrentStepComplete) return;
 
     // Find first incomplete REQUIRED step in order
-    // Required for bookings: location -> kitchen -> requirements -> availability -> payment
+    // Required for bookings: location -> kitchen -> requirements -> payment -> availability
     const requiredStepOrder = ['location', 'create-kitchen', 'application-requirements', 'payment-setup', 'availability', 'completion-summary'];
 
     for (const stepId of requiredStepOrder) {
-      // Skip payment-setup if already complete (it's hidden from visibleSteps)
-      if (stepId === 'payment-setup' && isStripeOnboardingComplete) continue;
-
       // If this step is incomplete, navigate to it
       if (!completedSteps[stepId]) {
         console.log(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
@@ -509,7 +531,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
 
   }, [engine, hasExistingLocation, isLoadingLocations, isLoadingKitchens, isLoadingRequirements, selectedLocationId, isAddingLocation, currentStep?.id,
-    completedSteps, isStripeOnboardingComplete, kitchensLoaded, requirementsLoaded]);
+    completedSteps, kitchensLoaded, requirementsLoaded]);
 
   // Load kitchens when location selected
   useEffect(() => {
@@ -745,11 +767,22 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         phone = p.data || "";
       }
 
+      // Validate contact phone if provided
+      let contactPhoneValidated = contactPhone;
+      if (contactPhoneValidated) {
+        const cp = optionalPhoneNumberSchema.safeParse(contactPhoneValidated);
+        if (!cp.success) throw new Error("Invalid contact phone");
+        contactPhoneValidated = cp.data || "";
+      }
+
       const body: any = {
         name: locationName,
         address: locationAddress,
         notificationEmail,
-        notificationPhone: phone
+        notificationPhone: phone,
+        contactEmail,
+        contactPhone: contactPhoneValidated,
+        preferredContactMethod
       };
       if (licenseUrl) {
         body.kitchenLicenseUrl = licenseUrl;
@@ -823,7 +856,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
       // 3. Update Pricing
       if (kitchenFormData.hourlyRate) {
-        await fetch(`/api/manager/kitchens/${newKitchen.id}/pricing`, {
+        const pricingRes = await fetch(`/api/manager/kitchens/${newKitchen.id}/pricing`, {
           method: "PUT",
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -832,6 +865,17 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
             minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours) || 1
           })
         });
+        
+        // Merge pricing data into the kitchen object
+        if (pricingRes.ok) {
+          newKitchen = {
+            ...newKitchen,
+            hourlyRate: Math.round(parseFloat(kitchenFormData.hourlyRate) * 100),
+            currency: kitchenFormData.currency,
+            minimumBookingHours: parseInt(kitchenFormData.minimumBookingHours) || 1,
+            imageUrl: kitchenFormData.imageUrl || newKitchen.imageUrl
+          };
+        }
       }
 
       setKitchens([...kitchens, newKitchen]);
@@ -999,7 +1043,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       name: locationName, setName: setLocationName,
       address: locationAddress, setAddress: setLocationAddress,
       notificationEmail, setNotificationEmail,
-      notificationPhone, setNotificationPhone
+      notificationPhone, setNotificationPhone,
+      contactEmail, setContactEmail,
+      contactPhone, setContactPhone,
+      preferredContactMethod, setPreferredContactMethod
     },
     licenseForm: {
       file: licenseFile, setFile: setLicenseFile,
@@ -1015,16 +1062,52 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       showCreate: showCreateKitchen, setShowCreate: setShowCreateKitchen,
       isCreating: creatingKitchen
     },
-    storageForm: { listings: existingStorageListings, isLoading: isLoadingStorage },
-    equipmentForm: { listings: existingEquipmentListings, isLoading: isLoadingEquipment },
+    storageForm: { 
+      listings: existingStorageListings, 
+      isLoading: isLoadingStorage,
+      refresh: async () => {
+        if (!selectedKitchenId) return;
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        setIsLoadingStorage(true);
+        try {
+          const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/storage-listings`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) setExistingStorageListings(await res.json());
+        } finally { setIsLoadingStorage(false); }
+      }
+    },
+    equipmentForm: { 
+      listings: existingEquipmentListings, 
+      isLoading: isLoadingEquipment,
+      refresh: async () => {
+        if (!selectedKitchenId) return;
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        setIsLoadingEquipment(true);
+        try {
+          const res = await fetch(`/api/manager/kitchens/${selectedKitchenId}/equipment-listings`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) setExistingEquipmentListings(await res.json());
+        } finally { setIsLoadingEquipment(false); }
+      }
+    },
 
     updateLocation, createKitchen, uploadLicense,
     startNewLocation: () => {
       setSelectedLocationId(null);
       setLocationName("");
       setLocationAddress("");
-      setNotificationEmail("");
+      // Auto-populate email fields from account email
+      const accountEmail = firebaseUser?.email || "";
+      setNotificationEmail(accountEmail);
       setNotificationPhone("");
+      // Contact email auto-populated based on preferred method (default is email)
+      setContactEmail(accountEmail);
+      setContactPhone("");
+      setPreferredContactMethod("email");
       setLicenseFile(null);
       setLicenseExpiryDate("");
       setTermsFile(null);
