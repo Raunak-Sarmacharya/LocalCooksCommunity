@@ -128,7 +128,8 @@ router.get("/verify-email", async (req: Request, res: Response) => {
       try {
         const welcomeEmail = generateWelcomeEmail({
           fullName: email.split('@')[0], // Best effort name from email since we don't have it easily here
-          email
+          email,
+          role: existingUser?.role as 'chef' | 'manager' | 'admin'
         });
         const emailSent = await sendEmail(welcomeEmail, {
           trackingId: `welcome_verified_legacy_${email}_${Date.now()}`

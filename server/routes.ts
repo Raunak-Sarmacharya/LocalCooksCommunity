@@ -175,7 +175,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`📧 Sending welcome email to newly verified user: ${user.username}`);
           const welcomeEmail = generateWelcomeEmail({
             fullName: req.firebaseUser?.name || user.username.split('@')[0],
-            email: user.username
+            email: user.username,
+            role: user.role as 'chef' | 'manager' | 'admin'
           });
           const emailResult = await sendEmail(welcomeEmail, {
             trackingId: `welcome_verified_${user.id}_${Date.now()}`
@@ -282,7 +283,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`📧 Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail({
             fullName: displayName,
-            email
+            email,
+            role: finalRole as 'chef' | 'manager' | 'admin'
           });
           const welcomeSent = await sendEmail(welcomeEmail, {
             trackingId: `welcome_${finalRole}_${email}_${Date.now()}`

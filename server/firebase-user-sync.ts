@@ -132,7 +132,8 @@ export async function syncFirebaseUserToNeon(params: {
         const { sendEmail, generateWelcomeEmail } = await import('./email');
         const emailContent = generateWelcomeEmail({
           fullName: displayName || email.split('@')[0],
-          email
+          email,
+          role: finalRole as 'chef' | 'manager' | 'admin'
         });
 
         const emailSent = await sendEmail(emailContent, {
