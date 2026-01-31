@@ -964,7 +964,7 @@ export const equipmentListings = pgTable("equipment_listings", {
   condition: equipmentConditionEnum("condition").notNull(),
 
   // Availability type: included (free with kitchen) or rental (paid addon)
-  availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("rental").notNull(),
+  availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("included").notNull(),
 
   // Pricing - flat session rate (in cents)
   sessionRate: numeric("session_rate").default("0"), // Flat session rate in cents (e.g., 2500 = $25.00/session)

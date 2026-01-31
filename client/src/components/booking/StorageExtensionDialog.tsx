@@ -1,7 +1,14 @@
 import { useState, useMemo } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, Check, Package, CalendarDays, ArrowRight, Clock } from "lucide-react";
 import { format, differenceInDays, startOfToday, isBefore, addDays, addWeeks, addMonths } from "date-fns";
@@ -197,17 +204,19 @@ export function StorageExtensionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-lg p-0 flex flex-col">
+        <SheetHeader className="p-6 pb-4 border-b bg-gradient-to-r from-purple-50 to-blue-50">
+          <SheetTitle className="flex items-center gap-2 text-lg">
             <Package className="h-5 w-5 text-purple-600" />
             Extend Storage Booking
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription>
             {booking.storageName} at {booking.kitchenName}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
+        
+        <div className="flex-1 overflow-y-auto p-6">
 
         <div className="space-y-5">
           {/* Current Booking Timeline */}
@@ -342,8 +351,9 @@ export function StorageExtensionDialog({
             </div>
           )}
         </div>
+        </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <SheetFooter className="p-6 pt-4 border-t bg-gray-50 gap-2 sm:gap-0">
           <Button
             variant="outline"
             onClick={() => {
@@ -368,9 +378,9 @@ export function StorageExtensionDialog({
               "Select Duration"
             )}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 

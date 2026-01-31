@@ -324,6 +324,8 @@ var init_schema = __esm({
       firebaseUid: text("firebase_uid").unique(),
       isVerified: boolean("is_verified").default(false).notNull(),
       has_seen_welcome: boolean("has_seen_welcome").default(false).notNull(),
+      welcomeEmailSentAt: timestamp("welcome_email_sent_at"),
+      // Track when welcome email was sent (null = not sent, prevents duplicates)
       // Support dual roles - users can be both chef and manager
       isChef: boolean("is_chef").default(false).notNull(),
       isManager: boolean("is_manager").default(false).notNull(),
@@ -484,6 +486,12 @@ var init_schema = __esm({
       // Email where notifications will be sent
       notificationPhone: text("notification_phone"),
       // Phone number where SMS notifications will be sent
+      contactEmail: text("contact_email"),
+      // Primary business contact email
+      contactPhone: text("contact_phone"),
+      // Primary business contact phone
+      preferredContactMethod: text("preferred_contact_method").default("email").notNull(),
+      // email, phone, or both
       cancellationPolicyHours: integer("cancellation_policy_hours").default(24).notNull(),
       cancellationPolicyMessage: text("cancellation_policy_message").default("Bookings cannot be cancelled within {hours} hours of the scheduled time.").notNull(),
       defaultDailyBookingLimit: integer("default_daily_booking_limit").default(2).notNull(),
@@ -507,6 +515,11 @@ var init_schema = __esm({
       // Admin feedback on license
       kitchenLicenseExpiry: date("kitchen_license_expiry"),
       // Expiration date of the kitchen license
+      // Kitchen terms and policies (uploaded alongside license)
+      kitchenTermsUrl: text("kitchen_terms_url"),
+      // URL to uploaded kitchen terms & policies document
+      kitchenTermsUploadedAt: timestamp("kitchen_terms_uploaded_at"),
+      // When terms were uploaded
       description: text("description"),
       // Description of the location
       customOnboardingLink: text("custom_onboarding_link"),
@@ -1123,7 +1136,7 @@ var init_schema = __esm({
       description: text("description"),
       condition: equipmentConditionEnum("condition").notNull(),
       // Availability type: included (free with kitchen) or rental (paid addon)
-      availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("rental").notNull(),
+      availabilityType: equipmentAvailabilityTypeEnum("availability_type").default("included").notNull(),
       // Pricing - flat session rate (in cents)
       sessionRate: numeric("session_rate").default("0"),
       // Flat session rate in cents (e.g., 2500 = $25.00/session)
@@ -1823,7 +1836,9 @@ async function requireFirebaseAuthWithUser(req, res, next) {
     req.firebaseUser = {
       uid: decodedToken.uid,
       email: decodedToken.email,
-      email_verified: decodedToken.email_verified
+      email_verified: decodedToken.email_verified,
+      name: decodedToken.name,
+      picture: decodedToken.picture
     };
     const neonUser = await userService.getUserByFirebaseUid(req.firebaseUser.uid);
     if (!neonUser) {
@@ -1867,7 +1882,9 @@ async function optionalFirebaseAuth(req, res, next) {
       req.firebaseUser = {
         uid: decodedToken.uid,
         email: decodedToken.email,
-        email_verified: decodedToken.email_verified
+        email_verified: decodedToken.email_verified,
+        name: decodedToken.name,
+        picture: decodedToken.picture
       };
       const neonUser = await userService.getUserByFirebaseUid(decodedToken.uid);
       if (neonUser) {
@@ -2752,7 +2769,8 @@ var init_email = __esm({
         tls: {
           rejectUnauthorized: false,
           // Allow self-signed certificates
-          ciphers: "SSLv3"
+          minVersion: "TLSv1.2"
+          // Use modern TLS (SSLv3 is deprecated and rejected by most servers)
         },
         // Reduced timeouts for serverless functions (max 10s execution time)
         connectionTimeout: isProduction2 ? 15e3 : 6e4,
@@ -2761,17 +2779,13 @@ var init_email = __esm({
         // 10s production, 30s development
         socketTimeout: isProduction2 ? 15e3 : 6e4,
         // 15s production, 60s development
-        // Add authentication method
-        authMethod: "PLAIN",
+        // Let nodemailer auto-negotiate the best auth method
+        // authMethod: 'PLAIN', // Removed - let server choose (Hostinger prefers LOGIN)
         // Enable debug for troubleshooting in development only
         debug: process.env.NODE_ENV === "development",
         logger: process.env.NODE_ENV === "development",
-        // Pool configuration for better performance
-        pool: isProduction2 ? true : false,
-        maxConnections: 1,
-        // Single connection for serverless
-        maxMessages: 1
-        // Single message per connection for serverless
+        // Disable pooling for serverless - each request should create fresh connection
+        pool: false
       });
     };
     getEmailConfig = () => {
@@ -5388,6 +5402,9 @@ var init_location_repository = __esm({
             managerId: dto.managerId,
             notificationEmail: dto.notificationEmail || null,
             notificationPhone: dto.notificationPhone || null,
+            contactEmail: dto.contactEmail || null,
+            contactPhone: dto.contactPhone || null,
+            preferredContactMethod: dto.preferredContactMethod || "email",
             cancellationPolicyHours: dto.cancellationPolicyHours || 24,
             cancellationPolicyMessage: dto.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time.",
             defaultDailyBookingLimit: dto.defaultDailyBookingLimit || 2,
@@ -5399,7 +5416,9 @@ var init_location_repository = __esm({
             timezone: dto.timezone || "America/St_Johns",
             kitchenLicenseUrl: dto.kitchenLicenseUrl || null,
             kitchenLicenseStatus: dto.kitchenLicenseStatus || "pending",
-            kitchenLicenseExpiry: dto.kitchenLicenseExpiry || null
+            kitchenLicenseExpiry: dto.kitchenLicenseExpiry || null,
+            kitchenTermsUrl: dto.kitchenTermsUrl || null,
+            kitchenTermsUploadedAt: dto.kitchenTermsUrl ? /* @__PURE__ */ new Date() : null
           }).returning();
           return location;
         } catch (error) {
@@ -5422,6 +5441,9 @@ var init_location_repository = __esm({
             managerId: dto.managerId,
             notificationEmail: dto.notificationEmail,
             notificationPhone: dto.notificationPhone,
+            contactEmail: dto.contactEmail,
+            contactPhone: dto.contactPhone,
+            preferredContactMethod: dto.preferredContactMethod,
             cancellationPolicyHours: dto.cancellationPolicyHours,
             cancellationPolicyMessage: dto.cancellationPolicyMessage,
             defaultDailyBookingLimit: dto.defaultDailyBookingLimit,
@@ -5433,7 +5455,9 @@ var init_location_repository = __esm({
             timezone: dto.timezone,
             kitchenLicenseUrl: dto.kitchenLicenseUrl,
             kitchenLicenseStatus: dto.kitchenLicenseStatus,
-            kitchenLicenseExpiry: dto.kitchenLicenseExpiry
+            kitchenLicenseExpiry: dto.kitchenLicenseExpiry,
+            kitchenTermsUrl: dto.kitchenTermsUrl,
+            kitchenTermsUploadedAt: dto.kitchenTermsUploadedAt
           }).where(eq8(locations.id, id)).returning();
           return location || null;
         } catch (error) {
@@ -7614,6 +7638,7 @@ var init_user = __esm({
     "use strict";
     init_user_service();
     init_firebase_auth_middleware();
+    init_email();
     router8 = Router8();
     router8.get("/profile", requireFirebaseAuthWithUser, async (req, res) => {
       try {
@@ -7681,6 +7706,73 @@ var init_user = __esm({
       } catch (error) {
         console.error("Error marking chef onboarding complete:", error);
         res.status(500).json({ error: "Failed to mark onboarding complete" });
+      }
+    });
+    router8.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req, res) => {
+      try {
+        let user = req.neonUser;
+        const firebaseEmailVerified = req.firebaseUser?.email_verified;
+        const firebaseDisplayName = req.firebaseUser?.name;
+        console.log(`\u{1F504} SYNC VERIFICATION STATUS for user ${user.id} (${user.username})`);
+        console.log(`   - Firebase email_verified: ${firebaseEmailVerified}`);
+        console.log(`   - Database isVerified: ${user.isVerified}`);
+        console.log(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? "YES" : "NO"}`);
+        let welcomeEmailSent = false;
+        let verificationUpdated = false;
+        if (firebaseEmailVerified) {
+          if (!user.isVerified) {
+            console.log(`\u{1F4E7} Updating is_verified for user ${user.id} - Firebase email verified`);
+            const updatedUser = await userService.updateUser(user.id, { isVerified: true });
+            if (updatedUser) {
+              user = updatedUser;
+              verificationUpdated = true;
+            }
+          }
+          if (!user.welcomeEmailSentAt) {
+            console.log(`\u{1F4E7} SENDING WELCOME EMAIL to newly verified user: ${user.username}`);
+            try {
+              const displayName = firebaseDisplayName || user.username.split("@")[0];
+              const welcomeEmail = generateWelcomeEmail({
+                fullName: displayName,
+                email: user.username
+              });
+              const emailResult = await sendEmail(welcomeEmail, {
+                trackingId: `welcome_verified_${user.id}_${Date.now()}`
+              });
+              if (emailResult) {
+                await userService.updateUser(user.id, {
+                  welcomeEmailSentAt: /* @__PURE__ */ new Date()
+                });
+                welcomeEmailSent = true;
+                console.log(`\u2705 Welcome email sent successfully to ${user.username}`);
+              } else {
+                console.error(`\u274C Failed to send welcome email to ${user.username} - sendEmail returned false`);
+              }
+            } catch (emailError) {
+              console.error(`\u274C Error sending welcome email to ${user.username}:`, emailError);
+            }
+          } else {
+            console.log(`\u2139\uFE0F Welcome email already sent at ${user.welcomeEmailSentAt} - skipping duplicate`);
+          }
+        } else {
+          console.log(`\u26A0\uFE0F Firebase email not verified - no action taken`);
+        }
+        res.json({
+          success: true,
+          userId: user.id,
+          email: user.username,
+          firebaseVerified: firebaseEmailVerified,
+          databaseVerified: user.isVerified,
+          verificationUpdated,
+          welcomeEmailSent,
+          welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent
+        });
+      } catch (error) {
+        console.error("\u274C Error in sync-verification-status:", error);
+        res.status(500).json({
+          error: "Failed to sync verification status",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
       }
     });
     user_default = router8;
@@ -8162,9 +8254,6 @@ function normalizeImageUrl(url, req) {
   };
   if (url.startsWith("https://files.localcooks.ca/")) {
     const r2Path = url.replace("https://files.localcooks.ca/", "");
-    if (r2Path.startsWith("documents/") || r2Path.startsWith("documents%2F")) {
-      return url;
-    }
     const origin = getOrigin();
     return `${origin}/api/files/images/r2/${encodeURIComponent(r2Path)}`;
   }
@@ -8264,7 +8353,9 @@ var init_locations = __esm({
             minHourlyRate: minRate,
             maxHourlyRate: maxRate,
             canAcceptBookings,
-            isApproved
+            isApproved,
+            // Kitchen terms and policies for chef applications
+            kitchenTermsUrl: location.kitchenTermsUrl || null
           };
         });
         res.json(publicLocations);
@@ -8408,7 +8499,9 @@ var init_locations = __esm({
           // compatibility
           description: location.description || null,
           customOnboardingLink: location.customOnboardingLink || null,
-          kitchens: sanitizedKitchens
+          kitchens: sanitizedKitchens,
+          // Kitchen terms and policies for chef applications
+          kitchenTermsUrl: location.kitchenTermsUrl || null
         });
       } catch (error) {
         console.error("Error fetching location details:", error);
@@ -8962,14 +9055,17 @@ var init_files = __esm({
         if (!pathParam) {
           return res.status(400).send("Missing path parameter");
         }
-        const isPublic = pathParam.includes("public/") || pathParam.includes("kitchens/");
-        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, path: ${pathParam}`);
+        const decodedPath = decodeURIComponent(pathParam);
+        const isPublicPath = decodedPath.includes("public/") || decodedPath.includes("kitchens/");
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(decodedPath);
+        const isPublic = isPublicPath || isImageFile;
+        console.log(`[R2 Images Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, path: ${decodedPath}`);
         if (!isPublic && !req.neonUser) {
-          console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${pathParam}`);
+          console.log(`[R2 Images Proxy] Unauthorized access attempt for protected file: ${decodedPath}`);
           return res.status(401).send("Authentication required for protected files");
         }
-        const fullR2Url = `https://files.localcooks.ca/${pathParam}`;
-        console.log(`[R2 Images Proxy] Request for: ${pathParam} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"})`);
+        const fullR2Url = `https://files.localcooks.ca/${decodedPath}`;
+        console.log(`[R2 Images Proxy] Request for: ${decodedPath} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"})`);
         const presignedUrl = await getPresignedUrl(fullR2Url);
         res.redirect(307, presignedUrl);
       } catch (error) {
@@ -8979,22 +9075,32 @@ var init_files = __esm({
     });
     router12.get("/r2-proxy", async (req, res) => {
       try {
-        const { url } = req.query;
-        if (!url || typeof url !== "string") {
-          return res.status(400).send("Missing or invalid url parameter");
+        const { url, filename } = req.query;
+        let targetUrl;
+        if (filename && typeof filename === "string") {
+          const isImage = /\.(jpg|jpeg|png|gif|webp|svg|ico)$/i.test(filename);
+          const folder = isImage ? "images" : "documents";
+          targetUrl = `https://files.localcooks.ca/${folder}/${filename}`;
+          console.log(`[R2 Proxy] Resolved filename "${filename}" to: ${targetUrl}`);
+        } else if (url && typeof url === "string") {
+          targetUrl = url;
+        } else {
+          return res.status(400).send("Missing url or filename parameter");
         }
-        const isPublic = url.includes("/public/") || url.includes("/kitchens/");
-        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}`);
+        const isPublicPath = targetUrl.includes("/public/") || targetUrl.includes("/kitchens/");
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(targetUrl);
+        const isPublic = isPublicPath || isImageFile;
+        console.log(`[R2 Proxy] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
         if (!isPublic && !req.neonUser) {
-          console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${url}`);
+          console.log(`[R2 Proxy] Unauthorized access attempt for protected file: ${targetUrl}`);
           return res.status(401).send("Authentication required for protected files");
         }
-        console.log(`[R2 Proxy] Request for: ${url} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
-        const presignedUrl = await getPresignedUrl(url);
+        console.log(`[R2 Proxy] Request for: ${targetUrl} (user: ${req.neonUser?.id || "anonymous"}, role: ${req.neonUser?.role || "none"}, public: ${isPublic})`);
+        const presignedUrl = await getPresignedUrl(targetUrl);
         res.redirect(307, presignedUrl);
       } catch (error) {
         console.error("[R2 Proxy] Error:", error);
-        const fallbackUrl = req.query.url;
+        const fallbackUrl = req.query.url || (req.query.filename ? `https://files.localcooks.ca/images/${req.query.filename}` : null);
         if (fallbackUrl) {
           console.log(`[R2 Proxy] Falling back to original URL: ${fallbackUrl}`);
           return res.redirect(fallbackUrl);
@@ -9008,8 +9114,10 @@ var init_files = __esm({
         if (!url || typeof url !== "string") {
           return res.status(400).json({ error: "Missing or invalid url parameter" });
         }
-        const isPublic = url.includes("/public/") || url.includes("/kitchens/");
-        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}`);
+        const isPublicPath = url.includes("/public/") || url.includes("/kitchens/");
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(url);
+        const isPublic = isPublicPath || isImageFile;
+        console.log(`[R2 Presigned] Auth check - neonUser: ${req.neonUser?.id || "none"}, role: ${req.neonUser?.role || "none"}, isPublic: ${isPublic}, isImage: ${isImageFile}`);
         if (!isPublic && !req.neonUser) {
           console.log(`[R2 Presigned] Unauthorized access attempt for protected file: ${url}`);
           return res.status(401).json({ error: "Not authenticated" });
@@ -14990,8 +15098,9 @@ var init_manager = __esm({
         }
         const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
         const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
+        const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
         const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
         return res.json({ url: link.url });
       } catch (error) {
@@ -15019,8 +15128,9 @@ var init_manager = __esm({
           return res.json({ url: link.url });
         } else {
           const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
-          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
+          const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
+          const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
+          const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
           const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
           return res.json({ url: link.url, requiresOnboarding: true });
         }
@@ -15744,6 +15854,122 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
+    router13.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+      try {
+        const user = req.neonUser;
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+          return res.status(400).json({ error: "Invalid booking ID" });
+        }
+        const booking = await bookingService.getBookingById(id);
+        if (!booking) {
+          return res.status(404).json({ error: "Booking not found" });
+        }
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        if (!kitchen) {
+          return res.status(404).json({ error: "Kitchen not found" });
+        }
+        const location = await locationService.getLocationById(kitchen.locationId);
+        if (!location || location.managerId !== user.id) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        let chef = null;
+        if (booking.chefId) {
+          const chefUser = await userService.getUser(booking.chefId);
+          if (chefUser) {
+            const [chefApp] = await db.select({ fullName: chefKitchenApplications.fullName, phone: chefKitchenApplications.phone }).from(chefKitchenApplications).where(
+              and14(
+                eq22(chefKitchenApplications.chefId, booking.chefId),
+                eq22(chefKitchenApplications.locationId, location.id)
+              )
+            ).limit(1);
+            chef = {
+              id: chefUser.id,
+              username: chefUser.username,
+              fullName: chefApp?.fullName || chefUser.username,
+              phone: chefApp?.phone || null
+            };
+          }
+        }
+        const storageBookingsRaw = await bookingService.getStorageBookingsByKitchenBooking(id);
+        const storageBookingsWithDetails = await Promise.all(
+          storageBookingsRaw.map(async (sb) => {
+            const [listing] = await db.select({
+              name: storageListings.name,
+              storageType: storageListings.storageType,
+              photos: storageListings.photos
+            }).from(storageListings).where(eq22(storageListings.id, sb.storageListingId)).limit(1);
+            return {
+              ...sb,
+              storageListing: listing || null
+            };
+          })
+        );
+        const equipmentBookingsRaw = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+        const equipmentBookingsWithDetails = await Promise.all(
+          equipmentBookingsRaw.map(async (eb) => {
+            const [listing] = await db.select({
+              equipmentType: equipmentListings.equipmentType,
+              brand: equipmentListings.brand
+            }).from(equipmentListings).where(eq22(equipmentListings.id, eb.equipmentListingId)).limit(1);
+            return {
+              ...eb,
+              equipmentListing: listing || null
+            };
+          })
+        );
+        let paymentTransaction = null;
+        try {
+          const [txn] = await db.select({
+            amount: paymentTransactions.amount,
+            serviceFee: paymentTransactions.serviceFee,
+            managerRevenue: paymentTransactions.managerRevenue,
+            status: paymentTransactions.status,
+            stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+            paidAt: paymentTransactions.paidAt
+          }).from(paymentTransactions).where(
+            and14(
+              eq22(paymentTransactions.bookingId, id),
+              eq22(paymentTransactions.bookingType, "kitchen")
+            )
+          ).limit(1);
+          if (txn) {
+            paymentTransaction = {
+              ...txn,
+              amount: txn.amount ? parseFloat(txn.amount) : null,
+              serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
+              managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
+              stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null
+            };
+          }
+        } catch (err) {
+          console.error("Error fetching payment transaction:", err);
+        }
+        res.json({
+          ...booking,
+          kitchen: {
+            id: kitchen.id,
+            name: kitchen.name,
+            description: kitchen.description,
+            photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
+            locationId: kitchen.locationId
+          },
+          location: {
+            id: location.id,
+            name: location.name,
+            address: location.address,
+            timezone: location.timezone
+          },
+          chef,
+          storageBookings: storageBookingsWithDetails,
+          equipmentBookings: equipmentBookingsWithDetails,
+          paymentTransaction
+        });
+      } catch (e) {
+        console.error("Error fetching booking details:", e);
+        res.status(500).json({ error: e.message || "Failed to fetch booking details" });
+      }
+    });
     router13.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
@@ -16038,6 +16264,32 @@ var init_manager = __esm({
             updates.notificationPhone = null;
           }
         }
+        const { contactEmail, contactPhone, preferredContactMethod } = req.body;
+        if (contactEmail !== void 0) {
+          if (contactEmail && contactEmail.trim() !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+            return res.status(400).json({ error: "Invalid contact email format" });
+          }
+          updates.contactEmail = contactEmail && contactEmail.trim() !== "" ? contactEmail.trim() : null;
+        }
+        if (contactPhone !== void 0) {
+          if (contactPhone && contactPhone.trim() !== "") {
+            const normalized = normalizePhoneForStorage(contactPhone);
+            if (!normalized) {
+              return res.status(400).json({
+                error: "Invalid contact phone number format. Please enter a valid phone number"
+              });
+            }
+            updates.contactPhone = normalized;
+          } else {
+            updates.contactPhone = null;
+          }
+        }
+        if (preferredContactMethod !== void 0) {
+          if (!["email", "phone", "both"].includes(preferredContactMethod)) {
+            return res.status(400).json({ error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'" });
+          }
+          updates.preferredContactMethod = preferredContactMethod;
+        }
         if (logoUrl !== void 0) {
           const processedLogoUrl = logoUrl && logoUrl.trim() !== "" ? logoUrl.trim() : null;
           updates.logoUrl = processedLogoUrl;
@@ -16183,7 +16435,11 @@ var init_manager = __esm({
           kitchenLicenseStatus: loc.kitchenLicenseStatus || loc.kitchen_license_status || "pending",
           kitchenLicenseApprovedBy: loc.kitchenLicenseApprovedBy || loc.kitchen_license_approved_by || null,
           kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt || loc.kitchen_license_approved_at || null,
-          kitchenLicenseFeedback: loc.kitchenLicenseFeedback || loc.kitchen_license_feedback || null
+          kitchenLicenseFeedback: loc.kitchenLicenseFeedback || loc.kitchen_license_feedback || null,
+          kitchenLicenseExpiry: loc.kitchenLicenseExpiry || loc.kitchen_license_expiry || null,
+          // Kitchen terms and policies fields
+          kitchenTermsUrl: loc.kitchenTermsUrl || loc.kitchen_terms_url || null,
+          kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt || loc.kitchen_terms_uploaded_at || null
         }));
         console.log(
           "[GET] /api/manager/locations - Mapped locations:",
@@ -16208,10 +16464,16 @@ var init_manager = __esm({
           address,
           notificationEmail,
           notificationPhone,
+          contactEmail,
+          contactPhone,
+          preferredContactMethod,
           kitchenLicenseUrl,
           kitchenLicenseStatus,
-          kitchenLicenseExpiry
+          kitchenLicenseExpiry,
+          kitchenTermsUrl
         } = req.body;
+        console.log("[POST /locations] Request body:", JSON.stringify(req.body, null, 2));
+        console.log("[POST /locations] kitchenTermsUrl:", kitchenTermsUrl);
         if (!name || !address) {
           return res.status(400).json({ error: "Name and address are required" });
         }
@@ -16225,11 +16487,22 @@ var init_manager = __esm({
           }
           normalizedNotificationPhone = normalized;
         }
+        let normalizedContactPhone = void 0;
+        if (contactPhone && contactPhone.trim() !== "") {
+          const normalized = normalizePhoneForStorage(contactPhone);
+          if (!normalized) {
+            return res.status(400).json({
+              error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+            });
+          }
+          normalizedContactPhone = normalized;
+        }
         console.log("Creating location for manager:", {
           managerId: user.id,
           name,
           address,
           notificationPhone: normalizedNotificationPhone,
+          contactPhone: normalizedContactPhone,
           kitchenLicenseUrl: kitchenLicenseUrl ? "Provided" : "Not provided"
         });
         const location = await locationService.createLocation({
@@ -16238,9 +16511,13 @@ var init_manager = __esm({
           managerId: user.id,
           notificationEmail: notificationEmail || void 0,
           notificationPhone: normalizedNotificationPhone,
+          contactEmail: contactEmail || void 0,
+          contactPhone: normalizedContactPhone,
+          preferredContactMethod: preferredContactMethod || "email",
           kitchenLicenseUrl: kitchenLicenseUrl || void 0,
           kitchenLicenseStatus: kitchenLicenseStatus || "pending",
-          kitchenLicenseExpiry: kitchenLicenseExpiry || void 0
+          kitchenLicenseExpiry: kitchenLicenseExpiry || void 0,
+          kitchenTermsUrl: kitchenTermsUrl || void 0
         });
         const mappedLocation = {
           ...location,
@@ -16279,7 +16556,8 @@ var init_manager = __esm({
           notificationPhone,
           kitchenLicenseUrl,
           kitchenLicenseStatus,
-          kitchenLicenseExpiry
+          kitchenLicenseExpiry,
+          kitchenTermsUrl
         } = req.body;
         const updates = {};
         if (name !== void 0) updates.name = name;
@@ -16317,6 +16595,12 @@ var init_manager = __esm({
         }
         if (kitchenLicenseExpiry !== void 0) {
           updates.kitchenLicenseExpiry = kitchenLicenseExpiry || null;
+        }
+        if (kitchenTermsUrl !== void 0) {
+          updates.kitchenTermsUrl = kitchenTermsUrl || null;
+          if (kitchenTermsUrl) {
+            updates.kitchenTermsUploadedAt = /* @__PURE__ */ new Date();
+          }
         }
         console.log(`\u{1F4BE} Updating location ${locationId} with:`, updates);
         const updated = await locationService.updateLocation({ id: locationId, ...updates });
@@ -18316,6 +18600,106 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
+    router17.get("/chef/bookings/:id/details", requireChef, async (req, res) => {
+      try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id) || id <= 0) {
+          return res.status(400).json({ error: "Invalid booking ID" });
+        }
+        const booking = await bookingService.getBookingById(id);
+        if (!booking) {
+          return res.status(404).json({ error: "Booking not found" });
+        }
+        if (booking.chefId !== req.neonUser.id) {
+          return res.status(403).json({ error: "You don't have permission to view this booking" });
+        }
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        let location = null;
+        if (kitchen && kitchen.locationId) {
+          const locationId = kitchen.locationId;
+          const [locationData] = await db.select({
+            id: locations.id,
+            name: locations.name,
+            address: locations.address,
+            timezone: locations.timezone
+          }).from(locations).where(eq26(locations.id, locationId)).limit(1);
+          if (locationData) {
+            location = locationData;
+          }
+        }
+        const storageBookingsRaw = await bookingService.getStorageBookingsByKitchenBooking(id);
+        const storageBookingsWithDetails = await Promise.all(
+          storageBookingsRaw.map(async (sb) => {
+            const [listing] = await db.select({
+              name: storageListings.name,
+              storageType: storageListings.storageType,
+              photos: storageListings.photos
+            }).from(storageListings).where(eq26(storageListings.id, sb.storageListingId)).limit(1);
+            return {
+              ...sb,
+              storageListing: listing || null
+            };
+          })
+        );
+        const equipmentBookingsRaw = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+        const equipmentBookingsWithDetails = await Promise.all(
+          equipmentBookingsRaw.map(async (eb) => {
+            const [listing] = await db.select({
+              equipmentType: equipmentListings.equipmentType,
+              brand: equipmentListings.brand
+            }).from(equipmentListings).where(eq26(equipmentListings.id, eb.equipmentListingId)).limit(1);
+            return {
+              ...eb,
+              equipmentListing: listing || null
+            };
+          })
+        );
+        let paymentTransaction = null;
+        try {
+          const [txn] = await db.select({
+            amount: paymentTransactions.amount,
+            serviceFee: paymentTransactions.serviceFee,
+            managerRevenue: paymentTransactions.managerRevenue,
+            status: paymentTransactions.status,
+            stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+            paidAt: paymentTransactions.paidAt
+          }).from(paymentTransactions).where(
+            and17(
+              eq26(paymentTransactions.bookingId, id),
+              eq26(paymentTransactions.bookingType, "kitchen")
+            )
+          ).limit(1);
+          if (txn) {
+            paymentTransaction = {
+              ...txn,
+              amount: txn.amount ? parseFloat(txn.amount) : null,
+              serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
+              managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
+              stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null
+            };
+          }
+        } catch (err) {
+          console.error("Error fetching payment transaction:", err);
+        }
+        res.json({
+          ...booking,
+          kitchen: kitchen ? {
+            id: kitchen.id,
+            name: kitchen.name,
+            description: kitchen.description,
+            photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
+            locationId: kitchen.locationId
+          } : null,
+          location,
+          storageBookings: storageBookingsWithDetails,
+          equipmentBookings: equipmentBookingsWithDetails,
+          paymentTransaction
+        });
+      } catch (error) {
+        console.error("Error fetching booking details:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch booking details" });
+      }
+    });
     router17.get("/bookings/:id/invoice", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
@@ -19052,6 +19436,7 @@ var init_bookings = __esm({
       try {
         const { sessionId } = req.params;
         const chefId = req.neonUser.id;
+        console.log(`[by-session] Request received for session ${sessionId}, chefId=${chefId}`);
         if (!sessionId) {
           return res.status(400).json({ error: "Session ID is required" });
         }
@@ -19061,9 +19446,16 @@ var init_bookings = __esm({
         }
         const Stripe5 = (await import("stripe")).default;
         const stripe4 = new Stripe5(stripeSecretKey4, { apiVersion: "2025-12-15.clover" });
-        const session = await stripe4.checkout.sessions.retrieve(sessionId, {
-          expand: ["payment_intent"]
-        });
+        let session;
+        try {
+          session = await stripe4.checkout.sessions.retrieve(sessionId, {
+            expand: ["payment_intent"]
+          });
+          console.log(`[by-session] Retrieved Stripe session: payment_status=${session.payment_status}, metadata_type=${session.metadata?.type}`);
+        } catch (stripeError) {
+          console.error(`[by-session] Failed to retrieve Stripe session ${sessionId}:`, stripeError.message);
+          return res.status(404).json({ error: "Invalid or expired session ID" });
+        }
         let paymentIntentId;
         if (typeof session.payment_intent === "object" && session.payment_intent !== null) {
           paymentIntentId = session.payment_intent.id;
@@ -19073,10 +19465,85 @@ var init_bookings = __esm({
         if (!paymentIntentId) {
           return res.status(404).json({ error: "Payment intent not found for session" });
         }
-        let [booking] = await db.select().from(kitchenBookings).where(and17(
-          eq26(kitchenBookings.paymentIntentId, paymentIntentId),
-          eq26(kitchenBookings.chefId, chefId)
-        )).limit(1);
+        console.log(`[by-session] Looking for booking with paymentIntentId=${paymentIntentId}, chefId=${chefId}`);
+        const [bookingByIntent] = await db.select().from(kitchenBookings).where(eq26(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
+        let booking = bookingByIntent;
+        if (bookingByIntent) {
+          console.log(`[by-session] Found booking ${bookingByIntent.id} with chef_id=${bookingByIntent.chefId}, requested chefId=${chefId}`);
+          if (bookingByIntent.chefId !== chefId) {
+            console.log(`[by-session] Chef mismatch - booking belongs to chef ${bookingByIntent.chefId}, not ${chefId}`);
+            return res.status(403).json({ error: "This booking does not belong to you" });
+          }
+          const [kitchen2] = await db.select({ name: kitchens.name, locationId: kitchens.locationId }).from(kitchens).where(eq26(kitchens.id, bookingByIntent.kitchenId)).limit(1);
+          const bookingAge = Date.now() - new Date(bookingByIntent.createdAt).getTime();
+          const FIVE_MINUTES = 5 * 60 * 1e3;
+          if (bookingAge < FIVE_MINUTES && kitchen2?.locationId) {
+            console.log(`[by-session] Booking ${bookingByIntent.id} is recent (${Math.round(bookingAge / 1e3)}s old), sending manager notification as fallback`);
+            try {
+              const [location] = await db.select({
+                name: locations.name,
+                managerId: locations.managerId,
+                notificationEmail: locations.notificationEmail,
+                timezone: locations.timezone
+              }).from(locations).where(eq26(locations.id, kitchen2.locationId)).limit(1);
+              if (location && location.managerId) {
+                const [chef] = await db.select({ username: users.username }).from(users).where(eq26(users.id, chefId)).limit(1);
+                const chefName = chef?.username || "Chef";
+                let managerEmailAddress = location.notificationEmail;
+                if (!managerEmailAddress) {
+                  const [manager] = await db.select({ username: users.username }).from(users).where(eq26(users.id, location.managerId)).limit(1);
+                  managerEmailAddress = manager?.username;
+                }
+                if (managerEmailAddress) {
+                  const { sendEmail: sendEmail2, generateBookingNotificationEmail: generateBookingNotificationEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+                  const managerEmail = generateBookingNotificationEmail3({
+                    managerEmail: managerEmailAddress,
+                    chefName,
+                    kitchenName: kitchen2.name,
+                    bookingDate: bookingByIntent.bookingDate,
+                    startTime: bookingByIntent.startTime,
+                    endTime: bookingByIntent.endTime,
+                    specialNotes: bookingByIntent.specialNotes || void 0,
+                    timezone: location.timezone || "America/Edmonton",
+                    locationName: location.name
+                  });
+                  const emailSent = await sendEmail2(managerEmail, { trackingId: `booking_${bookingByIntent.id}_manager` });
+                  if (emailSent) {
+                    console.log(`[by-session] \u2705 Sent manager notification for booking ${bookingByIntent.id}`);
+                  } else {
+                    console.log(`[by-session] \u274C Failed to send manager notification for booking ${bookingByIntent.id}`);
+                  }
+                }
+                if (chef?.username) {
+                  const { sendEmail: sendEmail2, generateBookingRequestEmail: generateBookingRequestEmail3 } = await Promise.resolve().then(() => (init_email(), email_exports));
+                  const chefEmail = generateBookingRequestEmail3({
+                    chefEmail: chef.username,
+                    chefName: chef.username,
+                    kitchenName: kitchen2.name,
+                    bookingDate: bookingByIntent.bookingDate,
+                    startTime: bookingByIntent.startTime,
+                    endTime: bookingByIntent.endTime,
+                    specialNotes: bookingByIntent.specialNotes || void 0,
+                    timezone: location.timezone || "America/Edmonton",
+                    locationName: location.name
+                  });
+                  const chefEmailSent = await sendEmail2(chefEmail, { trackingId: `booking_${bookingByIntent.id}_chef` });
+                  if (chefEmailSent) {
+                    console.log(`[by-session] \u2705 Sent chef confirmation for booking ${bookingByIntent.id}`);
+                  }
+                }
+              }
+            } catch (emailError) {
+              console.error(`[by-session] Error sending fallback emails:`, emailError);
+            }
+          }
+          return res.json({
+            ...bookingByIntent,
+            kitchenName: kitchen2?.name || "Kitchen"
+          });
+        } else {
+          console.log(`[by-session] No booking found with paymentIntentId=${paymentIntentId}`);
+        }
         if (!booking && session.payment_status === "paid" && session.metadata?.type === "kitchen_booking") {
           console.log(`[Fallback] Webhook may have failed - creating booking from session ${sessionId}`);
           const metadata = session.metadata;
@@ -19084,10 +19551,6 @@ var init_bookings = __esm({
           const chefIdFromMeta = parseInt(metadata.chef_id);
           if (chefIdFromMeta !== chefId) {
             return res.status(403).json({ error: "Session does not belong to this chef" });
-          }
-          const [existingByIntent] = await db.select({ id: kitchenBookings.id }).from(kitchenBookings).where(eq26(kitchenBookings.paymentIntentId, paymentIntentId)).limit(1);
-          if (existingByIntent) {
-            return res.status(404).json({ error: "Booking not found for this chef" });
           }
           const bookingDate = new Date(metadata.booking_date);
           const startTime = metadata.start_time;
@@ -19097,22 +19560,34 @@ var init_bookings = __esm({
           const selectedStorage = metadata.selected_storage ? JSON.parse(metadata.selected_storage) : [];
           const selectedEquipmentIds = metadata.selected_equipment_ids ? JSON.parse(metadata.selected_equipment_ids) : [];
           console.log(`[Fallback] Creating booking for kitchen ${kitchenIdFromMeta}, chef ${chefIdFromMeta}`);
-          const newBooking = await bookingService.createKitchenBooking({
+          const totalPriceCents = parseInt(metadata.total_price_cents || "0");
+          const hourlyRateCents = parseInt(metadata.hourly_rate_cents || "0");
+          const durationHours = parseFloat(metadata.duration_hours || "1");
+          const [directBooking] = await db.insert(kitchenBookings).values({
             kitchenId: kitchenIdFromMeta,
             chefId: chefIdFromMeta,
             bookingDate,
             startTime,
             endTime,
-            selectedSlots,
             status: "pending",
             // Awaiting manager approval
             paymentStatus: "paid",
             // Payment already confirmed
             paymentIntentId,
             specialNotes,
-            selectedStorage,
-            selectedEquipmentIds
-          });
+            totalPrice: totalPriceCents.toString(),
+            hourlyRate: hourlyRateCents.toString(),
+            durationHours: durationHours.toString(),
+            serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
+            currency: "CAD",
+            selectedSlots,
+            storageItems: [],
+            equipmentItems: []
+          }).returning();
+          if (!directBooking) {
+            throw new Error("Failed to create booking");
+          }
+          const newBooking = directBooking;
           console.log(`[Fallback] Created booking ${newBooking.id} from session ${sessionId}`);
           try {
             const { createPaymentTransaction: createPaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
@@ -19198,7 +19673,20 @@ var init_bookings = __esm({
           [booking] = await db.select().from(kitchenBookings).where(eq26(kitchenBookings.id, newBooking.id)).limit(1);
         }
         if (!booking) {
-          return res.status(404).json({ error: "Booking not found for this session" });
+          console.error(`[by-session] CRITICAL: No booking created for session ${sessionId}`, {
+            paymentStatus: session.payment_status,
+            metadataType: session.metadata?.type,
+            hasMetadata: !!session.metadata,
+            paymentIntentId,
+            chefId
+          });
+          return res.status(404).json({
+            error: "Booking not found for this session",
+            debug: {
+              paymentStatus: session.payment_status,
+              metadataType: session.metadata?.type
+            }
+          });
         }
         const [kitchen] = await db.select({ name: kitchens.name }).from(kitchens).where(eq26(kitchens.id, booking.kitchenId)).limit(1);
         res.json({
@@ -20113,6 +20601,8 @@ var init_admin = __esm({
           kitchenLicenseExpiry: locations.kitchenLicenseExpiry,
           kitchenLicenseFeedback: locations.kitchenLicenseFeedback,
           kitchenLicenseApprovedAt: locations.kitchenLicenseApprovedAt,
+          kitchenTermsUrl: locations.kitchenTermsUrl,
+          kitchenTermsUploadedAt: locations.kitchenTermsUploadedAt,
           managerName: users.username,
           managerEmail: users.username
           // simplified for now
@@ -20131,7 +20621,9 @@ var init_admin = __esm({
           kitchenLicenseStatus: loc.kitchenLicenseStatus || "pending",
           kitchenLicenseExpiry: loc.kitchenLicenseExpiry,
           kitchenLicenseFeedback: loc.kitchenLicenseFeedback,
-          kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt
+          kitchenLicenseApprovedAt: loc.kitchenLicenseApprovedAt,
+          kitchenTermsUrl: loc.kitchenTermsUrl,
+          kitchenTermsUploadedAt: loc.kitchenTermsUploadedAt
         }));
         res.json(licenses);
       } catch (error) {
@@ -21437,81 +21929,54 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
         });
         let booking;
         try {
-          const { bookingService: bookingService2 } = await Promise.resolve().then(() => (init_booking_service(), booking_service_exports));
-          booking = await bookingService2.createKitchenBooking({
+          const [directBooking] = await db.insert(kitchenBookings).values({
             kitchenId,
             chefId,
             bookingDate,
             startTime,
             endTime,
-            selectedSlots,
             status: "pending",
             // Awaiting manager approval
             paymentStatus: "paid",
             // Payment already confirmed
             paymentIntentId,
             specialNotes,
-            selectedStorage,
-            selectedEquipmentIds
-          });
-          if (!booking || !booking.id) {
-            logger.error(`[Webhook] CRITICAL: bookingService.createKitchenBooking returned invalid booking`, { booking, sessionId: session.id });
-            throw new Error("Booking creation returned invalid result");
+            totalPrice: totalPriceCents.toString(),
+            hourlyRate: hourlyRateCents.toString(),
+            durationHours: durationHours.toString(),
+            serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
+            currency: "CAD",
+            selectedSlots,
+            storageItems: [],
+            equipmentItems: []
+          }).returning();
+          if (directBooking) {
+            booking = {
+              id: directBooking.id,
+              kitchenId: directBooking.kitchenId,
+              chefId: directBooking.chefId,
+              bookingDate: directBooking.bookingDate,
+              startTime: directBooking.startTime,
+              endTime: directBooking.endTime,
+              status: directBooking.status,
+              paymentStatus: directBooking.paymentStatus,
+              paymentIntentId: directBooking.paymentIntentId
+            };
+            logger.info(`[Webhook] Created booking ${directBooking.id} via direct DB insert`);
+          } else {
+            throw new Error("Direct DB insert returned no result");
           }
-        } catch (bookingError) {
-          const errorMessage = bookingError instanceof Error ? bookingError.message : String(bookingError);
-          const errorStack = bookingError instanceof Error ? bookingError.stack : void 0;
-          logger.error(`[Webhook] BookingService failed, attempting direct DB insert. Error: ${errorMessage}`, {
+        } catch (insertError) {
+          const errorMessage = insertError instanceof Error ? insertError.message : String(insertError);
+          const errorStack = insertError instanceof Error ? insertError.stack : void 0;
+          logger.error(`[Webhook] CRITICAL: Failed to create booking for session ${session.id}:`, {
+            error: errorMessage,
             stack: errorStack,
             kitchenId,
             chefId,
             paymentIntentId
           });
-          try {
-            const [directBooking] = await db.insert(kitchenBookings).values({
-              kitchenId,
-              chefId,
-              bookingDate,
-              startTime,
-              endTime,
-              status: "pending",
-              paymentStatus: "paid",
-              paymentIntentId,
-              specialNotes,
-              totalPrice: totalPriceCents.toString(),
-              serviceFee: parseInt(metadata.platform_fee_cents || "0").toString(),
-              currency: "CAD",
-              selectedSlots,
-              storageItems: [],
-              equipmentItems: []
-            }).returning();
-            if (directBooking) {
-              booking = {
-                id: directBooking.id,
-                kitchenId: directBooking.kitchenId,
-                chefId: directBooking.chefId,
-                bookingDate: directBooking.bookingDate,
-                startTime: directBooking.startTime,
-                endTime: directBooking.endTime,
-                status: directBooking.status,
-                paymentStatus: directBooking.paymentStatus,
-                paymentIntentId: directBooking.paymentIntentId
-              };
-              logger.info(`[Webhook] Direct DB insert succeeded, booking ${directBooking.id} created`);
-            } else {
-              throw new Error("Direct DB insert returned no result");
-            }
-          } catch (directInsertError) {
-            const directErrorMessage = directInsertError instanceof Error ? directInsertError.message : String(directInsertError);
-            logger.error(`[Webhook] CRITICAL: Both booking service and direct insert failed for session ${session.id}:`, {
-              serviceError: errorMessage,
-              directError: directErrorMessage,
-              kitchenId,
-              chefId,
-              paymentIntentId
-            });
-            throw directInsertError;
-          }
+          throw insertError;
         }
         if (!booking || !booking.id) {
           logger.error(`[Webhook] CRITICAL: No booking was created for session ${session.id}`);
@@ -21524,6 +21989,102 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
           throw new Error(`Booking ${booking.id} was not persisted to database`);
         }
         logger.info(`[Webhook] Verified booking ${booking.id} exists in database`);
+        const storageItemsForJson = [];
+        if (selectedStorage && selectedStorage.length > 0) {
+          try {
+            for (const storage of selectedStorage) {
+              const [storageListing] = await db.select().from(storageListings).where(eq28(storageListings.id, storage.storageListingId)).limit(1);
+              if (storageListing) {
+                const basePriceCents = storageListing.basePrice ? Math.round(parseFloat(String(storageListing.basePrice))) : 0;
+                const minDays = storageListing.minimumBookingDuration || 1;
+                const storageStartDate = new Date(storage.startDate);
+                const storageEndDate = new Date(storage.endDate);
+                const days = Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1e3 * 60 * 60 * 24));
+                const effectiveDays = Math.max(days, minDays);
+                let priceCents = basePriceCents * effectiveDays;
+                if (storageListing.pricingModel === "hourly") {
+                  const durationHoursStorage = Math.max(1, Math.ceil((storageEndDate.getTime() - storageStartDate.getTime()) / (1e3 * 60 * 60)));
+                  priceCents = basePriceCents * durationHoursStorage;
+                } else if (storageListing.pricingModel === "monthly-flat") {
+                  priceCents = basePriceCents;
+                }
+                const [storageBooking] = await db.insert(storageBookings).values({
+                  kitchenBookingId: booking.id,
+                  storageListingId: storageListing.id,
+                  chefId,
+                  startDate: storageStartDate,
+                  endDate: storageEndDate,
+                  status: "confirmed",
+                  totalPrice: priceCents.toString(),
+                  pricingModel: storageListing.pricingModel || "daily",
+                  serviceFee: "0",
+                  currency: "CAD"
+                }).returning();
+                if (storageBooking) {
+                  storageItemsForJson.push({
+                    id: storageBooking.id,
+                    storageListingId: storageListing.id,
+                    name: storageListing.name || "Storage",
+                    storageType: storageListing.storageType || "other",
+                    totalPrice: priceCents,
+                    startDate: storageStartDate.toISOString(),
+                    endDate: storageEndDate.toISOString()
+                  });
+                }
+              }
+            }
+            logger.info(`[Webhook] Created ${storageItemsForJson.length} storage bookings for booking ${booking.id}`);
+          } catch (storageError) {
+            logger.error(`[Webhook] Error creating storage bookings:`, storageError);
+          }
+        }
+        const equipmentItemsForJson = [];
+        if (selectedEquipmentIds && selectedEquipmentIds.length > 0) {
+          try {
+            for (const equipmentListingId of selectedEquipmentIds) {
+              const [equipmentListing] = await db.select().from(equipmentListings).where(eq28(equipmentListings.id, equipmentListingId)).limit(1);
+              if (equipmentListing && equipmentListing.availabilityType !== "included") {
+                const sessionRateCents = equipmentListing.sessionRate ? Math.round(parseFloat(String(equipmentListing.sessionRate))) : 0;
+                const [equipmentBooking] = await db.insert(equipmentBookings).values({
+                  kitchenBookingId: booking.id,
+                  equipmentListingId: equipmentListing.id,
+                  chefId,
+                  startDate: bookingDate,
+                  endDate: bookingDate,
+                  status: "confirmed",
+                  totalPrice: sessionRateCents.toString(),
+                  pricingModel: "daily",
+                  damageDeposit: (equipmentListing.damageDeposit || "0").toString(),
+                  serviceFee: "0",
+                  currency: "CAD"
+                }).returning();
+                if (equipmentBooking) {
+                  equipmentItemsForJson.push({
+                    id: equipmentBooking.id,
+                    equipmentListingId: equipmentListing.id,
+                    name: equipmentListing.equipmentType || "Equipment",
+                    totalPrice: sessionRateCents
+                  });
+                }
+              }
+            }
+            logger.info(`[Webhook] Created ${equipmentItemsForJson.length} equipment bookings for booking ${booking.id}`);
+          } catch (equipmentError) {
+            logger.error(`[Webhook] Error creating equipment bookings:`, equipmentError);
+          }
+        }
+        if (storageItemsForJson.length > 0 || equipmentItemsForJson.length > 0) {
+          try {
+            await db.update(kitchenBookings).set({
+              storageItems: storageItemsForJson,
+              equipmentItems: equipmentItemsForJson,
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq28(kitchenBookings.id, booking.id));
+            logger.info(`[Webhook] Updated booking ${booking.id} with storage/equipment items`);
+          } catch (updateError) {
+            logger.error(`[Webhook] Error updating booking with storage/equipment items:`, updateError);
+          }
+        }
         try {
           const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
           const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
@@ -24481,8 +25042,8 @@ async function handleFileUpload(req, res) {
 // server/routes/firebase/media.ts
 var router4 = Router4();
 var handleUpload = [
-  requireFirebaseAuthWithUser,
   upload.single("file"),
+  requireFirebaseAuthWithUser,
   handleFileUpload
 ];
 router4.post("/upload", ...handleUpload);
@@ -25247,7 +25808,7 @@ router7.post(
           }]
         });
       }
-      if (requirements.requireExperience && (!businessInfo.experience || businessInfo.experience.trim() === "") && (!req.body.cookingExperience || req.body.cookingExperience.trim() === "")) {
+      if (requirements.tier1_years_experience_required && (!businessInfo.experience || businessInfo.experience.trim() === "") && (!req.body.cookingExperience || req.body.cookingExperience.trim() === "")) {
         return res.status(400).json({
           error: "Validation error",
           message: "Experience level is required for this location",
@@ -25857,6 +26418,11 @@ async function registerRoutes(app2) {
     console.log("\u{1F6AA} Logout request received (Firebase Auth is stateless)");
     res.json({ success: true, message: "Logged out successfully" });
   });
+  const userRouter = (await Promise.resolve().then(() => (init_user(), user_exports))).default;
+  app2.use("/api/sync-verification-status", (req, res, next) => {
+    req.url = "/sync-verification-status";
+    userRouter(req, res, next);
+  });
   app2.use("/api/applications", (await Promise.resolve().then(() => (init_applications(), applications_exports))).default);
   app2.use("/api", (await Promise.resolve().then(() => (init_locations(), locations_exports))).default);
   app2.use("/api/microlearning", (await Promise.resolve().then(() => (init_microlearning(), microlearning_exports))).default);
@@ -25894,6 +26460,25 @@ async function registerRoutes(app2) {
         const updatedUser = await userService3.updateUser(user.id, { isVerified: true });
         if (updatedUser) {
           user = updatedUser;
+        }
+      }
+      if (firebaseEmailVerified && user.isVerified && !user.welcomeEmailSentAt) {
+        try {
+          const { sendEmail: sendEmail2, generateWelcomeEmail: generateWelcomeEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+          console.log(`\u{1F4E7} Sending welcome email to newly verified user: ${user.username}`);
+          const welcomeEmail = generateWelcomeEmail2({
+            fullName: req.firebaseUser?.name || user.username.split("@")[0],
+            email: user.username
+          });
+          const emailResult = await sendEmail2(welcomeEmail, {
+            trackingId: `welcome_verified_${user.id}_${Date.now()}`
+          });
+          if (emailResult) {
+            await userService3.updateUser(user.id, { welcomeEmailSentAt: /* @__PURE__ */ new Date() });
+            console.log(`\u2705 Welcome email sent successfully to ${user.username}`);
+          }
+        } catch (emailError) {
+          console.error("\u274C Error sending welcome email on sync verification:", emailError);
         }
       }
       res.json(user);
@@ -25944,13 +26529,59 @@ async function registerRoutes(app2) {
         return res.json(existingByUsername);
       }
       console.log(`\u{1F4DD} Creating new user: ${email} with role: ${role || "user"}`);
+      const finalRole = role || "user";
       const newUser = await userService3.createUser({
         username: email,
         firebaseUid: uid,
-        role: role || "user",
+        role: finalRole,
         isVerified: decodedToken.email_verified || false,
         ...otherData
       });
+      try {
+        const { sendEmail: sendEmail2, generateWelcomeEmail: generateWelcomeEmail2, generateNewUserRegistrationAdminEmail: generateNewUserRegistrationAdminEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+        const { db: db2 } = await Promise.resolve().then(() => (init_db(), db_exports));
+        const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+        const { eq: eq32 } = await import("drizzle-orm");
+        const displayName = otherData.displayName || email.split("@")[0];
+        if (decodedToken.email_verified) {
+          console.log(`\u{1F4E7} Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
+          const welcomeEmail = generateWelcomeEmail2({
+            fullName: displayName,
+            email
+          });
+          const welcomeSent = await sendEmail2(welcomeEmail, {
+            trackingId: `welcome_${finalRole}_${email}_${Date.now()}`
+          });
+          if (welcomeSent) {
+            await userService3.updateUser(newUser.id, { welcomeEmailSentAt: /* @__PURE__ */ new Date() });
+            console.log(`\u2705 Welcome email sent to new ${finalRole}: ${email}`);
+          } else {
+            console.log(`\u274C Failed to send welcome email to ${email}`);
+          }
+        } else {
+          console.log(`\u2139\uFE0F Skipping welcome email for UNVERIFIED new ${finalRole}: ${email} - will be sent after verification`);
+        }
+        const admins = await db2.select({ username: users5.username }).from(users5).where(eq32(users5.role, "admin"));
+        for (const admin2 of admins) {
+          if (admin2.username && admin2.username !== email) {
+            const adminEmail = generateNewUserRegistrationAdminEmail2({
+              adminEmail: admin2.username,
+              newUserName: displayName,
+              newUserEmail: email,
+              userRole: finalRole,
+              registrationDate: /* @__PURE__ */ new Date()
+            });
+            const adminSent = await sendEmail2(adminEmail, {
+              trackingId: `new_user_admin_${admin2.username}_${Date.now()}`
+            });
+            if (adminSent) {
+              console.log(`\u2705 Admin notification sent to ${admin2.username} about new ${finalRole} registration`);
+            }
+          }
+        }
+      } catch (emailError) {
+        console.error("\u274C Error sending registration emails:", emailError);
+      }
       res.status(201).json(newUser);
     } catch (error) {
       console.error("Error registering user:", error);

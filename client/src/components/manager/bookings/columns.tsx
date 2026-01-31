@@ -1,7 +1,7 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, CheckCircle, XCircle, Clock, MapPin, User, Calendar as CalendarIcon, FileText, Package, Boxes, DollarSign, Eye } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -510,6 +510,12 @@ export const getBookingColumns = ({ onConfirm, onReject, onCancel, hasApprovedLi
                         )}
 
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                            <a href={`/manager/booking/${booking.id}`}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Details
+                            </a>
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => navigator.clipboard.writeText(booking.id.toString())}>
                             Copy Booking ID
                         </DropdownMenuItem>
