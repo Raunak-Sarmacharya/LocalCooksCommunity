@@ -442,7 +442,7 @@ router.post("/message-received", requireFirebaseAuthWithUser, async (req: Reques
         senderName,
         conversationId
       },
-      actionUrl: `/manager/booking-dashboard?view=messages`,
+      actionUrl: `/manager/booking/:id`,
       actionLabel: 'View Message'
     });
 

@@ -30,6 +30,7 @@ import {
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface BookingDetails {
   id: number;
@@ -135,6 +136,8 @@ export default function BookingDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const queryClient = useQueryClient();
 
   const handleViewChange = (_view: string) => {
     navigate("/dashboard");
@@ -386,6 +389,51 @@ export default function BookingDetailsPage() {
     };
   }, [booking]);
 
+  const handleUpdateStatus = async (status: 'confirmed' | 'cancelled') => {
+    if (!booking?.id) return;
+
+    const action = status === 'confirmed' ? 'confirm' : 'reject';
+    if (!window.confirm(`${action === 'confirm' ? 'Confirm' : 'Reject'} this booking?`)) {
+      return;
+    }
+
+    setIsUpdatingStatus(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/bookings/${booking.id}/status`, {
+        method: 'PUT',
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to ${action} booking`);
+      }
+
+      // Update local state
+      setBooking({ ...booking, status });
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+
+      toast({
+        title: "Success",
+        description: status === 'confirmed' ? "Booking confirmed!" : "Booking rejected.",
+      });
+    } catch (err) {
+      console.error(`Error ${action}ing booking:`, err);
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : `Failed to ${action} booking`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   const handleBack = () => {
     if (isManagerView) {
       navigate("/manager/dashboard");
@@ -445,6 +493,40 @@ export default function BookingDetailsPage() {
             <div className="flex flex-col gap-2">
               {getStatusBadge(booking.status)}
               {getPaymentStatusBadge(booking.paymentStatus)}
+              {isManagerView && booking.status === 'pending' && (
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleUpdateStatus('confirmed')}
+                    disabled={isUpdatingStatus}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isUpdatingStatus ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 mr-1" />
+                        Approve
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => handleUpdateStatus('cancelled')}
+                    disabled={isUpdatingStatus}
+                  >
+                    {isUpdatingStatus ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Reject
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

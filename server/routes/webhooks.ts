@@ -809,6 +809,7 @@ async function handleCheckoutSessionCompleted(
                   specialNotes: specialNotes || undefined,
                   timezone: location.timezone || "America/Edmonton",
                   locationName: location.name,
+                  bookingId: booking.id,
                 });
                 const emailSent = await sendEmail(managerEmail);
                 if (emailSent) {

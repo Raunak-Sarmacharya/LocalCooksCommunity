@@ -4880,6 +4880,7 @@ Visit: ${getWebsiteUrl()}
       const subject = `New Kitchen Booking - ${bookingData.kitchenName}`;
       const timezone = bookingData.timezone || "America/St_Johns";
       const locationName = bookingData.locationName || bookingData.kitchenName;
+      const bookingDetailsUrl = `${getDashboardUrl()}/manager/booking/${bookingData.bookingId}`;
       const bookingDateObj = bookingData.bookingDate instanceof Date ? bookingData.bookingDate : new Date(bookingData.bookingDate);
       const calendarTitle = `Kitchen Booking - ${bookingData.kitchenName}`;
       const calendarDescription = `Kitchen booking with ${bookingData.chefName} for ${bookingData.kitchenName}.
@@ -4917,7 +4918,7 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         eventUid
         // Use consistent UID for synchronization
       );
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Kitchen Booking</h2><p class="message">A chef has made a booking for your kitchen:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${bookingData.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}${bookingData.specialNotes ? `<br><br><strong>\u{1F4DD} Notes:</strong> ${bookingData.specialNotes}` : ""}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>\u{1F4CE} Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">View Bookings</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Kitchen Booking</h2><p class="message">A chef has made a booking for your kitchen:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${bookingData.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${bookingDateObj.toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}${bookingData.specialNotes ? `<br><br><strong>\u{1F4DD} Notes:</strong> ${bookingData.specialNotes}` : ""}</div><p class="message" style="font-size: 14px; color: #64748b; margin-top: 16px;"><strong>\u{1F4CE} Calendar Invite:</strong> A calendar invite has been attached to this email. You can also <a href="${calendarUrl}" target="_blank" style="color: #4285f4;">click here to add it to your calendar</a>.</p><div style="text-align: center; margin: 24px 0;"><a href="${calendarUrl}" target="_blank" class="cta-button" style="display: inline-block; background: #4285f4; color: white !important; text-decoration: none !important; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-right: 12px;">${calendarButtonText}</a><a href="${bookingDetailsUrl}" class="cta-button" style="display: inline-block; color: white !important; text-decoration: none !important;">Review Booking</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
       return {
         to: bookingData.managerEmail,
         subject,
@@ -7345,6 +7346,8 @@ async function createChefNotification(params) {
   });
 }
 async function notifyNewBooking(data) {
+  const actionUrl = `/manager/booking/${data.bookingId}`;
+  logger.info(`[NotificationService] Creating booking_new notification with actionUrl: ${actionUrl}`);
   return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
@@ -7360,7 +7363,7 @@ async function notifyNewBooking(data) {
       startTime: data.startTime,
       endTime: data.endTime
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl: "/manager/booking/${data.bookingId}",
     actionLabel: "Review Booking"
   });
 }
@@ -7377,7 +7380,7 @@ async function notifyBookingConfirmed(data) {
       chefName: data.chefName,
       kitchenName: data.kitchenName
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: "View Booking"
   });
 }
@@ -7396,7 +7399,7 @@ async function notifyBookingCancelled(data) {
       kitchenName: data.kitchenName,
       cancelledBy: data.cancelledBy
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: "View Details"
   });
 }
@@ -7435,7 +7438,7 @@ async function notifyPaymentFailed(data) {
       chefName: data.chefName,
       reason: data.reason
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: "View Booking"
   });
 }
@@ -11383,6 +11386,9 @@ var init_booking_service = __esm({
       }
       async getEquipmentBookingsByKitchenBooking(kitchenBookingId) {
         return this.repo.getEquipmentBookingsByKitchenBookingId(kitchenBookingId);
+      }
+      async updateStorageBooking(id, updates) {
+        return this.repo.updateStorageBooking(id, updates);
       }
       // ===== AVAILABILITY LOGIC =====
       async validateBookingAvailability(kitchenId, bookingDate, startTime, endTime) {
@@ -18397,7 +18403,7 @@ var init_notifications = __esm({
             senderName,
             conversationId
           },
-          actionUrl: `/manager/booking-dashboard?view=messages`,
+          actionUrl: `/manager/booking/:id`,
           actionLabel: "View Message"
         });
         res.json({ success: true });
@@ -20670,7 +20676,8 @@ var init_bookings = __esm({
                     endTime: bookingByIntent.endTime,
                     specialNotes: bookingByIntent.specialNotes || void 0,
                     timezone: location.timezone || "America/Edmonton",
-                    locationName: location.name
+                    locationName: location.name,
+                    bookingId: bookingByIntent.id
                   });
                   const emailSent = await sendEmail2(managerEmail, { trackingId: `booking_${bookingByIntent.id}_manager` });
                   if (emailSent) {
@@ -20814,7 +20821,8 @@ var init_bookings = __esm({
                     endTime,
                     specialNotes: specialNotes || void 0,
                     timezone: location.timezone || "America/Edmonton",
-                    locationName: location.name
+                    locationName: location.name,
+                    bookingId: newBooking.id
                   });
                   await sendEmail2(managerEmail);
                   console.log(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
@@ -23361,7 +23369,8 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
                   endTime,
                   specialNotes: specialNotes || void 0,
                   timezone: location.timezone || "America/Edmonton",
-                  locationName: location.name
+                  locationName: location.name,
+                  bookingId: booking.id
                 });
                 const emailSent = await sendEmail2(managerEmail);
                 if (emailSent) {
@@ -24906,7 +24915,8 @@ var init_portal = __esm({
               endTime,
               specialNotes: specialNotes || void 0,
               timezone,
-              locationName
+              locationName,
+              bookingId: booking.id
             });
             await sendEmail2(managerEmail);
             console.log(`\u2705 Portal booking notification email sent to manager: ${notificationEmail}`);

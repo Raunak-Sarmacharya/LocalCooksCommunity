@@ -2057,6 +2057,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 specialNotes: bookingByIntent.specialNotes || undefined,
                                 timezone: location.timezone || "America/Edmonton",
                                 locationName: location.name,
+                                bookingId: bookingByIntent.id,
                             });
                             const emailSent = await sendEmail(managerEmail, { trackingId: `booking_${bookingByIntent.id}_manager` });
                             if (emailSent) {
@@ -2262,6 +2263,7 @@ router.get("/chef/bookings/by-session/:sessionId", requireChef, async (req: Requ
                                 specialNotes: specialNotes || undefined,
                                 timezone: location.timezone || "America/Edmonton",
                                 locationName: location.name,
+                                bookingId: newBooking.id,
                             });
                             await sendEmail(managerEmail);
                             console.log(`[Fallback] Sent manager notification for booking ${newBooking.id}`);
