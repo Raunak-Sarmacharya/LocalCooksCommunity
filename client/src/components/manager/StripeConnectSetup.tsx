@@ -164,7 +164,10 @@ export default function StripeConnectSetup() {
     mutationFn: async () => {
       if (!firebaseUser) throw new Error('Not authenticated');
       const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/manager/stripe-connect/onboarding-link', {
+      // Check if we're in the setup flow
+      const isSetupFlow = window.location.pathname.includes('/manager/setup');
+      const fromParam = isSetupFlow ? '?from=setup' : '';
+      const response = await fetch(`/api/manager/stripe-connect/onboarding-link${fromParam}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -204,7 +207,10 @@ export default function StripeConnectSetup() {
     mutationFn: async () => {
       if (!firebaseUser) throw new Error('Not authenticated');
       const token = await auth.currentUser?.getIdToken();
-      const response = await fetch('/api/manager/stripe-connect/dashboard-link', {
+      // Check if we're in the setup flow
+      const isSetupFlow = window.location.pathname.includes('/manager/setup');
+      const fromParam = isSetupFlow ? '?from=setup' : '';
+      const response = await fetch(`/api/manager/stripe-connect/dashboard-link${fromParam}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -317,46 +323,41 @@ export default function StripeConnectSetup() {
   // Not connected - show create account button
   if (!hasStripeAccount) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            Set Up Payments
-          </CardTitle>
-          <CardDescription>
-            Connect your Stripe account to start receiving payments directly for kitchen bookings.
-            {/* The platform service fee ({serviceFeePercentage}%) will be automatically deducted. */}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Stripe's secure onboarding page will open in a new tab to complete the setup.
-                This process takes about 5 minutes. You can continue using this page while setting up.
-              </AlertDescription>
-            </Alert>
-            <Button 
-              onClick={handleCreateAccount}
-              disabled={createAccountMutation.isPending}
-              className="w-full"
-            >
-              {createAccountMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating Account...
-                </>
-              ) : (
-                <>
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Connect Stripe Account
-                </>
-              )}
-            </Button>
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+              <CreditCard className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Connect Payments</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Receive payments directly to your bank</p>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+          <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
+        </div>
+        
+        <Button 
+          onClick={handleCreateAccount}
+          disabled={createAccountMutation.isPending}
+          className="w-full bg-[#635bff] hover:bg-[#5851db]"
+        >
+          {createAccountMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating Account...
+            </>
+          ) : (
+            <>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Connect with Stripe
+            </>
+          )}
+        </Button>
+        <p className="text-xs text-slate-400 text-center">
+          Secure setup opens in a new tab (~5 min)
+        </p>
+      </div>
     );
   }
 
@@ -366,128 +367,92 @@ export default function StripeConnectSetup() {
     if (isOnboardingComplete) {
       // Onboarding complete - show success state
       return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5" />
-              Payment Setup Complete
-            </CardTitle>
-            <CardDescription>
-              Your Stripe account is connected and ready to receive payments.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* <Alert>
-                <CheckCircle2 className="h-4 w-4" />
-                <AlertDescription>
-                  ✅ You'll receive payments automatically after each booking.
-                  The platform service fee ({serviceFeePercentage}%) will be deducted automatically, and the remaining amount
-                  will be transferred to your bank account within 2-7 business days.
-                </AlertDescription>
-              </Alert> */}
-              {/* {userProfile?.stripeConnectAccountId && (
-                <div className="text-sm text-gray-600 space-y-1">
-                  <p><strong>Account ID:</strong> {userProfile.stripeConnectAccountId}</p>
-                </div>
-              )} */}
-              <Button 
-                onClick={handleAccessDashboard}
-                className="w-full"
-                disabled={getDashboardLinkMutation.isPending}
-              >
-                {getDashboardLinkMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Opening Dashboard...
-                  </>
-                ) : (
-                  <>
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Access Your Dashboard
-                  </>
-                )}
-              </Button>
-              <p className="text-xs text-muted-foreground text-center">
-                Click to open your Stripe Express Dashboard in a new tab where you can view payments, payouts, and manage your account settings.
-              </p>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Payments Connected</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Ready to receive payments</p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+            <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
+          </div>
+          
+          <Button 
+            onClick={handleAccessDashboard}
+            variant="outline"
+            className="w-full"
+            disabled={getDashboardLinkMutation.isPending}
+          >
+            {getDashboardLinkMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Opening...
+              </>
+            ) : (
+              <>
+                <ExternalLink className="mr-2 h-4 w-4" />
+                View Stripe Dashboard
+              </>
+            )}
+          </Button>
+        </div>
       );
     } else {
       // Account created but onboarding not complete - show setup needed state
       return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Complete Stripe Setup
-            </CardTitle>
-            <CardDescription>
-              Your Stripe account has been created, but you need to complete the setup process to start receiving payments.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  ⚠️ You need to complete Stripe's onboarding process to start receiving payments.
-                  This takes about 5 minutes and includes providing business information and bank account details.
-                </AlertDescription>
-              </Alert>
-              <Button 
-                onClick={handleAccessDashboard}
-                className="w-full"
-                disabled={getDashboardLinkMutation.isPending}
-              >
-                {getDashboardLinkMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Opening Setup...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Setup Stripe Account
-                  </>
-                )}
-              </Button>
-              <p className="text-xs text-muted-foreground text-center">
-                Click to complete your Stripe Connect setup and start receiving payments. The setup page will open in a new tab.
-              </p>
-              
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">Or</span>
-                </div>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-950/30 flex items-center justify-center">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
-
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-2">Already completed setup?</p>
-                <Button 
-                  variant="outline"
-                  onClick={() => checkStatusMutation.mutate()}
-                  disabled={checkStatusMutation.isPending}
-                  className="w-full"
-                >
-                  {checkStatusMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Checking Status...
-                    </>
-                  ) : (
-                    "Refresh Status"
-                  )}
-                </Button>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Complete Setup</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Finish onboarding to receive payments</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <img src="/stripe-logo.png" alt="Stripe" className="h-6" />
+          </div>
+          
+          <Button 
+            onClick={handleAccessDashboard}
+            className="w-full bg-[#635bff] hover:bg-[#5851db]"
+            disabled={getDashboardLinkMutation.isPending}
+          >
+            {getDashboardLinkMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Opening Setup...
+              </>
+            ) : (
+              <>
+                <CreditCard className="mr-2 h-4 w-4" />
+                Complete Stripe Setup
+              </>
+            )}
+          </Button>
+          
+          <Button 
+            variant="ghost"
+            onClick={() => checkStatusMutation.mutate()}
+            disabled={checkStatusMutation.isPending}
+            className="w-full text-slate-500"
+            size="sm"
+          >
+            {checkStatusMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              "Already completed? Refresh status"
+            )}
+          </Button>
+        </div>
       );
     }
   }

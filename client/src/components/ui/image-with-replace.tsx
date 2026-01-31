@@ -218,7 +218,7 @@ export function ImageWithReplace({
                     size="sm"
                     variant="secondary"
                     disabled={isUploading}
-                    className="bg-white/90 hover:bg-white"
+                    className="bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 shadow-sm"
                   >
                     {isUploading ? (
                       <>

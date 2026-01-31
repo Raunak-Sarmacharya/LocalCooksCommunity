@@ -38,6 +38,7 @@ export interface UpdateUserDTO {
   isManager?: boolean;
   isVerified?: boolean;
   has_seen_welcome?: boolean;
+  welcomeEmailSentAt?: Date; // Track when welcome email was sent (idempotency)
   managerOnboardingCompleted?: boolean;
   managerOnboardingSkipped?: boolean;
   managerOnboardingStepsCompleted?: Record<string, boolean>;

@@ -89,12 +89,16 @@ export default function StripeConnectReturn() {
   };
 
   const handleGoToDashboard = () => {
-    // Redirect to the appropriate dashboard
+    // Redirect to the appropriate dashboard or setup page
     const params = new URLSearchParams(window.location.search);
     const role = params.get('role') || 'manager';
+    const fromSetup = params.get('from') === 'setup';
     
     if (role === 'chef') {
       window.location.href = '/chef/dashboard';
+    } else if (fromSetup) {
+      // Return to setup page if came from onboarding
+      window.location.href = '/manager/setup';
     } else {
       window.location.href = '/manager/dashboard?view=payments';
     }

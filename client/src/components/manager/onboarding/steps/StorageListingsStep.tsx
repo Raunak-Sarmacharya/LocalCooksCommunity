@@ -48,7 +48,7 @@ export default function StorageListingsStep() {
     kitchens,
     selectedKitchenId,
     setSelectedKitchenId,
-    storageForm: { listings, isLoading },
+    storageForm: { listings, isLoading, refresh: refreshListings },
     handleNext,
     handleBack
   } = useManagerOnboarding();
@@ -129,6 +129,8 @@ export default function StorageListingsStep() {
       toast({ title: "Storage Added", description: `Successfully added "${storageName}"` });
       setCustomStorage({ name: '', storageType: 'dry', description: '', dailyRate: 0, totalVolume: 0, accessType: 'shelving-unit', temperatureRange: '', minimumBookingDuration: 1 });
       setSearchQuery('');
+      // Refresh listings to show the new one immediately
+      await refreshListings();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
@@ -215,6 +217,8 @@ export default function StorageListingsStep() {
         description: `Successfully added ${successCount} storage listing${successCount > 1 ? 's' : ''}.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
       setSelectedStorage({});
+      // Refresh listings to show the new ones immediately
+      await refreshListings();
     } else {
       toast({
         title: "Error",
@@ -225,25 +229,7 @@ export default function StorageListingsStep() {
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-      <div>
-        <h3 className="text-lg font-semibold mb-1">Storage Listings (Optional)</h3>
-        <p className="text-sm text-gray-600">
-          Add storage options that chefs can book. This step is optional - you can skip and add listings later from your dashboard.
-        </p>
-      </div>
-
-      <div className="bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200/50 rounded-xl p-5 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="p-2 bg-rose-100 rounded-lg">
-            <Info className="h-5 w-5 text-[#F51042] flex-shrink-0" />
-          </div>
-          <div className="text-sm text-gray-700">
-            <p className="font-bold mb-2 text-gray-900">What are Storage Listings?</p>
-            <p>Storage listings allow chefs to book dry storage, cold storage, or freezer space at your kitchen. You can add multiple storage options with different sizes and prices.</p>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-500">
 
       {kitchens.length === 0 ? (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -272,12 +258,12 @@ export default function StorageListingsStep() {
                 <div className="border rounded-lg p-4 bg-green-50 border-green-200 space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <CheckCircle className="h-5 w-5 text-green-600" />
-                    <h4 className="font-semibold text-gray-900">Existing Listings ({listings.length})</h4>
+                    <h4 className="font-semibold text-gray-900">Active Listings ({listings.length})</h4>
                   </div>
                   {listings.map(l => (
                     <div key={l.id} className="bg-white rounded p-3 border border-green-200">
                       <p className="font-medium">{l.name}</p>
-                      <p className="text-xs text-gray-600">{l.storageType} • ${Number(l.basePrice || 0).toFixed(2)}/day</p>
+                      <p className="text-xs text-gray-600">{l.storageType} • ${(Number(l.basePrice || 0) / 100).toFixed(2)}/day</p>
                     </div>
                   ))}
                 </div>

@@ -123,11 +123,12 @@ export async function syncFirebaseUserToNeon(params: {
     if (!isGoogleUser && email) {
       console.log(`📧 Email/password user - Firebase will handle verification email for ${email}`);
       // Firebase's sendEmailVerification() will be called from the frontend
-      // No custom nodemailer email needed for email/password users
+      // Welcome email will be sent after verification via /api/sync-verification-status
     } else if (isGoogleUser && email) {
       console.log(`📧 SENDING WELCOME EMAIL for Google user: ${email}`);
       try {
-        // Send welcome email for Google users since they don't get verification emails
+        // ENTERPRISE: Send welcome email for Google users since they don't get verification emails
+        // Mark welcomeEmailSentAt for idempotency
         const { sendEmail, generateWelcomeEmail } = await import('./email');
         const emailContent = generateWelcomeEmail({
           fullName: displayName || email.split('@')[0],
@@ -139,6 +140,8 @@ export async function syncFirebaseUserToNeon(params: {
         });
 
         if (emailSent) {
+          // ENTERPRISE: Mark welcome email as sent with timestamp (idempotency)
+          await userService.updateUser(newUser.id, { welcomeEmailSentAt: new Date() });
           console.log(`✅ Welcome email sent to Google user: ${email}`);
         } else {
           console.error(`❌ Failed to send welcome email to Google user: ${email}`);

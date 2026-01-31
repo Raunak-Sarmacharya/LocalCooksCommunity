@@ -102,6 +102,13 @@ router.get("/verify-email", async (req: Request, res: Response) => {
 
     const { email } = tokenRecord;
 
+    // Get user to check if welcome email was already sent (idempotency)
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, email))
+      .limit(1);
+
     // Mark email as verified using Drizzle ORM
     await db
       .update(users)
@@ -115,18 +122,31 @@ router.get("/verify-email", async (req: Request, res: Response) => {
 
     console.log(`Email verified successfully: ${email}`);
 
-    // Send welcome email now that user is verified
-    try {
-      const welcomeEmail = generateWelcomeEmail({
-        fullName: email.split('@')[0], // Best effort name from email since we don't have it easily here
-        email
-      });
-      await sendEmail(welcomeEmail, {
-        trackingId: `welcome_verified_legacy_${email}_${Date.now()}`
-      });
-      console.log(`✅ Welcome email sent to verified user: ${email}`);
-    } catch (error) {
-      console.error("Error sending welcome email in legacy verification:", error);
+    // ENTERPRISE: Send welcome email ONLY if not already sent (idempotency check)
+    // This prevents duplicate welcome emails if user verifies through multiple paths
+    if (!existingUser?.welcomeEmailSentAt) {
+      try {
+        const welcomeEmail = generateWelcomeEmail({
+          fullName: email.split('@')[0], // Best effort name from email since we don't have it easily here
+          email
+        });
+        const emailSent = await sendEmail(welcomeEmail, {
+          trackingId: `welcome_verified_legacy_${email}_${Date.now()}`
+        });
+        
+        if (emailSent && existingUser) {
+          // Mark welcome email as sent with timestamp (idempotency)
+          await db
+            .update(users)
+            .set({ welcomeEmailSentAt: new Date() })
+            .where(eq(users.username, email));
+          console.log(`✅ Welcome email sent to verified user: ${email}`);
+        }
+      } catch (error) {
+        console.error("Error sending welcome email in legacy verification:", error);
+      }
+    } else {
+      console.log(`ℹ️ Welcome email already sent to ${email} - skipping duplicate`);
     }
 
     // Redirect to success page

@@ -29,14 +29,14 @@ export const steps: any[] = [
         id: 'location',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Location',
+            label: 'Business',
             isOptional: false,
             canSkip: false
         },
         payload: {
             componentKey: 'location',
-            title: 'Location & Contact',
-            description: 'Set up your location details',
+            title: 'Business Details',
+            description: 'Set up your business information',
         },
         nextStep: 'create-kitchen'
     },

@@ -38,13 +38,13 @@ export default function CompletionSummaryStep() {
     const setupItems: SetupItem[] = useMemo(() => {
         const items: SetupItem[] = [];
 
-        // 1. Location
+        // 1. Business
         items.push({
             id: "location",
-            label: "Location Details",
+            label: "Business Details",
             status: selectedLocation ? 'complete' : 'incomplete',
             isRequired: true,
-            description: selectedLocation?.name || "Address and contact info",
+            description: selectedLocation?.name || "Business info and contact details",
             stepId: 'location'
         });
 
@@ -85,7 +85,7 @@ export default function CompletionSummaryStep() {
 
         items.push({
             id: "license",
-            label: "Kitchen License",
+            label: "Commercial Kitchen License",
             status: licenseItemStatus,
             isRequired: true,
             description: licenseItemStatus === 'complete'
@@ -93,7 +93,7 @@ export default function CompletionSummaryStep() {
                 : licenseItemStatus === 'pending'
                     ? "Uploaded - Pending Approval"
                     : "Required for activation",
-            stepId: 'location' // License is uploaded on Location step
+            stepId: 'location' // License is uploaded on Business step
         });
 
         // 4. Availability
