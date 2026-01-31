@@ -77,4 +77,28 @@ export function isFirebaseAdminConfigured(): boolean {
   return !!(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID);
 }
 
+/**
+ * Get Firebase user by email using Admin SDK
+ * Used to verify email verification status without requiring user to be signed in
+ */
+export async function getFirebaseUserByEmail(email: string) {
+  try {
+    const app = initializeFirebaseAdmin();
+    if (!app) {
+      console.warn('Firebase Admin not initialized - cannot get user by email');
+      return null;
+    }
+
+    const userRecord = await getAuth(app).getUserByEmail(email);
+    return userRecord;
+  } catch (error: any) {
+    if (error.code === 'auth/user-not-found') {
+      console.log(`Firebase user not found for email: ${email}`);
+      return null;
+    }
+    console.error('Error getting Firebase user by email:', error);
+    return null;
+  }
+}
+
 export { firebaseAdmin };

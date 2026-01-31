@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { userService } from "../domains/users/user.service";
 import { requireFirebaseAuthWithUser } from "../firebase-auth-middleware";
 import { sendEmail, generateWelcomeEmail } from "../email";
+import { getFirebaseUserByEmail } from "../firebase-setup";
 
 const router = Router();
 
@@ -221,6 +222,130 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
     console.error("❌ Error in sync-verification-status:", error);
     res.status(500).json({ 
       error: "Failed to sync verification status",
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// ===================================
+// PUBLIC EMAIL VERIFICATION SYNC (NO AUTH REQUIRED)
+// ===================================
+
+/**
+ * POST /api/user/verify-email-complete
+ * 
+ * ENTERPRISE-GRADE: Public endpoint to sync email verification status after user
+ * clicks the Firebase verification link. This endpoint does NOT require authentication
+ * because the user is not signed in when they click the email verification link.
+ * 
+ * SECURITY:
+ * - Uses Firebase Admin SDK to verify the email is actually verified in Firebase
+ * - Only updates if Firebase confirms emailVerified=true
+ * - Rate limiting should be applied at infrastructure level
+ * 
+ * This solves the critical issue where:
+ * 1. User clicks verification link in email
+ * 2. Firebase marks email as verified via applyActionCode()
+ * 3. But user is NOT signed in, so we can't get a token to call authenticated endpoints
+ * 4. This public endpoint uses Firebase Admin SDK to verify status server-side
+ */
+router.post("/verify-email-complete", async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+    
+    console.log(`🔄 PUBLIC VERIFY-EMAIL-COMPLETE for email: ${email}`);
+    
+    // SECURITY: Use Firebase Admin SDK to verify the email is actually verified
+    const firebaseUser = await getFirebaseUserByEmail(email);
+    
+    if (!firebaseUser) {
+      console.log(`❌ Firebase user not found for email: ${email}`);
+      return res.status(404).json({ error: "User not found in Firebase" });
+    }
+    
+    console.log(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
+    console.log(`   - Firebase UID: ${firebaseUser.uid}`);
+    
+    if (!firebaseUser.emailVerified) {
+      console.log(`⚠️ Firebase email NOT verified for: ${email}`);
+      return res.status(400).json({ 
+        error: "Email not verified in Firebase",
+        firebaseVerified: false 
+      });
+    }
+    
+    // Find user in Neon database by email (username)
+    const user = await userService.getUserByUsername(email);
+    
+    if (!user) {
+      console.log(`❌ User not found in Neon DB for email: ${email}`);
+      return res.status(404).json({ error: "User not found in database" });
+    }
+    
+    console.log(`   - Neon user ID: ${user.id}`);
+    console.log(`   - Neon isVerified: ${user.isVerified}`);
+    console.log(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? 'YES' : 'NO'}`);
+    
+    let verificationUpdated = false;
+    let welcomeEmailSent = false;
+    
+    // Update verification status if not already verified
+    if (!user.isVerified) {
+      console.log(`📧 Updating is_verified for user ${user.id}`);
+      await userService.updateUser(user.id, { isVerified: true });
+      verificationUpdated = true;
+    }
+    
+    // ENTERPRISE: Send welcome email ONLY if not already sent (idempotency)
+    if (!user.welcomeEmailSentAt) {
+      console.log(`📧 SENDING WELCOME EMAIL to newly verified user: ${email}`);
+      
+      try {
+        const displayName = firebaseUser.displayName || email.split('@')[0];
+        const welcomeEmail = generateWelcomeEmail({
+          fullName: displayName,
+          email: email
+        });
+        
+        const emailResult = await sendEmail(welcomeEmail, {
+          trackingId: `welcome_verified_public_${user.id}_${Date.now()}`
+        });
+        
+        if (emailResult) {
+          // Mark welcome email as sent with timestamp (idempotency)
+          await userService.updateUser(user.id, { welcomeEmailSentAt: new Date() });
+          welcomeEmailSent = true;
+          console.log(`✅ Welcome email sent successfully to ${email}`);
+        } else {
+          console.error(`❌ Failed to send welcome email to ${email}`);
+        }
+      } catch (emailError) {
+        console.error(`❌ Error sending welcome email to ${email}:`, emailError);
+        // Don't fail the verification if email fails
+      }
+    } else {
+      console.log(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
+    }
+    
+    res.json({
+      success: true,
+      userId: user.id,
+      email: email,
+      firebaseVerified: true,
+      databaseVerified: true,
+      verificationUpdated,
+      welcomeEmailSent,
+      welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent
+    });
+    
+  } catch (error) {
+    console.error("❌ Error in verify-email-complete:", error);
+    res.status(500).json({ 
+      error: "Failed to complete email verification",
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
