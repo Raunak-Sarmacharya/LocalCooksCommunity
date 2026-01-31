@@ -556,6 +556,8 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
     console.log('[Stripe Connect] Create request received for manager:', req.neonUser?.id);
     try {
         const managerId = req.neonUser!.id;
+        // Check if request came from setup/onboarding flow
+        const fromSetup = req.body?.from === 'setup' || req.query.from === 'setup';
 
         // Use raw SQL to bypass circular dependency/undefined schema issues
         const userResult = await db.execute(sql`
@@ -582,8 +584,10 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
         const { createConnectAccount, createAccountLink, isAccountReady, createDashboardLoginLink } = await import('../services/stripe-connect-service');
 
         const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
+        // Include from=setup in URLs if came from onboarding flow
+        const fromParam = fromSetup ? '&from=setup' : '';
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromParam}`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromParam}`;
 
         // Case 1: User already has a Stripe Connect account
         if (user.stripeConnectAccountId) {

@@ -99,7 +99,9 @@ export default function StripeConnectSetup() {
         toast.success("Setup Verified", {
           description: "We detected your completed setup from the other tab."
         });
+        // Invalidate both user profile and stripe status queries to refresh UI
         queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
       }
     };
 
@@ -118,12 +120,15 @@ export default function StripeConnectSetup() {
     mutationFn: async () => {
       if (!firebaseUser) throw new Error('Not authenticated');
       const token = await auth.currentUser?.getIdToken();
+      // Check if we're in the setup flow to pass to server for proper return URLs
+      const isSetupFlow = window.location.pathname.includes('/manager/setup');
       const response = await fetch('/api/manager/stripe-connect/create', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ from: isSetupFlow ? 'setup' : undefined }),
       });
       if (!response.ok) {
         const error = await response.json();

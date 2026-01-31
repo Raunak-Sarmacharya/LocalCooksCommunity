@@ -266,8 +266,9 @@ export default function ManagerBookingDashboard() {
             variant: "default",
           });
 
-          // Force refresh of user profile to get the new connected status
+          // Force refresh of user profile and stripe status to get the new connected status
           await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+          await queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
 
           // Switch to payments view
           setActiveView('payments');
