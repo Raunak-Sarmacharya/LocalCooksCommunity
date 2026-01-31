@@ -89,6 +89,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount User Router (profile, onboarding)
   app.use("/api/user", (await import("./routes/user")).default);
 
+  // Mount Places API Proxy (secure Google Places API access)
+  app.use("/api/places", (await import("./routes/places")).default);
+
   // Legacy logout endpoint alias (frontend calls /api/logout)
   app.post("/api/logout", (req, res) => {
     console.log("🚪 Logout request received (Firebase Auth is stateless)");

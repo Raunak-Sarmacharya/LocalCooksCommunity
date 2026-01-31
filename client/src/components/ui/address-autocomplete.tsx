@@ -1,9 +1,16 @@
-/// <reference types="@types/google.maps" />
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { MapPin, Loader2 } from 'lucide-react';
+
+interface Prediction {
+  place_id: string;
+  description: string;
+  structured_formatting?: {
+    main_text?: string;
+    secondary_text?: string;
+  };
+}
 
 interface AddressAutocompleteProps {
   value: string;
@@ -13,6 +20,23 @@ interface AddressAutocompleteProps {
   disabled?: boolean;
 }
 
+// Debounce helper to prevent excessive API calls
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export default function AddressAutocomplete({
   value,
   onChange,
@@ -20,75 +44,124 @@ export default function AddressAutocomplete({
   className,
   disabled = false
 }: AddressAutocompleteProps) {
-  const [predictions, setPredictions] = useState<any[]>([]);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const autocompleteRef = useRef<any>(null);
-  const placesRef = useRef<any>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Debounce the input to prevent excessive API calls
+  const debouncedInput = useDebounce(inputValue, 300);
+
+  // Sync external value changes
   useEffect(() => {
-    // Initialize Google Places services
-    if (window.google && window.google.maps && window.google.maps.places) {
-      autocompleteRef.current = new window.google.maps.places.AutocompleteService();
-      placesRef.current = new window.google.maps.places.PlacesService(document.createElement('div'));
-    }
-  }, []);
+    setInputValue(value);
+  }, [value]);
 
-  const handleInputChange = async (inputValue: string) => {
-    onChange(inputValue);
-    
-    if (!inputValue || inputValue.length < 3) {
-      setPredictions([]);
-      setIsOpen(false);
-      return;
-    }
+  // Fetch predictions from server proxy when debounced input changes
+  useEffect(() => {
+    const fetchPredictions = async () => {
+      if (!debouncedInput || debouncedInput.length < 3) {
+        setPredictions([]);
+        setIsOpen(false);
+        return;
+      }
 
-    if (!autocompleteRef.current) return;
+      // Cancel any pending request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
 
-    setIsLoading(true);
-    
-    try {
-      const request = {
-        input: inputValue,
-        types: ['address'],
-        componentRestrictions: { country: ['us', 'ca'] } // Restrict to US and Canada
-      };
+      setIsLoading(true);
 
-      autocompleteRef.current.getPlacePredictions(request, (predictions: any, status: any) => {
-        if (status === window.google?.maps?.places?.PlacesServiceStatus.OK && predictions) {
-          setPredictions(predictions);
+      try {
+        const params = new URLSearchParams({
+          input: debouncedInput,
+          types: 'address',
+          components: 'country:us|country:ca'
+        });
+
+        const response = await fetch(`/api/places/autocomplete?${params}`, {
+          signal: abortControllerRef.current.signal
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch predictions');
+        }
+
+        const data = await response.json();
+
+        if (data.status === 'OK' && data.predictions) {
+          setPredictions(data.predictions);
           setIsOpen(true);
         } else {
           setPredictions([]);
           setIsOpen(false);
         }
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          console.error('Error fetching predictions:', error);
+          setPredictions([]);
+          setIsOpen(false);
+        }
+      } finally {
         setIsLoading(false);
+      }
+    };
+
+    fetchPredictions();
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [debouncedInput]);
+
+  const handleInputChange = (newValue: string) => {
+    setInputValue(newValue);
+    onChange(newValue);
+  };
+
+  const handleSelectPlace = useCallback(async (place: Prediction) => {
+    setIsLoading(true);
+    
+    try {
+      const params = new URLSearchParams({
+        place_id: place.place_id
       });
+
+      const response = await fetch(`/api/places/details?${params}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch place details');
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'OK' && data.result) {
+        const formattedAddress = data.result.formatted_address || place.description;
+        setInputValue(formattedAddress);
+        onChange(formattedAddress);
+      } else {
+        // Fallback to description if details fail
+        setInputValue(place.description);
+        onChange(place.description);
+      }
     } catch (error) {
-      console.error('Error fetching predictions:', error);
+      console.error('Error fetching place details:', error);
+      // Fallback to description
+      setInputValue(place.description);
+      onChange(place.description);
+    } finally {
       setPredictions([]);
       setIsOpen(false);
       setIsLoading(false);
     }
-  };
-
-  const handleSelectPlace = (place: any) => {
-    if (!placesRef.current) return;
-
-    placesRef.current.getDetails(
-      { placeId: place.place_id },
-      (result: any, status: any) => {
-        if (status === window.google?.maps?.places?.PlacesServiceStatus.OK && result) {
-          const formattedAddress = result.formatted_address || place.description;
-          onChange(formattedAddress);
-          setPredictions([]);
-          setIsOpen(false);
-        }
-      }
-    );
-  };
+  }, [onChange]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -113,7 +186,7 @@ export default function AddressAutocomplete({
       <div className="relative">
         <Input
           ref={inputRef}
-          value={value}
+          value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
@@ -156,11 +229,4 @@ export default function AddressAutocomplete({
       )}
     </div>
   );
-}
-
-// Type declaration for Google Maps
-declare global {
-  interface Window {
-    google?: any;
-  }
 }
