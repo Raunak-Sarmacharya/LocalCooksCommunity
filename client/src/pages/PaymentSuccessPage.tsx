@@ -4,7 +4,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Download, ArrowLeft, Loader2, FileText } from "lucide-react";
+import { CheckCircle2, Download, ArrowLeft, Loader2, FileText, Eye } from "lucide-react";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -176,10 +176,17 @@ export default function PaymentSuccessPage() {
       };
       setBooking(normalizedBooking);
       setIsLoading(false);
+      
+      // Auto-redirect to booking details page after 3 seconds
+      if (normalizedBooking.id) {
+        setTimeout(() => {
+          navigate(`/booking/${normalizedBooking.id}`);
+        }, 3000);
+      }
     };
 
     fetchBooking();
-  }, []);
+  }, [navigate]);
 
   const handleDownloadInvoice = async () => {
     if (!booking?.id) return;
@@ -421,6 +428,10 @@ export default function PaymentSuccessPage() {
                 <p className="text-lg text-gray-600">
                   Your payment has been processed successfully. Your booking is now pending manager approval.
                 </p>
+                <p className="text-sm text-blue-600 mt-2 flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Redirecting to booking details...
+                </p>
               </div>
 
               {/* Pending Approval Notice */}
@@ -492,9 +503,18 @@ export default function PaymentSuccessPage() {
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
+                  onClick={() => navigate(`/booking/${booking.id}`)}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  size="lg"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  View Booking Details
+                </Button>
+                <Button
                   onClick={handleDownloadInvoice}
                   disabled={isDownloading}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  variant="outline"
+                  className="flex-1"
                   size="lg"
                 >
                   {isDownloading ? (
@@ -509,10 +529,12 @@ export default function PaymentSuccessPage() {
                     </>
                   )}
                 </Button>
+              </div>
+              <div className="mt-3">
                 <Button
                   onClick={() => navigate('/dashboard')}
-                  variant="outline"
-                  className="flex-1"
+                  variant="ghost"
+                  className="w-full text-gray-600"
                   size="lg"
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />

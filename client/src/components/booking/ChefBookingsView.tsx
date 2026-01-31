@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "wouter";
 import { 
   Calendar, 
   Clock, 
@@ -107,6 +108,7 @@ export default function ChefBookingsView({
   onCancelBooking,
   kitchens = [],
 }: ChefBookingsViewProps) {
+  const [, navigate] = useLocation();
   const [statusFilter, setStatusFilter] = useState<FilterType>("all");
   const [viewType, setViewType] = useState<ViewType>("upcoming");
   const [expandedBookings, setExpandedBookings] = useState<Set<number>>(new Set());
@@ -805,9 +807,13 @@ export default function ChefBookingsView({
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                          <DropdownMenuItem onClick={() => toggleExpanded(booking.id)}>
+                                          <DropdownMenuItem onClick={() => navigate(`/booking/${booking.id}`)}>
                                             <Eye className="h-4 w-4 mr-2" />
-                                            {isExpanded ? "Hide Details" : "View Details"}
+                                            View Full Details
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => toggleExpanded(booking.id)}>
+                                            <ChevronDown className="h-4 w-4 mr-2" />
+                                            {isExpanded ? "Collapse" : "Quick View"}
                                           </DropdownMenuItem>
                                           {booking.status !== "cancelled" && (
                                             <DropdownMenuItem 

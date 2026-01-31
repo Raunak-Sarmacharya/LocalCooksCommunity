@@ -114,7 +114,7 @@ export default function EquipmentListingsStep() {
           name: template.name,
           category: template.category,
           condition: template.defaultCondition,
-          availabilityType: template.suggestedSessionRate > 0 ? 'rental' : 'included',
+          availabilityType: 'included',
           sessionRate: template.suggestedSessionRate,
           damageDeposit: 0,
           description: '',

@@ -53,7 +53,8 @@ import {
     equipmentBookings as equipmentBookingsTable,
     storageListings,
     equipmentListings,
-    kitchenBookings
+    kitchenBookings,
+    paymentTransactions
 } from "@shared/schema";
 
 const router = Router();
@@ -1717,6 +1718,155 @@ router.get("/bookings/:id", requireFirebaseAuthWithUser, requireManager, async (
         res.json({ ...booking, kitchen, location });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// Get comprehensive booking details for manager (used by BookingDetailsPage)
+router.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const user = req.neonUser!;
+        const id = parseInt(req.params.id);
+
+        if (isNaN(id) || id <= 0) {
+            return res.status(400).json({ error: "Invalid booking ID" });
+        }
+
+        const booking = await bookingService.getBookingById(id);
+        if (!booking) {
+            return res.status(404).json({ error: "Booking not found" });
+        }
+
+        const kitchen = await kitchenService.getKitchenById(booking.kitchenId);
+        if (!kitchen) {
+            return res.status(404).json({ error: "Kitchen not found" });
+        }
+
+        const location = await locationService.getLocationById(kitchen.locationId);
+        if (!location || location.managerId !== user.id) {
+            return res.status(403).json({ error: "Access denied" });
+        }
+
+        // Get chef details
+        let chef = null;
+        if (booking.chefId) {
+            const chefUser = await userService.getUser(booking.chefId);
+            if (chefUser) {
+                // Try to get full name from chef_kitchen_applications
+                const [chefApp] = await db
+                    .select({ fullName: chefKitchenApplications.fullName, phone: chefKitchenApplications.phone })
+                    .from(chefKitchenApplications)
+                    .where(
+                        and(
+                            eq(chefKitchenApplications.chefId, booking.chefId),
+                            eq(chefKitchenApplications.locationId, location.id)
+                        )
+                    )
+                    .limit(1);
+
+                chef = {
+                    id: chefUser.id,
+                    username: chefUser.username,
+                    fullName: chefApp?.fullName || chefUser.username,
+                    phone: chefApp?.phone || null,
+                };
+            }
+        }
+
+        // Get storage bookings with listing details
+        const storageBookingsRaw = await bookingService.getStorageBookingsByKitchenBooking(id);
+        const storageBookingsWithDetails = await Promise.all(
+            storageBookingsRaw.map(async (sb: any) => {
+                const [listing] = await db
+                    .select({
+                        name: storageListings.name,
+                        storageType: storageListings.storageType,
+                        photos: storageListings.photos,
+                    })
+                    .from(storageListings)
+                    .where(eq(storageListings.id, sb.storageListingId))
+                    .limit(1);
+                return {
+                    ...sb,
+                    storageListing: listing || null,
+                };
+            })
+        );
+
+        // Get equipment bookings with listing details
+        const equipmentBookingsRaw = await bookingService.getEquipmentBookingsByKitchenBooking(id);
+        const equipmentBookingsWithDetails = await Promise.all(
+            equipmentBookingsRaw.map(async (eb: any) => {
+                const [listing] = await db
+                    .select({
+                        equipmentType: equipmentListings.equipmentType,
+                        brand: equipmentListings.brand,
+                    })
+                    .from(equipmentListings)
+                    .where(eq(equipmentListings.id, eb.equipmentListingId))
+                    .limit(1);
+                return {
+                    ...eb,
+                    equipmentListing: listing || null,
+                };
+            })
+        );
+
+        // Get payment transaction if exists
+        let paymentTransaction = null;
+        try {
+            const [txn] = await db
+                .select({
+                    amount: paymentTransactions.amount,
+                    serviceFee: paymentTransactions.serviceFee,
+                    managerRevenue: paymentTransactions.managerRevenue,
+                    status: paymentTransactions.status,
+                    stripeProcessingFee: paymentTransactions.stripeProcessingFee,
+                    paidAt: paymentTransactions.paidAt,
+                })
+                .from(paymentTransactions)
+                .where(
+                    and(
+                        eq(paymentTransactions.bookingId, id),
+                        eq(paymentTransactions.bookingType, 'kitchen')
+                    )
+                )
+                .limit(1);
+            if (txn) {
+                paymentTransaction = {
+                    ...txn,
+                    amount: txn.amount ? parseFloat(txn.amount) : null,
+                    serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
+                    managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
+                    stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null,
+                };
+            }
+        } catch (err) {
+            console.error("Error fetching payment transaction:", err);
+        }
+
+        res.json({
+            ...booking,
+            kitchen: {
+                id: kitchen.id,
+                name: kitchen.name,
+                description: kitchen.description,
+                photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
+                locationId: kitchen.locationId,
+            },
+            location: {
+                id: location.id,
+                name: location.name,
+                address: location.address,
+                timezone: location.timezone,
+            },
+            chef,
+            storageBookings: storageBookingsWithDetails,
+            equipmentBookings: equipmentBookingsWithDetails,
+            paymentTransaction,
+        });
+    } catch (e: any) {
+        console.error("Error fetching booking details:", e);
+        res.status(500).json({ error: e.message || "Failed to fetch booking details" });
     }
 });
 
