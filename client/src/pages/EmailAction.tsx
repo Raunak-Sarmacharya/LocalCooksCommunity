@@ -324,12 +324,19 @@ export default function EmailAction() {
 
             if (syncResponse.ok) {
               const syncResult = await syncResponse.json();
-              console.log('✅ DATABASE VERIFICATION SYNC SUCCESS:', syncResult);
+              console.log('✅ DATABASE VERIFICATION SYNC SUCCESS:', JSON.stringify(syncResult, null, 2));
               console.log(`   - Database verified: ${syncResult.databaseVerified}`);
               console.log(`   - Welcome email sent: ${syncResult.welcomeEmailSent}`);
+              console.log(`   - Email config status:`, syncResult.emailConfigStatus);
+              
+              // ENTERPRISE: Warn if email wasn't sent so we can investigate
+              if (!syncResult.welcomeEmailSent && !syncResult.welcomeEmailPreviouslySent) {
+                console.warn('⚠️ Welcome email was NOT sent! Check server logs for details.');
+                console.warn('⚠️ Email config:', syncResult.emailConfigStatus);
+              }
             } else {
               const errorData = await syncResponse.json().catch(() => ({}));
-              console.error('❌ DATABASE VERIFICATION SYNC FAILED:', syncResponse.status, errorData);
+              console.error('❌ DATABASE VERIFICATION SYNC FAILED:', syncResponse.status, JSON.stringify(errorData, null, 2));
               // Don't fail - Firebase verification succeeded, user can still log in
             }
           } catch (syncError) {

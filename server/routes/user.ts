@@ -301,31 +301,75 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
     }
     
     // ENTERPRISE: Send welcome email ONLY if not already sent (idempotency)
+    // Uses retry mechanism with exponential backoff for reliability
     if (!user.welcomeEmailSentAt) {
       console.log(`📧 SENDING WELCOME EMAIL to newly verified user: ${email}`);
+      console.log(`📧 Email configuration check:`, {
+        hasEmailUser: !!process.env.EMAIL_USER,
+        hasEmailPass: !!process.env.EMAIL_PASS,
+        hasEmailFrom: !!process.env.EMAIL_FROM,
+        environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
+      });
       
-      try {
-        const displayName = firebaseUser.displayName || email.split('@')[0];
-        const welcomeEmail = generateWelcomeEmail({
-          fullName: displayName,
-          email: email
-        });
-        
-        const emailResult = await sendEmail(welcomeEmail, {
-          trackingId: `welcome_verified_public_${user.id}_${Date.now()}`
-        });
-        
-        if (emailResult) {
-          // Mark welcome email as sent with timestamp (idempotency)
-          await userService.updateUser(user.id, { welcomeEmailSentAt: new Date() });
-          welcomeEmailSent = true;
-          console.log(`✅ Welcome email sent successfully to ${email}`);
-        } else {
-          console.error(`❌ Failed to send welcome email to ${email}`);
+      const displayName = firebaseUser.displayName || email.split('@')[0];
+      const welcomeEmail = generateWelcomeEmail({
+        fullName: displayName,
+        email: email
+      });
+      
+      console.log(`📧 Generated welcome email:`, {
+        to: welcomeEmail.to,
+        subject: welcomeEmail.subject,
+        hasHtml: !!welcomeEmail.html,
+        hasText: !!welcomeEmail.text,
+        htmlLength: welcomeEmail.html?.length || 0,
+        textLength: welcomeEmail.text?.length || 0
+      });
+      
+      // ENTERPRISE: Retry mechanism with exponential backoff
+      const MAX_RETRIES = 3;
+      let lastError: Error | null = null;
+      
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          console.log(`📧 Welcome email attempt ${attempt}/${MAX_RETRIES} for ${email}`);
+          
+          const emailResult = await sendEmail(welcomeEmail, {
+            trackingId: `welcome_verified_public_${user.id}_${Date.now()}_attempt${attempt}`
+          });
+          
+          if (emailResult) {
+            // Mark welcome email as sent with timestamp (idempotency)
+            await userService.updateUser(user.id, { welcomeEmailSentAt: new Date() });
+            welcomeEmailSent = true;
+            console.log(`✅ Welcome email sent successfully to ${email} on attempt ${attempt}`);
+            break; // Success - exit retry loop
+          } else {
+            console.error(`❌ sendEmail returned false for ${email} on attempt ${attempt}`);
+            lastError = new Error('sendEmail returned false');
+          }
+        } catch (emailError) {
+          lastError = emailError instanceof Error ? emailError : new Error(String(emailError));
+          console.error(`❌ Error sending welcome email to ${email} on attempt ${attempt}:`, {
+            error: lastError.message,
+            stack: lastError.stack
+          });
         }
-      } catch (emailError) {
-        console.error(`❌ Error sending welcome email to ${email}:`, emailError);
-        // Don't fail the verification if email fails
+        
+        // Exponential backoff before retry (1s, 2s, 4s)
+        if (attempt < MAX_RETRIES) {
+          const backoffMs = Math.pow(2, attempt - 1) * 1000;
+          console.log(`⏳ Waiting ${backoffMs}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+      }
+      
+      // Log final status if all retries failed
+      if (!welcomeEmailSent) {
+        console.error(`❌ CRITICAL: All ${MAX_RETRIES} attempts to send welcome email failed for ${email}`);
+        console.error(`❌ Last error:`, lastError?.message || 'Unknown error');
+        // Don't fail the verification - user can still log in
+        // The email can be resent manually or via a background job
       }
     } else {
       console.log(`ℹ️ Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
@@ -339,7 +383,14 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       databaseVerified: true,
       verificationUpdated,
       welcomeEmailSent,
-      welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent
+      welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent,
+      // ENTERPRISE: Include email config status for debugging
+      emailConfigStatus: {
+        hasEmailUser: !!process.env.EMAIL_USER,
+        hasEmailPass: !!process.env.EMAIL_PASS,
+        hasEmailFrom: !!process.env.EMAIL_FROM,
+        environment: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown'
+      }
     });
     
   } catch (error) {
