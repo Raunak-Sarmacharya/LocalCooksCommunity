@@ -320,11 +320,19 @@ function NotificationItem({
         !notification.is_read && "bg-blue-50/50",
         isSelected && "bg-blue-100"
       )}
-      onClick={async () => {
+      onMouseDown={() => {
+        console.log('[NotificationCenter] MouseDown on notification:', notification.id);
+      }}
+      onClick={async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        alert(`Clicked notification ${notification.id}, action_url: ${notification.action_url}`);
+        console.log('[NotificationCenter] Clicked notification:', notification.id, 'action_url:', notification.action_url);
         if (!notification.is_read) {
           await onMarkRead(notification.id);
         }
         if (notification.action_url) {
+          console.log('[NotificationCenter] Navigating to:', notification.action_url);
           window.location.href = notification.action_url;
         }
       }}
@@ -471,6 +479,7 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         throw new Error(`Failed to fetch notifications: ${res.status}`);
       }
       const data = await res.json();
+      console.log('[NotificationCenter] Fetched notifications:', data.notifications?.map((n: Notification) => ({ id: n.id, type: n.type, action_url: n.action_url })));
       return data;
     },
     enabled: isOpen,
@@ -835,6 +844,8 @@ export default function NotificationCenter({ locationId }: { locationId?: number
         role="dialog"
         aria-label="Notifications panel"
         aria-describedby="notifications-description"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">

@@ -221,6 +221,8 @@ interface BookingNotificationData {
 }
 
 async function notifyNewBooking(data: BookingNotificationData) {
+  const actionUrl = `/manager/booking/${data.bookingId}`;
+  logger.info(`[NotificationService] Creating booking_new notification with actionUrl: ${actionUrl}`);
   return createManagerNotification({
     managerId: data.managerId,
     locationId: data.locationId,
@@ -236,7 +238,7 @@ async function notifyNewBooking(data: BookingNotificationData) {
       startTime: data.startTime,
       endTime: data.endTime
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl:'/manager/booking/${data.bookingId}',
     actionLabel: 'Review Booking'
   });
 }
@@ -254,7 +256,7 @@ async function notifyBookingConfirmed(data: BookingNotificationData) {
       chefName: data.chefName,
       kitchenName: data.kitchenName
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: 'View Booking'
   });
 }
@@ -276,7 +278,7 @@ async function notifyBookingCancelled(data: BookingNotificationData & { cancelle
       kitchenName: data.kitchenName,
       cancelledBy: data.cancelledBy
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: 'View Details'
   });
 }
@@ -331,7 +333,7 @@ async function notifyPaymentFailed(data: PaymentNotificationData & { reason?: st
       chefName: data.chefName,
       reason: data.reason
     },
-    actionUrl: `/manager/booking-dashboard?view=bookings`,
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: 'View Booking'
   });
 }

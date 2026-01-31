@@ -473,6 +473,7 @@ router.post("/bookings", requirePortalUser, async (req: Request, res: Response) 
                     specialNotes: specialNotes || undefined,
                     timezone,
                     locationName,
+                    bookingId: booking.id,
                 });
                 await sendEmail(managerEmail);
                 console.log(`✅ Portal booking notification email sent to manager: ${notificationEmail}`);
