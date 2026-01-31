@@ -93,15 +93,46 @@ export default function StripeConnectSetup() {
   useEffect(() => {
     const channel = new BroadcastChannel('stripe_onboarding_channel');
     
-    channel.onmessage = (event) => {
+    channel.onmessage = async (event) => {
       console.log('Received broadcast message:', event.data);
       if (event.data?.type === 'STRIPE_SETUP_COMPLETE') {
-        toast.success("Setup Verified", {
-          description: "We detected your completed setup from the other tab."
+        // Invalidate queries first to trigger refetch
+        await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+        await queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
+        
+        // Fetch the actual status from API to show accurate toast
+        try {
+          const token = await auth.currentUser?.getIdToken();
+          if (token) {
+            const response = await fetch('/api/manager/stripe-connect/status', {
+              headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (response.ok) {
+              const status = await response.json();
+              if (status.chargesEnabled && status.payoutsEnabled) {
+                toast.success("Stripe Setup Complete", {
+                  description: "Your account is ready to receive payments."
+                });
+              } else if (status.detailsSubmitted) {
+                toast.info("Setup Progress Saved", {
+                  description: "Additional verification may be required. Check your Stripe dashboard."
+                });
+              } else {
+                toast.info("Setup In Progress", {
+                  description: "Please complete the remaining steps in Stripe."
+                });
+              }
+              return;
+            }
+          }
+        } catch (e) {
+          console.error('Error checking stripe status after broadcast:', e);
+        }
+        
+        // Fallback toast if status check fails
+        toast.info("Status Updated", {
+          description: "Your Stripe setup status has been refreshed."
         });
-        // Invalidate both user profile and stripe status queries to refresh UI
-        queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
       }
     };
 
