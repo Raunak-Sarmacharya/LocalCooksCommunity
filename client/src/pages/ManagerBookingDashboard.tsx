@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Calendar, Clock, ChefHat, Settings,
@@ -1124,6 +1124,14 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
   );
   const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
   const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
+  
+  // Overstay penalty defaults state
+  const [overstayGracePeriodDays, setOverstayGracePeriodDays] = useState<number | null>(null);
+  const [overstayPenaltyRate, setOverstayPenaltyRate] = useState<number | null>(null);
+  const [overstayMaxPenaltyDays, setOverstayMaxPenaltyDays] = useState<number | null>(null);
+  const [overstayPolicyText, setOverstayPolicyText] = useState('');
+  const [isLoadingPenaltyDefaults, setIsLoadingPenaltyDefaults] = useState(true);
+  
   const [notificationEmail, setNotificationEmail] = useState(location.notificationEmail || '');
   const [notificationPhone, setNotificationPhone] = useState(location.notificationPhone || '');
   const [logoUrl, setLogoUrl] = useState(location.logoUrl || '');
@@ -1236,6 +1244,49 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     };
   }, []);
 
+  // Fetch overstay penalty defaults from API
+  const fetchOverstayPenaltyDefaults = useCallback(async () => {
+    if (!location.id) return;
+    
+    setIsLoadingPenaltyDefaults(true);
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch(`/api/manager/locations/${location.id}/overstay-penalty-defaults`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch overstay penalty defaults');
+      }
+
+      const data = await response.json();
+      
+      // Set values from API response (null means using platform defaults)
+      setOverstayGracePeriodDays(data.locationDefaults.gracePeriodDays);
+      setOverstayPenaltyRate(data.locationDefaults.penaltyRate ? data.locationDefaults.penaltyRate * 100 : null); // Convert to percentage for display
+      setOverstayMaxPenaltyDays(data.locationDefaults.maxPenaltyDays);
+      setOverstayPolicyText(data.locationDefaults.policyText || '');
+    } catch (error: any) {
+      console.error('Error fetching overstay penalty defaults:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load overstay penalty settings",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingPenaltyDefaults(false);
+    }
+  }, [location.id]);
+
   // Update state when location prop changes (e.g., after saving or switching tabs)
   useEffect(() => {
     setCancellationHours(location.cancellationPolicyHours || 24);
@@ -1261,7 +1312,58 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
     setNotificationPhone(savedPhone);
     setDescription(location.description || '');
     setCustomOnboardingLink(location.customOnboardingLink || '');
-  }, [location]);
+    
+    // Fetch overstay penalty defaults when location changes
+    fetchOverstayPenaltyDefaults();
+  }, [location, fetchOverstayPenaltyDefaults]);
+
+  // Save overstay penalty defaults
+  const handleSaveOverstayPenaltyDefaults = async () => {
+    if (!location.id) return;
+
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await currentFirebaseUser.getIdToken();
+      
+      const payload = {
+        gracePeriodDays: overstayGracePeriodDays,
+        penaltyRate: overstayPenaltyRate !== null ? overstayPenaltyRate / 100 : null, // Convert from percentage to decimal
+        maxPenaltyDays: overstayMaxPenaltyDays,
+        policyText: overstayPolicyText || null,
+      };
+
+      const response = await fetch(`/api/manager/locations/${location.id}/overstay-penalty-defaults`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save overstay penalty defaults');
+      }
+
+      toast({
+        title: "Success",
+        description: "Overstay penalty defaults updated successfully",
+      });
+    } catch (error: any) {
+      console.error('Error saving overstay penalty defaults:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save overstay penalty settings",
+        variant: "destructive"
+      });
+    }
+  };
 
   // Initialize kitchen descriptions when kitchens are loaded
   useEffect(() => {
@@ -2812,6 +2914,123 @@ function SettingsView({ location, onUpdateSettings, isUpdating }: SettingsViewPr
                       Save All Settings
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Overstay Penalty Defaults Section */}
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Storage Overstay Penalty Defaults</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Configure default penalty settings for storage overstays at this location. These defaults apply to all storage listings unless overridden per listing.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 space-y-4">
+                  {isLoadingPenaltyDefaults ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-red-600" />
+                      <span className="ml-2 text-sm text-gray-600">Loading penalty settings...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-2">
+                            Grace Period (Days)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="14"
+                            value={overstayGracePeriodDays ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setOverstayGracePeriodDays(val === '' ? null : parseInt(val));
+                            }}
+                            placeholder="Use platform default"
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          />
+                          <p className="text-xs text-gray-600 mt-1">
+                            Days before penalties apply (0-14). Leave empty to use platform default.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-2">
+                            Penalty Rate (%)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="50"
+                            step="1"
+                            value={overstayPenaltyRate ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setOverstayPenaltyRate(val === '' ? null : parseInt(val));
+                            }}
+                            placeholder="Use platform default"
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          />
+                          <p className="text-xs text-gray-600 mt-1">
+                            % of daily rate per day (0-50%). Leave empty to use platform default.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-2">
+                            Max Penalty Days
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="90"
+                            value={overstayMaxPenaltyDays ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setOverstayMaxPenaltyDays(val === '' ? null : parseInt(val));
+                            }}
+                            placeholder="Use platform default"
+                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          />
+                          <p className="text-xs text-gray-600 mt-1">
+                            Max days to charge penalties (1-90). Leave empty to use platform default.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-2">
+                          Policy Text (Optional)
+                        </label>
+                        <textarea
+                          value={overstayPolicyText}
+                          onChange={(e) => setOverstayPolicyText(e.target.value)}
+                          rows={3}
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          placeholder="Custom policy text shown to chefs regarding overstay penalties..."
+                        />
+                        <p className="text-xs text-gray-600 mt-1">
+                          Optional custom message shown to chefs about your overstay policy.
+                        </p>
+                      </div>
+
+                      <div className="flex gap-3 pt-2">
+                        <button
+                          onClick={() => handleSaveOverstayPenaltyDefaults()}
+                          disabled={isUpdating}
+                          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <Save className="h-4 w-4" />
+                          Save Penalty Defaults
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </TabsContent>

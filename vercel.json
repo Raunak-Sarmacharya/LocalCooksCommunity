@@ -103,8 +103,8 @@
   },
   "crons": [
     {
-      "path": "/api/process-payouts",
-      "schedule": "0 0 * * 1"
+      "path": "/api/detect-overstays",
+      "schedule": "0 6 * * *"
     }
   ]
 }

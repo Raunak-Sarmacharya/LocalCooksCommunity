@@ -3,14 +3,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,6 +24,14 @@ import {
   Globe, Save, Loader2, CheckCircle,
   XCircle, AlertCircle, FileText
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { DEFAULT_TIMEZONE } from "@/utils/timezone-utils";
 import { auth } from "@/lib/firebase";
 import { cn } from "@/lib/utils";
@@ -277,103 +277,59 @@ export default function LocationEditModal({
   const StatusIcon = statusConfig.icon;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {location.logoUrl ? (
-                <ImageWithReplace
-                  imageUrl={location.logoUrl}
-                  onImageChange={() => { }} // Read-only in header
-                  alt={location.name}
-                  className="w-12 h-12"
-                  containerClassName="w-12 h-12"
-                  aspectRatio="1/1"
-                  showReplaceButton={false}
-                  showRemoveButton={false}
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4] flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-[#F51042]" />
-                </div>
-              )}
-              <div>
-                <DialogTitle className="text-xl">
-                  {viewOnly ? "Location Details" : "Edit Location"}
-                </DialogTitle>
-                <DialogDescription>
-                  {viewOnly ? "View your location information" : "Update your location details and settings"}
-                </DialogDescription>
+    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col">
+        <SheetHeader className="p-6 pb-4 border-b">
+          <div className="flex items-center gap-3">
+            {location.logoUrl ? (
+              <ImageWithReplace
+                imageUrl={location.logoUrl}
+                onImageChange={() => { }} // Read-only in header
+                alt={location.name}
+                className="w-12 h-12"
+                containerClassName="w-12 h-12"
+                aspectRatio="1/1"
+                showReplaceButton={false}
+                showRemoveButton={false}
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#FFE8DD] to-[#FFD4C4] flex items-center justify-center">
+                <Building2 className="w-6 h-6 text-[#F51042]" />
               </div>
-            </div>
-            <div className={cn(
-              "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
-              statusConfig.bgColor,
-              statusConfig.textColor
-            )}>
-              <StatusIcon className="w-3.5 h-3.5" />
-              {statusConfig.label}
+            )}
+            <div>
+              <SheetTitle className="text-lg">
+                {viewOnly ? "Location Details" : "Edit Location"}
+              </SheetTitle>
+              <SheetDescription>
+                {viewOnly ? "View your location information" : "Update your location details and settings"}
+              </SheetDescription>
             </div>
           </div>
-        </DialogHeader>
+        </SheetHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <Tabs defaultValue="basic" className="mt-4">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                <TabsTrigger value="settings">Settings</TabsTrigger>
-                <TabsTrigger value="license">License</TabsTrigger>
-              </TabsList>
+        <div className="flex-1 overflow-y-auto p-6">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid w-full grid-cols-3 mb-4">
+                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                  <TabsTrigger value="settings">Settings</TabsTrigger>
+                  <TabsTrigger value="license">License</TabsTrigger>
+                </TabsList>
 
-              {/* Basic Info Tab */}
-              <TabsContent value="basic" className="space-y-4 mt-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Location Name</FormLabel>
-                      <div className="relative">
-                        <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <FormControl>
-                          <Input className="pl-10" placeholder="Enter location name" {...field} disabled={viewOnly} />
-                        </FormControl>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="address"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Address</FormLabel>
-                      <div className="relative">
-                        <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                        <FormControl>
-                          <Textarea className="pl-10 min-h-[80px]" placeholder="Enter full address" {...field} disabled={viewOnly} />
-                        </FormControl>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
+                {/* Basic Info Tab */}
+                <TabsContent value="basic" className="space-y-4 mt-0">
                   <FormField
                     control={form.control}
-                    name="notificationEmail"
+                    name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Notification Email</FormLabel>
+                        <FormLabel>Location Name</FormLabel>
                         <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                           <FormControl>
-                            <Input className="pl-10" type="email" placeholder="email@example.com" {...field} disabled={viewOnly} />
+                            <Input className="pl-10" placeholder="Enter location name" {...field} disabled={viewOnly} />
                           </FormControl>
                         </div>
                         <FormMessage />
@@ -383,83 +339,154 @@ export default function LocationEditModal({
 
                   <FormField
                     control={form.control}
-                    name="notificationPhone"
+                    name="address"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Notification Phone</FormLabel>
+                        <FormLabel>Address</FormLabel>
                         <div className="relative">
-                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                           <FormControl>
-                            <Input className="pl-10" type="tel" placeholder="(416) 123-4567" {...field} disabled={viewOnly} />
+                            <Textarea className="pl-10 min-h-[80px]" placeholder="Enter full address" {...field} disabled={viewOnly} />
                           </FormControl>
                         </div>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
 
-                <div className="space-y-2">
-                  <FormLabel>Location Logo</FormLabel>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="notificationEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Notification Email</FormLabel>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <FormControl>
+                              <Input className="pl-10" type="email" placeholder="email@example.com" {...field} disabled={viewOnly} />
+                            </FormControl>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="notificationPhone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Notification Phone</FormLabel>
+                          <div className="relative">
+                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <FormControl>
+                              <Input className="pl-10" type="tel" placeholder="(416) 123-4567" {...field} disabled={viewOnly} />
+                            </FormControl>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <FormLabel>Location Logo</FormLabel>
+                    <FormField
+                      control={form.control}
+                      name="logoUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <ImageWithReplace
+                              imageUrl={field.value || undefined}
+                              onImageChange={(newUrl) => field.onChange(newUrl || "")}
+                              alt="Location logo"
+                              className="w-full max-w-xs"
+                              containerClassName="w-full max-w-xs"
+                              aspectRatio="1/1"
+                              showReplaceButton={!viewOnly}
+                              showRemoveButton={!viewOnly}
+                              fieldName="logo"
+                            />
+                          </FormControl>
+                          {viewOnly && !field.value && (
+                            <p className="text-sm text-gray-500">No logo uploaded</p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </TabsContent>
+
+                {/* Settings Tab */}
+                <TabsContent value="settings" className="space-y-4 mt-0">
                   <FormField
                     control={form.control}
-                    name="logoUrl"
+                    name="timezone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormControl>
-                          <ImageWithReplace
-                            imageUrl={field.value || undefined}
-                            onImageChange={(newUrl) => field.onChange(newUrl || "")}
-                            alt="Location logo"
-                            className="w-full max-w-xs"
-                            containerClassName="w-full max-w-xs"
-                            aspectRatio="1/1"
-                            showReplaceButton={!viewOnly}
-                            showRemoveButton={!viewOnly}
-                            fieldName="logo"
-                          />
-                        </FormControl>
-                        {viewOnly && !field.value && (
-                          <p className="text-sm text-gray-500">No logo uploaded</p>
-                        )}
-                        <FormMessage />
+                        <FormLabel>Timezone</FormLabel>
+                        <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-700">
+                          <Globe className="w-4 h-4 text-gray-400" />
+                          <span className="flex-1">Newfoundland Time (GMT-3:30)</span>
+                          <Badge variant="secondary" className="text-xs">Locked</Badge>
+                        </div>
+                        <FormDescription>The timezone is locked to Newfoundland Time for all locations.</FormDescription>
                       </FormItem>
                     )}
                   />
-                </div>
-              </TabsContent>
 
-              {/* Settings Tab */}
-              <TabsContent value="settings" className="space-y-4 mt-4">
-                <FormField
-                  control={form.control}
-                  name="timezone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Timezone</FormLabel>
-                      <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-700">
-                        <Globe className="w-4 h-4 text-gray-400" />
-                        <span className="flex-1">Newfoundland Time (GMT-3:30)</span>
-                        <Badge variant="secondary" className="text-xs">Locked</Badge>
-                      </div>
-                      <FormDescription>The timezone is locked to Newfoundland Time for all locations.</FormDescription>
-                    </FormItem>
-                  )}
-                />
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="cancellationPolicyHours"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cancellation Policy (hours)</FormLabel>
+                          <div className="relative">
+                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <FormControl>
+                              <Input className="pl-10" type="number" min="0" {...field} disabled={viewOnly} />
+                            </FormControl>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="defaultDailyBookingLimit"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Daily Booking Limit (hours)</FormLabel>
+                          <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <FormControl>
+                              <Input className="pl-10" type="number" min="1" max="24" {...field} disabled={viewOnly} />
+                            </FormControl>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
                   <FormField
                     control={form.control}
-                    name="cancellationPolicyHours"
+                    name="minimumBookingWindowHours"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Cancellation Policy (hours)</FormLabel>
+                        <FormLabel>Minimum Booking Window (hours)</FormLabel>
                         <div className="relative">
                           <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                           <FormControl>
-                            <Input className="pl-10" type="number" min="0" {...field} disabled={viewOnly} />
+                            <Input className="pl-10" type="number" min="0" max="168" {...field} disabled={viewOnly} />
                           </FormControl>
                         </div>
+                        <FormDescription>How many hours in advance bookings must be made (0-168 hours)</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -467,147 +494,113 @@ export default function LocationEditModal({
 
                   <FormField
                     control={form.control}
-                    name="defaultDailyBookingLimit"
+                    name="cancellationPolicyMessage"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Daily Booking Limit (hours)</FormLabel>
-                        <div className="relative">
-                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <FormControl>
-                            <Input className="pl-10" type="number" min="1" max="24" {...field} disabled={viewOnly} />
-                          </FormControl>
-                        </div>
+                        <FormLabel>Cancellation Policy Message</FormLabel>
+                        <FormControl>
+                          <Textarea className="min-h-[80px]" placeholder="Enter cancellation policy message" {...field} disabled={viewOnly} />
+                        </FormControl>
+                        <FormDescription>Use {"{hours}"} to insert the cancellation hours value</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
+                </TabsContent>
 
-                <FormField
-                  control={form.control}
-                  name="minimumBookingWindowHours"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Minimum Booking Window (hours)</FormLabel>
-                      <div className="relative">
-                        <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <FormControl>
-                          <Input className="pl-10" type="number" min="0" max="168" {...field} disabled={viewOnly} />
-                        </FormControl>
+                {/* License Tab */}
+                <TabsContent value="license" className="space-y-4 mt-0">
+                  <div className="rounded-lg border p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-gray-600" />
+                        <span className="font-medium">Kitchen License</span>
                       </div>
-                      <FormDescription>How many hours in advance bookings must be made (0-168 hours)</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="cancellationPolicyMessage"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cancellation Policy Message</FormLabel>
-                      <FormControl>
-                        <Textarea className="min-h-[80px]" placeholder="Enter cancellation policy message" {...field} disabled={viewOnly} />
-                      </FormControl>
-                      <FormDescription>Use {"{hours}"} to insert the cancellation hours value</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </TabsContent>
-
-              {/* License Tab */}
-              <TabsContent value="license" className="space-y-4 mt-4">
-                <div className="rounded-lg border p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-gray-600" />
-                      <span className="font-medium">Kitchen License</span>
+                      <div className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
+                        statusConfig.bgColor,
+                        statusConfig.textColor
+                      )}>
+                        <StatusIcon className="w-3.5 h-3.5" />
+                        {statusConfig.label}
+                      </div>
                     </div>
-                    <div className={cn(
-                      "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium",
-                      statusConfig.bgColor,
-                      statusConfig.textColor
-                    )}>
-                      <StatusIcon className="w-3.5 h-3.5" />
-                      {statusConfig.label}
-                    </div>
-                  </div>
 
-                  {location.kitchenLicenseUrl ? (
-                    <div className="space-y-2">
+                    {location.kitchenLicenseUrl ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-600">
+                          Your kitchen license has been uploaded and is{" "}
+                          {location.kitchenLicenseStatus === 'approved'
+                            ? 'approved'
+                            : location.kitchenLicenseStatus === 'rejected'
+                              ? 'rejected'
+                              : 'under review'}.
+                        </p>
+                        <AuthenticatedDocumentLink
+                          url={location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
+                          className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
+                        >
+                          <FileText className="w-4 h-4" />
+                          View uploaded license
+                        </AuthenticatedDocumentLink>
+                      </div>
+                    ) : (
                       <p className="text-sm text-gray-600">
-                        Your kitchen license has been uploaded and is{" "}
-                        {location.kitchenLicenseStatus === 'approved'
-                          ? 'approved'
-                          : location.kitchenLicenseStatus === 'rejected'
-                            ? 'rejected'
-                            : 'under review'}.
+                        No kitchen license has been uploaded yet. Please upload your license during the location creation process.
                       </p>
-                      <AuthenticatedDocumentLink
-                        url={location.kitchenLicenseUrl || `/api/files/kitchen-license/manager/${location.id}`}
-                        className="text-sm text-[#F51042] hover:underline inline-flex items-center gap-1"
-                      >
-                        <FileText className="w-4 h-4" />
-                        View uploaded license
-                      </AuthenticatedDocumentLink>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-600">
-                      No kitchen license has been uploaded yet. Please upload your license during the location creation process.
-                    </p>
-                  )}
+                    )}
 
-                  {location.kitchenLicenseStatus === 'rejected' && location.kitchenLicenseFeedback && (
-                    <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-100">
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-red-800">Admin Feedback</p>
-                          <p className="text-sm text-red-600 mt-1">{location.kitchenLicenseFeedback}</p>
+                    {location.kitchenLicenseStatus === 'rejected' && location.kitchenLicenseFeedback && (
+                      <div className="mt-4 p-3 rounded-lg bg-red-50 border border-red-100">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-red-800">Admin Feedback</p>
+                            <p className="text-sm text-red-600 mt-1">{location.kitchenLicenseFeedback}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {location.kitchenLicenseApprovedAt && (
-                    <p className="text-xs text-gray-500">
-                      {location.kitchenLicenseStatus === 'approved' ? 'Approved' : 'Reviewed'} on:{" "}
-                      {new Date(location.kitchenLicenseApprovedAt).toLocaleDateString()}
-                    </p>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
+                    {location.kitchenLicenseApprovedAt && (
+                      <p className="text-xs text-gray-500">
+                        {location.kitchenLicenseStatus === 'approved' ? 'Approved' : 'Reviewed'} on:{" "}
+                        {new Date(location.kitchenLicenseApprovedAt).toLocaleDateString()}
+                      </p>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </form>
+          </Form>
+        </div>
 
-            <DialogFooter className="mt-6">
-              <Button variant="outline" type="button" onClick={onClose}>
-                {viewOnly ? "Close" : "Cancel"}
-              </Button>
-              {!viewOnly && (
-                <Button
-                  type="submit"
-                  disabled={isLoading}
-                  className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
+        <SheetFooter className="p-6 pt-4 border-t gap-2">
+          <Button variant="outline" type="button" onClick={onClose}>
+            {viewOnly ? "Close" : "Cancel"}
+          </Button>
+          {!viewOnly && (
+            <Button
+              type="submit"
+              onClick={form.handleSubmit(onSubmit)}
+              disabled={isLoading}
+              className="bg-[#F51042] hover:bg-[#d10e3a] text-white gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Changes
+                </>
               )}
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+            </Button>
+          )}
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

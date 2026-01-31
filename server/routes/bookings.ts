@@ -167,20 +167,81 @@ router.get("/chef/storage-bookings/:id", requireChef, async (req: Request, res: 
     }
 });
 
-// Process overstayer penalties (can be called by scheduled task)
-router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: Request, res: Response) => {
-    try {
-        // TODO: Add admin authentication here
-        // For now, this endpoint is open - secure it in production!
+// ============================================================================
+// OVERSTAY DETECTION ENDPOINT (Cron Job)
+// ============================================================================
+// This endpoint is called by Vercel cron to detect overstays daily.
+// It does NOT auto-charge - it only creates overstay records for manager review.
 
-        const { maxDaysToCharge } = req.body;
-        const processed = await bookingService.processOverstayerPenalties(maxDaysToCharge || 7);
+import { overstayPenaltyService } from "../services/overstay-penalty-service";
+
+/**
+ * POST /api/detect-overstays
+ * Daily cron job to detect expired storage bookings and create overstay records.
+ * 
+ * IMPORTANT: This does NOT charge customers. It only:
+ * 1. Detects expired storage bookings
+ * 2. Creates overstay records with calculated penalties
+ * 3. Managers must manually review and approve charges
+ * 
+ * Security: Uses Vercel cron secret for authentication
+ */
+router.post("/detect-overstays", async (req: Request, res: Response) => {
+    try {
+        // Verify cron secret (Vercel sets this header for cron jobs)
+        const cronSecret = process.env.CRON_SECRET;
+        const authHeader = req.headers.authorization;
+        
+        if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+            console.warn("[Cron] Unauthorized overstay detection attempt");
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        console.log("[Cron] Starting overstay detection...");
+        
+        const results = await overstayPenaltyService.detectOverstays();
+        
+        const summary = {
+            total: results.length,
+            inGracePeriod: results.filter(r => r.isInGracePeriod).length,
+            pendingReview: results.filter(r => r.status === 'pending_review').length,
+            totalCalculatedPenalty: results.reduce((sum, r) => sum + r.calculatedPenaltyCents, 0),
+        };
+
+        console.log("[Cron] Overstay detection complete:", summary);
 
         res.json({
             success: true,
-            processed: processed.length,
-            bookings: processed,
-            message: `Processed ${processed.length} overstayer penalty charges`,
+            message: `Detected ${results.length} overstay situations`,
+            summary,
+            results: results.map(r => ({
+                bookingId: r.bookingId,
+                daysOverdue: r.daysOverdue,
+                status: r.status,
+                calculatedPenaltyCents: r.calculatedPenaltyCents,
+            })),
+        });
+    } catch (error: any) {
+        console.error("[Cron] Error detecting overstays:", error);
+        res.status(500).json({ error: error.message || "Failed to detect overstays" });
+    }
+});
+
+// DEPRECATED: Old penalty processing endpoint - kept for backward compatibility
+// Use the new manager-controlled workflow instead
+router.post("/admin/storage-bookings/process-overstayer-penalties", async (req: Request, res: Response) => {
+    try {
+        // Redirect to new detection system
+        console.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
+        
+        const results = await overstayPenaltyService.detectOverstays();
+
+        res.json({
+            success: true,
+            processed: results.length,
+            bookings: results,
+            message: `Detected ${results.length} overstay situations. Use manager dashboard to approve charges.`,
+            deprecationWarning: "This endpoint is deprecated. Use POST /api/detect-overstays instead.",
         });
     } catch (error: any) {
         console.error("Error processing overstayer penalties:", error);

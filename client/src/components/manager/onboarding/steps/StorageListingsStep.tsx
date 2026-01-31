@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign } from "lucide-react";
+import { Info, Plus, CheckCircle, Loader2, Search, Package, Thermometer, Snowflake, Check, PlusCircle, SearchX, ChevronDown, ChevronUp, X, DollarSign, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,10 @@ interface SelectedStorage {
   accessType: string;
   temperatureRange: string;
   minimumBookingDuration: number;
+  // Overstay penalty configuration
+  overstayGracePeriodDays: number;
+  overstayPenaltyRate: string;
+  overstayMaxPenaltyDays: number;
 }
 
 export default function StorageListingsStep() {
@@ -71,6 +75,10 @@ export default function StorageListingsStep() {
     accessType: 'shelving-unit',
     temperatureRange: '',
     minimumBookingDuration: 1,
+    // Overstay penalty configuration
+    overstayGracePeriodDays: 3,
+    overstayPenaltyRate: '0.10',
+    overstayMaxPenaltyDays: 30,
   });
 
   const filteredCategories = useMemo(() => {
@@ -123,11 +131,15 @@ export default function StorageListingsStep() {
           bookingDurationUnit: 'daily',
           currency: "CAD",
           isActive: true,
+          // Overstay penalty configuration
+          overstayGracePeriodDays: customStorage.overstayGracePeriodDays,
+          overstayPenaltyRate: customStorage.overstayPenaltyRate,
+          overstayMaxPenaltyDays: customStorage.overstayMaxPenaltyDays,
         }),
       });
       if (!response.ok) throw new Error("Failed to create storage listing");
       toast({ title: "Storage Added", description: `Successfully added "${storageName}"` });
-      setCustomStorage({ name: '', storageType: 'dry', description: '', dailyRate: 0, totalVolume: 0, accessType: 'shelving-unit', temperatureRange: '', minimumBookingDuration: 1 });
+      setCustomStorage({ name: '', storageType: 'dry' as StorageTypeId, description: '', dailyRate: 0, totalVolume: 0, accessType: 'shelving-unit', temperatureRange: '', minimumBookingDuration: 1, overstayGracePeriodDays: 3, overstayPenaltyRate: '0.10', overstayMaxPenaltyDays: 30 });
       setSearchQuery('');
       // Refresh listings to show the new one immediately
       await refreshListings();
@@ -155,6 +167,10 @@ export default function StorageListingsStep() {
           accessType: template.accessTypes[0] || 'walk-in',
           temperatureRange: template.temperatureRange || getDefaultTemperatureRange(template.storageType) || '',
           minimumBookingDuration: 1,
+          // Default overstay penalty values
+          overstayGracePeriodDays: 3,
+          overstayPenaltyRate: '0.10',
+          overstayMaxPenaltyDays: 30,
         };
       }
       return newState;
@@ -199,6 +215,10 @@ export default function StorageListingsStep() {
             bookingDurationUnit: 'daily',
             currency: "CAD",
             isActive: true,
+            // Overstay penalty configuration
+            overstayGracePeriodDays: storage.overstayGracePeriodDays,
+            overstayPenaltyRate: storage.overstayPenaltyRate,
+            overstayMaxPenaltyDays: storage.overstayMaxPenaltyDays,
           }),
         });
         if (!response.ok) throw new Error("Failed to create storage listing");
@@ -390,6 +410,28 @@ export default function StorageListingsStep() {
                                 <Label className="text-xs">Description</Label>
                                 <Textarea value={customStorage.description} onChange={(e) => setCustomStorage({ ...customStorage, description: e.target.value })} placeholder="Describe the storage space..." rows={2} className="text-xs" />
                               </div>
+                              
+                              {/* Overstay Penalty Configuration */}
+                              <div className="border-t pt-2 mt-2">
+                                <h4 className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                                  <AlertTriangle className="h-3 w-3 text-orange-500" />
+                                  Overstay Penalties
+                                </h4>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px]">Grace (d)</Label>
+                                    <Input type="number" min="0" max="14" value={customStorage.overstayGracePeriodDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayGracePeriodDays: parseInt(e.target.value) || 0 })} className="h-7 text-xs" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px]">Rate (%)</Label>
+                                    <Input type="number" min="0" max="50" value={Math.round(parseFloat(customStorage.overstayPenaltyRate) * 100)} onChange={(e) => setCustomStorage({ ...customStorage, overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-7 text-xs" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[10px]">Max</Label>
+                                    <Input type="number" min="1" max="90" value={customStorage.overstayMaxPenaltyDays} onChange={(e) => setCustomStorage({ ...customStorage, overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-7 text-xs" />
+                                  </div>
+                                </div>
+                              </div>
                               <Button onClick={saveCustomStorage} disabled={isCreating || !customStorage.dailyRate} className="w-full h-8 text-xs">
                                 {isCreating ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <PlusCircle className="h-3 w-3 mr-1" />}
                                 Add Custom Storage
@@ -510,10 +552,31 @@ export default function StorageListingsStep() {
                                   <Textarea
                                     value={storage.description}
                                     onChange={(e) => updateSelectedStorage(templateId, { description: e.target.value })}
-                                    placeholder="Optional description"
+                                    placeholder="Optional"
                                     rows={2}
                                     className="text-xs"
                                   />
+                                </div>
+                                {/* Overstay Penalty Configuration */}
+                                <div className="border-t pt-2 mt-2">
+                                  <h4 className="text-[10px] font-semibold text-gray-700 mb-1.5 flex items-center gap-1">
+                                    <AlertTriangle className="h-3 w-3 text-orange-500" />
+                                    Penalties
+                                  </h4>
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                    <div className="space-y-0.5">
+                                      <Label className="text-[10px] text-muted-foreground">Grace</Label>
+                                      <Input type="number" min="0" max="14" value={storage.overstayGracePeriodDays} onChange={(e) => updateSelectedStorage(templateId, { overstayGracePeriodDays: parseInt(e.target.value) || 0 })} className="h-6 text-xs px-1" />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <Label className="text-[10px] text-muted-foreground">Rate%</Label>
+                                      <Input type="number" min="0" max="50" value={Math.round(parseFloat(storage.overstayPenaltyRate) * 100)} onChange={(e) => updateSelectedStorage(templateId, { overstayPenaltyRate: ((parseInt(e.target.value) || 0) / 100).toString() })} className="h-6 text-xs px-1" />
+                                    </div>
+                                    <div className="space-y-0.5">
+                                      <Label className="text-[10px] text-muted-foreground">Max</Label>
+                                      <Input type="number" min="1" max="90" value={storage.overstayMaxPenaltyDays} onChange={(e) => updateSelectedStorage(templateId, { overstayMaxPenaltyDays: parseInt(e.target.value) || 1 })} className="h-6 text-xs px-1" />
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             </div>

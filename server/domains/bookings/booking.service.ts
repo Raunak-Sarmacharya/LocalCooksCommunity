@@ -780,63 +780,16 @@ export class BookingService {
         return this.repo.updatePendingStorageExtension(id, updates);
     }
 
-    async processOverstayerPenalties(maxDaysToCharge: number = 7) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const expiredBookings = await this.repo.getExpiredStorageBookings(today);
-        const processedBookings: any[] = [];
-        const { getServiceFeeRate } = await import('../../services/pricing-service');
-        const serviceFeeRate = await getServiceFeeRate();
-
-        for (const row of expiredBookings) {
-            try {
-                const bookingId = row.id;
-                const endDate = new Date(row.endDate);
-                const daysOverdue = Math.floor((today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
-                const daysToCharge = Math.min(daysOverdue, maxDaysToCharge);
-
-                if (daysToCharge <= 0) continue;
-
-                // row.basePrice is from DB (numeric string, cents)
-                const basePriceDollars = row.basePrice ? parseFloat(row.basePrice.toString()) / 100 : 0;
-
-                const penaltyRatePerDay = basePriceDollars * 2;
-                const penaltyBasePrice = penaltyRatePerDay * daysToCharge;
-                const penaltyServiceFee = penaltyBasePrice * serviceFeeRate;
-                const penaltyTotalPrice = penaltyBasePrice + penaltyServiceFee;
-
-                const penaltyTotalPriceCents = Math.round(penaltyTotalPrice * 100);
-                const penaltyServiceFeeCents = Math.round(penaltyServiceFee * 100);
-
-                const currentTotalPriceCents = row.totalPrice ? Math.round(parseFloat(row.totalPrice.toString())) : 0;
-                const currentServiceFeeCents = row.serviceFee ? Math.round(parseFloat(row.serviceFee.toString())) : 0;
-
-                const newTotalPriceCents = currentTotalPriceCents + penaltyTotalPriceCents;
-                const newServiceFeeCents = currentServiceFeeCents + penaltyServiceFeeCents;
-
-                const newEndDate = new Date(endDate);
-                newEndDate.setDate(newEndDate.getDate() + daysToCharge);
-
-                await this.repo.updateStorageBooking(bookingId, {
-                    endDate: newEndDate,
-                    totalPrice: newTotalPriceCents.toString(),
-                    serviceFee: newServiceFeeCents.toString(),
-                });
-
-                processedBookings.push({
-                    bookingId,
-                    chefId: row.chefId,
-                    daysOverdue,
-                    daysCharged: daysToCharge,
-                    penaltyAmount: penaltyTotalPrice,
-                    newEndDate: newEndDate.toISOString()
-                });
-            } catch (error) {
-                logger.error(`Error processing penalty for booking ${row.id}`, error);
-            }
-        }
-        return processedBookings;
+    /**
+     * @deprecated Use overstayPenaltyService.detectOverstays() instead.
+     * This method is kept for backward compatibility but no longer auto-charges.
+     * The new system requires manager approval before any charges.
+     */
+    async processOverstayerPenalties(_maxDaysToCharge: number = 7) {
+        logger.warn('[DEPRECATED] processOverstayerPenalties called - use overstayPenaltyService instead');
+        // Redirect to new detection system
+        const { overstayPenaltyService } = await import('../../services/overstay-penalty-service');
+        return overstayPenaltyService.detectOverstays();
     }
 }
 

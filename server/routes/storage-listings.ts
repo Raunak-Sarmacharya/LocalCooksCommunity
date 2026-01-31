@@ -5,6 +5,7 @@ import { requireChef } from "./middleware";
 import { inventoryService } from "../domains/inventory/inventory.service";
 import { kitchenService } from "../domains/kitchens/kitchen.service";
 import { locationService } from "../domains/locations/location.service";
+import { getOverstayLocationDefaults } from "../services/overstay-defaults-service";
 
 const router = Router();
 
@@ -97,11 +98,32 @@ router.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireMan
             return res.status(400).json({ error: "Name, storage type, pricing model, and base price are required" });
         }
 
+        // Fetch location defaults for overstay penalties
+        const locationDefaults = await getOverstayLocationDefaults(kitchen.locationId);
+
+        // Build listing data with location defaults applied
+        const listingDataWithDefaults = {
+            ...listingData,
+            // Only apply location defaults if listing data doesn't already include these values
+            overstayGracePeriodDays: listingData.overstayGracePeriodDays !== undefined 
+                ? listingData.overstayGracePeriodDays 
+                : (locationDefaults.gracePeriodDays ?? 3),
+            overstayPenaltyRate: listingData.overstayPenaltyRate !== undefined 
+                ? listingData.overstayPenaltyRate 
+                : (locationDefaults.penaltyRate ?? 0.10),
+            overstayMaxPenaltyDays: listingData.overstayMaxPenaltyDays !== undefined 
+                ? listingData.overstayMaxPenaltyDays 
+                : (locationDefaults.maxPenaltyDays ?? 30),
+            overstayPolicyText: listingData.overstayPolicyText !== undefined 
+                ? listingData.overstayPolicyText 
+                : locationDefaults.policyText,
+        };
+
         // Manager-created listings are auto-approved and active
         // This enables immediate visibility to chefs without requiring separate admin approval
         const created = await inventoryService.createStorageListing({
             kitchenId: parseInt(kitchenId),
-            ...listingData,
+            ...listingDataWithDefaults,
             status: 'active', // Auto-activate manager-created listings
             isActive: true,
         });

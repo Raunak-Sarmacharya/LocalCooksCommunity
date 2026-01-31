@@ -548,6 +548,8 @@ async function handleCheckoutSessionCompleted(
                   priceCents = basePriceCents;
                 }
 
+                // Storage bookings now require manager approval (like kitchen bookings)
+                // Status is 'pending' until manager confirms
                 const [storageBooking] = await db
                   .insert(storageBookings)
                   .values({
@@ -556,11 +558,15 @@ async function handleCheckoutSessionCompleted(
                     chefId,
                     startDate: storageStartDate,
                     endDate: storageEndDate,
-                    status: 'confirmed',
+                    status: 'pending', // Changed from 'confirmed' - requires manager approval
                     totalPrice: priceCents.toString(),
                     pricingModel: storageListing.pricingModel || 'daily',
                     serviceFee: '0',
                     currency: 'CAD',
+                    // Store Stripe customer/payment info for potential penalty charging
+                    stripeCustomerId: session.customer ? String(session.customer) : null,
+                    stripePaymentMethodId: session.payment_intent ? 
+                      (typeof session.payment_intent === 'string' ? null : session.payment_intent.payment_method as string | null) : null,
                   })
                   .returning();
 
