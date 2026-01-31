@@ -1612,9 +1612,29 @@ export const generateWelcomeEmail = (
 </body>
 </html>`;
 
+  // Plain text version for email clients that don't support HTML
+  const text = `
+Hello ${userData.fullName},
+
+Welcome to Local Cooks Community! Your account has been successfully created and verified.
+
+You can now access your dashboard to complete your profile setup and start your food safety training modules.
+
+Status: Account Active
+
+Access your dashboard at: ${getDashboardUrl()}
+
+Thank you for joining Local Cooks Community!
+
+If you have any questions, contact us at ${getSupportEmail()}.
+
+© ${new Date().getFullYear()} Local Cooks Community
+  `.trim();
+
   return {
     to: userData.email,
     subject: 'Account Created - Local Cooks Community',
+    text,
     html
   };
 };
