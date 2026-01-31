@@ -11,6 +11,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import AddressAutocomplete from "@/components/ui/address-autocomplete";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
 
 export default function LocationStep() {
   const {
@@ -23,18 +31,51 @@ export default function LocationStep() {
     isFirstStep
   } = useManagerOnboarding();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { toast } = useToast();
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      licenseForm.setFile(file);
+      toast({
+        title: "Uploading license...",
+        description: file.name,
+      });
+      try {
+        await licenseForm.uploadFile(file);
+        toast({
+          title: "License uploaded successfully",
+          description: file.name,
+        });
+      } catch (error) {
+        toast({
+          title: "Upload failed",
+          description: "Failed to upload license file. Please try again.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
-  const handleTermsFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTermsFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      console.log('[LocationStep] Terms file selected:', file.name, file.size);
-      termsForm.setFile(file);
+      toast({
+        title: "Uploading terms...",
+        description: file.name,
+      });
+      try {
+        await termsForm.uploadFile(file);
+        toast({
+          title: "Terms uploaded successfully",
+          description: file.name,
+        });
+      } catch (error) {
+        toast({
+          title: "Upload failed",
+          description: "Failed to upload terms file. Please try again.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -320,7 +361,7 @@ export default function LocationStep() {
             </Label>
             <div className={cn(
               "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
-              licenseForm.file 
+              (licenseForm.file || licenseForm.uploadedUrl)
                 ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-700" 
                 : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
             )}>
@@ -332,16 +373,25 @@ export default function LocationStep() {
                 className="hidden"
               />
               <label htmlFor="license-file" className="cursor-pointer block text-center w-full h-full">
-                {licenseForm.file ? (
+                {licenseForm.file || licenseForm.uploadedUrl ? (
                   <div className="flex items-center justify-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
                       <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                     </div>
                     <div className="text-left">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{licenseForm.file.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {(licenseForm.file.size / 1024 / 1024).toFixed(1)} MB
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {licenseForm.file?.name || (licenseForm.uploadedUrl ? "License uploaded" : "File")}
                       </p>
+                      {licenseForm.file && licenseForm.file.size > 0 && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {formatFileSize(licenseForm.file.size)}
+                        </p>
+                      )}
+                      {!licenseForm.file && licenseForm.uploadedUrl && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                          Uploaded to cloud
+                        </p>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -427,7 +477,7 @@ export default function LocationStep() {
             </Label>
             <div className={cn(
               "relative border-2 border-dashed rounded-xl p-6 transition-all duration-200",
-              termsForm.file 
+              (termsForm.file || termsForm.uploadedUrl)
                 ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-700" 
                 : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50"
             )}>
@@ -439,16 +489,25 @@ export default function LocationStep() {
                 className="hidden"
               />
               <label htmlFor="terms-file" className="cursor-pointer block text-center w-full h-full">
-                {termsForm.file ? (
+                {termsForm.file || termsForm.uploadedUrl ? (
                   <div className="flex items-center justify-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
                       <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                     </div>
                     <div className="text-left">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{termsForm.file.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {(termsForm.file.size / 1024 / 1024).toFixed(1)} MB
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                        {termsForm.file?.name || (termsForm.uploadedUrl ? "Terms uploaded" : "File")}
                       </p>
+                      {termsForm.file && termsForm.file.size > 0 && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {formatFileSize(termsForm.file.size)}
+                        </p>
+                      )}
+                      {!termsForm.file && termsForm.uploadedUrl && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Uploaded to cloud
+                        </p>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -492,8 +551,8 @@ export default function LocationStep() {
           !locationForm.name || 
           !locationForm.address || 
           !isContactValid() ||
-          (!licenseForm.file && !selectedLocation?.kitchenLicenseUrl) || 
-          (!termsForm.file && !selectedLocation?.kitchenTermsUrl)
+          (!licenseForm.file && !licenseForm.uploadedUrl && !selectedLocation?.kitchenLicenseUrl) || 
+          (!termsForm.file && !termsForm.uploadedUrl && !selectedLocation?.kitchenTermsUrl)
         }
       />
     </div>

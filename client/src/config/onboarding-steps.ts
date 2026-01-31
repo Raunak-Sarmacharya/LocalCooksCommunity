@@ -53,6 +53,21 @@ export const steps: any[] = [
             title: 'Create Kitchen',
             description: 'Set up your first kitchen space',
         },
+        nextStep: 'availability'
+    },
+    {
+        id: 'availability',
+        type: 'CUSTOM_COMPONENT',
+        metadata: {
+            label: 'Availability',
+            isOptional: false,
+            canSkip: true
+        },
+        payload: {
+            componentKey: 'availability',
+            title: 'Set Availability',
+            description: 'Define when your kitchen is open',
+        },
         nextStep: 'application-requirements'
     },
     {
@@ -68,35 +83,20 @@ export const steps: any[] = [
             title: 'Application Requirements',
             description: 'Configure chef application fields',
         },
-        nextStep: 'payment-setup'
+        nextStep: 'equipment-listings'
     },
     {
-        id: 'payment-setup',
+        id: 'equipment-listings',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Payments',
-            isOptional: false, // Mandatory for payouts
-            canSkip: true // Can be skipped initially but required for launch
-        },
-        payload: {
-            componentKey: 'payment-setup',
-            title: 'Payment Setup',
-            description: 'Connect Stripe to receive payments',
-        },
-        nextStep: 'availability'
-    },
-    {
-        id: 'availability',
-        type: 'CUSTOM_COMPONENT',
-        metadata: {
-            label: 'Availability',
-            isOptional: false,
+            label: 'Equipment',
+            isOptional: true,
             canSkip: true
         },
         payload: {
-            componentKey: 'availability',
-            title: 'Set Availability',
-            description: 'Define when your kitchen is open',
+            componentKey: 'equipment-listings',
+            title: 'Equipment Listings',
+            description: 'Add equipment options',
         },
         nextStep: 'storage-listings'
     },
@@ -113,20 +113,20 @@ export const steps: any[] = [
             title: 'Storage Listings',
             description: 'Add storage options',
         },
-        nextStep: 'equipment-listings'
+        nextStep: 'payment-setup'
     },
     {
-        id: 'equipment-listings',
+        id: 'payment-setup',
         type: 'CUSTOM_COMPONENT',
         metadata: {
-            label: 'Equipment',
-            isOptional: true,
-            canSkip: true
+            label: 'Payments',
+            isOptional: false, // Mandatory for payouts
+            canSkip: true // Can be skipped initially but required for launch
         },
         payload: {
-            componentKey: 'equipment-listings',
-            title: 'Equipment Listings',
-            description: 'Add equipment options',
+            componentKey: 'payment-setup',
+            title: 'Payment Setup',
+            description: 'Connect Stripe to receive payments',
         },
         nextStep: 'completion-summary'
     },

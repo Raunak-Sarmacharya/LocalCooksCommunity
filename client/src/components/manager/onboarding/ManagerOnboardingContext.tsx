@@ -93,12 +93,16 @@ interface ManagerOnboardingContextType {
     expiryDate: string;
     setExpiryDate: (val: string) => void;
     isUploading: boolean;
+    uploadedUrl: string | null;
+    uploadFile: (file: File) => Promise<string | null>;
   };
 
   termsForm: {
     file: File | null;
     setFile: (file: File | null) => void;
     isUploading: boolean;
+    uploadedUrl: string | null;
+    uploadFile: (file: File) => Promise<string | null>;
   };
 
   kitchenForm: {
@@ -176,10 +180,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
   const [uploadingLicense, setUploadingLicense] = useState(false);
+  const [licenseUploadedUrl, setLicenseUploadedUrl] = useState<string | null>(null);
 
   // Terms Form State
   const [termsFile, setTermsFile] = useState<File | null>(null);
   const [uploadingTerms, setUploadingTerms] = useState(false);
+  const [termsUploadedUrl, setTermsUploadedUrl] = useState<string | null>(null);
 
   // Kitchen Form State
   const [showCreateKitchen, setShowCreateKitchen] = useState(false);
@@ -280,8 +286,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // [ENTERPRISE] Compute completedSteps based on ACTUAL DATA existence ONLY
   // This ensures the sidebar shows correct completion state based on real conditions
   // 
-  // REQUIRED for bookings: Location, Kitchen Space, Requirements, Availability, Payment
-  // OPTIONAL: Storage, Equipment
+  // REQUIRED for bookings: Location, Kitchen Space, Availability, Requirements, Payment
+  // OPTIONAL: Equipment, Storage
   //
   // NOTE: We do NOT include dbCompletedSteps here for required steps.
   // Required steps are ONLY marked complete when actual data exists.
@@ -445,8 +451,8 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   // [ENTERPRISE] Auto-skip to first incomplete required step when returning
   // This provides a seamless UX where users jump directly to what needs attention
   //
-  // REQUIRED for bookings: Location, Kitchen Space, Availability, Payment
-  // OPTIONAL: Application Requirements (chef settings), Storage, Equipment
+  // REQUIRED for bookings: Location, Kitchen Space, Availability, Requirements, Payment
+  // OPTIONAL: Equipment, Storage
 
   // Ref to track if we've already performed the initial auto-skip
   const hasPerformedInitialAutoSkip = useRef(false);
@@ -469,8 +475,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
     }
 
-    // [FIX] Only perform auto-skip logic ONCE per session (on load)
+    // [FIX] Only perform auto-skip logic ONCE per session (on initial load)
     // This prevents jarring auto-navigation when a user completes a step actively
+    // or navigates between steps manually
     if (hasPerformedInitialAutoSkip.current) {
       return;
     }
@@ -481,54 +488,39 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     // Check if current step is already completed - if so, auto-navigate to first incomplete
     const isCurrentStepComplete = completedSteps[String(currentId)];
 
-    // Only auto-skip from these steps when they're complete
-    // [FIX] Removed payment-setup from auto-skip list - users should be able to view it
-    const autoSkipFromSteps = ['welcome', 'location', 'create-kitchen', 'application-requirements', 'availability'];
-    if (!autoSkipFromSteps.includes(String(currentId))) return;
-
-    // Only proceed if current step is complete
-    if (!isCurrentStepComplete) return;
-
     // Find first incomplete REQUIRED step in order
-    // Required for bookings: location -> kitchen -> requirements -> payment -> availability
-    const requiredStepOrder = ['location', 'create-kitchen', 'application-requirements', 'payment-setup', 'availability', 'completion-summary'];
+    // Required for bookings: location -> kitchen -> availability -> requirements -> payment
+    const requiredStepOrder = ['location', 'create-kitchen', 'availability', 'application-requirements', 'payment-setup', 'completion-summary'];
 
-    for (const stepId of requiredStepOrder) {
-      // If this step is incomplete, navigate to it
-      if (!completedSteps[stepId]) {
-        console.log(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
-        hasPerformedInitialAutoSkip.current = true; // Mark as performed
-        engine.goToStep(stepId);
-        return;
+    // If current step is complete, find the first incomplete required step and navigate there
+    if (isCurrentStepComplete) {
+      for (const stepId of requiredStepOrder) {
+        // If this step is incomplete, navigate to it
+        if (!completedSteps[stepId]) {
+          console.log(`[Onboarding] Enterprise auto-skip: ${currentId} → ${stepId}`);
+          hasPerformedInitialAutoSkip.current = true;
+          engine.goToStep(stepId);
+          return;
+        }
       }
-    }
 
-    // All required steps complete - Do not force jump to summary
-    // Instead, advance to the next step in the sequence (even if optional)
-    if (requiredStepOrder.includes(String(currentId)) && isCurrentStepComplete) {
+      // All required steps complete - advance to next step in sequence (even if optional)
       const currentIndex = steps.findIndex(s => s.id === currentId);
-      // Ensure we are not at the end and the current step is actually found
       if (currentIndex !== -1 && currentIndex < steps.length - 1) {
         const nextStep = steps[currentIndex + 1];
-        // Only advance if next step is valid
         if (nextStep && nextStep.id) {
           console.log(`[Onboarding] Advancing from completed required step to: ${nextStep.id}`);
-          hasPerformedInitialAutoSkip.current = true; // Mark as performed
+          hasPerformedInitialAutoSkip.current = true;
           engine.goToStep(nextStep.id);
+          return;
         }
       }
     }
 
-    // If we reached here and didn't jump, we only mark initial skip as done 
-    // IF we are confident we have loaded everything and truly don't need to jump.
-    // If we are still loading or waiting for data, we should NOT mark it as done yet.
-    // [FIX] Also wait for selectedLocationId to be set if we have locations, 
-    // otherwise loadKitchens hasn't even started!
-    // We already checked kitchensLoaded/requirementsLoaded above, so if we are here, we are loaded.
-
-    if (hasExistingLocation && Object.keys(completedSteps).length > 0) {
-      hasPerformedInitialAutoSkip.current = true;
-    }
+    // Current step is NOT complete - user should stay here
+    // Mark as performed so we don't keep checking on every render
+    hasPerformedInitialAutoSkip.current = true;
+    console.log(`[Onboarding] User on incomplete step: ${currentId}, staying here`);
 
   }, [engine, hasExistingLocation, isLoadingLocations, isLoadingKitchens, isLoadingRequirements, selectedLocationId, isAddingLocation, currentStep?.id,
     completedSteps, kitchensLoaded, requirementsLoaded]);
@@ -706,9 +698,62 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       });
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
+      setLicenseUploadedUrl(data.url);
       return data.url;
     } finally {
       setUploadingLicense(false);
+    }
+  };
+
+  // Immediate upload function for license file (called from LocationStep)
+  const uploadLicenseFile = async (file: File): Promise<string | null> => {
+    setUploadingLicense(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/files/upload-file", {
+        method: "POST",
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setLicenseUploadedUrl(data.url);
+      setLicenseFile(file);
+      return data.url;
+    } catch (error) {
+      setLicenseFile(null);
+      setLicenseUploadedUrl(null);
+      throw error;
+    } finally {
+      setUploadingLicense(false);
+    }
+  };
+
+  // Immediate upload function for terms file (called from LocationStep)
+  const uploadTermsFile = async (file: File): Promise<string | null> => {
+    setUploadingTerms(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/files/upload-file", {
+        method: "POST",
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setTermsUploadedUrl(data.url);
+      setTermsFile(file);
+      return data.url;
+    } catch (error) {
+      setTermsFile(null);
+      setTermsUploadedUrl(null);
+      throw error;
+    } finally {
+      setUploadingTerms(false);
     }
   };
 
@@ -1051,11 +1096,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     licenseForm: {
       file: licenseFile, setFile: setLicenseFile,
       expiryDate: licenseExpiryDate, setExpiryDate: setLicenseExpiryDate,
-      isUploading: uploadingLicense
+      isUploading: uploadingLicense,
+      uploadedUrl: licenseUploadedUrl,
+      uploadFile: uploadLicenseFile
     },
     termsForm: {
       file: termsFile, setFile: setTermsFile,
-      isUploading: uploadingTerms
+      isUploading: uploadingTerms,
+      uploadedUrl: termsUploadedUrl,
+      uploadFile: uploadTermsFile
     },
     kitchenForm: {
       data: kitchenFormData, setData: setKitchenFormData,

@@ -60,7 +60,17 @@ export default function CompletionSummaryStep() {
             stepId: 'create-kitchen'
         });
 
-        // 3. Requirements (Chef application settings)
+        // 3. Availability
+        items.push({
+            id: "availability",
+            label: "Availability Schedule",
+            status: hasAvailability ? 'complete' : 'incomplete',
+            isRequired: true,
+            description: hasAvailability ? "Operating hours set" : "Set when you are open",
+            stepId: 'availability'
+        });
+
+        // 4. Requirements (Chef application settings)
         items.push({
             id: "requirements",
             label: "Application Requirements",
@@ -72,7 +82,7 @@ export default function CompletionSummaryStep() {
             stepId: 'application-requirements'
         });
 
-        // 4. License
+        // 5. License
         // Logic: Complete if approved. Pending if uploaded but not approved. Incomplete if not uploaded.
         // If status is empty/null but url exists -> Pending
         const licenseStatus = selectedLocation?.kitchenLicenseStatus;
@@ -96,17 +106,29 @@ export default function CompletionSummaryStep() {
             stepId: 'location' // License is uploaded on Business step
         });
 
-        // 4. Availability
+        // 6. Equipment (Optional)
+        const hasEquipment = equipmentForm?.listings?.length > 0;
         items.push({
-            id: "availability",
-            label: "Availability Schedule",
-            status: hasAvailability ? 'complete' : 'incomplete',
-            isRequired: true,
-            description: hasAvailability ? "Operating hours set" : "Set when you are open",
-            stepId: 'availability'
+            id: "equipment",
+            label: "Equipment Listings",
+            status: hasEquipment ? 'complete' : 'optional_skipped',
+            isRequired: false,
+            description: hasEquipment ? `${equipmentForm.listings.length} listings` : "Optional add-on",
+            stepId: 'equipment-listings'
         });
 
-        // 5. Payment
+        // 7. Storage (Optional)
+        const hasStorage = storageForm?.listings?.length > 0;
+        items.push({
+            id: "storage",
+            label: "Storage Listings",
+            status: hasStorage ? 'complete' : 'optional_skipped',
+            isRequired: false,
+            description: hasStorage ? `${storageForm.listings.length} listings` : "Optional add-on",
+            stepId: 'storage-listings'
+        });
+
+        // 8. Payment
         items.push({
             id: "payment",
             label: "Payment Setup",
@@ -116,26 +138,6 @@ export default function CompletionSummaryStep() {
             actionLabel: !isStripeOnboardingComplete ? "Setup Payments" : undefined,
             actionHref: "/manager/settings?tab=stripe",
             stepId: 'payment-setup'
-        });
-
-        // 6. Storage (Optional)
-        const hasStorage = storageForm?.listings?.length > 0;
-        items.push({
-            id: "storage",
-            label: "Storage Listings",
-            status: hasStorage ? 'complete' : 'optional_skipped',
-            isRequired: false,
-            description: hasStorage ? `${storageForm.listings.length} listings` : "Optional add-on"
-        });
-
-        // 7. Equipment (Optional)
-        const hasEquipment = equipmentForm?.listings?.length > 0;
-        items.push({
-            id: "equipment",
-            label: "Equipment Listings",
-            status: hasEquipment ? 'complete' : 'optional_skipped',
-            isRequired: false,
-            description: hasEquipment ? `${equipmentForm.listings.length} listings` : "Optional add-on"
         });
 
         return items;

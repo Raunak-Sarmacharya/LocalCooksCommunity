@@ -51,6 +51,7 @@ export default function AddressAutocomplete({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const justSelectedRef = useRef(false);
 
   // Debounce the input to prevent excessive API calls
   const debouncedInput = useDebounce(inputValue, 300);
@@ -63,6 +64,12 @@ export default function AddressAutocomplete({
   // Fetch predictions from server proxy when debounced input changes
   useEffect(() => {
     const fetchPredictions = async () => {
+      // Skip fetching if we just selected an address
+      if (justSelectedRef.current) {
+        justSelectedRef.current = false;
+        return;
+      }
+
       if (!debouncedInput || debouncedInput.length < 3) {
         setPredictions([]);
         setIsOpen(false);
@@ -127,6 +134,8 @@ export default function AddressAutocomplete({
   };
 
   const handleSelectPlace = useCallback(async (place: Prediction) => {
+    // Mark that we just selected to prevent dropdown from reopening
+    justSelectedRef.current = true;
     setIsLoading(true);
     
     try {

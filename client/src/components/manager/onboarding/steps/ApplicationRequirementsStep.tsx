@@ -1,8 +1,6 @@
-import React from "react";
 import { CheckCircle, ClipboardList } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent } from "@/components/ui/card";
-import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
+import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 
@@ -46,15 +44,13 @@ export default function ApplicationRequirementsStep() {
         </Alert>
       )}
 
-      {/* Requirements Settings */}
-      <Card className="border-slate-200/60 dark:border-slate-700/60 shadow-sm">
-        <CardContent className="pt-6">
-          <LocationRequirementsSettings
-            locationId={selectedLocationId}
-            onSaveSuccess={refreshRequirements}
-          />
-        </CardContent>
-      </Card>
+      {/* Requirements Wizard - Compact mode for onboarding */}
+      <ApplicationRequirementsWizard
+        locationId={selectedLocationId}
+        onSaveSuccess={refreshRequirements}
+        compact
+        hideNavigation
+      />
 
       <OnboardingNavigationFooter
         onNext={hasRequirements ? handleNext : handleSaveAndContinue}
