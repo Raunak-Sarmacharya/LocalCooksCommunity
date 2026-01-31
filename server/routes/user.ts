@@ -178,7 +178,8 @@ router.post("/sync-verification-status", requireFirebaseAuthWithUser, async (req
           const displayName = firebaseDisplayName || user.username.split('@')[0];
           const welcomeEmail = generateWelcomeEmail({
             fullName: displayName,
-            email: user.username
+            email: user.username,
+            role: user.role as 'chef' | 'manager' | 'admin'
           });
           
           const emailResult = await sendEmail(welcomeEmail, {
@@ -314,7 +315,8 @@ router.post("/verify-email-complete", async (req: Request, res: Response) => {
       const displayName = firebaseUser.displayName || email.split('@')[0];
       const welcomeEmail = generateWelcomeEmail({
         fullName: displayName,
-        email: email
+        email: email,
+        role: user.role as 'chef' | 'manager' | 'admin'
       });
       
       console.log(`📧 Generated welcome email:`, {

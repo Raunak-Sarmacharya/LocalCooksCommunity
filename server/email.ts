@@ -1571,12 +1571,24 @@ export const generateEmailVerificationEmail = (
 };
 
 // Generate welcome email with unified design
+// Role parameter determines the dashboard URL subdomain:
+// - 'manager' -> kitchen.localcooks.ca
+// - 'chef' -> chef.localcooks.ca
+// - 'admin' -> admin.localcooks.ca
 export const generateWelcomeEmail = (
   userData: {
     fullName: string;
     email: string;
+    role?: 'chef' | 'manager' | 'admin';
   }
 ): EmailContent => {
+  // Map role to userType for getDashboardUrl
+  const userType: 'chef' | 'kitchen' | 'admin' = 
+    userData.role === 'manager' ? 'kitchen' : 
+    userData.role === 'admin' ? 'admin' : 'chef';
+  
+  const dashboardUrl = getDashboardUrl(userType);
+  
   const html = `
 <!DOCTYPE html>
 <html>
@@ -1600,7 +1612,7 @@ export const generateWelcomeEmail = (
         You can now access your dashboard to complete your profile setup and start your food safety training modules.
       </p>
       <div class="status-badge approved">Status: Account Active</div>
-      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      <a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for joining <strong>Local Cooks</strong> Community!</p>
@@ -1622,7 +1634,7 @@ You can now access your dashboard to complete your profile setup and start your 
 
 Status: Account Active
 
-Access your dashboard at: ${getDashboardUrl()}
+Access your dashboard at: ${dashboardUrl}
 
 Thank you for joining Local Cooks Community!
 
@@ -1682,16 +1694,10 @@ const getWebsiteUrl = (): string => {
 // Helper function to get the correct dashboard URL based on user type
 const getDashboardUrl = (userType: 'chef' | 'kitchen' | 'admin' = 'chef'): string => {
   const baseUrl = getSubdomainUrl(userType);
-
-  if (userType === 'chef') {
-    return `${baseUrl}/auth?redirect=/dashboard`;
-  } else if (userType === 'kitchen') {
-    return `${baseUrl}/portal`;
-  } else if (userType === 'admin') {
-    return `${baseUrl}/admin`;
-  }
-
-  return `${baseUrl}/auth?redirect=/dashboard`;
+  
+  // Return just the base URL without any path
+  // kitchen.localcooks.ca for managers, chef.localcooks.ca for chefs
+  return baseUrl;
 };
 
 // Helper function to get privacy policy URL
