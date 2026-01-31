@@ -1914,6 +1914,20 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
         // Update booking status
         await bookingService.updateBookingStatus(id, status);
 
+        // Update associated storage bookings to match kitchen booking status
+        try {
+            const storageBookings = await bookingService.getStorageBookingsByKitchenBooking(id);
+            if (storageBookings && storageBookings.length > 0) {
+                for (const storageBooking of storageBookings) {
+                    await bookingService.updateStorageBooking(storageBooking.id, { status });
+                    logger.info(`[Manager] Updated storage booking ${storageBooking.id} to ${status} for kitchen booking ${id}`);
+                }
+            }
+        } catch (storageUpdateError) {
+            logger.error(`[Manager] Error updating storage bookings for kitchen booking ${id}:`, storageUpdateError);
+            // Don't fail the main status update if storage update fails
+        }
+
         // Send email notifications based on status change
         try {
             // Get chef details
