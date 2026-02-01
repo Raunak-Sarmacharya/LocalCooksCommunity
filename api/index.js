@@ -12,6 +12,7 @@ var __export = (target, all) => {
 var firebase_setup_exports = {};
 __export(firebase_setup_exports, {
   firebaseAdmin: () => firebaseAdmin,
+  getFirebaseUserByEmail: () => getFirebaseUserByEmail,
   initializeFirebaseAdmin: () => initializeFirebaseAdmin,
   isFirebaseAdminConfigured: () => isFirebaseAdminConfigured,
   verifyFirebaseToken: () => verifyFirebaseToken
@@ -75,6 +76,24 @@ async function verifyFirebaseToken(token) {
 }
 function isFirebaseAdminConfigured() {
   return !!(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID);
+}
+async function getFirebaseUserByEmail(email) {
+  try {
+    const app2 = initializeFirebaseAdmin();
+    if (!app2) {
+      console.warn("Firebase Admin not initialized - cannot get user by email");
+      return null;
+    }
+    const userRecord = await getAuth(app2).getUserByEmail(email);
+    return userRecord;
+  } catch (error) {
+    if (error.code === "auth/user-not-found") {
+      console.log(`Firebase user not found for email: ${email}`);
+      return null;
+    }
+    console.error("Error getting Firebase user by email:", error);
+    return null;
+  }
 }
 var firebaseAdmin;
 var init_firebase_setup = __esm({
@@ -3981,6 +4000,8 @@ Visit: ${getWebsiteUrl()}
       };
     };
     generateWelcomeEmail = (userData) => {
+      const userType = userData.role === "manager" ? "kitchen" : userData.role === "admin" ? "admin" : "chef";
+      const dashboardUrl = getDashboardUrl(userType);
       const html = `
 <!DOCTYPE html>
 <html>
@@ -4004,7 +4025,7 @@ Visit: ${getWebsiteUrl()}
         You can now access your dashboard to complete your profile setup and start your food safety training modules.
       </p>
       <div class="status-badge approved">Status: Account Active</div>
-      <a href="${getDashboardUrl()}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
+      <a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Access Your Dashboard</a>
     </div>
     <div class="footer">
       <p class="footer-text">Thank you for joining <strong>Local Cooks</strong> Community!</p>
@@ -4015,9 +4036,27 @@ Visit: ${getWebsiteUrl()}
   </div>
 </body>
 </html>`;
+      const text2 = `
+Hello ${userData.fullName},
+
+Welcome to Local Cooks Community! Your account has been successfully created and verified.
+
+You can now access your dashboard to complete your profile setup and start your food safety training modules.
+
+Status: Account Active
+
+Access your dashboard at: ${dashboardUrl}
+
+Thank you for joining Local Cooks Community!
+
+If you have any questions, contact us at ${getSupportEmail()}.
+
+\xA9 ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community
+  `.trim();
       return {
         to: userData.email,
         subject: "Account Created - Local Cooks Community",
+        text: text2,
         html
       };
     };
@@ -4048,14 +4087,7 @@ Visit: ${getWebsiteUrl()}
     };
     getDashboardUrl = (userType = "chef") => {
       const baseUrl = getSubdomainUrl(userType);
-      if (userType === "chef") {
-        return `${baseUrl}/auth?redirect=/dashboard`;
-      } else if (userType === "kitchen") {
-        return `${baseUrl}/portal`;
-      } else if (userType === "admin") {
-        return `${baseUrl}/admin`;
-      }
-      return `${baseUrl}/auth?redirect=/dashboard`;
+      return baseUrl;
     };
     getPrivacyUrl = () => {
       const baseUrl = getWebsiteUrl();
@@ -7850,6 +7882,7 @@ var init_user = __esm({
     init_user_service();
     init_firebase_auth_middleware();
     init_email();
+    init_firebase_setup();
     router8 = Router8();
     router8.get("/profile", requireFirebaseAuthWithUser, async (req, res) => {
       try {
@@ -7945,7 +7978,8 @@ var init_user = __esm({
               const displayName = firebaseDisplayName || user.username.split("@")[0];
               const welcomeEmail = generateWelcomeEmail({
                 fullName: displayName,
-                email: user.username
+                email: user.username,
+                role: user.role
               });
               const emailResult = await sendEmail(welcomeEmail, {
                 trackingId: `welcome_verified_${user.id}_${Date.now()}`
@@ -7986,7 +8020,280 @@ var init_user = __esm({
         });
       }
     });
+    router8.post("/verify-email-complete", async (req, res) => {
+      try {
+        const { email } = req.body;
+        if (!email) {
+          return res.status(400).json({ error: "Email is required" });
+        }
+        console.log(`\u{1F504} PUBLIC VERIFY-EMAIL-COMPLETE for email: ${email}`);
+        const firebaseUser = await getFirebaseUserByEmail(email);
+        if (!firebaseUser) {
+          console.log(`\u274C Firebase user not found for email: ${email}`);
+          return res.status(404).json({ error: "User not found in Firebase" });
+        }
+        console.log(`   - Firebase emailVerified: ${firebaseUser.emailVerified}`);
+        console.log(`   - Firebase UID: ${firebaseUser.uid}`);
+        if (!firebaseUser.emailVerified) {
+          console.log(`\u26A0\uFE0F Firebase email NOT verified for: ${email}`);
+          return res.status(400).json({
+            error: "Email not verified in Firebase",
+            firebaseVerified: false
+          });
+        }
+        const user = await userService.getUserByUsername(email);
+        if (!user) {
+          console.log(`\u274C User not found in Neon DB for email: ${email}`);
+          return res.status(404).json({ error: "User not found in database" });
+        }
+        console.log(`   - Neon user ID: ${user.id}`);
+        console.log(`   - Neon isVerified: ${user.isVerified}`);
+        console.log(`   - Welcome email already sent: ${user.welcomeEmailSentAt ? "YES" : "NO"}`);
+        let verificationUpdated = false;
+        let welcomeEmailSent = false;
+        if (!user.isVerified) {
+          console.log(`\u{1F4E7} Updating is_verified for user ${user.id}`);
+          await userService.updateUser(user.id, { isVerified: true });
+          verificationUpdated = true;
+        }
+        if (!user.welcomeEmailSentAt) {
+          console.log(`\u{1F4E7} SENDING WELCOME EMAIL to newly verified user: ${email}`);
+          console.log(`\u{1F4E7} Email configuration check:`, {
+            hasEmailUser: !!process.env.EMAIL_USER,
+            hasEmailPass: !!process.env.EMAIL_PASS,
+            hasEmailFrom: !!process.env.EMAIL_FROM,
+            environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown"
+          });
+          const displayName = firebaseUser.displayName || email.split("@")[0];
+          const welcomeEmail = generateWelcomeEmail({
+            fullName: displayName,
+            email,
+            role: user.role
+          });
+          console.log(`\u{1F4E7} Generated welcome email:`, {
+            to: welcomeEmail.to,
+            subject: welcomeEmail.subject,
+            hasHtml: !!welcomeEmail.html,
+            hasText: !!welcomeEmail.text,
+            htmlLength: welcomeEmail.html?.length || 0,
+            textLength: welcomeEmail.text?.length || 0
+          });
+          const MAX_RETRIES = 3;
+          let lastError = null;
+          for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+              console.log(`\u{1F4E7} Welcome email attempt ${attempt}/${MAX_RETRIES} for ${email}`);
+              const emailResult = await sendEmail(welcomeEmail, {
+                trackingId: `welcome_verified_public_${user.id}_${Date.now()}_attempt${attempt}`
+              });
+              if (emailResult) {
+                await userService.updateUser(user.id, { welcomeEmailSentAt: /* @__PURE__ */ new Date() });
+                welcomeEmailSent = true;
+                console.log(`\u2705 Welcome email sent successfully to ${email} on attempt ${attempt}`);
+                break;
+              } else {
+                console.error(`\u274C sendEmail returned false for ${email} on attempt ${attempt}`);
+                lastError = new Error("sendEmail returned false");
+              }
+            } catch (emailError) {
+              lastError = emailError instanceof Error ? emailError : new Error(String(emailError));
+              console.error(`\u274C Error sending welcome email to ${email} on attempt ${attempt}:`, {
+                error: lastError.message,
+                stack: lastError.stack
+              });
+            }
+            if (attempt < MAX_RETRIES) {
+              const backoffMs = Math.pow(2, attempt - 1) * 1e3;
+              console.log(`\u23F3 Waiting ${backoffMs}ms before retry...`);
+              await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            }
+          }
+          if (!welcomeEmailSent) {
+            console.error(`\u274C CRITICAL: All ${MAX_RETRIES} attempts to send welcome email failed for ${email}`);
+            console.error(`\u274C Last error:`, lastError?.message || "Unknown error");
+          }
+        } else {
+          console.log(`\u2139\uFE0F Welcome email already sent at ${user.welcomeEmailSentAt} - skipping`);
+        }
+        res.json({
+          success: true,
+          userId: user.id,
+          email,
+          firebaseVerified: true,
+          databaseVerified: true,
+          verificationUpdated,
+          welcomeEmailSent,
+          welcomeEmailPreviouslySent: !!user.welcomeEmailSentAt && !welcomeEmailSent,
+          // ENTERPRISE: Include email config status for debugging
+          emailConfigStatus: {
+            hasEmailUser: !!process.env.EMAIL_USER,
+            hasEmailPass: !!process.env.EMAIL_PASS,
+            hasEmailFrom: !!process.env.EMAIL_FROM,
+            environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown"
+          }
+        });
+      } catch (error) {
+        console.error("\u274C Error in verify-email-complete:", error);
+        res.status(500).json({
+          error: "Failed to complete email verification",
+          details: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
     user_default = router8;
+  }
+});
+
+// server/routes/places.ts
+var places_exports = {};
+__export(places_exports, {
+  default: () => places_default
+});
+import { Router as Router9 } from "express";
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+  if (!record || now > record.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+  record.count++;
+  return true;
+}
+var router9, GOOGLE_PLACES_API_KEY, rateLimitMap, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS, places_default;
+var init_places = __esm({
+  "server/routes/places.ts"() {
+    "use strict";
+    router9 = Router9();
+    GOOGLE_PLACES_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+    rateLimitMap = /* @__PURE__ */ new Map();
+    RATE_LIMIT_WINDOW_MS = 6e4;
+    RATE_LIMIT_MAX_REQUESTS = 100;
+    router9.get("/autocomplete", async (req, res) => {
+      try {
+        const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+        if (!checkRateLimit(clientIp)) {
+          return res.status(429).json({
+            error: "Too many requests",
+            message: "Rate limit exceeded. Please try again later."
+          });
+        }
+        const { input, types = "address", components = "country:us|country:ca" } = req.query;
+        if (!input || typeof input !== "string") {
+          return res.status(400).json({
+            error: "Bad Request",
+            message: "Input parameter is required"
+          });
+        }
+        if (input.length < 3) {
+          return res.status(400).json({
+            error: "Bad Request",
+            message: "Input must be at least 3 characters"
+          });
+        }
+        if (!GOOGLE_PLACES_API_KEY) {
+          console.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
+          return res.status(500).json({
+            error: "Server Configuration Error",
+            message: "Places API is not configured"
+          });
+        }
+        const url = new URL("https://maps.googleapis.com/maps/api/place/autocomplete/json");
+        url.searchParams.set("input", input);
+        url.searchParams.set("types", types);
+        url.searchParams.set("components", components);
+        url.searchParams.set("key", GOOGLE_PLACES_API_KEY);
+        const response = await fetch(url.toString());
+        const data = await response.json();
+        if (data.status === "REQUEST_DENIED") {
+          console.error("[Places API] Request denied:", data.error_message);
+          return res.status(403).json({
+            error: "API Error",
+            message: "Places API request was denied"
+          });
+        }
+        const predictions = (data.predictions || []).map((p) => ({
+          place_id: p.place_id,
+          description: p.description,
+          structured_formatting: {
+            main_text: p.structured_formatting?.main_text,
+            secondary_text: p.structured_formatting?.secondary_text
+          }
+        }));
+        res.json({
+          status: data.status,
+          predictions
+        });
+      } catch (error) {
+        console.error("[Places API] Autocomplete error:", error);
+        res.status(500).json({
+          error: "Internal Server Error",
+          message: "Failed to fetch address suggestions"
+        });
+      }
+    });
+    router9.get("/details", async (req, res) => {
+      try {
+        const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+        if (!checkRateLimit(clientIp)) {
+          return res.status(429).json({
+            error: "Too many requests",
+            message: "Rate limit exceeded. Please try again later."
+          });
+        }
+        const { place_id } = req.query;
+        if (!place_id || typeof place_id !== "string") {
+          return res.status(400).json({
+            error: "Bad Request",
+            message: "place_id parameter is required"
+          });
+        }
+        if (!GOOGLE_PLACES_API_KEY) {
+          console.error("[Places API] GOOGLE_MAPS_API_KEY is not configured");
+          return res.status(500).json({
+            error: "Server Configuration Error",
+            message: "Places API is not configured"
+          });
+        }
+        const url = new URL("https://maps.googleapis.com/maps/api/place/details/json");
+        url.searchParams.set("place_id", place_id);
+        url.searchParams.set("fields", "formatted_address,geometry,address_components");
+        url.searchParams.set("key", GOOGLE_PLACES_API_KEY);
+        const response = await fetch(url.toString());
+        const data = await response.json();
+        if (data.status === "REQUEST_DENIED") {
+          console.error("[Places API] Request denied:", data.error_message);
+          return res.status(403).json({
+            error: "API Error",
+            message: "Places API request was denied"
+          });
+        }
+        if (data.status !== "OK" || !data.result) {
+          return res.status(404).json({
+            error: "Not Found",
+            message: "Place details not found"
+          });
+        }
+        res.json({
+          status: data.status,
+          result: {
+            formatted_address: data.result.formatted_address,
+            geometry: data.result.geometry,
+            address_components: data.result.address_components
+          }
+        });
+      } catch (error) {
+        console.error("[Places API] Details error:", error);
+        res.status(500).json({
+          error: "Internal Server Error",
+          message: "Failed to fetch place details"
+        });
+      }
+    });
+    places_default = router9;
   }
 });
 
@@ -7995,10 +8302,10 @@ var applications_exports = {};
 __export(applications_exports, {
   default: () => applications_default
 });
-import { Router as Router9 } from "express";
+import { Router as Router10 } from "express";
 import fs4 from "fs";
 import { fromZodError as fromZodError3 } from "zod-validation-error";
-var router9, appRepo, appService, userRepo, userService2, applications_default;
+var router10, appRepo, appService, userRepo, userService2, applications_default;
 var init_applications = __esm({
   "server/routes/applications.ts"() {
     "use strict";
@@ -8013,12 +8320,12 @@ var init_applications = __esm({
     init_user_repository();
     init_user_service();
     init_domain_error();
-    router9 = Router9();
+    router10 = Router10();
     appRepo = new ApplicationRepository();
     appService = new ApplicationService(appRepo);
     userRepo = new UserRepository();
     userService2 = new UserService(userRepo);
-    router9.post(
+    router10.post(
       "/",
       upload.fields([
         { name: "foodSafetyLicense", maxCount: 1 },
@@ -8150,7 +8457,7 @@ var init_applications = __esm({
         }
       }
     );
-    router9.patch(
+    router10.patch(
       "/:id/documents",
       requireFirebaseAuthWithUser,
       upload.fields([
@@ -8217,7 +8524,7 @@ var init_applications = __esm({
         }
       }
     );
-    router9.get("/", async (req, res) => {
+    router10.get("/", async (req, res) => {
       if (!req.neonUser) {
         return res.status(401).json({ message: "Not authenticated" });
       }
@@ -8235,7 +8542,7 @@ var init_applications = __esm({
         return res.status(500).json({ message: "Internal server error" });
       }
     });
-    router9.get("/my-applications", async (req, res) => {
+    router10.get("/my-applications", async (req, res) => {
       if (!req.neonUser) {
         return res.status(401).json({ error: "Not authenticated" });
       }
@@ -8251,7 +8558,7 @@ var init_applications = __esm({
         return res.status(500).json({ message: "Internal server error" });
       }
     });
-    router9.get("/:id", async (req, res) => {
+    router10.get("/:id", async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
@@ -8267,7 +8574,7 @@ var init_applications = __esm({
         return res.status(500).json({ message: "Internal server error" });
       }
     });
-    router9.patch("/:id/status", async (req, res) => {
+    router10.patch("/:id/status", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Not authenticated" });
@@ -8314,7 +8621,7 @@ var init_applications = __esm({
         return res.status(500).json({ message: "Internal server error" });
       }
     });
-    router9.patch("/:id/cancel", async (req, res) => {
+    router10.patch("/:id/cancel", async (req, res) => {
       const userId = req.neonUser?.id;
       if (!userId) {
         return res.status(401).json({ message: "Not authenticated" });
@@ -8348,7 +8655,7 @@ var init_applications = __esm({
         return res.status(500).json({ message: "Internal server error" });
       }
     });
-    router9.patch("/:id/document-verification", async (req, res) => {
+    router10.patch("/:id/document-verification", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Not authenticated" });
@@ -8438,7 +8745,7 @@ var init_applications = __esm({
         return res.status(500).json({ message: "Internal server error" });
       }
     });
-    applications_default = router9;
+    applications_default = router10;
   }
 });
 
@@ -8499,9 +8806,9 @@ var locations_exports = {};
 __export(locations_exports, {
   default: () => locations_default
 });
-import { Router as Router10 } from "express";
+import { Router as Router11 } from "express";
 import { fromZodError as fromZodError4 } from "zod-validation-error";
-var router10, locationRepository2, locationService3, kitchenRepository2, kitchenService3, locations_default;
+var router11, locationRepository2, locationService3, kitchenRepository2, kitchenService3, locations_default;
 var init_locations = __esm({
   "server/routes/locations.ts"() {
     "use strict";
@@ -8513,12 +8820,12 @@ var init_locations = __esm({
     init_kitchen_repository();
     init_kitchen_service();
     init_domain_error();
-    router10 = Router10();
+    router11 = Router11();
     locationRepository2 = new LocationRepository();
     locationService3 = new LocationService(locationRepository2);
     kitchenRepository2 = new KitchenRepository();
     kitchenService3 = new KitchenService(kitchenRepository2);
-    router10.get("/public/locations", async (req, res) => {
+    router11.get("/public/locations", async (req, res) => {
       try {
         const [allLocations, allKitchens] = await Promise.all([
           locationService3.getAllLocations(),
@@ -8575,7 +8882,7 @@ var init_locations = __esm({
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    router10.get("/public/kitchens", async (req, res) => {
+    router11.get("/public/kitchens", async (req, res) => {
       try {
         const allKitchens = await kitchenService3.getAllActiveKitchens();
         const allLocations = await locationService3.getAllLocations();
@@ -8655,7 +8962,7 @@ var init_locations = __esm({
         res.status(500).json({ error: "Failed to fetch kitchens" });
       }
     });
-    router10.get("/public/locations/:locationId/details", async (req, res) => {
+    router11.get("/public/locations/:locationId/details", async (req, res) => {
       try {
         const locationId = parseInt(req.params.locationId);
         if (isNaN(locationId)) {
@@ -8698,6 +9005,9 @@ var init_locations = __esm({
             currency: kitchen.currency || "CAD"
           };
         });
+        const isLicenseApproved = location.kitchenLicenseStatus === "approved";
+        const hasActiveKitchens = sanitizedKitchens.length > 0;
+        const canAcceptApplications = isLicenseApproved && hasActiveKitchens;
         res.json({
           id: location.id,
           name: location.name,
@@ -8712,7 +9022,11 @@ var init_locations = __esm({
           customOnboardingLink: location.customOnboardingLink || null,
           kitchens: sanitizedKitchens,
           // Kitchen terms and policies for chef applications
-          kitchenTermsUrl: location.kitchenTermsUrl || null
+          kitchenTermsUrl: location.kitchenTermsUrl || null,
+          // License status for application eligibility (enterprise-grade consistency)
+          kitchenLicenseStatus: location.kitchenLicenseStatus || "pending",
+          canAcceptApplications,
+          isLicenseApproved
         });
       } catch (error) {
         console.error("Error fetching location details:", error);
@@ -8722,7 +9036,7 @@ var init_locations = __esm({
         res.status(500).json({ error: "Failed to fetch location details" });
       }
     });
-    router10.get("/public/locations/:locationId/requirements", async (req, res) => {
+    router11.get("/public/locations/:locationId/requirements", async (req, res) => {
       try {
         const locationId = parseInt(req.params.locationId);
         if (isNaN(locationId)) {
@@ -8735,7 +9049,7 @@ var init_locations = __esm({
         res.status(500).json({ error: "Failed to get requirements" });
       }
     });
-    router10.get(
+    router11.get(
       "/manager/locations/:locationId/requirements",
       requireFirebaseAuthWithUser,
       requireManager,
@@ -8758,7 +9072,7 @@ var init_locations = __esm({
         }
       }
     );
-    router10.put(
+    router11.put(
       "/manager/locations/:locationId/requirements",
       requireFirebaseAuthWithUser,
       requireManager,
@@ -8796,7 +9110,7 @@ var init_locations = __esm({
         }
       }
     );
-    locations_default = router10;
+    locations_default = router11;
   }
 });
 
@@ -8869,8 +9183,8 @@ var microlearning_exports = {};
 __export(microlearning_exports, {
   default: () => microlearning_default
 });
-import { Router as Router11 } from "express";
-var router11, hasApprovedApplication, microlearning_default;
+import { Router as Router12 } from "express";
+var router12, hasApprovedApplication, microlearning_default;
 var init_microlearning = __esm({
   "server/routes/microlearning.ts"() {
     "use strict";
@@ -8878,7 +9192,7 @@ var init_microlearning = __esm({
     init_microlearning_service();
     init_application_service();
     init_alwaysFoodSafeAPI();
-    router11 = Router11();
+    router12 = Router12();
     hasApprovedApplication = async (userId) => {
       try {
         const applications4 = await applicationService.getApplicationsByUserId(userId);
@@ -8888,7 +9202,7 @@ var init_microlearning = __esm({
         return false;
       }
     };
-    router11.get("/progress", async (req, res) => {
+    router12.get("/progress", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Authentication required" });
@@ -8915,7 +9229,7 @@ var init_microlearning = __esm({
         res.status(500).json({ message: "Failed to fetch progress" });
       }
     });
-    router11.get("/progress/:userId", async (req, res) => {
+    router12.get("/progress/:userId", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Authentication required" });
@@ -8951,7 +9265,7 @@ var init_microlearning = __esm({
         res.status(500).json({ message: "Failed to fetch progress" });
       }
     });
-    router11.post("/progress", async (req, res) => {
+    router12.post("/progress", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Authentication required" });
@@ -9000,7 +9314,7 @@ var init_microlearning = __esm({
         res.status(500).json({ message: "Failed to update progress" });
       }
     });
-    router11.post("/complete", async (req, res) => {
+    router12.post("/complete", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Authentication required" });
@@ -9092,7 +9406,7 @@ var init_microlearning = __esm({
         res.status(500).json({ message: "Failed to complete microlearning" });
       }
     });
-    router11.get("/completion/:userId", async (req, res) => {
+    router12.get("/completion/:userId", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Authentication required" });
@@ -9117,7 +9431,7 @@ var init_microlearning = __esm({
         res.status(500).json({ message: "Failed to get completion status" });
       }
     });
-    router11.get("/certificate/:userId", async (req, res) => {
+    router12.get("/certificate/:userId", async (req, res) => {
       try {
         if (!req.neonUser) {
           return res.status(401).json({ message: "Authentication required" });
@@ -9146,7 +9460,7 @@ var init_microlearning = __esm({
         res.status(500).json({ message: "Failed to generate certificate" });
       }
     });
-    microlearning_default = router11;
+    microlearning_default = router12;
   }
 });
 
@@ -9155,10 +9469,10 @@ var files_exports = {};
 __export(files_exports, {
   default: () => files_default
 });
-import express, { Router as Router12 } from "express";
+import express, { Router as Router13 } from "express";
 import path2 from "path";
 import fs5 from "fs";
-var router12, isVercel2, files_default;
+var router13, isVercel2, files_default;
 var init_files = __esm({
   "server/routes/files.ts"() {
     "use strict";
@@ -9166,8 +9480,8 @@ var init_files = __esm({
     init_fileUpload();
     init_firebase_auth_middleware();
     init_user_service();
-    router12 = Router12();
-    router12.post(
+    router13 = Router13();
+    router13.post(
       "/upload-file",
       optionalFirebaseAuth,
       // Auth first so req.neonUser is set for multer filename generation
@@ -9215,7 +9529,7 @@ var init_files = __esm({
         }
       }
     );
-    router12.post("/images/presigned-url", optionalFirebaseAuth, async (req, res) => {
+    router13.post("/images/presigned-url", optionalFirebaseAuth, async (req, res) => {
       try {
         const user = req.neonUser;
         const { imageUrl } = req.body;
@@ -9260,7 +9574,7 @@ var init_files = __esm({
         });
       }
     });
-    router12.get("/images/r2/:path(*)", async (req, res) => {
+    router13.get("/images/r2/:path(*)", async (req, res) => {
       try {
         const pathParam = req.params.path;
         if (!pathParam) {
@@ -9284,7 +9598,7 @@ var init_files = __esm({
         res.status(404).send("File not found or access denied");
       }
     });
-    router12.get("/r2-proxy", async (req, res) => {
+    router13.get("/r2-proxy", async (req, res) => {
       try {
         const { url, filename } = req.query;
         let targetUrl;
@@ -9319,7 +9633,7 @@ var init_files = __esm({
         res.status(500).send("Failed to proxy image");
       }
     });
-    router12.get("/r2-presigned", async (req, res) => {
+    router13.get("/r2-presigned", async (req, res) => {
       try {
         const { url } = req.query;
         if (!url || typeof url !== "string") {
@@ -9343,9 +9657,9 @@ var init_files = __esm({
     });
     isVercel2 = !!process.env.VERCEL;
     if (!isVercel2) {
-      router12.use("/documents", express.static(path2.join(process.cwd(), "uploads/documents")));
+      router13.use("/documents", express.static(path2.join(process.cwd(), "uploads/documents")));
     }
-    router12.get("/documents/:filename", optionalFirebaseAuth, async (req, res) => {
+    router13.get("/documents/:filename", optionalFirebaseAuth, async (req, res) => {
       try {
         let userId = null;
         let userRole = null;
@@ -9472,7 +9786,7 @@ var init_files = __esm({
         return res.status(500).json({ message: "Internal server error" });
       }
     });
-    files_default = router12;
+    files_default = router13;
   }
 });
 
@@ -9837,6 +10151,25 @@ function errorResponse(res, error, statusCode = 500) {
 }
 var init_api_response = __esm({
   "server/api-response.ts"() {
+    "use strict";
+  }
+});
+
+// server/config.ts
+function getAppBaseUrl(subdomain = "main") {
+  const isDevelopment = process.env.NODE_ENV === "development";
+  if (isDevelopment) {
+    const port = process.env.VITE_PORT || "5173";
+    return `http://localhost:${port}`;
+  }
+  const baseDomain = process.env.APP_BASE_DOMAIN || "localcooks.ca";
+  if (subdomain === "main" || !subdomain) {
+    return `https://${baseDomain}`;
+  }
+  return `https://${subdomain}.${baseDomain}`;
+}
+var init_config = __esm({
+  "server/config.ts"() {
     "use strict";
   }
 });
@@ -15441,7 +15774,7 @@ var manager_exports = {};
 __export(manager_exports, {
   default: () => manager_default
 });
-import { Router as Router13 } from "express";
+import { Router as Router14 } from "express";
 import { eq as eq24, inArray as inArray5, and as and15, desc as desc12, sql as sql10 } from "drizzle-orm";
 async function getManagerIdForBooking(bookingId, bookingType, db2) {
   if (bookingType === "kitchen" || bookingType === "bundle") {
@@ -15458,7 +15791,7 @@ async function getManagerIdForBooking(bookingId, bookingType, db2) {
   }
   return null;
 }
-var router13, manager_default;
+var router14, manager_default;
 var init_manager = __esm({
   "server/routes/manager.ts"() {
     "use strict";
@@ -15473,6 +15806,7 @@ var init_manager = __esm({
     init_logger();
     init_api_response();
     init_notification_service();
+    init_config();
     init_schema();
     init_booking_service();
     init_kitchen_service();
@@ -15481,8 +15815,8 @@ var init_manager = __esm({
     init_manager_service();
     init_schema();
     init_overstay_penalty_service();
-    router13 = Router13();
-    router13.get("/revenue/overview", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14 = Router14();
+    router14.get("/revenue/overview", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { startDate, endDate, locationId } = req.query;
@@ -15496,7 +15830,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/invoices", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/invoices", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const result = await managerService.getInvoices(managerId, req.query);
@@ -15505,7 +15839,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/invoices/:bookingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const bookingId = parseInt(req.params.bookingId);
@@ -15588,7 +15922,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/by-location", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/by-location", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { startDate, endDate } = req.query;
@@ -15604,7 +15938,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { startDate, endDate, period } = req.query;
@@ -15647,7 +15981,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/transactions", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/transactions", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { startDate, endDate, locationId, paymentStatus, limit = "50", offset = "0" } = req.query;
@@ -15667,7 +16001,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const transactionId = parseInt(req.params.transactionId);
@@ -15811,10 +16145,11 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       console.log("[Stripe Connect] Create request received for manager:", req.neonUser?.id);
       try {
         const managerId = req.neonUser.id;
+        const fromSetup = req.body?.from === "setup" || req.query.from === "setup";
         const userResult = await db.execute(sql10`
             SELECT id, username as email, stripe_connect_account_id 
             FROM users 
@@ -15832,9 +16167,10 @@ var init_manager = __esm({
           stripeConnectAccountId: userRow.stripe_connect_account_id
         };
         const { createConnectAccount: createConnectAccount2, createAccountLink: createAccountLink2, isAccountReady: isAccountReady2, createDashboardLoginLink: createDashboardLoginLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-        const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
-        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager`;
-        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager`;
+        const baseUrl = getAppBaseUrl("kitchen");
+        const fromParam = fromSetup ? "&from=setup" : "";
+        const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromParam}`;
+        const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromParam}`;
         if (user.stripeConnectAccountId) {
           const isReady = await isAccountReady2(user.stripeConnectAccountId);
           if (isReady) {
@@ -15858,7 +16194,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const userResult = await db.execute(sql10`
@@ -15872,7 +16208,7 @@ var init_manager = __esm({
           return res.status(400).json({ error: "No Stripe Connect account found" });
         }
         const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-        const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+        const baseUrl = getAppBaseUrl("kitchen");
         const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
         const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
         const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
@@ -15883,7 +16219,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const userResult = await db.execute(sql10`
@@ -15902,7 +16238,7 @@ var init_manager = __esm({
           const link = await createDashboardLoginLink2(userRow.stripe_connect_account_id);
           return res.json({ url: link.url });
         } else {
-          const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+          const baseUrl = getAppBaseUrl("kitchen");
           const fromSetup = req.query.from === "setup" ? "&from=setup" : "";
           const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
           const returnUrl = `${baseUrl}/manager/stripe-connect/return?success=true&role=manager${fromSetup}`;
@@ -15914,7 +16250,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const [manager] = await db.select({
@@ -15970,7 +16306,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/stripe-connect/sync", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/stripe-connect/sync", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const [manager] = await db.select().from(users).where(eq24(users.id, managerId)).limit(1);
@@ -15995,7 +16331,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/revenue/sync-stripe", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/revenue/sync-stripe", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { limit = 100, onlyUnsynced = true } = req.body;
@@ -16020,7 +16356,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/payouts", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/payouts", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { limit = "50" } = req.query;
@@ -16030,7 +16366,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/payouts/:payoutId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/payouts/:payoutId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const payoutId = req.params.payoutId;
@@ -16117,7 +16453,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/revenue/payouts/:payoutId/statement", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/revenue/payouts/:payoutId/statement", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const payoutId = req.params.payoutId;
@@ -16182,7 +16518,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/kitchens/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const locationId = parseInt(req.params.locationId);
@@ -16200,7 +16536,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch kitchen settings" });
       }
     });
-    router13.post("/kitchens", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/kitchens", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { locationId, name, description, features, imageUrl } = req.body;
@@ -16230,7 +16566,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to create kitchen" });
       }
     });
-    router13.put("/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/kitchens/:kitchenId/image", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16260,7 +16596,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to update kitchen image" });
       }
     });
-    router13.put("/kitchens/:kitchenId/gallery", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/kitchens/:kitchenId/gallery", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16298,7 +16634,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to update gallery" });
       }
     });
-    router13.put("/kitchens/:kitchenId/details", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/kitchens/:kitchenId/details", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16323,7 +16659,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to update kitchen details" });
       }
     });
-    router13.delete("/kitchens/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.delete("/kitchens/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16361,7 +16697,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to delete kitchen" });
       }
     });
-    router13.get("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16394,7 +16730,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
       }
     });
-    router13.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/kitchens/:kitchenId/pricing", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16445,7 +16781,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to update kitchen pricing" });
       }
     });
-    router13.put("/kitchens/:kitchenId/availability", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/kitchens/:kitchenId/availability", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -16468,7 +16804,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to set availability" });
       }
     });
-    router13.get("/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const bookings = await bookingService.getBookingsByManager(user.id);
@@ -16478,7 +16814,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch bookings" });
       }
     });
-    router13.get("/profile", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/profile", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const [user] = await db.select({
@@ -16497,7 +16833,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.put("/profile", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/profile", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { username, displayName, phone, profileImageUrl } = req.body;
@@ -16537,7 +16873,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/chef-profiles", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/chef-profiles", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const profiles = await chefService.getChefProfilesForManager(user.id);
@@ -16546,7 +16882,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to get profiles" });
       }
     });
-    router13.get("/portal-applications", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/portal-applications", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { users: users5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -16573,10 +16909,10 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message });
       }
     });
-    router13.put("/portal-applications/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/portal-applications/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       res.status(501).json({ error: "Not fully implemented in refactor yet" });
     });
-    router13.put("/chef-profiles/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/chef-profiles/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const profileId = parseInt(req.params.id);
@@ -16595,7 +16931,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.delete("/chef-location-access", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.delete("/chef-location-access", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { chefId, locationId } = req.body;
@@ -16605,7 +16941,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.get("/kitchens/:kitchenId/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/kitchens/:kitchenId/bookings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const bookings = await bookingService.getBookingsByKitchen(kitchenId);
@@ -16614,7 +16950,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.get("/bookings/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/bookings/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const id = parseInt(req.params.id);
@@ -16629,7 +16965,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const id = parseInt(req.params.id);
@@ -16745,7 +17081,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message || "Failed to fetch booking details" });
       }
     });
-    router13.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const id = parseInt(req.params.id);
@@ -16898,7 +17234,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message || "Failed to update booking status" });
       }
     });
-    router13.get("/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { startDate, endDate } = req.query;
@@ -16910,7 +17246,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.post("/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/kitchens/:kitchenId/date-overrides", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { specificDate, startTime, endTime, isAvailable, reason } = req.body;
@@ -16932,7 +17268,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.put("/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         const { startTime, endTime, isAvailable, reason } = req.body;
@@ -16948,7 +17284,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.delete("/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.delete("/date-overrides/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         await kitchenService.deleteKitchenDateOverride(id);
@@ -16957,7 +17293,7 @@ var init_manager = __esm({
         res.status(500).json({ error: e.message });
       }
     });
-    router13.put("/locations/:locationId/cancellation-policy", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/locations/:locationId/cancellation-policy", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       console.log("[PUT] /api/manager/locations/:locationId/cancellation-policy hit", {
         locationId: req.params.locationId,
         body: req.body
@@ -17193,7 +17529,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to update cancellation policy" });
       }
     });
-    router13.get("/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const locations5 = await locationService.getLocationsByManagerId(user.id);
@@ -17242,7 +17578,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch locations" });
       }
     });
-    router13.post("/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/locations", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const {
@@ -17323,7 +17659,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to create location" });
       }
     });
-    router13.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const locationId = parseInt(req.params.locationId);
@@ -17413,7 +17749,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to update location" });
       }
     });
-    router13.post("/complete-onboarding", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/complete-onboarding", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { skipped } = req.body;
@@ -17431,7 +17767,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to complete onboarding" });
       }
     });
-    router13.post("/onboarding/step", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/onboarding/step", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { stepId, locationId } = req.body;
@@ -17460,7 +17796,7 @@ var init_manager = __esm({
         res.status(500).json({ error: error.message || "Failed to track onboarding step" });
       }
     });
-    router13.get("/availability/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/availability/:kitchenId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -17482,7 +17818,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/availability", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/availability", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { kitchenId, dayOfWeek, startTime, endTime, isAvailable } = req.body;
@@ -17526,7 +17862,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/storage-extensions/pending", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/storage-extensions/pending", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const pendingExtensions = await db.select({
@@ -17562,7 +17898,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/storage-extensions/:id/approve", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/storage-extensions/:id/approve", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const extensionId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -17634,7 +17970,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const extensionId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -17763,7 +18099,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/overstays", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/overstays", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq24(locations.managerId, managerId));
@@ -17783,7 +18119,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/overstays/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/overstays/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const overstayId = parseInt(req.params.id);
         if (isNaN(overstayId)) {
@@ -17803,7 +18139,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/overstays/:id/approve", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/overstays/:id/approve", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const overstayId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -17842,7 +18178,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/overstays/:id/waive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/overstays/:id/waive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const overstayId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -17873,7 +18209,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/overstays/:id/charge", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/overstays/:id/charge", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const overstayId = parseInt(req.params.id);
         if (isNaN(overstayId)) {
@@ -17897,7 +18233,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.post("/overstays/:id/resolve", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.post("/overstays/:id/resolve", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const overstayId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -17927,7 +18263,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/overstays-stats", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/overstays-stats", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq24(locations.managerId, managerId));
@@ -17942,7 +18278,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.put("/storage-listings/:id/penalty-config", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/storage-listings/:id/penalty-config", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const listingId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -18004,7 +18340,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.get("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.get("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const locationId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -18042,7 +18378,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    router13.put("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router14.put("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const locationId = parseInt(req.params.id);
         const managerId = req.neonUser.id;
@@ -18113,7 +18449,7 @@ var init_manager = __esm({
         return errorResponse(res, error);
       }
     });
-    manager_default = router13;
+    manager_default = router14;
   }
 });
 
@@ -18129,7 +18465,7 @@ __export(notifications_exports, {
   markAllAsRead: () => markAllAsRead,
   markAsRead: () => markAsRead
 });
-import { Router as Router14 } from "express";
+import { Router as Router15 } from "express";
 import { sql as sql11 } from "drizzle-orm";
 async function createNotification2(params) {
   const {
@@ -18290,7 +18626,7 @@ async function cleanupOldNotifications(daysOld = 90) {
   `);
   return { deleted: result.rowCount || 0 };
 }
-var router14, notifications_default;
+var router15, notifications_default;
 var init_notifications = __esm({
   "server/routes/notifications.ts"() {
     "use strict";
@@ -18298,8 +18634,8 @@ var init_notifications = __esm({
     init_firebase_auth_middleware();
     init_logger();
     init_api_response();
-    router14 = Router14();
-    router14.get("/", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router15 = Router15();
+    router15.get("/", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { page, limit, filter, type, locationId } = req.query;
@@ -18316,7 +18652,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    router14.get("/unread-count", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router15.get("/unread-count", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { locationId } = req.query;
@@ -18330,7 +18666,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    router14.post("/mark-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router15.post("/mark-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { notificationIds } = req.body;
@@ -18344,7 +18680,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    router14.post("/mark-all-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router15.post("/mark-all-read", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { locationId } = req.body;
@@ -18358,7 +18694,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    router14.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router15.post("/archive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { notificationIds } = req.body;
@@ -18372,7 +18708,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    router14.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router15.post("/unarchive", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const { notificationIds } = req.body;
@@ -18386,7 +18722,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    router14.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
+    router15.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const { managerId, locationId, senderName, messagePreview, conversationId } = req.body;
         if (!managerId || !senderName || !conversationId) {
@@ -18412,7 +18748,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    router14.delete("/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router15.delete("/:id", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
@@ -18430,7 +18766,7 @@ var init_notifications = __esm({
         return errorResponse(res, error);
       }
     });
-    notifications_default = router14;
+    notifications_default = router15;
   }
 });
 
@@ -18445,7 +18781,7 @@ __export(chef_notifications_exports, {
   markAsRead: () => markAsRead2,
   notificationService: () => notificationService
 });
-import { Router as Router15 } from "express";
+import { Router as Router16 } from "express";
 import { sql as sql12 } from "drizzle-orm";
 async function getNotifications2(chefId, options = {}) {
   const {
@@ -18548,7 +18884,7 @@ async function archiveNotifications2(chefId, notificationIds) {
   `);
   return { updated: result.rowCount || 0 };
 }
-var router15, chef_notifications_default;
+var router16, chef_notifications_default;
 var init_chef_notifications = __esm({
   "server/routes/chef-notifications.ts"() {
     "use strict";
@@ -18557,8 +18893,8 @@ var init_chef_notifications = __esm({
     init_logger();
     init_api_response();
     init_notification_service();
-    router15 = Router15();
-    router15.get("/", requireFirebaseAuthWithUser, async (req, res) => {
+    router16 = Router16();
+    router16.get("/", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const { page, limit, filter, type } = req.query;
@@ -18574,7 +18910,7 @@ var init_chef_notifications = __esm({
         return errorResponse(res, "Failed to fetch notifications", 500);
       }
     });
-    router15.get("/unread-count", requireFirebaseAuthWithUser, async (req, res) => {
+    router16.get("/unread-count", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const result = await getUnreadCount2(chefId);
@@ -18584,7 +18920,7 @@ var init_chef_notifications = __esm({
         return errorResponse(res, "Failed to fetch unread count", 500);
       }
     });
-    router15.post("/mark-read", requireFirebaseAuthWithUser, async (req, res) => {
+    router16.post("/mark-read", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const { notificationIds } = req.body;
@@ -18598,7 +18934,7 @@ var init_chef_notifications = __esm({
         return errorResponse(res, "Failed to mark as read", 500);
       }
     });
-    router15.post("/mark-all-read", requireFirebaseAuthWithUser, async (req, res) => {
+    router16.post("/mark-all-read", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const result = await markAllAsRead2(chefId);
@@ -18608,7 +18944,7 @@ var init_chef_notifications = __esm({
         return errorResponse(res, "Failed to mark all as read", 500);
       }
     });
-    router15.post("/archive", requireFirebaseAuthWithUser, async (req, res) => {
+    router16.post("/archive", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const { notificationIds } = req.body;
@@ -18622,7 +18958,7 @@ var init_chef_notifications = __esm({
         return errorResponse(res, "Failed to archive notifications", 500);
       }
     });
-    router15.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
+    router16.post("/message-received", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const { chefId, senderName, messagePreview, conversationId } = req.body;
         if (!chefId || !senderName || !conversationId) {
@@ -18640,7 +18976,7 @@ var init_chef_notifications = __esm({
         return errorResponse(res, "Failed to create notification", 500);
       }
     });
-    router15.delete("/:id", requireFirebaseAuthWithUser, async (req, res) => {
+    router16.delete("/:id", requireFirebaseAuthWithUser, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const notificationId = parseInt(req.params.id);
@@ -18658,7 +18994,7 @@ var init_chef_notifications = __esm({
         return errorResponse(res, "Failed to delete notification", 500);
       }
     });
-    chef_notifications_default = router15;
+    chef_notifications_default = router16;
   }
 });
 
@@ -18735,9 +19071,9 @@ var kitchens_exports = {};
 __export(kitchens_exports, {
   default: () => kitchens_default
 });
-import { Router as Router16 } from "express";
+import { Router as Router17 } from "express";
 import { eq as eq27, inArray as inArray6, desc as desc15, and as and17 } from "drizzle-orm";
-var router16, kitchens_default;
+var router17, kitchens_default;
 var init_kitchens = __esm({
   "server/routes/kitchens.ts"() {
     "use strict";
@@ -18751,8 +19087,8 @@ var init_kitchens = __esm({
     init_chef_service();
     init_booking_service();
     init_user_service();
-    router16 = Router16();
-    router16.get("/chef/kitchens", requireChef, async (req, res) => {
+    router17 = Router17();
+    router17.get("/chef/kitchens", requireChef, async (req, res) => {
       try {
         const allKitchens = await kitchenService.getAllKitchensWithLocation();
         const activeKitchens = allKitchens.filter((kitchen) => kitchen.isActive);
@@ -18788,7 +19124,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: "Failed to fetch kitchens", details: error.message });
       }
     });
-    router16.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
+    router17.get("/chef/kitchens/:kitchenId/pricing", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -18810,7 +19146,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get kitchen pricing" });
       }
     });
-    router16.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
+    router17.get("/chef/kitchens/:kitchenId/policy", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -18832,7 +19168,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get kitchen policy" });
       }
     });
-    router16.post("/chef/share-profile", requireChef, async (req, res) => {
+    router17.post("/chef/share-profile", requireChef, async (req, res) => {
       try {
         const { locationId } = req.body;
         const chefId = req.user.id;
@@ -18882,7 +19218,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to share profile" });
       }
     });
-    router16.get("/chef/profiles", requireChef, async (req, res) => {
+    router17.get("/chef/profiles", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const locationAccessRecords = await db.select().from(chefLocationAccess).where(eq27(chefLocationAccess.chefId, chefId));
@@ -18904,7 +19240,7 @@ var init_kitchens = __esm({
         res.status(500).json({ error: error.message || "Failed to get profiles" });
       }
     });
-    router16.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
+    router17.get("/chef/kitchens/:kitchenId/slots", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { date: date2 } = req.query;
@@ -18926,7 +19262,7 @@ var init_kitchens = __esm({
         });
       }
     });
-    router16.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
+    router17.get("/chef/kitchens/:kitchenId/availability", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         const { date: date2 } = req.query;
@@ -18950,7 +19286,7 @@ var init_kitchens = __esm({
         });
       }
     });
-    kitchens_default = router16;
+    kitchens_default = router17;
   }
 });
 
@@ -19202,7 +19538,7 @@ var bookings_exports = {};
 __export(bookings_exports, {
   default: () => bookings_default
 });
-import { Router as Router17 } from "express";
+import { Router as Router18 } from "express";
 import { eq as eq28, and as and18 } from "drizzle-orm";
 function getBaseUrl(req) {
   const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
@@ -19210,7 +19546,7 @@ function getBaseUrl(req) {
   const protocol = isLocalhost ? "http" : req.get("x-forwarded-proto") || "https";
   return `${protocol}://${host}`;
 }
-var router17, bookings_default;
+var router18, bookings_default;
 var init_bookings = __esm({
   "server/routes/bookings.ts"() {
     "use strict";
@@ -19229,8 +19565,8 @@ var init_bookings = __esm({
     init_phone_utils();
     init_sms();
     init_overstay_penalty_service();
-    router17 = Router17();
-    router17.post("/bookings/checkout", async (req, res) => {
+    router18 = Router18();
+    router18.post("/bookings/checkout", async (req, res) => {
       try {
         const { bookingId, managerStripeAccountId, bookingPrice, customerEmail } = req.body;
         if (!bookingId || !managerStripeAccountId || !bookingPrice || !customerEmail) {
@@ -19292,7 +19628,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router17.get("/chef/storage-bookings", requireChef, async (req, res) => {
+    router18.get("/chef/storage-bookings", requireChef, async (req, res) => {
       try {
         const storageBookings2 = await bookingService.getStorageBookingsByChef(req.neonUser.id);
         res.json(storageBookings2);
@@ -19301,7 +19637,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch storage bookings" });
       }
     });
-    router17.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
+    router18.get("/chef/storage-bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -19320,7 +19656,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch storage booking" });
       }
     });
-    router17.post("/detect-overstays", async (req, res) => {
+    router18.post("/detect-overstays", async (req, res) => {
       try {
         const cronSecret = process.env.CRON_SECRET;
         const authHeader = req.headers.authorization;
@@ -19353,7 +19689,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to detect overstays" });
       }
     });
-    router17.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
+    router18.post("/admin/storage-bookings/process-overstayer-penalties", async (req, res) => {
       try {
         console.warn("[DEPRECATED] Old penalty endpoint called - use /detect-overstays instead");
         const results = await overstayPenaltyService.detectOverstays();
@@ -19369,7 +19705,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to process overstayer penalties" });
       }
     });
-    router17.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
+    router18.get("/chef/storage-bookings/expiring", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const daysAhead = parseInt(req.query.days) || 3;
@@ -19399,7 +19735,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch expiring storage bookings" });
       }
     });
-    router17.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req, res) => {
+    router18.post("/chef/storage-bookings/:id/extension-preview", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -19466,7 +19802,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to calculate extension preview" });
       }
     });
-    router17.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req, res) => {
+    router18.post("/chef/storage-bookings/:id/extension-checkout", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -19590,7 +19926,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create storage extension checkout" });
       }
     });
-    router17.get("/chef/storage-extensions/pending", requireChef, async (req, res) => {
+    router18.get("/chef/storage-extensions/pending", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const { pendingStorageExtensions: pendingStorageExtensions2, storageBookings: storageBookings2, storageListings: storageListings3 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
@@ -19618,7 +19954,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch pending extensions" });
       }
     });
-    router17.post("/storage-extensions/:id/sync", requireChef, async (req, res) => {
+    router18.post("/storage-extensions/:id/sync", requireChef, async (req, res) => {
       try {
         const extensionId = parseInt(req.params.id);
         const chefId = req.neonUser.id;
@@ -19693,7 +20029,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to sync extension" });
       }
     });
-    router17.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
+    router18.put("/chef/storage-bookings/:id/extend", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -19744,7 +20080,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to extend storage booking" });
       }
     });
-    router17.get("/chef/bookings/:id", requireChef, async (req, res) => {
+    router18.get("/chef/bookings/:id", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -19771,7 +20107,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
-    router17.get("/chef/bookings/:id/details", requireChef, async (req, res) => {
+    router18.get("/chef/bookings/:id/details", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -19871,7 +20207,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking details" });
       }
     });
-    router17.get("/bookings/:id/invoice", requireChef, async (req, res) => {
+    router18.get("/bookings/:id/invoice", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (isNaN(id) || id <= 0) {
@@ -19917,7 +20253,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to generate invoice" });
       }
     });
-    router17.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
+    router18.put("/chef/bookings/:id/cancel", requireChef, async (req, res) => {
       try {
         const id = parseInt(req.params.id);
         if (!pool) {
@@ -20070,7 +20406,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error instanceof Error ? error.message : "Failed to cancel booking" });
       }
     });
-    router17.post("/payments/create-intent", requireChef, async (req, res) => {
+    router18.post("/payments/create-intent", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedStorage, selectedEquipmentIds, expectedAmountCents } = req.body;
         const chefId = req.neonUser.id;
@@ -20200,7 +20536,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create payment intent" });
       }
     });
-    router17.post("/payments/confirm", requireChef, async (req, res) => {
+    router18.post("/payments/confirm", requireChef, async (req, res) => {
       try {
         const { paymentIntentId, paymentMethodId } = req.body;
         const chefId = req.neonUser.id;
@@ -20225,7 +20561,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router17.get("/payments/intent/:id/status", requireChef, async (req, res) => {
+    router18.get("/payments/intent/:id/status", requireChef, async (req, res) => {
       try {
         const { id } = req.params;
         const chefId = req.neonUser.id;
@@ -20246,13 +20582,13 @@ var init_bookings = __esm({
         });
       }
     });
-    router17.post("/payments/capture", requireChef, async (req, res) => {
+    router18.post("/payments/capture", requireChef, async (req, res) => {
       res.status(410).json({
         error: "This endpoint is deprecated. Payments are now automatically captured when confirmed.",
         message: "With automatic capture enabled, payments are processed immediately. No manual capture is needed."
       });
     });
-    router17.post("/payments/cancel", requireChef, async (req, res) => {
+    router18.post("/payments/cancel", requireChef, async (req, res) => {
       try {
         const { paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
@@ -20285,7 +20621,7 @@ var init_bookings = __esm({
         });
       }
     });
-    router17.post("/chef/bookings/checkout", requireChef, async (req, res) => {
+    router18.post("/chef/bookings/checkout", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorage, selectedEquipmentIds } = req.body;
         const chefId = req.neonUser.id;
@@ -20449,7 +20785,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking checkout" });
       }
     });
-    router17.post("/chef/bookings", requireChef, async (req, res) => {
+    router18.post("/chef/bookings", requireChef, async (req, res) => {
       try {
         const { kitchenId, bookingDate, startTime, endTime, selectedSlots, specialNotes, selectedStorageIds, selectedStorage, selectedEquipmentIds, paymentIntentId } = req.body;
         const chefId = req.neonUser.id;
@@ -20603,7 +20939,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
-    router17.get("/chef/bookings/by-session/:sessionId", requireChef, async (req, res) => {
+    router18.get("/chef/bookings/by-session/:sessionId", requireChef, async (req, res) => {
       try {
         const { sessionId } = req.params;
         const chefId = req.neonUser.id;
@@ -20871,7 +21207,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch booking" });
       }
     });
-    router17.get("/chef/bookings", requireChef, async (req, res) => {
+    router18.get("/chef/bookings", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         console.log(`[CHEF BOOKINGS] Fetching bookings for chef ID: ${chefId}`);
@@ -20882,7 +21218,7 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch bookings" });
       }
     });
-    bookings_default = router17;
+    bookings_default = router18;
   }
 });
 
@@ -20891,8 +21227,8 @@ var equipment_exports = {};
 __export(equipment_exports, {
   default: () => equipment_default
 });
-import { Router as Router18 } from "express";
-var router18, equipment_default;
+import { Router as Router19 } from "express";
+var router19, equipment_default;
 var init_equipment = __esm({
   "server/routes/equipment.ts"() {
     "use strict";
@@ -20901,8 +21237,8 @@ var init_equipment = __esm({
     init_inventory_service();
     init_kitchen_service();
     init_location_service();
-    router18 = Router18();
-    router18.get("/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19 = Router19();
+    router19.get("/manager/kitchens/:kitchenId/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -20925,7 +21261,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    router18.get("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.get("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -20951,7 +21287,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listing" });
       }
     });
-    router18.post("/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.post("/manager/equipment-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { kitchenId, ...listingData } = req.body;
@@ -20989,7 +21325,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to create equipment listing" });
       }
     });
-    router18.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.put("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -21017,7 +21353,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to update equipment listing" });
       }
     });
-    router18.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router19.delete("/manager/equipment-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -21045,7 +21381,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to delete equipment listing" });
       }
     });
-    router18.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
+    router19.get("/chef/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -21068,7 +21404,7 @@ var init_equipment = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    equipment_default = router18;
+    equipment_default = router19;
   }
 });
 
@@ -21077,8 +21413,8 @@ var storage_listings_exports = {};
 __export(storage_listings_exports, {
   default: () => storage_listings_default
 });
-import { Router as Router19 } from "express";
-var router19, storage_listings_default;
+import { Router as Router20 } from "express";
+var router20, storage_listings_default;
 var init_storage_listings = __esm({
   "server/routes/storage-listings.ts"() {
     "use strict";
@@ -21088,8 +21424,8 @@ var init_storage_listings = __esm({
     init_kitchen_service();
     init_location_service();
     init_overstay_defaults_service();
-    router19 = Router19();
-    router19.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router20 = Router20();
+    router20.get("/manager/kitchens/:kitchenId/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -21112,7 +21448,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
-    router19.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router20.get("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -21138,7 +21474,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listing" });
       }
     });
-    router19.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router20.post("/manager/storage-listings", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const { kitchenId, ...listingData } = req.body;
@@ -21180,7 +21516,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to create storage listing" });
       }
     });
-    router19.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router20.put("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -21208,7 +21544,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to update storage listing" });
       }
     });
-    router19.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
+    router20.delete("/manager/storage-listings/:listingId", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const user = req.neonUser;
         const listingId = parseInt(req.params.listingId);
@@ -21236,7 +21572,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to delete storage listing" });
       }
     });
-    router19.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
+    router20.get("/chef/kitchens/:kitchenId/storage-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -21253,7 +21589,7 @@ var init_storage_listings = __esm({
         res.status(500).json({ error: error.message || "Failed to get storage listings" });
       }
     });
-    storage_listings_default = router19;
+    storage_listings_default = router20;
   }
 });
 
@@ -21262,7 +21598,7 @@ var admin_exports = {};
 __export(admin_exports, {
   default: () => admin_default
 });
-import { Router as Router20 } from "express";
+import { Router as Router21 } from "express";
 import { eq as eq29, sql as sql13 } from "drizzle-orm";
 async function getAuthenticatedUser2(req) {
   if (req.neonUser) {
@@ -21274,7 +21610,7 @@ async function getAuthenticatedUser2(req) {
   }
   return null;
 }
-var router20, admin_default;
+var router21, admin_default;
 var init_admin = __esm({
   "server/routes/admin.ts"() {
     "use strict";
@@ -21291,8 +21627,8 @@ var init_admin = __esm({
     init_booking_service();
     init_schema();
     init_stripe_checkout_fee_service();
-    router20 = Router20();
-    router20.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21 = Router21();
+    router21.get("/revenue/all-managers", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
@@ -21388,7 +21724,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get all managers revenue" });
       }
     });
-    router20.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/revenue/platform-overview", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
@@ -21435,7 +21771,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get platform overview" });
       }
     });
-    router20.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/revenue/manager/:managerId", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         if (res.headersSent) {
           return;
@@ -21484,7 +21820,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get manager revenue details" });
       }
     });
-    router20.post("/chef-location-access", async (req, res) => {
+    router21.post("/chef-location-access", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -21533,7 +21869,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to grant access" });
       }
     });
-    router20.delete("/chef-location-access", async (req, res) => {
+    router21.delete("/chef-location-access", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -21555,7 +21891,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to revoke access" });
       }
     });
-    router20.get("/chef-location-access", async (req, res) => {
+    router21.get("/chef-location-access", async (req, res) => {
       try {
         console.log("[Admin Chef Access] GET request received");
         const sessionUser = await getAuthenticatedUser2(req);
@@ -21633,7 +21969,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to get access" });
       }
     });
-    router20.post("/managers", async (req, res) => {
+    router21.post("/managers", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -21685,7 +22021,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create manager" });
       }
     });
-    router20.get("/managers", async (req, res) => {
+    router21.get("/managers", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -21771,7 +22107,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch managers" });
       }
     });
-    router20.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/locations/licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { status } = req.query;
         const query = db.select({
@@ -21814,7 +22150,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location licenses" });
       }
     });
-    router20.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/locations/pending-licenses", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const pendingLicenses = await db.select({
           id: locations.id,
@@ -21844,7 +22180,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch pending licenses" });
       }
     });
-    router20.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/locations/pending-licenses-count", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const result = await db.select({ count: sql13`count(*)::int` }).from(locations).where(eq29(locations.kitchenLicenseStatus, "pending"));
         const count3 = result[0]?.count || 0;
@@ -21853,7 +22189,7 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to get count" });
       }
     });
-    router20.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const locationId = parseInt(req.params.id);
         const { status, feedback } = req.body;
@@ -21879,7 +22215,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update license status" });
       }
     });
-    router20.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         const locations5 = await locationService.getAllLocations();
@@ -21899,7 +22235,7 @@ var init_admin = __esm({
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    router20.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.post("/locations", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         const { name, address, managerId } = req.body;
@@ -21951,7 +22287,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create location" });
       }
     });
-    router20.get("/kitchens/:locationId", async (req, res) => {
+    router21.get("/kitchens/:locationId", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -21973,7 +22309,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
-    router20.post("/kitchens", async (req, res) => {
+    router21.post("/kitchens", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -22015,7 +22351,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to create kitchen" });
       }
     });
-    router20.put("/locations/:id", async (req, res) => {
+    router21.put("/locations/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -22085,7 +22421,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update location" });
       }
     });
-    router20.delete("/locations/:id", async (req, res) => {
+    router21.delete("/locations/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -22107,7 +22443,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete location" });
       }
     });
-    router20.put("/kitchens/:id", async (req, res) => {
+    router21.put("/kitchens/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -22224,7 +22560,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update kitchen" });
       }
     });
-    router20.delete("/kitchens/:id", async (req, res) => {
+    router21.delete("/kitchens/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -22246,7 +22582,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete kitchen" });
       }
     });
-    router20.put("/managers/:id", async (req, res) => {
+    router21.put("/managers/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -22323,7 +22659,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to update manager" });
       }
     });
-    router20.delete("/managers/:id", async (req, res) => {
+    router21.delete("/managers/:id", async (req, res) => {
       try {
         const sessionUser = await getAuthenticatedUser2(req);
         const isFirebaseAuth = req.neonUser;
@@ -22355,7 +22691,7 @@ var init_admin = __esm({
         res.status(500).json({ error: error.message || "Failed to delete manager" });
       }
     });
-    router20.post("/test-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.post("/test-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         console.log(`POST /api/admin/test-email - User ID: ${user.id}`);
@@ -22488,7 +22824,7 @@ var init_admin = __esm({
         });
       }
     });
-    router20.post("/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.post("/send-promo-email", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = req.neonUser;
         console.log(`POST /api/admin/send-promo-email - User ID: ${user.id}`);
@@ -22606,7 +22942,7 @@ var init_admin = __esm({
         });
       }
     });
-    router20.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.get("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const config = await getFeeConfig();
         const settings = await db.select().from(platformSettings).where(sql13`key IN ('stripe_percentage_fee', 'stripe_flat_fee_cents', 'platform_commission_rate', 'minimum_application_fee_cents', 'use_stripe_platform_pricing')`);
@@ -22646,7 +22982,7 @@ var init_admin = __esm({
         });
       }
     });
-    router20.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.put("/fees/config", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const user = await getAuthenticatedUser2(req);
         if (!user) {
@@ -22754,7 +23090,7 @@ var init_admin = __esm({
         });
       }
     });
-    router20.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+    router21.post("/fees/simulate", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
       try {
         const { bookingAmountCents, customConfig } = req.body;
         if (!bookingAmountCents || bookingAmountCents <= 0) {
@@ -22813,7 +23149,7 @@ var init_admin = __esm({
         });
       }
     });
-    admin_default = router20;
+    admin_default = router21;
   }
 });
 
@@ -22946,7 +23282,7 @@ var webhooks_exports = {};
 __export(webhooks_exports, {
   default: () => webhooks_default
 });
-import { Router as Router21 } from "express";
+import { Router as Router22 } from "express";
 import Stripe5 from "stripe";
 import { eq as eq30, and as and19, ne as ne6, notInArray } from "drizzle-orm";
 async function handleCheckoutSessionCompleted(session, webhookEventId) {
@@ -24122,7 +24458,7 @@ async function handleAccountUpdated(account, webhookEventId) {
     );
   }
 }
-var router21, webhooks_default;
+var router22, webhooks_default;
 var init_webhooks = __esm({
   "server/routes/webhooks.ts"() {
     "use strict";
@@ -24131,8 +24467,8 @@ var init_webhooks = __esm({
     init_logger();
     init_api_response();
     init_notification_service();
-    router21 = Router21();
-    router21.post("/stripe", async (req, res) => {
+    router22 = Router22();
+    router22.post("/stripe", async (req, res) => {
       logger.info(`[Webhook] Received Stripe webhook request`);
       try {
         const sig = req.headers["stripe-signature"];
@@ -24250,7 +24586,7 @@ var init_webhooks = __esm({
         return errorResponse(res, err);
       }
     });
-    router21.post("/stripe/manual-process-session", async (req, res) => {
+    router22.post("/stripe/manual-process-session", async (req, res) => {
       if (process.env.NODE_ENV === "production") {
         const adminSecret = req.headers["x-admin-secret"] || req.body.adminSecret;
         const expectedSecret = process.env.ADMIN_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
@@ -24287,7 +24623,7 @@ var init_webhooks = __esm({
         return res.status(500).json({ error: err.message });
       }
     });
-    webhooks_default = router21;
+    webhooks_default = router22;
   }
 });
 
@@ -24382,10 +24718,10 @@ var portal_auth_exports = {};
 __export(portal_auth_exports, {
   default: () => portal_auth_default
 });
-import { Router as Router22 } from "express";
+import { Router as Router23 } from "express";
 import { eq as eq31, and as and20 } from "drizzle-orm";
 import * as admin from "firebase-admin";
-var router22, portal_auth_default;
+var router23, portal_auth_default;
 var init_portal_auth = __esm({
   "server/routes/portal-auth.ts"() {
     "use strict";
@@ -24396,8 +24732,8 @@ var init_portal_auth = __esm({
     init_passwordUtils();
     init_phone_utils();
     init_subdomain_utils();
-    router22 = Router22();
-    router22.post("/portal-login", async (req, res) => {
+    router23 = Router23();
+    router23.post("/portal-login", async (req, res) => {
       try {
         const { username, password } = req.body;
         if (!username || !password) {
@@ -24468,7 +24804,7 @@ var init_portal_auth = __esm({
         res.status(500).json({ error: error.message || "Portal login failed" });
       }
     });
-    router22.post("/portal-register", async (req, res) => {
+    router23.post("/portal-register", async (req, res) => {
       console.log("[Routes] /api/portal-register called");
       try {
         const { username, password, locationId, fullName, email, phone, company } = req.body;
@@ -24620,7 +24956,7 @@ Please log in to your manager dashboard to review and approve this application.`
         res.status(500).json({ error: error.message || "Portal registration failed" });
       }
     });
-    portal_auth_default = router22;
+    portal_auth_default = router23;
   }
 });
 
@@ -24629,9 +24965,9 @@ var portal_exports = {};
 __export(portal_exports, {
   default: () => portal_default
 });
-import { Router as Router23 } from "express";
+import { Router as Router24 } from "express";
 import { eq as eq32, desc as desc16 } from "drizzle-orm";
-var router23, portal_default;
+var router24, portal_default;
 var init_portal = __esm({
   "server/routes/portal.ts"() {
     "use strict";
@@ -24641,8 +24977,8 @@ var init_portal = __esm({
     init_booking_service();
     init_kitchen_service();
     init_location_service();
-    router23 = Router23();
-    router23.get("/application-status", async (req, res) => {
+    router24 = Router24();
+    router24.get("/application-status", async (req, res) => {
       try {
         const user = await getAuthenticatedUser(req);
         if (!user) {
@@ -24676,7 +25012,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to get application status" });
       }
     });
-    router23.get("/my-location", requirePortalUser, async (req, res) => {
+    router24.get("/my-location", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const accessRecords = await db.select().from(portalUserLocationAccess).where(eq32(portalUserLocationAccess.portalUserId, userId)).limit(1);
@@ -24702,7 +25038,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router23.get("/locations", requirePortalUser, async (req, res) => {
+    router24.get("/locations", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const accessRecords = await db.select().from(portalUserLocationAccess).where(eq32(portalUserLocationAccess.portalUserId, userId)).limit(1);
@@ -24728,7 +25064,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router23.get("/locations/:locationSlug", requirePortalUser, async (req, res) => {
+    router24.get("/locations/:locationSlug", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const locationSlug = req.params.locationSlug;
@@ -24757,7 +25093,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch location" });
       }
     });
-    router23.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req, res) => {
+    router24.get("/locations/:locationSlug/kitchens", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const locationSlug = req.params.locationSlug;
@@ -24788,7 +25124,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch kitchens" });
       }
     });
-    router23.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
+    router24.get("/kitchens/:kitchenId/availability", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const kitchenId = parseInt(req.params.kitchenId);
@@ -24820,7 +25156,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to fetch availability" });
       }
     });
-    router23.post("/bookings", requirePortalUser, async (req, res) => {
+    router24.post("/bookings", requirePortalUser, async (req, res) => {
       try {
         const userId = req.neonUser.id;
         const {
@@ -24955,7 +25291,7 @@ var init_portal = __esm({
         res.status(500).json({ error: error.message || "Failed to create booking" });
       }
     });
-    portal_default = router23;
+    portal_default = router24;
   }
 });
 
@@ -24964,10 +25300,10 @@ var chef_exports = {};
 __export(chef_exports, {
   default: () => chef_default
 });
-import { Router as Router24 } from "express";
+import { Router as Router25 } from "express";
 import { sql as sql15 } from "drizzle-orm";
 import { eq as eq33 } from "drizzle-orm";
-var router24, chef_default;
+var router25, chef_default;
 var init_chef = __esm({
   "server/routes/chef.ts"() {
     "use strict";
@@ -24979,8 +25315,9 @@ var init_chef = __esm({
     init_db();
     init_schema();
     init_api_response();
-    router24 = Router24();
-    router24.post("/stripe-connect/create", requireChef, async (req, res) => {
+    init_config();
+    router25 = Router25();
+    router25.post("/stripe-connect/create", requireChef, async (req, res) => {
       console.log("[Chef Stripe Connect] Create request received for chef:", req.neonUser?.id);
       try {
         const chefId = req.neonUser.id;
@@ -25001,7 +25338,7 @@ var init_chef = __esm({
           stripeConnectAccountId: userRow.stripe_connect_account_id
         };
         const { createConnectAccount: createConnectAccount2, createAccountLink: createAccountLink2, isAccountReady: isAccountReady2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-        const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+        const baseUrl = getAppBaseUrl("chef");
         const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
         const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
         if (user.stripeConnectAccountId) {
@@ -25028,7 +25365,7 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router24.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
+    router25.get("/stripe-connect/onboarding-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const userResult = await db.execute(sql15`
@@ -25042,7 +25379,7 @@ var init_chef = __esm({
           return res.status(400).json({ error: "No Stripe Connect account found" });
         }
         const { createAccountLink: createAccountLink2 } = await Promise.resolve().then(() => (init_stripe_connect_service(), stripe_connect_service_exports));
-        const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+        const baseUrl = getAppBaseUrl("chef");
         const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
         const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
         const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
@@ -25052,7 +25389,7 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router24.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
+    router25.get("/stripe-connect/dashboard-link", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const userResult = await db.execute(sql15`
@@ -25071,7 +25408,7 @@ var init_chef = __esm({
           const link = await createDashboardLoginLink2(userRow.stripe_connect_account_id);
           return res.json({ url: link.url });
         } else {
-          const baseUrl = process.env.VITE_APP_URL || "http://localhost:5173";
+          const baseUrl = getAppBaseUrl("chef");
           const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
           const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
           const link = await createAccountLink2(userRow.stripe_connect_account_id, refreshUrl, returnUrl);
@@ -25082,7 +25419,7 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router24.post("/stripe-connect/sync", requireChef, async (req, res) => {
+    router25.post("/stripe-connect/sync", requireChef, async (req, res) => {
       try {
         const chefId = req.neonUser.id;
         const [chef] = await db.select().from(users).where(eq33(users.id, chefId)).limit(1);
@@ -25105,7 +25442,7 @@ var init_chef = __esm({
         return errorResponse(res, error);
       }
     });
-    router24.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
+    router25.get("/kitchens/:kitchenId/equipment-listings", requireChef, async (req, res) => {
       try {
         const kitchenId = parseInt(req.params.kitchenId);
         if (isNaN(kitchenId) || kitchenId <= 0) {
@@ -25128,7 +25465,7 @@ var init_chef = __esm({
         res.status(500).json({ error: error.message || "Failed to get equipment listings" });
       }
     });
-    router24.get("/locations", requireChef, async (req, res) => {
+    router25.get("/locations", requireChef, async (req, res) => {
       try {
         const allLocations = await locationService.getAllLocations();
         const activeKitchens = await kitchenService.getAllActiveKitchens();
@@ -25151,7 +25488,7 @@ var init_chef = __esm({
         res.status(500).json({ error: "Failed to fetch locations" });
       }
     });
-    chef_default = router24;
+    chef_default = router25;
   }
 });
 
@@ -27722,6 +28059,7 @@ async function registerRoutes(app2) {
   console.log("[Routes] Registering all routes including chef-kitchen-access and portal user routes...");
   app2.use(optionalFirebaseAuth);
   app2.use("/api/user", (await Promise.resolve().then(() => (init_user(), user_exports))).default);
+  app2.use("/api/places", (await Promise.resolve().then(() => (init_places(), places_exports))).default);
   app2.post("/api/logout", (req, res) => {
     console.log("\u{1F6AA} Logout request received (Firebase Auth is stateless)");
     res.json({ success: true, message: "Logged out successfully" });
@@ -27776,7 +28114,8 @@ async function registerRoutes(app2) {
           console.log(`\u{1F4E7} Sending welcome email to newly verified user: ${user.username}`);
           const welcomeEmail = generateWelcomeEmail2({
             fullName: req.firebaseUser?.name || user.username.split("@")[0],
-            email: user.username
+            email: user.username,
+            role: user.role
           });
           const emailResult = await sendEmail2(welcomeEmail, {
             trackingId: `welcome_verified_${user.id}_${Date.now()}`
@@ -27855,7 +28194,8 @@ async function registerRoutes(app2) {
           console.log(`\u{1F4E7} Sending welcome email to VERIFIED new ${finalRole}: ${email}`);
           const welcomeEmail = generateWelcomeEmail2({
             fullName: displayName,
-            email
+            email,
+            role: finalRole
           });
           const welcomeSent = await sendEmail2(welcomeEmail, {
             trackingId: `welcome_${finalRole}_${email}_${Date.now()}`

@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Loader2, Mail, Phone, User, KeyRound, Shield, 
-  Camera, CheckCircle2, Building2, Edit3, Lock, Eye, EyeOff
+  Camera, CheckCircle2, Building2, Edit3, Lock, MapPin, CreditCard, Clock
 } from "lucide-react";
 import ChangePassword from "@/components/auth/ChangePassword";
 import { useFileUpload } from "@/hooks/useFileUpload";
@@ -99,14 +99,14 @@ export default function ManagerProfileSettings() {
 
                 if (!response.ok) {
                     if (response.status === 404) {
-                        return { phone: null, displayName: null, avatarUrl: null };
+                        return { phone: null, displayName: null, profileImageUrl: null, stripeConnectStatus: 'not_started', locations: [] };
                     }
                     throw new Error(`Failed to fetch manager profile: ${response.status}`);
                 }
 
                 return response.json();
             } catch (error) {
-                return { phone: null, displayName: null, avatarUrl: null };
+                return { phone: null, displayName: null, profileImageUrl: null, stripeConnectStatus: 'not_started', locations: [] };
             }
         },
         enabled: !!user && user.role === 'manager',
@@ -124,11 +124,25 @@ export default function ManagerProfileSettings() {
             if (managerProfile.displayName) {
                 setDisplayName(managerProfile.displayName);
             }
-            if (managerProfile.avatarUrl) {
-                setAvatarUrl(managerProfile.avatarUrl);
+            if (managerProfile.profileImageUrl) {
+                setAvatarUrl(managerProfile.profileImageUrl);
             }
         }
     }, [user, managerProfile, firebaseUser]);
+
+    // Get Stripe Connect status display
+    const getStripeStatusDisplay = (status: string) => {
+        switch (status) {
+            case 'complete':
+                return { label: 'Connected', color: 'bg-green-50 text-green-700 border-green-200' };
+            case 'in_progress':
+                return { label: 'In Progress', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+            case 'failed':
+                return { label: 'Failed', color: 'bg-red-50 text-red-700 border-red-200' };
+            default:
+                return { label: 'Not Started', color: 'bg-slate-50 text-slate-600 border-slate-200' };
+        }
+    };
 
     // Update profile mutation
     const updateProfileMutation = useMutation({
@@ -460,13 +474,41 @@ export default function ManagerProfileSettings() {
                             </div>
                             <Separator />
                             <div className="flex items-center justify-between">
-                                <span className="text-sm text-slate-600">2FA Status</span>
-                                <Badge variant="outline" className="text-slate-500">
-                                    Not Enabled
+                                <span className="text-sm text-slate-600">Stripe Payments</span>
+                                <Badge variant="outline" className={getStripeStatusDisplay(managerProfile?.stripeConnectStatus || 'not_started').color}>
+                                    <CreditCard className="h-3 w-3 mr-1" />
+                                    {getStripeStatusDisplay(managerProfile?.stripeConnectStatus || 'not_started').label}
                                 </Badge>
                             </div>
                         </div>
                     </div>
+
+                    {/* Location Info Card */}
+                    {managerProfile?.locations && managerProfile.locations.length > 0 && (
+                        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+                                <div className="flex items-center gap-2">
+                                    <Building2 className="h-4 w-4 text-slate-500" />
+                                    <h3 className="font-semibold text-slate-900">Your Locations</h3>
+                                </div>
+                            </div>
+                            <div className="p-5 space-y-4">
+                                {managerProfile.locations.map((location: any) => (
+                                    <div key={location.id} className="space-y-2">
+                                        <div className="font-medium text-slate-900">{location.name}</div>
+                                        <div className="flex items-start gap-2 text-sm text-slate-600">
+                                            <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />
+                                            <span>{location.address}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-slate-500">
+                                            <Clock className="h-4 w-4 text-slate-400" />
+                                            <span>{location.timezone}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Quick Tips Card */}
                     <div className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50 to-emerald-50 overflow-hidden">

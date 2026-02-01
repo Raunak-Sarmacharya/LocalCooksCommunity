@@ -1492,25 +1492,52 @@ router.get("/profile", requireFirebaseAuthWithUser, requireManager, async (req: 
     try {
         const managerId = req.neonUser!.id;
 
-        const [user] = await db
-            .select({
-                managerProfileData: users.managerProfileData
-            })
+        // Get user data - select all to avoid Drizzle field ordering issues
+        const userResults = await db
+            .select()
             .from(users)
             .where(eq(users.id, managerId))
             .limit(1);
 
-        if (!user) {
+        const userData = userResults[0];
+        if (!userData) {
             return res.status(404).json({ error: "Manager profile not found" });
         }
 
-        const profile: any = user.managerProfileData || {};
+        // Get manager's location info
+        const managerLocations = await db
+            .select()
+            .from(locations)
+            .where(eq(locations.managerId, managerId));
+
+        // Safely extract profile data
+        let profile: Record<string, any> = {};
+        try {
+            const profileData = userData.managerProfileData;
+            if (profileData && typeof profileData === 'object' && !Array.isArray(profileData)) {
+                profile = profileData as Record<string, any>;
+            }
+        } catch {
+            // Profile data parsing failed, use empty object
+        }
+        
+        const stripeStatus = userData.stripeConnectOnboardingStatus || 'not_started';
+        
         res.json({
             profileImageUrl: profile.profileImageUrl || null,
             phone: profile.phone || null,
             displayName: profile.displayName || null,
+            stripeConnectStatus: stripeStatus,
+            locations: managerLocations.map(loc => ({
+                id: loc.id,
+                name: loc.name,
+                address: loc.address,
+                timezone: loc.timezone,
+                logoUrl: loc.logoUrl
+            }))
         });
     } catch (error) {
+        console.error(`[Manager Profile v2] Error:`, error);
         return errorResponse(res, error);
     }
 });
