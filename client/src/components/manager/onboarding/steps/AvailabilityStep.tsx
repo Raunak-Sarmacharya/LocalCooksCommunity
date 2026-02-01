@@ -14,7 +14,8 @@ const AvailabilityStep = () => {
         handleBack,
         isFirstStep,
         refreshAvailability,
-        hasAvailability
+        hasAvailability,
+        skipCurrentStep
     } = useManagerOnboarding();
 
     const handleSaveAndContinue = async () => {
@@ -66,7 +67,9 @@ const AvailabilityStep = () => {
             <OnboardingNavigationFooter
                 onNext={hasAvailability ? handleNext : handleSaveAndContinue}
                 onBack={handleBack}
+                onSkip={skipCurrentStep}
                 showBack={!isFirstStep}
+                showSkip={true}
                 nextLabel={hasAvailability ? "Continue" : "Save & Continue"}
                 isNextDisabled={!hasAvailability}
             />

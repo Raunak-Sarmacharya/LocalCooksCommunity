@@ -1,23 +1,34 @@
 import React, { useMemo } from "react";
 import { useLocation } from "wouter";
-import { CheckCircle2, XCircle, AlertTriangle, Sparkles, ExternalLink, Clock, GripHorizontal } from "lucide-react";
+import { 
+    CheckCircle2, 
+    Circle, 
+    Clock, 
+    Sparkles, 
+    ArrowRight,
+    Building,
+    ChefHat,
+    CalendarClock,
+    ClipboardList,
+    FileCheck,
+    CreditCard,
+    Package,
+    Wrench,
+    PartyPopper,
+    AlertCircle
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 
 interface SetupItem {
     id: string;
+    icon: React.ElementType;
     label: string;
-    status: 'complete' | 'pending' | 'incomplete' | 'optional_skipped';
+    status: 'complete' | 'pending' | 'incomplete' | 'skipped';
     isRequired: boolean;
-    description?: string;
-    actionLabel?: string;
-    actionHref?: string;
-    stepId?: string; // [NEW] For goToStep navigation
+    description: string;
+    stepId: string;
 }
 
 export default function CompletionSummaryStep() {
@@ -28,131 +39,127 @@ export default function CompletionSummaryStep() {
         setIsOpen,
         isStripeOnboardingComplete,
         hasAvailability,
-        hasRequirements, // [NEW] For requirements tracking
+        hasRequirements,
         storageForm,
         equipmentForm,
         goToStep,
     } = useManagerOnboarding();
 
-    // Calculate status for each item
+    // Build setup items with status
     const setupItems: SetupItem[] = useMemo(() => {
         const items: SetupItem[] = [];
 
-        // 1. Business
+        // 1. Business Details
         items.push({
             id: "location",
+            icon: Building,
             label: "Business Details",
             status: selectedLocation ? 'complete' : 'incomplete',
             isRequired: true,
-            description: selectedLocation?.name || "Business info and contact details",
+            description: selectedLocation?.name || "Add your business information",
             stepId: 'location'
         });
 
-        // 2. Kitchen
+        // 2. Kitchen Space
         items.push({
             id: "kitchen",
+            icon: ChefHat,
             label: "Kitchen Space",
             status: kitchens.length > 0 ? 'complete' : 'incomplete',
             isRequired: true,
             description: kitchens.length > 0
-                ? `${kitchens.length} kitchen${kitchens.length > 1 ? 's' : ''} added`
-                : "Define your kitchen spaces",
+                ? `${kitchens.length} kitchen${kitchens.length > 1 ? 's' : ''} configured`
+                : "Set up your kitchen spaces",
             stepId: 'create-kitchen'
         });
 
         // 3. Availability
         items.push({
             id: "availability",
-            label: "Availability Schedule",
+            icon: CalendarClock,
+            label: "Availability",
             status: hasAvailability ? 'complete' : 'incomplete',
             isRequired: true,
-            description: hasAvailability ? "Operating hours set" : "Set when you are open",
+            description: hasAvailability ? "Schedule configured" : "Set your operating hours",
             stepId: 'availability'
         });
 
-        // 4. Requirements (Chef application settings)
+        // 4. Application Requirements
         items.push({
             id: "requirements",
-            label: "Application Requirements",
+            icon: ClipboardList,
+            label: "Chef Requirements",
             status: hasRequirements ? 'complete' : 'incomplete',
             isRequired: true,
-            description: hasRequirements
-                ? "Chef application fields configured"
-                : "Configure chef application fields",
+            description: hasRequirements ? "Application fields set" : "Configure application fields",
             stepId: 'application-requirements'
         });
 
-        // 5. License
-        // Logic: Complete if approved. Pending if uploaded but not approved. Incomplete if not uploaded.
-        // If status is empty/null but url exists -> Pending
+        // 5. Kitchen License
         const licenseStatus = selectedLocation?.kitchenLicenseStatus;
         const hasLicenseUrl = !!selectedLocation?.kitchenLicenseUrl;
-
         let licenseItemStatus: SetupItem['status'] = 'incomplete';
         if (licenseStatus === 'approved') licenseItemStatus = 'complete';
-        // Only pending if URL exists. If status is pending but no URL, it's incomplete (invalid state).
         else if (hasLicenseUrl && (licenseStatus === 'pending' || !licenseStatus)) licenseItemStatus = 'pending';
 
         items.push({
             id: "license",
-            label: "Commercial Kitchen License",
+            icon: FileCheck,
+            label: "Kitchen License",
             status: licenseItemStatus,
             isRequired: true,
-            description: licenseItemStatus === 'complete'
-                ? "Approved"
-                : licenseItemStatus === 'pending'
-                    ? "Uploaded - Pending Approval"
-                    : "Required for activation",
-            stepId: 'location' // License is uploaded on Business step
+            description: licenseItemStatus === 'complete' 
+                ? "Verified" 
+                : licenseItemStatus === 'pending' 
+                    ? "Awaiting verification" 
+                    : "Upload your license",
+            stepId: 'location'
         });
 
-        // 6. Equipment (Optional)
+        // 6. Payment Setup
+        items.push({
+            id: "payment",
+            icon: CreditCard,
+            label: "Payments",
+            status: isStripeOnboardingComplete ? 'complete' : 'incomplete',
+            isRequired: true,
+            description: isStripeOnboardingComplete ? "Stripe connected" : "Connect to receive payouts",
+            stepId: 'payment-setup'
+        });
+
+        // 7. Equipment (Optional)
         const hasEquipment = equipmentForm?.listings?.length > 0;
         items.push({
             id: "equipment",
-            label: "Equipment Listings",
-            status: hasEquipment ? 'complete' : 'optional_skipped',
+            icon: Wrench,
+            label: "Equipment",
+            status: hasEquipment ? 'complete' : 'skipped',
             isRequired: false,
-            description: hasEquipment ? `${equipmentForm.listings.length} listings` : "Optional add-on",
+            description: hasEquipment ? `${equipmentForm.listings.length} listings` : "Optional",
             stepId: 'equipment-listings'
         });
 
-        // 7. Storage (Optional)
+        // 8. Storage (Optional)
         const hasStorage = storageForm?.listings?.length > 0;
         items.push({
             id: "storage",
-            label: "Storage Listings",
-            status: hasStorage ? 'complete' : 'optional_skipped',
+            icon: Package,
+            label: "Storage",
+            status: hasStorage ? 'complete' : 'skipped',
             isRequired: false,
-            description: hasStorage ? `${storageForm.listings.length} listings` : "Optional add-on",
+            description: hasStorage ? `${storageForm.listings.length} listings` : "Optional",
             stepId: 'storage-listings'
-        });
-
-        // 8. Payment
-        items.push({
-            id: "payment",
-            label: "Payment Setup",
-            status: isStripeOnboardingComplete ? 'complete' : 'incomplete',
-            isRequired: true,
-            description: isStripeOnboardingComplete ? "Connected to Stripe" : "Required for payouts",
-            actionLabel: !isStripeOnboardingComplete ? "Setup Payments" : undefined,
-            actionHref: "/manager/settings?tab=stripe",
-            stepId: 'payment-setup'
         });
 
         return items;
     }, [selectedLocation, kitchens, hasAvailability, hasRequirements, isStripeOnboardingComplete, storageForm, equipmentForm]);
 
-    // Calculate Readiness (Only Required Items count towards "Blocking")
+    // Calculate readiness
     const requiredItems = setupItems.filter(item => item.isRequired);
-    // For Readiness, we count 'complete' as good. 
-    // Is 'pending' (license) "ready"? User says "until I'm approved I won't be able to take bookings".
-    // So Pending is NOT ready.
-    const completedRequiredItems = requiredItems.filter(item => item.status === 'complete');
-    const readinessPercentage = Math.round((completedRequiredItems.length / requiredItems.length) * 100);
-    const isFullyReady = completedRequiredItems.length === requiredItems.length;
-
-    const blockingItems = requiredItems.filter(item => item.status !== 'complete');
+    const completedRequired = requiredItems.filter(item => item.status === 'complete');
+    const readinessPercentage = Math.round((completedRequired.length / requiredItems.length) * 100);
+    const isFullyReady = completedRequired.length === requiredItems.length;
+    const incompleteRequired = requiredItems.filter(item => item.status === 'incomplete' || item.status === 'pending');
 
     const handleClose = () => {
         setIsOpen(false);
@@ -160,139 +167,205 @@ export default function CompletionSummaryStep() {
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in zoom-in duration-300 max-w-2xl mx-auto pb-10">
-            {/* Header */}
-            <div className="text-center space-y-2">
-                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${isFullyReady ? 'bg-green-100' : 'bg-amber-100'}`}>
+        <div className="animate-in fade-in duration-500">
+            {/* Hero Section */}
+            <div className="text-center mb-8">
+                <div className={cn(
+                    "inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4",
+                    isFullyReady 
+                        ? "bg-emerald-100 dark:bg-emerald-900/30" 
+                        : "bg-amber-100 dark:bg-amber-900/30"
+                )}>
                     {isFullyReady ? (
-                        <Sparkles className="w-8 h-8 text-green-600" />
+                        <PartyPopper className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
                     ) : (
-                        <Clock className="w-8 h-8 text-amber-600" />
+                        <Sparkles className="w-7 h-7 text-amber-600 dark:text-amber-400" />
                     )}
                 </div>
-                <h2 className="text-2xl font-bold tracking-tight">Onboarding Summary</h2>
-                <p className="text-muted-foreground">
-                    {isFullyReady
-                        ? "You are all set! Your kitchen is ready for business."
-                        : "Review your setup status below."}
+                <h2 className="text-lg font-medium text-slate-900 dark:text-slate-100 tracking-tight mb-1">
+                    {isFullyReady ? "You're all set!" : "Almost there"}
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {isFullyReady 
+                        ? "Your kitchen is ready to accept bookings."
+                        : `Complete ${incompleteRequired.length} more step${incompleteRequired.length > 1 ? 's' : ''} to start accepting bookings.`
+                    }
                 </p>
             </div>
 
-            {/* Readiness Card */}
-            <Card className={isFullyReady ? "border-green-200 bg-green-50/30" : ""}>
-                <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">Profile Readiness</CardTitle>
-                        <Badge variant={isFullyReady ? "default" : "secondary"} className={isFullyReady ? "bg-green-600 hover:bg-green-700" : ""}>
-                            {readinessPercentage}% Ready
-                        </Badge>
-                    </div>
-                    <CardDescription>
-                        {isFullyReady
-                            ? "Your kitchen is live!"
-                            : `${blockingItems.length} required steps remaining to accept bookings`
-                        }
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Progress value={readinessPercentage} className={`h-2 ${isFullyReady ? "[&>div]:bg-green-600" : ""}`} />
-                </CardContent>
-            </Card>
+            {/* Progress Indicator */}
+            <div className="mb-8">
+                <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Setup Progress</span>
+                    <span className={cn(
+                        "text-xs font-medium",
+                        isFullyReady ? "text-emerald-600 dark:text-emerald-400" : "text-slate-600 dark:text-slate-300"
+                    )}>
+                        {completedRequired.length}/{requiredItems.length} required
+                    </span>
+                </div>
+                <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                        className={cn(
+                            "h-full transition-all duration-500 ease-out rounded-full",
+                            isFullyReady 
+                                ? "bg-emerald-500" 
+                                : "bg-gradient-to-r from-amber-400 to-amber-500"
+                        )}
+                        style={{ width: `${readinessPercentage}%` }}
+                    />
+                </div>
+            </div>
 
-            {/* Blocking Alerts */}
-            {blockingItems.length > 0 && (
-                <Alert variant={blockingItems.some(i => i.status === 'pending') ? "default" : "destructive"}>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Attention Needed</AlertTitle>
-                    <AlertDescription>
-                        <ul className="list-disc list-inside mt-2 space-y-1">
-                            {blockingItems.map(item => (
-                                <li key={item.id}>
-                                    <span className="font-medium">{item.label}</span>:
-                                    {item.status === 'pending' ? " Waiting for approval" : " Incomplete"}
-                                </li>
-                            ))}
-                        </ul>
-                    </AlertDescription>
-                </Alert>
+            {/* Alert for incomplete required items */}
+            {!isFullyReady && incompleteRequired.length > 0 && (
+                <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                                Required to accept bookings
+                            </p>
+                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                                Complete the highlighted steps below to start receiving chef bookings.
+                            </p>
+                        </div>
+                    </div>
+                </div>
             )}
 
-            {/* Detailed Checklist */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">Detailed Status</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-0 divide-y">
-                    {setupItems.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between py-4 first:pt-0 last:pb-0">
-                            <div className="flex items-center gap-4">
-                                {/* Status Icon */}
-                                <div className="shrink-0">
-                                    {item.status === 'complete' && (
-                                        <CheckCircle2 className="w-6 h-6 text-green-600" />
-                                    )}
-                                    {item.status === 'pending' && (
-                                        <Clock className="w-6 h-6 text-amber-500" />
-                                    )}
-                                    {item.status === 'incomplete' && (
-                                        <XCircle className="w-6 h-6 text-destructive" />
-                                    )}
-                                    {item.status === 'optional_skipped' && (
-                                        <div className="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center">
-                                            <div className="w-2 h-2 rounded-full bg-gray-300" />
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className={item.status === 'optional_skipped' ? "text-muted-foreground" : "font-medium"}>
-                                            {item.label}
-                                        </span>
-                                        {item.isRequired && item.status !== 'complete' && item.status !== 'pending' && (
-                                            <Badge variant="destructive" className="text-[10px] px-1.5 h-5">Required</Badge>
-                                        )}
-                                        {item.status === 'pending' && (
-                                            <Badge variant="secondary" className="text-[10px] px-1.5 h-5 bg-amber-100 text-amber-800 hover:bg-amber-200">Pending</Badge>
-                                        )}
-                                        {!item.isRequired && (
-                                            <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-muted-foreground border-muted-foreground/30">Optional</Badge>
-                                        )}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">{item.description}</p>
-                                </div>
-                            </div>
-
-                            {/* Action */}
-                            {item.actionHref && item.status !== 'complete' && (
-                                <Button variant="outline" size="sm" asChild>
-                                    <a href={item.actionHref} target="_blank" rel="noopener noreferrer">
-                                        {item.actionLabel} <ExternalLink className="w-3 h-3 ml-1" />
-                                    </a>
-                                </Button>
-                            )}
-                            {/* [NEW] Complete Now button for incomplete items with stepId */}
-                            {item.status === 'incomplete' && item.stepId && !item.actionHref && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => goToStep(item.stepId!)}
-                                    className="text-primary border-primary hover:bg-primary/5"
-                                >
-                                    Complete Now
-                                </Button>
-                            )}
-                        </div>
-                    ))}
-                </CardContent>
-            </Card>
-
-            {/* Footer Action */}
-            <div className="flex justify-center pt-4">
-                <Button size="lg" onClick={handleClose} className="px-8">
-                    Go to Dashboard
-                </Button>
+            {/* Setup Checklist - Notion-style */}
+            <div className="space-y-1 mb-10">
+                {setupItems.map((item) => (
+                    <SetupItemRow 
+                        key={item.id} 
+                        item={item} 
+                        onAction={() => goToStep(item.stepId)}
+                    />
+                ))}
             </div>
+
+            {/* CTA Section */}
+            <div className="flex flex-col items-center gap-4">
+                <Button
+                    size="lg"
+                    onClick={handleClose}
+                    className={cn(
+                        "h-12 px-8 text-base font-medium",
+                        isFullyReady 
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                            : "bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900 text-white",
+                        "shadow-sm hover:shadow-md transition-all duration-200"
+                    )}
+                >
+                    {isFullyReady ? "Go to Dashboard" : "Continue to Dashboard"}
+                    <ArrowRight className="ml-2 w-4 h-4" />
+                </Button>
+                {!isFullyReady && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 text-center max-w-xs">
+                        You can complete the remaining steps anytime from your dashboard settings.
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+}
+
+interface SetupItemRowProps {
+    item: SetupItem;
+    onAction: () => void;
+}
+
+function SetupItemRow({ item, onAction }: SetupItemRowProps) {
+    const Icon = item.icon;
+    const isActionable = item.status === 'incomplete' || item.status === 'pending';
+    const isOptionalSkipped = !item.isRequired && item.status === 'skipped';
+    
+    return (
+        <div 
+            className={cn(
+                "group flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
+                isActionable && "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50",
+                !isActionable && !isOptionalSkipped && "opacity-90"
+            )}
+            onClick={isActionable ? onAction : undefined}
+        >
+            {/* Status Indicator */}
+            <div className="shrink-0">
+                {item.status === 'complete' ? (
+                    <div className="w-8 h-8 rounded-md bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                ) : item.status === 'pending' ? (
+                    <div className="w-8 h-8 rounded-md bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                        <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                ) : item.status === 'incomplete' ? (
+                    <div className={cn(
+                        "w-8 h-8 rounded-md flex items-center justify-center",
+                        item.isRequired 
+                            ? "bg-red-50 dark:bg-red-950/30 ring-1 ring-red-200 dark:ring-red-800/50" 
+                            : "bg-slate-100 dark:bg-slate-800"
+                    )}>
+                        <Circle className={cn(
+                            "w-4 h-4",
+                            item.isRequired 
+                                ? "text-red-400 dark:text-red-500" 
+                                : "text-slate-400 dark:text-slate-500"
+                        )} />
+                    </div>
+                ) : (
+                    <div className="w-8 h-8 rounded-md bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center">
+                        <Icon className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+                    </div>
+                )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                    <span className={cn(
+                        "text-sm font-medium",
+                        item.status === 'complete' && "text-slate-700 dark:text-slate-300",
+                        item.status === 'pending' && "text-amber-700 dark:text-amber-300",
+                        item.status === 'incomplete' && item.isRequired && "text-slate-900 dark:text-slate-100",
+                        item.status === 'incomplete' && !item.isRequired && "text-slate-500 dark:text-slate-400",
+                        isOptionalSkipped && "text-slate-400 dark:text-slate-500"
+                    )}>
+                        {item.label}
+                    </span>
+                    {item.isRequired && item.status !== 'complete' && item.status !== 'pending' && (
+                        <span className="text-[10px] font-medium text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded">
+                            Required
+                        </span>
+                    )}
+                    {item.status === 'pending' && (
+                        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded">
+                            Pending
+                        </span>
+                    )}
+                    {!item.isRequired && item.status !== 'complete' && (
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                            Optional
+                        </span>
+                    )}
+                </div>
+                <p className={cn(
+                    "text-xs",
+                    isOptionalSkipped ? "text-slate-300 dark:text-slate-600" : "text-slate-500 dark:text-slate-400"
+                )}>
+                    {item.description}
+                </p>
+            </div>
+
+            {/* Action */}
+            {isActionable && (
+                <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-xs font-medium text-primary">
+                        {item.status === 'pending' ? 'View' : 'Complete'}
+                    </span>
+                </div>
+            )}
         </div>
     );
 }

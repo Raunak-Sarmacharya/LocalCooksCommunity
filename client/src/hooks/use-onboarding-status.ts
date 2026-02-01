@@ -11,6 +11,7 @@ export interface OnboardingStatus {
     hasApprovedLicense: boolean;
     hasKitchens: boolean;
     hasAvailability: boolean;
+    hasRequirements: boolean;
 
     // Computed
     isReadyForBookings: boolean;
@@ -116,6 +117,24 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
 
     const hasAvailability = !!availabilityData;
 
+    // 5. Fetch Requirements Status
+    const { data: requirementsData } = useQuery({
+        queryKey: ['locationRequirements', locationId],
+        queryFn: async () => {
+            if (!locationId) return null;
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) return null;
+            const res = await fetch(`/api/manager/locations/${locationId}/requirements`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: !!locationId,
+    });
+
+    const hasRequirements = !!(requirementsData && Number(requirementsData.id) > 0);
+
     // --- Logic ---
 
     // Use Stripe API status (more accurate) - account is complete only when charges AND payouts are enabled
@@ -124,17 +143,19 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     const hasApprovedLicense = locationData?.kitchen_license_status === 'approved' || locationData?.kitchenLicenseStatus === 'approved'; // handle snake/camel
     const hasKitchens = (kitchens?.length || 0) > 0;
 
-    // Ready State
+    // Ready State - ALL required items must be complete to accept bookings
     const isReadyForBookings =
         isStripeComplete &&
         hasApprovedLicense &&
         hasKitchens &&
-        hasAvailability;
+        hasAvailability &&
+        hasRequirements;
 
     const missingSteps = [];
     if (!hasApprovedLicense) missingSteps.push("Upload Kitchen License");
     if (!hasKitchens) missingSteps.push("Create a Kitchen");
-    // if (!hasAvailability) missingSteps.push("Set Availability");
+    if (!hasAvailability) missingSteps.push("Set Availability");
+    if (!hasRequirements) missingSteps.push("Configure Application Requirements");
     if (!isStripeComplete) missingSteps.push("Connect Stripe");
 
     const showOnboardingModal =
@@ -151,6 +172,7 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         hasApprovedLicense,
         hasKitchens,
         hasAvailability,
+        hasRequirements,
         isReadyForBookings,
         showOnboardingModal,
         showSetupBanner,

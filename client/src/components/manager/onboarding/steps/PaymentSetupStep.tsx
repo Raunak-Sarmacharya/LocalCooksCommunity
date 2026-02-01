@@ -5,7 +5,7 @@ import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 
 export default function PaymentSetupStep() {
-  const { handleNext, handleBack, isFirstStep } = useManagerOnboarding();
+  const { handleNext, handleBack, isFirstStep, isStripeOnboardingComplete, skipCurrentStep } = useManagerOnboarding();
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -19,8 +19,11 @@ export default function PaymentSetupStep() {
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
+        onSkip={skipCurrentStep}
         showBack={!isFirstStep}
-        nextLabel="Continue"
+        showSkip={true}
+        isNextDisabled={!isStripeOnboardingComplete}
+        nextLabel={isStripeOnboardingComplete ? "Continue" : "Complete Stripe Setup to Continue"}
       />
     </div>
   );

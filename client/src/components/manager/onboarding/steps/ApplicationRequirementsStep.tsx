@@ -11,7 +11,8 @@ export default function ApplicationRequirementsStep() {
     handleBack,
     isFirstStep,
     hasRequirements,
-    refreshRequirements
+    refreshRequirements,
+    skipCurrentStep
   } = useManagerOnboarding();
 
   if (!selectedLocationId) return null;
@@ -55,7 +56,9 @@ export default function ApplicationRequirementsStep() {
       <OnboardingNavigationFooter
         onNext={hasRequirements ? handleNext : handleSaveAndContinue}
         onBack={handleBack}
+        onSkip={skipCurrentStep}
         showBack={!isFirstStep}
+        showSkip={true}
         nextLabel={hasRequirements ? "Continue" : "Save & Continue"}
         isNextDisabled={!hasRequirements}
       />

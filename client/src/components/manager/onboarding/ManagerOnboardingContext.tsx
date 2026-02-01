@@ -11,15 +11,16 @@ import { steps } from "@/config/onboarding-steps";
 import { Link, useLocation } from "wouter";
 
 // Step ID mapping for backwards compatibility with legacy numeric format in database
+// MUST match the order in onboarding-steps.ts
 const STEP_ID_MAP: Record<string, number> = {
   'welcome': 0,
   'location': 1,
   'create-kitchen': 2,
-  'application-requirements': 3,
-  'payment-setup': 4,
-  'availability': 5,
+  'availability': 3,
+  'application-requirements': 4,
+  'equipment-listings': 5,
   'storage-listings': 6,
-  'equipment-listings': 7,
+  'payment-setup': 7,
   'completion-summary': 8
 };
 
@@ -41,7 +42,8 @@ interface ManagerOnboardingContextType {
   handleNext: () => Promise<void>;
   handleBack: () => void;
   handleSkip: () => Promise<void>;
-  goToStep: (stepId: string) => Promise<void>; // [NEW] Direct navigation
+  skipCurrentStep: () => Promise<void>; // Skip current step without completing it
+  goToStep: (stepId: string) => Promise<void>;
 
   // Legacy/Derived State
   currentStep: number;
@@ -1026,6 +1028,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       previous();
     },
     handleSkip: handleSkipAction,
+    skipCurrentStep: async () => {
+      // Skip to next step without marking current as complete
+      if (engine) {
+        isManualNavigation.current = true;
+        console.log(`[Onboarding] Skipping step: ${currentStep?.id}`);
+        next(); // Move to next step without completion tracking
+      }
+    },
     goToStep: async (stepId: string) => {
       if (engine) {
         isManualNavigation.current = true;

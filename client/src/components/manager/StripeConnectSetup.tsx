@@ -96,50 +96,39 @@ export default function StripeConnectSetup() {
     channel.onmessage = async (event) => {
       console.log('Received broadcast message:', event.data);
       if (event.data?.type === 'STRIPE_SETUP_COMPLETE') {
-        // Invalidate queries first to trigger refetch
-        await queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
-        await queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
+        // Force refetch queries and wait for completion
+        await queryClient.refetchQueries({ queryKey: ['/api/user/profile'] });
+        await queryClient.refetchQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
         
-        // Fetch the actual status from API to show accurate toast
-        try {
-          const token = await auth.currentUser?.getIdToken();
-          if (token) {
-            const response = await fetch('/api/manager/stripe-connect/status', {
-              headers: { 'Authorization': `Bearer ${token}` },
-            });
-            if (response.ok) {
-              const status = await response.json();
-              if (status.chargesEnabled && status.payoutsEnabled) {
-                toast.success("Stripe Setup Complete", {
-                  description: "Your account is ready to receive payments."
-                });
-              } else if (status.detailsSubmitted) {
-                toast.info("Setup Progress Saved", {
-                  description: "Additional verification may be required. Check your Stripe dashboard."
-                });
-              } else {
-                toast.info("Setup In Progress", {
-                  description: "Please complete the remaining steps in Stripe."
-                });
-              }
-              return;
-            }
-          }
-        } catch (e) {
-          console.error('Error checking stripe status after broadcast:', e);
+        // Get the updated status from the cache after refetch
+        const updatedStatus = queryClient.getQueryData<{
+          chargesEnabled?: boolean;
+          payoutsEnabled?: boolean;
+          detailsSubmitted?: boolean;
+          status?: string;
+        }>(['/api/manager/stripe-connect/status', firebaseUser?.uid]);
+        
+        // Show toast based on actual refetched status
+        if (updatedStatus?.chargesEnabled && updatedStatus?.payoutsEnabled) {
+          toast.success("Stripe Setup Complete", {
+            description: "Your account is ready to receive payments."
+          });
+        } else if (updatedStatus?.detailsSubmitted) {
+          toast.info("Setup Progress Saved", {
+            description: "Additional verification may be required. Check your Stripe dashboard."
+          });
+        } else {
+          toast.info("Status Updated", {
+            description: "Your Stripe setup status has been refreshed."
+          });
         }
-        
-        // Fallback toast if status check fails
-        toast.info("Status Updated", {
-          description: "Your Stripe setup status has been refreshed."
-        });
       }
     };
 
     return () => {
       channel.close();
     };
-  }, [queryClient, toast]);
+  }, [queryClient, toast, firebaseUser?.uid]);
 
   // Invalidate user profile query after creating account to refresh the UI
   const handleAccountCreated = () => {
@@ -311,9 +300,10 @@ export default function StripeConnectSetup() {
       queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
       queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
       
-      // Check actual Stripe status fields
-      const isFullyReady = data.details?.chargesEnabled && data.details?.payoutsEnabled;
-      if (isFullyReady || data.status === 'complete') {
+      // Only show "Setup Complete" when BOTH chargesEnabled AND payoutsEnabled are true
+      // Don't rely on status field alone as it can be misleading
+      const isFullyReady = data.details?.chargesEnabled === true && data.details?.payoutsEnabled === true;
+      if (isFullyReady) {
         toast({
           title: "Setup Complete",
           description: "Your Stripe account is now fully connected and ready to receive payments.",

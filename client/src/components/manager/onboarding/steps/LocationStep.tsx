@@ -28,7 +28,8 @@ export default function LocationStep() {
     selectedLocation,
     handleNext,
     handleBack,
-    isFirstStep
+    isFirstStep,
+    skipCurrentStep
   } = useManagerOnboarding();
 
   const { toast } = useToast();
@@ -546,7 +547,9 @@ export default function LocationStep() {
       <OnboardingNavigationFooter
         onNext={handleNext}
         onBack={handleBack}
+        onSkip={skipCurrentStep}
         showBack={!isFirstStep}
+        showSkip={true}
         isNextDisabled={
           !locationForm.name || 
           !locationForm.address || 

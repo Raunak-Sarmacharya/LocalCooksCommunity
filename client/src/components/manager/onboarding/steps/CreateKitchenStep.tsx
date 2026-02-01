@@ -141,7 +141,8 @@ export default function CreateKitchenStep() {
     handleNext,
     handleBack,
     isFirstStep,
-    selectedLocationId
+    selectedLocationId,
+    skipCurrentStep
   } = useManagerOnboarding();
 
   const { data, setData, showCreate, setShowCreate, isCreating } = kitchenForm;
@@ -356,7 +357,9 @@ export default function CreateKitchenStep() {
         <OnboardingNavigationFooter
           onNext={handleNext}
           onBack={handleBack}
+          onSkip={skipCurrentStep}
           showBack={!isFirstStep}
+          showSkip={true}
           isNextDisabled={kitchens.length === 0}
         />
       )}
