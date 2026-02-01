@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { eq, inArray, and, desc, count, ne, sql } from "drizzle-orm";
+import { eq, inArray, and, desc, count, ne, sql, or } from "drizzle-orm";
 import { db } from "../db";
 
 import { requireFirebaseAuthWithUser, requireManager } from "../firebase-auth-middleware";
@@ -406,10 +406,25 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
 
         const totalAmount = parseInt(String(transaction.amount || '0')) || 0;
         const currentRefundAmount = parseInt(String(transaction.refund_amount || '0')) || 0;
-        const remainingAmount = totalAmount - currentRefundAmount;
+        const remainingGrossAmount = totalAmount - currentRefundAmount;
+        
+        // Option A: Customer absorbs Stripe processing fee on refunds (Airbnb model)
+        // Calculate proportional Stripe fee that will be retained
+        const stripeProcessingFee = parseInt(String(transaction.stripe_processing_fee || '0')) || 0;
+        const proportionalStripeFee = totalAmount > 0 && remainingGrossAmount > 0
+            ? Math.round(stripeProcessingFee * (remainingGrossAmount / totalAmount))
+            : 0;
+        // Max refundable to customer = gross remaining - stripe fee
+        const maxNetRefundable = Math.max(0, remainingGrossAmount - proportionalStripeFee);
 
-        if (amountCents > remainingAmount) {
-            return res.status(400).json({ error: "Refund amount exceeds remaining refundable amount" });
+        // Validate the requested amount doesn't exceed net refundable
+        if (amountCents > maxNetRefundable) {
+            return res.status(400).json({ 
+                error: `Refund amount exceeds maximum refundable. Max: $${(maxNetRefundable / 100).toFixed(2)} (after $${(proportionalStripeFee / 100).toFixed(2)} processing fee retention)`,
+                maxRefundable: maxNetRefundable,
+                stripeFeeRetained: proportionalStripeFee,
+                grossRemaining: remainingGrossAmount
+            });
         }
 
         // Fetch manager's Stripe Connect account
@@ -425,10 +440,16 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
 
         const serviceFee = parseInt(String(transaction.service_fee || '0')) || 0;
         const managerRevenue = parseInt(String(transaction.manager_revenue || '0')) || 0;
+        
+        // Option A (Airbnb model): Customer receives the requested amount
+        // The Stripe fee was already validated above - customer can only request up to maxNetRefundable
+        const netRefundToCustomer = amountCents; // What customer actually receives
+        
+        // Manager's share is proportional to the net refund amount
         const managerShare = Math.max(0, totalAmount - serviceFee, managerRevenue);
         const expectedReverseAmount = totalAmount > 0
-            ? Math.round(amountCents * (managerShare / totalAmount))
-            : amountCents;
+            ? Math.round(netRefundToCustomer * (managerShare / totalAmount))
+            : netRefundToCustomer;
 
         const { reverseTransferAndRefund } = await import('../services/stripe-service');
         const allowedStripeReasons = ['duplicate', 'fraudulent', 'requested_by_customer'] as const;
@@ -533,12 +554,26 @@ router.post("/revenue/transactions/:transactionId/refund", requireFirebaseAuthWi
                 .where(eq(equipmentBookingsTable.id, transaction.booking_id));
         }
 
+        // Calculate new remaining amounts for response
+        const newRemainingGross = totalAmount - newRefundTotal;
+        const newProportionalFee = totalAmount > 0 && newRemainingGross > 0
+            ? Math.round(stripeProcessingFee * (newRemainingGross / totalAmount))
+            : 0;
+        const newMaxNetRefundable = Math.max(0, newRemainingGross - newProportionalFee);
+
         res.json({
             success: true,
             refundId: refund.refundId,
             status: newStatus,
-            refundAmount: newRefundTotal,
-            remainingAmount: totalAmount - newRefundTotal,
+            // What customer received in this refund
+            refundAmount: amountCents,
+            // Total refunded so far (gross)
+            totalRefunded: newRefundTotal,
+            // Remaining amounts
+            remainingGrossAmount: newRemainingGross,
+            remainingNetRefundable: newMaxNetRefundable,
+            // Fee info for transparency
+            stripeFeeRetained: stripeProcessingFee,
             transferReversalId: refund.transferReversalId,
         });
     } catch (error: any) {
@@ -848,6 +883,62 @@ router.post("/revenue/sync-stripe", requireFirebaseAuthWithUser, requireManager,
         });
     } catch (error) {
         console.error('[Stripe Sync] Error:', error);
+        return errorResponse(res, error);
+    }
+});
+
+// Get live Stripe balance for manager (available, pending, in transit)
+// This fetches real-time data from Stripe Balance API
+router.get("/revenue/stripe-balance", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
+    try {
+        const managerId = req.neonUser!.id;
+
+        // Get manager's Stripe Connect account ID
+        const [userResult] = await db
+            .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+            .from(users)
+            .where(eq(users.id, managerId))
+            .limit(1);
+
+        if (!userResult?.stripeConnectAccountId) {
+            // Return zeros if no Stripe account linked yet
+            return res.json({
+                available: 0,
+                pending: 0,
+                inTransit: 0,
+                currency: 'cad',
+                hasStripeAccount: false,
+            });
+        }
+
+        const accountId = userResult.stripeConnectAccountId;
+        const { getAccountBalance } = await import('../services/stripe-connect-service');
+
+        const balance = await getAccountBalance(accountId);
+
+        // Extract amounts from Stripe balance response
+        // Stripe returns amounts in cents, convert to the same format as our other amounts
+        const availableBalance = balance.available?.reduce((sum, b) => sum + b.amount, 0) || 0;
+        const pendingBalance = balance.pending?.reduce((sum, b) => sum + b.amount, 0) || 0;
+        
+        // Check for in-transit payouts (funds that have been sent to bank but not yet arrived)
+        // This is indicated by connect_reserved in some cases
+        const connectReserved = (balance as any).connect_reserved?.reduce((sum: number, b: any) => sum + b.amount, 0) || 0;
+
+        // Get currency from first available balance entry
+        const currency = balance.available?.[0]?.currency || 'cad';
+
+        res.json({
+            available: availableBalance,
+            pending: pendingBalance,
+            inTransit: connectReserved,
+            currency,
+            hasStripeAccount: true,
+            // Include raw balance for debugging if needed
+            _raw: process.env.NODE_ENV === 'development' ? balance : undefined,
+        });
+    } catch (error) {
+        console.error('[Stripe Balance] Error fetching balance:', error);
         return errorResponse(res, error);
     }
 });
@@ -1856,6 +1947,7 @@ router.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager,
             const [txn] = await db
                 .select({
                     amount: paymentTransactions.amount,
+                    baseAmount: paymentTransactions.baseAmount, // Base amount before tax
                     serviceFee: paymentTransactions.serviceFee,
                     managerRevenue: paymentTransactions.managerRevenue,
                     status: paymentTransactions.status,
@@ -1866,7 +1958,11 @@ router.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager,
                 .where(
                     and(
                         eq(paymentTransactions.bookingId, id),
-                        eq(paymentTransactions.bookingType, 'kitchen')
+                        // Include both 'kitchen' and 'bundle' booking types for accurate payment data
+                        or(
+                            eq(paymentTransactions.bookingType, 'kitchen'),
+                            eq(paymentTransactions.bookingType, 'bundle')
+                        )
                     )
                 )
                 .limit(1);
@@ -1874,6 +1970,7 @@ router.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager,
                 paymentTransaction = {
                     ...txn,
                     amount: txn.amount ? parseFloat(txn.amount) : null,
+                    baseAmount: txn.baseAmount ? parseFloat(txn.baseAmount) : null, // Base before tax
                     serviceFee: txn.serviceFee ? parseFloat(txn.serviceFee) : null,
                     managerRevenue: txn.managerRevenue ? parseFloat(txn.managerRevenue) : null,
                     stripeProcessingFee: txn.stripeProcessingFee ? parseFloat(txn.stripeProcessingFee) : null,
@@ -1891,6 +1988,7 @@ router.get("/bookings/:id/details", requireFirebaseAuthWithUser, requireManager,
                 description: kitchen.description,
                 photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
                 locationId: kitchen.locationId,
+                taxRatePercent: kitchen.taxRatePercent || 0, // Include tax rate for revenue calculation
             },
             location: {
                 id: location.id,
@@ -1965,6 +2063,114 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
         } catch (storageUpdateError) {
             logger.error(`[Manager] Error updating storage bookings for kitchen booking ${id}:`, storageUpdateError);
             // Don't fail the main status update if storage update fails
+        }
+
+        // Process refund based on booking status transition:
+        // - REJECTION (pending → cancelled): Auto-refund with customer absorbing Stripe fee
+        // - CANCELLATION (confirmed → cancelled): NO auto-refund, require manual "Issue Refund" action
+        let refundResult: { refundId: string; refundAmount: number; transferReversalId: string } | null = null;
+        const previousStatus = booking.status; // Status BEFORE the update
+        const isRejection = previousStatus === 'pending' && status === 'cancelled';
+        const isCancellation = previousStatus === 'confirmed' && status === 'cancelled';
+        
+        if (status === 'cancelled') {
+            const bookingPaymentIntentId = (booking as any).paymentIntentId;
+            const bookingPaymentStatus = (booking as any).paymentStatus;
+            
+            // Only auto-refund for REJECTIONS (pending bookings), NOT for cancellations (confirmed bookings)
+            // Cancellations require manual "Issue Refund" action from the manager
+            if (isRejection && bookingPaymentIntentId && (bookingPaymentStatus === 'paid' || bookingPaymentStatus === 'processing')) {
+                try {
+                    const { reverseTransferAndRefund } = await import("../services/stripe-service");
+                    const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+
+                    // Get the payment transaction to calculate proper refund and reversal amounts
+                    const paymentTransaction = await findPaymentTransactionByIntentId(
+                        bookingPaymentIntentId,
+                        db
+                    );
+
+                    const totalPrice = (booking as any).totalPrice || 0;
+                    const transactionAmount = paymentTransaction 
+                        ? parseInt(String(paymentTransaction.amount || "0")) || totalPrice
+                        : totalPrice;
+
+                    if (transactionAmount > 0) {
+                    // Option A: Customer absorbs Stripe processing fee on refunds
+                    const stripeProcessingFee = paymentTransaction
+                        ? parseInt(String(paymentTransaction.stripe_processing_fee || "0")) || 0
+                        : 0;
+                    const currentRefundAmount = paymentTransaction
+                        ? parseInt(String(paymentTransaction.refund_amount || "0")) || 0
+                        : 0;
+                    const remainingGross = transactionAmount - currentRefundAmount;
+                    const proportionalStripeFee = transactionAmount > 0 && remainingGross > 0
+                        ? Math.round(stripeProcessingFee * (remainingGross / transactionAmount))
+                        : 0;
+                    // Net refund = gross - Stripe fee (customer absorbs fee)
+                    const netRefundAmount = Math.max(0, remainingGross - proportionalStripeFee);
+
+                    // Calculate manager's share for transfer reversal
+                    let reverseTransferAmount = netRefundAmount;
+                    if (paymentTransaction) {
+                        const serviceFee = parseInt(String(paymentTransaction.service_fee || "0")) || 0;
+                        const managerRevenue = parseInt(String(paymentTransaction.manager_revenue || "0")) || 0;
+                        const managerShare = Math.max(0, transactionAmount - serviceFee, managerRevenue);
+                        reverseTransferAmount = transactionAmount > 0
+                            ? Math.round(netRefundAmount * (managerShare / transactionAmount))
+                            : netRefundAmount;
+                    }
+
+                    // Process refund with transfer reversal (net amount after fee deduction)
+                    refundResult = await reverseTransferAndRefund(
+                        bookingPaymentIntentId,
+                        netRefundAmount, // Option A: Customer receives net amount (minus Stripe fee)
+                        "requested_by_customer",
+                        {
+                            reverseTransferAmount,
+                            refundApplicationFee: false,
+                            metadata: {
+                                booking_id: String(id),
+                                booking_type: 'kitchen',
+                                cancellation_reason: "Booking cancelled by manager",
+                                manager_id: String(user.id),
+                                stripe_fee_retained: String(proportionalStripeFee),
+                                gross_refundable: String(remainingGross),
+                            },
+                        }
+                    );
+
+                    logger.info(`[Manager] Refund processed for booking ${id}`, {
+                        refundId: refundResult.refundId,
+                        refundAmount: refundResult.refundAmount,
+                        transferReversalId: refundResult.transferReversalId,
+                    });
+
+                    // Update booking payment status to refunded
+                    await db.update(kitchenBookings)
+                        .set({ paymentStatus: 'refunded', updatedAt: new Date() })
+                        .where(eq(kitchenBookings.id, id));
+
+                    // Update payment transaction if exists
+                    if (paymentTransaction) {
+                        await updatePaymentTransaction(
+                            paymentTransaction.id,
+                            {
+                                status: "refunded",
+                                refundAmount: refundResult.refundAmount,
+                                refundId: refundResult.refundId,
+                                refundReason: "Booking cancelled by manager",
+                                refundedAt: new Date(),
+                            },
+                            db
+                        );
+                    }
+                    }
+                } catch (refundError: any) {
+                    logger.error(`[Manager] Failed to process refund for booking ${id}:`, refundError);
+                    // Continue - booking is cancelled, refund can be retried manually from Revenue Dashboard
+                }
+            }
         }
 
         // Send email notifications based on status change
@@ -2101,7 +2307,27 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
             // Don't fail the status update if email fails
         }
 
-        res.json({ success: true, message: `Booking ${status === 'confirmed' ? 'approved' : status}` });
+        // Build response with refund info if applicable
+        const responseData: any = { 
+            success: true, 
+            message: `Booking ${status === 'confirmed' ? 'approved' : status}` 
+        };
+        
+        if (refundResult) {
+            // Auto-refund was processed (for rejections)
+            responseData.refund = {
+                refundId: refundResult.refundId,
+                amount: refundResult.refundAmount,
+                message: "Full refund processed successfully (customer absorbs Stripe processing fee)"
+            };
+            responseData.message = "Booking rejected and refund processed";
+        } else if (isCancellation) {
+            // Cancellation of confirmed booking - no auto-refund
+            responseData.requiresManualRefund = true;
+            responseData.message = "Booking cancelled. Use 'Issue Refund' to process refund manually.";
+        }
+        
+        res.json(responseData);
     } catch (e: any) {
         console.error("Error updating booking status:", e);
         res.status(500).json({ error: e.message || "Failed to update booking status" });

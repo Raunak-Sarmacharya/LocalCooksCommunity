@@ -341,16 +341,6 @@ export async function generateInvoicePDF(
       doc.text('Date:', valueStartX, rightY, { width: labelWidth, align: 'right' });
       doc.font('Helvetica');
       doc.text(invoiceDate, valueStartX + labelWidth + 5, rightY);
-      rightY += 15;
-
-      // Payment ID (if available)
-      if (paymentIntentId) {
-        doc.font('Helvetica-Bold');
-        doc.text('Payment ID:', valueStartX, rightY, { width: labelWidth, align: 'right' });
-        doc.font('Helvetica');
-        const paymentIdDisplay = paymentIntentId.length > 20 ? paymentIntentId.substring(0, 20) + '...' : paymentIntentId;
-        doc.text(paymentIdDisplay, valueStartX + labelWidth + 5, rightY);
-      }
 
       // Company info section
       let leftY = 120;
@@ -499,7 +489,7 @@ export async function generateInvoicePDF(
         let stripeProcessingFee: number;
         let stripeNetPayout: number;
         let actualPlatformFee: number;
-        let dataSource: 'stripe' | 'calculated';
+        let dataSource: 'stripe' | 'calculated' | 'pending_sync';
         
         if (stripeDataForManager) {
           // Use actual Stripe data
@@ -508,11 +498,12 @@ export async function generateInvoicePDF(
           actualPlatformFee = stripeDataForManager.actualPlatformFee;
           dataSource = stripeDataForManager.dataSource;
         } else {
-          // Fallback calculation if Stripe data not available
+          // ENTERPRISE STANDARD: Do not calculate fees - use actual data only
+          // If Stripe data not available, fees will be synced via charge.updated webhook
           actualPlatformFee = platformFee;
-          stripeProcessingFee = (grossRevenue * 0.029) + 0.30;
-          stripeNetPayout = grossRevenue - actualPlatformFee - stripeProcessingFee;
-          dataSource = 'calculated';
+          stripeProcessingFee = 0; // Will be synced via charge.updated webhook
+          stripeNetPayout = grossRevenue - actualPlatformFee; // Approximate until fee is synced
+          dataSource = 'pending_sync';
         }
         
         // Section header for earnings breakdown
@@ -542,7 +533,9 @@ export async function generateInvoicePDF(
           addTotalRow('Platform Fee:', actualPlatformFee, true);
         }
         // Show Stripe fee with source indicator
-        const stripeFeeLabel = dataSource === 'stripe' ? 'Stripe Processing Fee:' : 'Est. Stripe Fee (~2.9% + $0.30):';
+        const stripeFeeLabel = dataSource === 'stripe' 
+          ? 'Stripe Processing Fee:' 
+          : (dataSource === 'pending_sync' ? 'Stripe Fee (pending sync):' : 'Stripe Processing Fee:');
         addTotalRow(stripeFeeLabel, stripeProcessingFee, true);
         
         // Net payout (bold, highlighted)

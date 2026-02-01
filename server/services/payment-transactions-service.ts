@@ -62,6 +62,7 @@ export interface PaymentTransactionRecord {
   manager_revenue: string;
   refund_amount: string;
   net_amount: string;
+  stripe_processing_fee: string | null;
   currency: string;
   payment_intent_id: string | null;
   charge_id: string | null;

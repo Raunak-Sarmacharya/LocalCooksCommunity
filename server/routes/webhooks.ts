@@ -127,6 +127,13 @@ router.post("/stripe", async (req: Request, res: Response) => {
           webhookEventId,
         );
         break;
+      case "charge.updated":
+        await handleChargeUpdated(
+          event.data.object as Stripe.Charge,
+          event.data.previous_attributes as Record<string, unknown> | undefined,
+          webhookEventId,
+        );
+        break;
       case "account.updated":
         await handleAccountUpdated(
           event.data.object as Stripe.Account,
@@ -2160,6 +2167,123 @@ async function handleOverstayPenaltyPaymentCompleted(
 
   } catch (error) {
     logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
+  }
+}
+
+/**
+ * Handle charge.updated webhook - INDUSTRY STANDARD for syncing actual Stripe fees
+ * 
+ * This webhook fires when balance_transaction becomes available after payment processing.
+ * Stripe's SLA: balance_transaction is available within 1 hour of payment, usually seconds.
+ * 
+ * This replaces the need for manual fee calculation fallbacks (2.9% + $0.30).
+ */
+async function handleChargeUpdated(
+  charge: Stripe.Charge,
+  previousAttributes: Record<string, unknown> | undefined,
+  _webhookEventId: string,
+) {
+  if (!pool) {
+    logger.error("[Webhook] Database pool not available for charge.updated");
+    return;
+  }
+
+  try {
+    // Only process if balance_transaction just became available (was null, now has value)
+    const balanceTransactionWasNull = previousAttributes?.balance_transaction === null;
+    const balanceTransactionNowAvailable = charge.balance_transaction !== null;
+
+    if (!balanceTransactionWasNull || !balanceTransactionNowAvailable) {
+      // This update wasn't about balance_transaction becoming available - skip
+      return;
+    }
+
+    const paymentIntentId = typeof charge.payment_intent === 'string' 
+      ? charge.payment_intent 
+      : charge.payment_intent?.id;
+
+    if (!paymentIntentId) {
+      logger.warn(`[Webhook] charge.updated: No payment_intent on charge ${charge.id}`);
+      return;
+    }
+
+    logger.info(`[Webhook] charge.updated: balance_transaction now available for charge ${charge.id}, payment_intent ${paymentIntentId}`);
+
+    // Import services
+    const { findPaymentTransactionByIntentId, updatePaymentTransaction } = await import(
+      "../services/payment-transactions-service"
+    );
+
+    // Find the payment transaction record
+    const paymentTransaction = await findPaymentTransactionByIntentId(paymentIntentId, db);
+
+    if (!paymentTransaction) {
+      logger.warn(`[Webhook] charge.updated: No payment_transaction found for ${paymentIntentId}`);
+      return;
+    }
+
+    // Check if we already have the Stripe fee synced
+    const existingFee = parseInt(String(paymentTransaction.stripe_processing_fee || '0')) || 0;
+    if (existingFee > 0) {
+      logger.info(`[Webhook] charge.updated: Stripe fee already synced for ${paymentIntentId}: ${existingFee} cents`);
+      return;
+    }
+
+    // Get the balance transaction to retrieve actual fee
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      logger.error("[Webhook] STRIPE_SECRET_KEY not configured");
+      return;
+    }
+
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: "2025-12-15.clover",
+    });
+
+    const balanceTransactionId = typeof charge.balance_transaction === 'string'
+      ? charge.balance_transaction
+      : charge.balance_transaction?.id;
+
+    if (!balanceTransactionId) {
+      logger.warn(`[Webhook] charge.updated: balance_transaction ID not available for charge ${charge.id}`);
+      return;
+    }
+
+    const balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
+
+    // Calculate actual fees from balance transaction
+    const stripeAmount = charge.amount;
+    const stripeNetAmount = balanceTransaction.net;
+    const stripeProcessingFee = balanceTransaction.fee;
+
+    // Get application fee (platform fee) if applicable
+    let stripePlatformFee = 0;
+    if (charge.application_fee_amount) {
+      stripePlatformFee = charge.application_fee_amount;
+    }
+
+    // Update the payment transaction with actual Stripe data
+    await updatePaymentTransaction(
+      paymentTransaction.id,
+      {
+        stripeAmount,
+        stripeNetAmount,
+        stripeProcessingFee,
+        stripePlatformFee,
+        lastSyncedAt: new Date(),
+      },
+      db
+    );
+
+    logger.info(`[Webhook] ✅ charge.updated: Synced actual Stripe fees for ${paymentIntentId}:`, {
+      amount: `$${(stripeAmount / 100).toFixed(2)}`,
+      netAmount: `$${(stripeNetAmount / 100).toFixed(2)}`,
+      processingFee: `$${(stripeProcessingFee / 100).toFixed(2)}`,
+      platformFee: `$${(stripePlatformFee / 100).toFixed(2)}`,
+    });
+
+  } catch (error) {
+    logger.error(`[Webhook] Error handling charge.updated:`, error);
   }
 }
 

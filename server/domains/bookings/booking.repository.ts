@@ -123,11 +123,16 @@ export class BookingRepository {
                 chef: users,
                 // Chef's full name from chef_kitchen_applications table
                 chefFullName: chefKitchenApplications.fullName,
+                // Kitchen tax rate for revenue calculations
+                taxRatePercent: kitchens.taxRatePercent,
                 // Payment transaction data for accurate display (actual Stripe data)
+                transactionId: paymentTransactions.id,
                 transactionAmount: paymentTransactions.amount,
                 transactionServiceFee: paymentTransactions.serviceFee,
                 transactionManagerRevenue: paymentTransactions.managerRevenue,
                 transactionStatus: paymentTransactions.status,
+                transactionRefundAmount: paymentTransactions.refundAmount,
+                transactionStripeProcessingFee: paymentTransactions.stripeProcessingFee,
             })
             .from(kitchenBookings)
             .innerJoin(kitchens, eq(kitchenBookings.kitchenId, kitchens.id))
@@ -139,7 +144,11 @@ export class BookingRepository {
             ))
             .leftJoin(paymentTransactions, and(
                 eq(paymentTransactions.bookingId, kitchenBookings.id),
-                eq(paymentTransactions.bookingType, 'kitchen')
+                // Include both 'kitchen' and 'bundle' booking types for accurate payment data
+                or(
+                    eq(paymentTransactions.bookingType, 'kitchen'),
+                    eq(paymentTransactions.bookingType, 'bundle')
+                )
             ))
             .where(and(
                 eq(locations.managerId, managerId),
@@ -152,6 +161,7 @@ export class BookingRepository {
         return results.map(row => {
             const mappedBooking = this.mapKitchenBookingToDTO(row.booking);
             // Use actual Stripe transaction data for accurate display
+            const transactionId = row.transactionId || null;
             const transactionAmount = row.transactionAmount 
                 ? parseFloat(row.transactionAmount as string) 
                 : null;
@@ -161,6 +171,34 @@ export class BookingRepository {
             const managerRevenue = row.transactionManagerRevenue
                 ? parseFloat(row.transactionManagerRevenue as string)
                 : null;
+            const refundAmount = row.transactionRefundAmount
+                ? parseFloat(row.transactionRefundAmount as string)
+                : 0;
+            const stripeProcessingFee = row.transactionStripeProcessingFee
+                ? parseFloat(row.transactionStripeProcessingFee as string)
+                : 0;
+            
+            // ENTERPRISE STANDARD: Calculate tax EXACTLY like transaction history table
+            // Tax = kitchen_bookings.total_price * tax_rate_percent / 100
+            // kb.total_price is the SUBTOTAL (before tax) - e.g., $100
+            // pt.amount is the TOTAL (after tax) - e.g., $110
+            const kbTotalPrice = mappedBooking.totalPrice || 0; // Subtotal before tax from kitchen_bookings
+            const taxRatePercent = row.taxRatePercent ? parseFloat(String(row.taxRatePercent)) : 0;
+            const taxAmount = Math.round((kbTotalPrice * taxRatePercent) / 100);
+            
+            // Net revenue = total charged - tax - stripe fee (same as transaction history)
+            const totalCharged = transactionAmount ?? kbTotalPrice;
+            const netRevenue = totalCharged - taxAmount - stripeProcessingFee;
+            // Calculate refundable amount (total - already refunded - stripe fee)
+            // Option A: Customer absorbs Stripe processing fee on refunds
+            const grossRefundableAmount = transactionAmount 
+                ? Math.max(0, transactionAmount - refundAmount)
+                : 0;
+            // Net refundable = gross - proportional Stripe fee
+            const proportionalStripeFee = transactionAmount && grossRefundableAmount > 0
+                ? Math.round(stripeProcessingFee * (grossRefundableAmount / transactionAmount))
+                : 0;
+            const refundableAmount = Math.max(0, grossRefundableAmount - proportionalStripeFee);
             return {
                 ...mappedBooking,
                 kitchen: row.kitchen,
@@ -174,10 +212,20 @@ export class BookingRepository {
                 // Include storage and equipment items from JSONB fields
                 storageItems: row.booking.storageItems || [],
                 equipmentItems: row.booking.equipmentItems || [],
+                // Kitchen's tax rate for revenue calculations (consistent with transaction history)
+                taxRatePercent,
                 // Use actual Stripe transaction data for accurate payment display
-                transactionAmount, // Actual amount charged (from payment_transactions)
+                transactionId,     // Payment transaction ID (for refunds)
+                transactionAmount, // Actual amount charged (from payment_transactions) = $110
+                taxAmount,         // Tax = kb.total_price * tax_rate / 100 (same as transaction history) = $10
                 serviceFee,        // Platform fee (from payment_transactions)
                 managerRevenue,    // What manager receives (from payment_transactions)
+                netRevenue,        // Net = transactionAmount - taxAmount - stripeFee (same as transaction history) = $96.51
+                refundAmount,      // Amount already refunded
+                refundableAmount,  // Net amount customer receives (after Stripe fee deduction)
+                grossRefundableAmount, // Gross refundable before fee deduction
+                stripeProcessingFee,   // Total Stripe processing fee for this transaction
+                proportionalStripeFee, // Stripe fee portion for refundable amount
             };
         });
     }

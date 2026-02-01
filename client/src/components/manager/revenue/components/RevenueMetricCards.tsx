@@ -4,12 +4,14 @@
  * Enterprise-grade revenue dashboard with clear breakdown showing:
  * - Total Revenue (gross amount charged)
  * - Tax Collected (based on kitchen tax rate)
- * - Stripe Processing Fees (estimated ~2.9% + $0.30)
- * - Net Revenue (what manager actually receives)
+ * - Stripe Processing Fees (actual from Stripe API)
+ * - Live Payout Status (real-time from Stripe Balance API)
  * 
  * Uses skeleton loaders for loading states.
  */
 
+import { useQuery } from "@tanstack/react-query"
+import { auth } from "@/lib/firebase"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
@@ -25,11 +27,12 @@ import {
     TrendingDown,
     DollarSign,
     BarChart3,
-    CheckCircle2,
     Receipt,
     CreditCard,
     Wallet,
     Info,
+    Clock,
+    Banknote,
 } from "lucide-react"
 import { formatCurrency, formatPercent } from "@/lib/formatters"
 import type { RevenueMetrics } from "../types"
@@ -142,7 +145,41 @@ function MetricCard({
     return content
 }
 
+// Interface for live Stripe balance data
+interface StripeBalanceData {
+    available: number
+    pending: number
+    inTransit: number
+    currency: string
+    hasStripeAccount: boolean
+}
+
 export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsProps) {
+    // Fetch live Stripe balance for real-time payout data
+    const { data: stripeBalance, isLoading: isLoadingBalance } = useQuery<StripeBalanceData>({
+        queryKey: ['stripeBalance'],
+        queryFn: async () => {
+            const currentFirebaseUser = auth.currentUser
+            if (!currentFirebaseUser) {
+                throw new Error("Firebase user not available")
+            }
+            const token = await currentFirebaseUser.getIdToken()
+            const response = await fetch('/api/manager/revenue/stripe-balance', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+            })
+            if (!response.ok) {
+                throw new Error('Failed to fetch Stripe balance')
+            }
+            return response.json()
+        },
+        staleTime: 1000 * 30, // Cache for 30 seconds - balance changes frequently
+        refetchInterval: 1000 * 60, // Refresh every minute
+    })
+
     if (isLoading) {
         return (
             <div className="space-y-4">
@@ -169,20 +206,6 @@ export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsPro
     const taxAmount = metrics.taxAmount ?? 0
     const stripeFee = metrics.stripeFee ?? 0
     const netRevenue = metrics.netRevenue ?? (metrics.totalRevenue - taxAmount - stripeFee)
-
-    // Calculate completed net revenue (what's actually in the bank)
-    const completedNetRevenue = (() => {
-        const completedTotal = metrics.completedPayments || 0
-        const totalRevenue = metrics.totalRevenue || 0
-
-        if (totalRevenue === 0) return 0
-
-        // Pro-rate the deductions based on completed vs total
-        const ratio = completedTotal / totalRevenue
-        const completedTax = Math.round(taxAmount * ratio)
-        const completedStripeFee = Math.round(stripeFee * ratio)
-        return completedTotal - completedTax - completedStripeFee
-    })()
 
     return (
         <div className="space-y-4">
@@ -237,8 +260,8 @@ export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsPro
                             </div>
                             <p className="text-xl font-bold text-amber-600">{formatCurrency(taxAmount)}</p>
                             <p className="text-xs text-muted-foreground">
-                                {metrics.totalRevenue > 0 && taxAmount > 0 
-                                    ? `${((taxAmount / metrics.totalRevenue) * 100).toFixed(1)}% tax rate`
+                                {metrics.taxRatePercent && metrics.taxRatePercent > 0
+                                    ? `${metrics.taxRatePercent}% tax rate`
                                     : 'No tax applied'}
                             </p>
                         </div>
@@ -263,24 +286,75 @@ export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsPro
                             <p className="text-xs text-muted-foreground">From Stripe API</p>
                         </div>
 
-                        {/* Completed Payments */}
+                        {/* Live Stripe Balance - Available for Payout */}
                         <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
-                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">In Your Account</span>
+                                <Banknote className="h-3.5 w-3.5 text-emerald-600" />
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Available</span>
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                                         </TooltipTrigger>
-                                        <TooltipContent className="max-w-xs">
-                                            <p className="text-sm">Net amount from completed payments that is available in your Stripe Connect account or ready for payout.</p>
+                                        <TooltipContent className="max-w-sm">
+                                            <div className="space-y-2 text-sm">
+                                                <p className="font-medium">Live Stripe Balance</p>
+                                                <p className="text-muted-foreground">Real-time data from Stripe Balance API:</p>
+                                                <ul className="text-xs space-y-1 text-muted-foreground">
+                                                    <li>• Funds that have cleared and are ready for payout</li>
+                                                    <li>• Updated automatically as payments complete</li>
+                                                    <li>• Includes tax you collected</li>
+                                                </ul>
+                                                <p className="text-xs border-t pt-2 mt-2">You are responsible for remitting tax to the appropriate authorities.</p>
+                                            </div>
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
                             </div>
-                            <p className="text-xl font-bold text-emerald-600">{formatCurrency(completedNetRevenue)}</p>
-                            <p className="text-xs text-muted-foreground">{metrics.paidBookingCount || 0} bookings processed</p>
+                            {isLoadingBalance ? (
+                                <Skeleton className="h-7 w-24" />
+                            ) : (
+                                <p className="text-xl font-bold text-emerald-600">
+                                    {formatCurrency(stripeBalance?.available ?? 0)}
+                                </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                                {stripeBalance?.hasStripeAccount ? 'From Stripe' : 'No Stripe account'}
+                            </p>
+                        </div>
+
+                        {/* Pending Balance */}
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-1.5">
+                                <Clock className="h-3.5 w-3.5 text-amber-600" />
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pending</span>
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Info className="h-3 w-3 text-muted-foreground cursor-help" />
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-sm">
+                                            <div className="space-y-2 text-sm">
+                                                <p className="font-medium">Pending Balance</p>
+                                                <p className="text-muted-foreground">Funds from recent payments:</p>
+                                                <ul className="text-xs space-y-1 text-muted-foreground">
+                                                    <li>• Payments still in processing period</li>
+                                                    <li>• Usually clears in 2-7 business days</li>
+                                                    <li>• Will move to Available when cleared</li>
+                                                </ul>
+                                            </div>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
+                            {isLoadingBalance ? (
+                                <Skeleton className="h-7 w-24" />
+                            ) : (
+                                <p className="text-xl font-bold text-amber-600">
+                                    {formatCurrency(stripeBalance?.pending ?? 0)}
+                                </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">Processing</p>
                         </div>
 
                         {/* Average Booking */}

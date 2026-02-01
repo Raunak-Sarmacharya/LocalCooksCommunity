@@ -35,6 +35,15 @@ interface Booking {
   chefName?: string;
   locationName?: string;
   locationTimezone?: string;
+  // Payment and refund fields
+  totalPrice?: number;
+  transactionAmount?: number;
+  transactionId?: number;
+  refundAmount?: number;
+  refundableAmount?: number; // Net amount customer receives (after Stripe fee deduction)
+  grossRefundableAmount?: number; // Gross refundable before fee deduction
+  stripeProcessingFee?: number; // Total Stripe processing fee
+  proportionalStripeFee?: number; // Stripe fee portion for refundable amount
 }
 
 async function getAuthHeaders(): Promise<HeadersInit> {
@@ -76,6 +85,9 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [bookingToRefund, setBookingToRefund] = useState<Booking | null>(null);
+  const [refundAmount, setRefundAmount] = useState<string>('');
 
   // Check if any location has approved license
   const hasApprovedLicense = locations.some((loc: any) => loc.kitchenLicenseStatus === 'approved');
@@ -200,12 +212,29 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
       const text = await response.text();
       return text ? JSON.parse(text) : {};
     },
-    onSuccess: (_, { status }) => {
+    onSuccess: (data, { status }) => {
       queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
-      toast({
-        title: "Success",
-        description: status === 'confirmed' ? "Booking confirmed!" : "Booking cancelled",
-      });
+      
+      // Handle different response scenarios
+      if (data?.requiresManualRefund) {
+        // Cancellation of confirmed booking - needs manual refund
+        toast({
+          title: "Booking Cancelled",
+          description: "Use 'Issue Refund' from the actions menu to process the refund.",
+          variant: "default",
+        });
+      } else if (data?.refund) {
+        // Rejection with auto-refund
+        toast({
+          title: "Booking Rejected & Refunded",
+          description: `Refund of $${(data.refund.amount / 100).toFixed(2)} processed (customer absorbs Stripe fee).`,
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: status === 'confirmed' ? "Booking confirmed!" : "Booking cancelled",
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -238,6 +267,72 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
   const handleCancelDialogClose = () => {
     setCancelDialogOpen(false);
     setBookingToCancel(null);
+  };
+
+  // Refund mutation
+  const refundMutation = useMutation({
+    mutationFn: async ({ transactionId, amountCents }: { transactionId: number; amountCents: number }) => {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/manager/revenue/transactions/${transactionId}/refund`, {
+        method: 'POST',
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ amount: amountCents, reason: 'Refund issued by manager' }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to process refund');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['managerBookings'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/revenue/transactions'] });
+      toast({
+        title: "Refund Processed",
+        description: "The refund has been successfully processed.",
+      });
+      setRefundDialogOpen(false);
+      setBookingToRefund(null);
+      setRefundAmount('');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Refund Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleRefundClick = (booking: Booking) => {
+    setBookingToRefund(booking);
+    // Default to full refund amount
+    const refundableAmount = (booking as any).refundableAmount || (booking as any).totalPrice || 0;
+    setRefundAmount((refundableAmount / 100).toFixed(2));
+    setRefundDialogOpen(true);
+  };
+
+  const handleRefundConfirm = () => {
+    if (bookingToRefund && refundAmount) {
+      const amountCents = Math.round(parseFloat(refundAmount) * 100);
+      const transactionId = (bookingToRefund as any).transactionId;
+      if (transactionId && amountCents > 0) {
+        refundMutation.mutate({ transactionId, amountCents });
+      } else {
+        toast({
+          title: "Refund Error",
+          description: "No transaction ID found for this booking. Please use the Revenue Dashboard to process refunds.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleRefundDialogClose = () => {
+    setRefundDialogOpen(false);
+    setBookingToRefund(null);
+    setRefundAmount('');
   };
 
   // Categorize bookings by timezone-aware timeline (Upcoming, Past)
@@ -479,10 +574,9 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                   }
                   handleConfirm(id);
                 },
-                onReject: handleCancelClick, // Reuse cancel click for reject as it opens same dialog or we might need differentiation. 
-                // Wait, existing code uses handleCancelClick for Reject too?
-                // Line 539: onClick={() => handleCancelClick(booking)} for Reject button. Yes.
+                onReject: handleCancelClick,
                 onCancel: handleCancelClick,
+                onRefund: handleRefundClick,
                 hasApprovedLicense
               })}
               data={filteredBookings}
@@ -506,8 +600,17 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
                 <p className="font-medium">
                   {bookingToCancel?.status === 'pending'
                     ? "Are you sure you want to reject this request?"
-                    : "Are you sure you want to cancel this booking? This action cannot be undone."}
+                    : "Are you sure you want to cancel this booking?"}
                 </p>
+                {bookingToCancel?.status === 'pending' ? (
+                  <p className="text-sm text-muted-foreground">
+                    The customer will receive an automatic refund (minus non-refundable Stripe processing fee).
+                  </p>
+                ) : (
+                  <p className="text-sm text-orange-600 font-medium">
+                    ⚠️ Refunds are not automatic for confirmed bookings. After cancellation, use the &quot;Issue Refund&quot; action to process the refund manually.
+                  </p>
+                )}
                 {bookingToCancel && (
                   <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
                     <div className="flex items-center gap-2">
@@ -573,6 +676,91 @@ export default function ManagerBookingsPanel({ embedded = false }: ManagerBookin
               disabled={updateStatusMutation.isPending}
             >
               {updateStatusMutation.isPending ? 'Processing...' : (bookingToCancel?.status === 'pending' ? 'Reject Request' : 'Yes, Cancel Booking')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Refund Dialog */}
+      <AlertDialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-orange-600">
+              Issue Refund
+            </AlertDialogTitle>
+            <AlertDialogDescription className="pt-4">
+              <div className="space-y-4">
+                <p className="font-medium">
+                  Enter the refund amount for this booking:
+                </p>
+                {bookingToRefund && (
+                  <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Chef:</span>
+                      <span>{bookingToRefund.chefName || `Chef #${bookingToRefund.chefId}`}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Kitchen:</span>
+                      <span>{bookingToRefund.kitchenName || 'Kitchen'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Total Charged:</span>
+                      <span>${((bookingToRefund.transactionAmount || bookingToRefund.totalPrice || 0) / 100).toFixed(2)}</span>
+                    </div>
+                    {(bookingToRefund.refundAmount || 0) > 0 && (
+                      <div className="flex items-center gap-2 text-orange-600">
+                        <span className="font-medium">Already Refunded:</span>
+                        <span>${((bookingToRefund.refundAmount || 0) / 100).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {/* Option A Fee Breakdown */}
+                    <div className="border-t pt-2 mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>Gross Refundable:</span>
+                        <span>${((bookingToRefund.grossRefundableAmount || 0) / 100).toFixed(2)}</span>
+                      </div>
+                      {(bookingToRefund.proportionalStripeFee || 0) > 0 && (
+                        <div className="flex items-center justify-between text-red-600">
+                          <span>Processing Fee (non-refundable):</span>
+                          <span>-${((bookingToRefund.proportionalStripeFee || 0) / 100).toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between font-semibold text-green-600 border-t pt-1">
+                        <span>Max Refund to Customer:</span>
+                        <span>${((bookingToRefund.refundableAmount || 0) / 100).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label htmlFor="refundAmount" className="text-sm font-medium">
+                    Refund Amount ($)
+                  </label>
+                  <input
+                    id="refundAmount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    placeholder="Enter amount"
+                  />
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  <strong>Note:</strong> Processing fees are non-refundable per Stripe policy. The customer will receive the refund amount minus the proportional processing fee shown above. Refunds typically arrive within 5-10 business days.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleRefundDialogClose}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRefundConfirm}
+              className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
+              disabled={refundMutation.isPending || !refundAmount || parseFloat(refundAmount) <= 0}
+            >
+              {refundMutation.isPending ? 'Processing...' : 'Process Refund'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

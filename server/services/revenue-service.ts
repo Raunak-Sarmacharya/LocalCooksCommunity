@@ -21,7 +21,9 @@ export interface RevenueMetrics {
   managerRevenue: number;      // Manager earnings (cents) = totalRevenue - platformFee (includes processing)
   depositedManagerRevenue: number; // Manager earnings from succeeded transactions only (cents) - what's actually in bank
   pendingPayments: number;     // Unpaid bookings (cents)
-  completedPayments: number;   // Paid bookings (cents)
+  completedPayments: number;   // Paid bookings (cents) - gross amount
+  completedNetRevenue?: number; // Net revenue from completed transactions only (cents) - payout-ready amount
+  taxRatePercent?: number;     // Actual tax rate from kitchens table
   averageBookingValue: number; // Average per booking (cents)
   bookingCount: number;        // Total bookings
   paidBookingCount: number;    // Paid bookings
@@ -386,9 +388,22 @@ export async function getRevenueMetrics(
       // Deposited manager revenue = only from paid bookings (succeeded transactions)
       const depositedManagerRevenue = allCompletedPayments - completedServiceFee;
 
-      // Calculate estimated Stripe fees (2.9% + $0.30 per transaction for CAD)
+      // Get actual Stripe fees from payment_transactions (synced via charge.updated webhook)
+      // ENTERPRISE STANDARD: Do not estimate fees - use actual data from Stripe Balance Transaction API
       const paidCount = parseInt(completedRow.completed_count_all) || 0;
-      const estimatedStripeFee = Math.round((allCompletedPayments * 0.029) + (paidCount * 30));
+      let actualStripeFeeFromDb = 0;
+      try {
+        const feeResult = await db.execute(sql`
+          SELECT COALESCE(SUM(stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
+          FROM payment_transactions
+          WHERE manager_id = ${managerId} AND status = 'succeeded' AND stripe_processing_fee > 0
+        `);
+        actualStripeFeeFromDb = parseInt(feeResult.rows[0]?.total_stripe_fee || '0') || 0;
+      } catch (feeError) {
+        console.warn('[Revenue Service] Could not fetch actual Stripe fees:', feeError);
+      }
+      // Use actual fees if available, otherwise show 0 (fees will sync via charge.updated webhook)
+      const estimatedStripeFee = actualStripeFeeFromDb > 0 ? actualStripeFeeFromDb : 0;
       // Tax amount calculated from kitchen tax_rate_percent (not service_fee)
       const taxAmount = pendingTaxAmount + completedTaxAmount;
       // Net revenue = total - tax - stripe fees
@@ -513,9 +528,10 @@ export async function getRevenueMetrics(
     
     try {
       // Query actual Stripe fees from payment_transactions for this manager's bookings
+      // IMPORTANT: Exclude fully refunded transactions - manager shouldn't pay Stripe fee for refunded bookings
       const stripeFeeConditions = [
         sql`pt.manager_id = ${managerId}`,
-        sql`pt.status = 'succeeded'`,
+        sql`pt.status IN ('succeeded', 'partially_refunded')`, // Include partially refunded but not fully refunded
         sql`pt.stripe_processing_fee IS NOT NULL`,
         sql`pt.stripe_processing_fee > 0`
       ];
@@ -530,8 +546,16 @@ export async function getRevenueMetrics(
         )`);
       }
       
+      // ENTERPRISE STANDARD: Stripe fee proportional to effective amount (amount - refund)
+      // Manager only pays Stripe fee on non-refunded portion
       const stripeFeeResult = await db.execute(sql`
-        SELECT COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
+        SELECT COALESCE(SUM(
+          CASE 
+            WHEN pt.amount::numeric > 0 THEN
+              ROUND(pt.stripe_processing_fee::numeric * (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric)
+            ELSE 0
+          END
+        ), 0)::bigint as total_stripe_fee
         FROM payment_transactions pt
         WHERE ${sql.join(stripeFeeConditions, sql` AND `)}
       `);
@@ -546,22 +570,73 @@ export async function getRevenueMetrics(
         stripeFeeSource = 'stripe';
         console.log(`[Revenue Service] Using actual Stripe fees from payment_transactions: ${actualStripeFee} cents`);
       } else {
-        // Fallback to estimated fees if no stored Stripe fees available
-        actualStripeFee = Math.round((allCompletedPayments * 0.029) + (paidBookingCountVal * 30));
-        console.log(`[Revenue Service] No stored Stripe fees found, using estimate: ${actualStripeFee} cents`);
+        // ENTERPRISE STANDARD: Do not estimate fees - use actual data only
+        // If no stored fees, leave as 0 - charge.updated webhook will sync fees later
+        actualStripeFee = 0;
+        console.log(`[Revenue Service] No stored Stripe fees found - fees will sync via charge.updated webhook`);
       }
     } catch (error) {
-      console.warn('[Revenue Service] Error fetching Stripe fees from payment_transactions, using estimate:', error);
-      actualStripeFee = Math.round((allCompletedPayments * 0.029) + (paidBookingCountVal * 30));
+      console.warn('[Revenue Service] Error fetching Stripe fees from payment_transactions:', error);
+      // ENTERPRISE STANDARD: Do not fallback to estimates - use 0 until actual fees are synced
+      actualStripeFee = 0;
     }
     
     // Tax amount calculated from kitchen tax_rate_percent (not service_fee)
-    const taxAmount = pendingTaxAmount2 + completedTaxAmount2;
-    // Net revenue = total - tax - stripe fees
-    const netRevenue = totalRevenueWithAllPayments - taxAmount - actualStripeFee;
+    // But we need to exclude tax on refunded transactions
+    const grossTaxAmount = pendingTaxAmount2 + completedTaxAmount2;
+    
+    // Parse refunded amount
+    const refundedAmount = typeof row.refunded_amount === 'string'
+      ? (isNaN(parseInt(row.refunded_amount)) ? 0 : (parseInt(row.refunded_amount) || 0))
+      : (row.refunded_amount ? (isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount))) : 0);
+    
+    // ENTERPRISE STANDARD: Tax = kb.total_price * tax_rate / 100 (SAME as transaction history)
+    // kb.total_price is the SUBTOTAL before tax (e.g., $100)
+    // pt.amount is the TOTAL after tax (e.g., $110)
+    // For refunds: proportionally reduce tax based on refund ratio
+    let effectiveTaxAmount = 0;
+    try {
+      const effectiveTaxResult = await db.execute(sql`
+        SELECT COALESCE(SUM(
+          -- Tax = kb.total_price * tax_rate / 100 (same formula as transaction history)
+          -- For partial refunds: multiply by (1 - refund_ratio) to get effective tax
+          ROUND(
+            (kb.total_price::numeric * COALESCE(k.tax_rate_percent, 0)::numeric / 100) *
+            CASE 
+              WHEN pt.amount::numeric > 0 THEN 
+                (pt.amount::numeric - COALESCE(pt.refund_amount::numeric, 0)) / pt.amount::numeric
+              ELSE 1
+            END
+          )
+        ), 0)::bigint as effective_tax
+        FROM payment_transactions pt
+        LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
+        LEFT JOIN kitchens k ON kb.kitchen_id = k.id
+        WHERE pt.manager_id = ${managerId}
+      `);
+      const effectiveTaxRow: any = effectiveTaxResult.rows[0] || {};
+      effectiveTaxAmount = typeof effectiveTaxRow.effective_tax === 'string'
+        ? parseInt(effectiveTaxRow.effective_tax) || 0
+        : (effectiveTaxRow.effective_tax ? parseInt(String(effectiveTaxRow.effective_tax)) : 0);
+    } catch (error) {
+      console.warn('[Revenue Service] Error calculating effective tax amount:', error);
+    }
+    
+    // Use effective tax from payment_transactions if available, otherwise fall back to gross tax
+    const taxAmount = effectiveTaxAmount > 0 ? effectiveTaxAmount : grossTaxAmount;
+    
+    // ENTERPRISE STANDARD: Deduct refunds from gross revenue
+    // This gives managers an accurate picture of actual revenue after refunds
+    const effectiveGrossRevenue = totalRevenueWithAllPayments - refundedAmount;
+    
+    // Net revenue = effective gross - tax - stripe fees
+    const netRevenue = effectiveGrossRevenue - taxAmount - actualStripeFee;
+    
+    // Also adjust completed payments to account for refunds
+    const effectiveCompletedPayments = Math.max(0, allCompletedPayments - refundedAmount);
 
     return {
-      totalRevenue: isNaN(totalRevenueWithAllPayments) ? 0 : (totalRevenueWithAllPayments || 0),
+      totalRevenue: isNaN(effectiveGrossRevenue) ? 0 : (effectiveGrossRevenue || 0),
       platformFee: isNaN(totalServiceFee) ? 0 : (totalServiceFee || 0),
       taxAmount: isNaN(taxAmount) ? 0 : (taxAmount || 0),
       stripeFee: isNaN(actualStripeFee) ? 0 : (actualStripeFee || 0),
@@ -569,16 +644,14 @@ export async function getRevenueMetrics(
       managerRevenue: isNaN(managerRevenue) ? 0 : (managerRevenue || 0),
       depositedManagerRevenue: isNaN(depositedManagerRevenue) ? 0 : (depositedManagerRevenue || 0),
       pendingPayments: allPendingPayments, // Use ALL pending payments, not just those in date range
-      completedPayments: allCompletedPayments, // Use ALL completed payments, not just those in date range
+      completedPayments: isNaN(effectiveCompletedPayments) ? 0 : effectiveCompletedPayments, // Deduct refunds
       averageBookingValue: row.avg_booking_value
         ? (isNaN(Math.round(parseFloat(String(row.avg_booking_value)))) ? 0 : Math.round(parseFloat(String(row.avg_booking_value))))
         : 0,
       bookingCount: isNaN(parseInt(row.booking_count)) ? 0 : (parseInt(row.booking_count) || 0),
       paidBookingCount: paidBookingCountVal,
       cancelledBookingCount: isNaN(parseInt(row.cancelled_count)) ? 0 : (parseInt(row.cancelled_count) || 0),
-      refundedAmount: typeof row.refunded_amount === 'string'
-        ? (isNaN(parseInt(row.refunded_amount)) ? 0 : (parseInt(row.refunded_amount) || 0))
-        : (row.refunded_amount ? (isNaN(parseInt(String(row.refunded_amount))) ? 0 : parseInt(String(row.refunded_amount))) : 0),
+      refundedAmount: refundedAmount,
     };
   } catch (error) {
     console.error('Error getting revenue metrics:', error);
@@ -923,9 +996,9 @@ export async function getTransactionHistory(
       const calculatedManagerRevenue = totalPriceCents - serviceFeeCents;
       const managerRevenue = ptManagerRevenue > 0 ? ptManagerRevenue : calculatedManagerRevenue;
       
-      // Stripe fee - use actual if available, otherwise estimate (2.9% + $0.30)
-      const estimatedStripeFee = Math.round((totalPriceCents * 0.029) + 30);
-      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
+      // If actual fee is 0, it will be synced via charge.updated webhook
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       
       // Net revenue = total - tax - stripe fees
       const netRevenue = totalPriceCents - taxCents - stripeFee;
@@ -1004,7 +1077,7 @@ export async function getTransactionHistory(
       LEFT JOIN users u ON sb.chef_id = u.id
       WHERE pt.manager_id = ${managerId}
         AND pt.booking_type = 'storage'
-        AND (pt.status = 'succeeded' OR pt.status = 'processing')
+        AND (pt.status = 'succeeded' OR pt.status = 'processing' OR pt.status = 'refunded' OR pt.status = 'partially_refunded')
       ORDER BY pt.created_at DESC
     `);
 
@@ -1030,9 +1103,9 @@ export async function getTransactionHistory(
       const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
       const bookingId = parseInt(String(row.booking_id));
 
-      // Stripe fee - use actual if available, otherwise estimate (2.9% + $0.30)
-      const estimatedStripeFee = Math.round((ptAmount * 0.029) + 30);
-      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      // ENTERPRISE STANDARD: Use actual Stripe fee only - do not estimate
+      // If actual fee is 0, it will be synced via charge.updated webhook
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : 0;
       
       // Net revenue = total - stripe fees (storage doesn't have tax currently)
       const netRevenue = ptAmount - stripeFee;
@@ -1248,8 +1321,10 @@ export async function getCompleteRevenueMetrics(
       parseNumeric(storageRow.paid_count) +
       parseNumeric(equipmentRow.paid_count);
 
-    // Calculate estimated Stripe fees (2.9% + $0.30 per transaction for CAD)
-    const estimatedStripeFee = Math.round((completedPaymentsTotal * 0.029) + (totalPaidCount * 30));
+    // ENTERPRISE STANDARD: Use actual Stripe fees from database (synced via charge.updated webhook)
+    // Do not estimate - use only actual data from Stripe Balance Transaction API
+    // Storage and equipment metrics come from raw SQL so we use kitchenMetrics.stripeFee as the primary source
+    const estimatedStripeFee = kitchenMetrics.stripeFee;
     // Tax amount - use the actual calculated tax from kitchen metrics (based on kitchen tax_rate_percent)
     // Storage and equipment bookings don't have tax for now, so we only use kitchen tax
     const taxAmount = kitchenMetrics.taxAmount || 0;

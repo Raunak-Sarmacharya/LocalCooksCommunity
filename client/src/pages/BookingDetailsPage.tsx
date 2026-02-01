@@ -191,7 +191,12 @@ export default function BookingDetailsPage() {
     setIsDownloading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`/api/bookings/${booking.id}/invoice`, {
+      // Use different endpoints for chef vs manager
+      const endpoint = isManagerView
+        ? `/api/manager/revenue/invoices/${booking.id}`
+        : `/api/bookings/${booking.id}/invoice`;
+      
+      const response = await fetch(endpoint, {
         credentials: "include",
         headers,
       });
@@ -746,14 +751,39 @@ export default function BookingDetailsPage() {
                         <span className="text-gray-600">Gross Amount</span>
                         <span className="font-medium">{formatCurrency(booking.paymentTransaction.amount)}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Platform Fee</span>
-                        <span className="font-medium text-red-600">-{formatCurrency(booking.paymentTransaction.serviceFee)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-semibold">
-                        <span className="text-gray-900">Your Revenue</span>
-                        <span className="text-green-600">{formatCurrency(booking.paymentTransaction.managerRevenue)}</span>
-                      </div>
+                      {/* Tax = kb.total_price * tax_rate / 100 (same as transaction history) */}
+                      {(() => {
+                        const amount = booking.paymentTransaction.amount || 0;
+                        const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
+                        // Use kitchen's tax rate from database
+                        const taxRatePercent = (booking.kitchen as any)?.taxRatePercent || 0;
+                        // Tax = booking.totalPrice * tax_rate / 100 (same formula as transaction history)
+                        // booking.totalPrice is the subtotal BEFORE tax (e.g., $100)
+                        // booking.paymentTransaction.amount is the total AFTER tax (e.g., $110)
+                        const subtotal = booking.totalPrice || 0;
+                        const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
+                        const netRevenue = amount - taxAmount - stripeFee;
+                        
+                        return (
+                          <>
+                            {taxRatePercent > 0 && (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-600">Tax Collected ({taxRatePercent}%)</span>
+                                <span className="font-medium text-amber-600">-{formatCurrency(taxAmount)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-600">Stripe Fee</span>
+                              <span className="font-medium text-red-600">-{formatCurrency(stripeFee)}</span>
+                            </div>
+                            <Separator className="my-2" />
+                            <div className="flex justify-between text-sm font-semibold">
+                              <span className="text-gray-900">Your Net Revenue</span>
+                              <span className="text-green-600">{formatCurrency(netRevenue)}</span>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </>
                 )}
