@@ -742,6 +742,39 @@ export default function BookingDetailsPage() {
                   </span>
                 </div>
 
+                {/* Chef View - Payment Breakdown (without Stripe fee) */}
+                {!isManagerView && booking.paymentTransaction && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2 pt-2">
+                      <p className="text-xs font-medium text-gray-500 uppercase">Payment Breakdown</p>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Subtotal</span>
+                        <span className="font-medium">{formatCurrency(booking.totalPrice)}</span>
+                      </div>
+                      {(() => {
+                        // Use kitchen's tax rate from database
+                        const taxRatePercent = (booking.kitchen as any)?.taxRatePercent || 0;
+                        const subtotal = booking.totalPrice || 0;
+                        const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
+                        
+                        return taxRatePercent > 0 ? (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-600">Tax ({taxRatePercent}%)</span>
+                            <span className="font-medium text-amber-600">{formatCurrency(taxAmount)}</span>
+                          </div>
+                        ) : null;
+                      })()}
+                      <Separator className="my-2" />
+                      <div className="flex justify-between text-sm font-semibold">
+                        <span className="text-gray-900">Amount Paid</span>
+                        <span className="text-green-600">{formatCurrency(booking.paymentTransaction.amount)}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Manager View - Revenue Breakdown (with Stripe fee) */}
                 {isManagerView && booking.paymentTransaction && (
                   <>
                     <Separator />
