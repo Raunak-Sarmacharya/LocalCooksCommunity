@@ -27,6 +27,7 @@
     "db:push": "drizzle-kit push",
     "test": "vitest",
     "test:server": "vitest -c vitest.config.server.ts",
+    "test:integration": "vitest -c vitest.config.integration.ts",
     "db:add-feedback": "tsx scripts/add-feedback-field.ts",
     "db:add-notification-phone": "tsx scripts/add-notification-phone.ts",
     "db:apply-pricing-migration": "node scripts/apply-kitchen-pricing-migration.js",

@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Building2, Calendar, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
-import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useState } from "react";
 
 // Define interface matching the data structure in ChefLanding
@@ -28,16 +28,15 @@ export function KitchenLocationCard({ location, navigate }: KitchenLocationCardP
     const rawImageUrl = (location.mainImage || location.featuredKitchenImage || '').trim();
     const hasValidRawImage = rawImageUrl.length > 0;
 
-    // Use the hook to get the accessible URL (handles R2 signing)
-    // Only call hook if we actually have a raw URL
-    const presignedUrl = usePresignedImageUrl(hasValidRawImage ? rawImageUrl : null);
+    // Use the utility to get the accessible URL (handles R2 proxy)
+    const proxyUrl = hasValidRawImage ? getR2ProxyUrl(rawImageUrl) : null;
 
     // Internal state to handle image loading failures (fallback to placeholder)
     const [imageError, setImageError] = useState(false);
 
     // Determine what to actually show
     const showPlaceholder = !hasValidRawImage || imageError;
-    const displayUrl = presignedUrl || rawImageUrl; // Fallback to raw if hook waiting or failed
+    const displayUrl = proxyUrl || rawImageUrl; // Fallback to raw if proxy failed
 
     return (
         <motion.div

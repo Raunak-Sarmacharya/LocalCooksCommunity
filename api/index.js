@@ -2685,6 +2685,7 @@ __export(email_exports, {
   generateBookingCancellationNotificationEmail: () => generateBookingCancellationNotificationEmail,
   generateBookingConfirmationEmail: () => generateBookingConfirmationEmail,
   generateBookingNotificationEmail: () => generateBookingNotificationEmail,
+  generateBookingPaymentReceivedEmail: () => generateBookingPaymentReceivedEmail,
   generateBookingRequestEmail: () => generateBookingRequestEmail,
   generateBookingStatusChangeNotificationEmail: () => generateBookingStatusChangeNotificationEmail,
   generateChefAllDocumentsApprovedEmail: () => generateChefAllDocumentsApprovedEmail,
@@ -2695,11 +2696,17 @@ __export(email_exports, {
   generateDocumentUpdateEmail: () => generateDocumentUpdateEmail,
   generateEmailVerificationEmail: () => generateEmailVerificationEmail,
   generateFullVerificationEmail: () => generateFullVerificationEmail,
+  generateKitchenApplicationApprovedEmail: () => generateKitchenApplicationApprovedEmail,
+  generateKitchenApplicationRejectedEmail: () => generateKitchenApplicationRejectedEmail,
   generateKitchenAvailabilityChangeEmail: () => generateKitchenAvailabilityChangeEmail,
+  generateKitchenLicenseApprovedEmail: () => generateKitchenLicenseApprovedEmail,
+  generateKitchenLicenseRejectedEmail: () => generateKitchenLicenseRejectedEmail,
+  generateKitchenLicenseSubmittedAdminEmail: () => generateKitchenLicenseSubmittedAdminEmail,
   generateKitchenSettingsChangeEmail: () => generateKitchenSettingsChangeEmail,
   generateLocationEmailChangedEmail: () => generateLocationEmailChangedEmail,
   generateManagerCredentialsEmail: () => generateManagerCredentialsEmail,
   generateManagerMagicLinkEmail: () => generateManagerMagicLinkEmail,
+  generateNewKitchenApplicationManagerEmail: () => generateNewKitchenApplicationManagerEmail,
   generateNewUserRegistrationAdminEmail: () => generateNewUserRegistrationAdminEmail,
   generateOverstayDetectedEmail: () => generateOverstayDetectedEmail,
   generateOverstayManagerNotificationEmail: () => generateOverstayManagerNotificationEmail,
@@ -2877,7 +2884,7 @@ If you have any questions, contact us at ${supportEmail}
     text: textContent
   });
 }
-var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generateOverstayManagerNotificationEmail, generateNewUserRegistrationAdminEmail;
+var createBookingDateTimeImpl, loadAttempted, recentEmails, DUPLICATE_PREVENTION_WINDOW, createTransporter, getEmailConfig, sendEmail, getDomainFromEmail, getOrganizationName, getUnsubscribeEmail, getSupportEmail, detectEmailProvider, formatDateForCalendar, escapeIcalText, generateEventUid, generateIcsFile, generateCalendarUrl, getUniformEmailStyles, generateStatusChangeEmail, generateVendorCredentials, generateFullVerificationEmail, generateApplicationWithDocumentsEmail, generateApplicationWithoutDocumentsEmail, generateDocumentStatusChangeEmail, generatePasswordResetEmail, generateEmailVerificationEmail, generateWelcomeEmail, getSubdomainUrl, getWebsiteUrl, getDashboardUrl, getPrivacyUrl, getVendorDashboardUrl, getPromoUrl, generateDocumentUpdateEmail, generatePromoCodeEmail, generateChefAllDocumentsApprovedEmail, generateManagerMagicLinkEmail, generateManagerCredentialsEmail, generateBookingNotificationEmail, generateBookingPaymentReceivedEmail, generateBookingCancellationNotificationEmail, generateBookingStatusChangeNotificationEmail, generateBookingRequestEmail, generateBookingConfirmationEmail, generateBookingCancellationEmail, generateKitchenAvailabilityChangeEmail, generateKitchenSettingsChangeEmail, generateChefProfileRequestEmail, generateChefLocationAccessApprovedEmail, generateChefKitchenAccessApprovedEmail, generateLocationEmailChangedEmail, generateStorageExtensionPendingApprovalEmail, generateStorageExtensionPaymentReceivedEmail, generateStorageExtensionApprovedEmail, generateStorageExtensionRejectedEmail, generateStorageExpiringWarningEmail, generateOverstayDetectedEmail, generatePenaltyChargedEmail, generateOverstayManagerNotificationEmail, generateNewKitchenApplicationManagerEmail, generateKitchenApplicationApprovedEmail, generateKitchenApplicationRejectedEmail, generateKitchenLicenseApprovedEmail, generateKitchenLicenseRejectedEmail, generateKitchenLicenseSubmittedAdminEmail, generateNewUserRegistrationAdminEmail;
 var init_email = __esm({
   "server/email.ts"() {
     "use strict";
@@ -4963,6 +4970,20 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         }]
       };
     };
+    generateBookingPaymentReceivedEmail = (data) => {
+      const subject = `Payment Received - ${data.kitchenName} Booking`;
+      const formattedAmount = `$${(data.amountCents / 100).toFixed(2)} ${data.currency}`;
+      const bookingDateObj = data.bookingDate instanceof Date ? data.bookingDate : new Date(data.bookingDate);
+      const formattedDate = bookingDateObj.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const bookingDetailsUrl = `${getDashboardUrl()}/manager/booking/${data.bookingId}`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">\u{1F4B0} Payment Received!</h2><p class="message">Great news! Payment has been received for a kitchen booking:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${data.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${data.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${formattedDate}<br><strong>\u23F0 Time:</strong> ${data.startTime} - ${data.endTime}<br><strong>\u{1F4B5} Amount:</strong> <span style="color: #16a34a; font-weight: 600;">${formattedAmount}</span><br><strong>\u{1F4CA} Payment Status:</strong> <span style="color: #16a34a; font-weight: 600;">Paid</span></div><p class="message">The booking is now confirmed and ready. Please review the booking details.</p><div style="text-align: center; margin: 24px 0;"><a href="${bookingDetailsUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Booking Details</a></div><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.managerEmail,
+        subject,
+        text: `Payment Received! Chef: ${data.chefName}, Kitchen: ${data.kitchenName}, Date: ${formattedDate}, Time: ${data.startTime} - ${data.endTime}, Amount: ${formattedAmount}. View booking: ${bookingDetailsUrl}`,
+        html
+      };
+    };
     generateBookingCancellationNotificationEmail = (bookingData) => {
       const subject = `Booking Cancelled - ${bookingData.kitchenName}`;
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Booking Cancelled</h2><p class="message">A chef has cancelled their booking:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef:</strong> ${bookingData.chefName}<br><strong>\u{1F3E2} Kitchen:</strong> ${bookingData.kitchenName}<br><strong>\u{1F4C5} Date:</strong> ${new Date(bookingData.bookingDate).toLocaleDateString()}<br><strong>\u23F0 Time:</strong> ${bookingData.startTime} - ${bookingData.endTime}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Cancelled</span>${bookingData.cancellationReason ? `<br><br><strong>\u{1F4DD} Reason:</strong> ${bookingData.cancellationReason}` : ""}</div><a href="${getDashboardUrl()}/manager/bookings" class="cta-button" style="color: white !important; text-decoration: none !important;">View Bookings</a><div class="divider"></div></div><div class="footer"><p class="footer-text">If you have any questions, contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
@@ -5305,6 +5326,81 @@ Notes: ${bookingData.specialNotes}` : ""}`;
         to: data.managerEmail,
         subject,
         text: `Overstay Alert: ${data.storageName} at ${data.kitchenName}. Chef: ${data.chefName}. Days overdue: ${data.daysOverdue}. Calculated penalty: $${penaltyAmount} CAD. ${data.isInGracePeriod ? "Grace period active." : "Action required - please review."}`,
+        html
+      };
+    };
+    generateNewKitchenApplicationManagerEmail = (data) => {
+      const subject = `New Kitchen Application - ${data.chefName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=applications`;
+      const formattedDate = data.submittedAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">New Kitchen Application</h2><p class="message">A chef has submitted an application to use your kitchen:</p><div class="info-box"><strong>\u{1F468}\u200D\u{1F373} Chef Name:</strong> ${data.chefName}<br><strong>\u{1F4E7} Email:</strong> ${data.chefEmail}<br><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4C5} Submitted:</strong> ${formattedDate}</div><p class="message">Please review this application and approve or reject it from your manager dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review Application</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.managerEmail,
+        subject,
+        text: `New Kitchen Application - Chef: ${data.chefName} (${data.chefEmail}) has applied to ${data.locationName}. Submitted: ${formattedDate}. Please review from your manager dashboard.`,
+        html
+      };
+    };
+    generateKitchenApplicationApprovedEmail = (data) => {
+      const subject = `Kitchen Application Approved - ${data.locationName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/dashboard?view=discover`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Great news! \u{1F389} Your kitchen application has been <strong style="color: #16a34a;">APPROVED</strong>!</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}${data.kitchenName ? `<br><strong>\u{1F373} Kitchen:</strong> ${data.kitchenName}` : ""}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">You can now book time slots at this kitchen. Visit your dashboard to make your first booking!</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Book Kitchen Now</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.chefEmail,
+        subject,
+        text: `Hello ${data.chefName}, Great news! Your kitchen application to ${data.locationName} has been APPROVED! You can now book time slots at this kitchen.`,
+        html
+      };
+    };
+    generateKitchenApplicationRejectedEmail = (data) => {
+      const subject = `Kitchen Application Update - ${data.locationName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/dashboard?view=applications`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.chefName},</h2><p class="message">Thank you for your interest in using our kitchen facilities. Unfortunately, your application could not be approved at this time.</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Not Approved</span>${data.feedback ? `<br><br><strong>\u{1F4DD} Feedback:</strong> ${data.feedback}` : ""}</div><p class="message">You may reapply in the future or explore other kitchen locations on our platform.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View My Applications</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.chefEmail,
+        subject,
+        text: `Hello ${data.chefName}, Thank you for your interest. Unfortunately, your kitchen application to ${data.locationName} could not be approved at this time.${data.feedback ? ` Feedback: ${data.feedback}` : ""}`,
+        html
+      };
+    };
+    generateKitchenLicenseApprovedEmail = (data) => {
+      const subject = `Kitchen License Approved - ${data.locationName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=settings`;
+      const formattedDate = data.approvedAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">Great news! \u{1F389} Your kitchen license has been <strong style="color: #16a34a;">APPROVED</strong> by the admin team!</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4C5} Approved On:</strong> ${formattedDate}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #16a34a; font-weight: 600;">Approved</span></div><p class="message">Your kitchen is now fully licensed and can accept chef applications and bookings.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">View Dashboard</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.managerEmail,
+        subject,
+        text: `Hello ${data.managerName}, Great news! Your kitchen license for ${data.locationName} has been APPROVED! Approved on: ${formattedDate}. Your kitchen can now accept chef applications and bookings.`,
+        html
+      };
+    };
+    generateKitchenLicenseRejectedEmail = (data) => {
+      const subject = `Kitchen License Update Required - ${data.locationName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/manager/booking-dashboard?view=settings`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Hello ${data.managerName},</h2><p class="message">Your kitchen license submission requires attention. The admin team was unable to approve it at this time.</p><div class="info-box"><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #dc2626; font-weight: 600;">Rejected</span>${data.feedback ? `<br><br><strong>\u{1F4DD} Feedback:</strong> ${data.feedback}` : ""}</div><p class="message">Please review the feedback and upload a new license document from your dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Upload New License</a><div class="divider"></div></div><div class="footer"><p class="footer-text">Questions? Contact us at <a href="mailto:${getSupportEmail()}" class="footer-links">${getSupportEmail()}</a>.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.managerEmail,
+        subject,
+        text: `Hello ${data.managerName}, Your kitchen license for ${data.locationName} requires attention.${data.feedback ? ` Feedback: ${data.feedback}` : ""} Please upload a new license document.`,
+        html
+      };
+    };
+    generateKitchenLicenseSubmittedAdminEmail = (data) => {
+      const subject = `Kitchen License Pending Review - ${data.locationName}`;
+      const baseUrl = getWebsiteUrl();
+      const dashboardUrl = `${baseUrl}/admin/licenses`;
+      const formattedDate = data.submittedAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${subject}</title>${getUniformEmailStyles()}</head><body><div class="email-container"><div class="header"><img src="https://raw.githubusercontent.com/Raunak-Sarmacharya/LocalCooksCommunity/refs/heads/main/attached_assets/emailHeader.png" alt="Local Cooks" class="header-image" /></div><div class="content"><h2 class="greeting">Kitchen License Pending Review</h2><p class="message">A manager has submitted a kitchen license for your review:</p><div class="info-box"><strong>\u{1F464} Manager:</strong> ${data.managerName}<br><strong>\u{1F4E7} Email:</strong> ${data.managerEmail}<br><strong>\u{1F3E2} Location:</strong> ${data.locationName}<br><strong>\u{1F4C5} Submitted:</strong> ${formattedDate}<br><strong>\u{1F4CA} Status:</strong> <span style="color: #f59e0b; font-weight: 600;">Pending Review</span></div><p class="message">Please review and approve or reject this license from the admin dashboard.</p><a href="${dashboardUrl}" class="cta-button" style="color: white !important; text-decoration: none !important;">Review License</a><div class="divider"></div></div><div class="footer"><p class="footer-text">This is an automated notification from Local Cooks Community.</p><div class="divider"></div><p class="footer-text">&copy; ${(/* @__PURE__ */ new Date()).getFullYear()} Local Cooks Community</p></div></div></body></html>`;
+      return {
+        to: data.adminEmail,
+        subject,
+        text: `Kitchen License Pending Review - Manager: ${data.managerName} (${data.managerEmail}) submitted license for ${data.locationName}. Submitted: ${formattedDate}. Please review from admin dashboard.`,
         html
       };
     };
@@ -7754,6 +7850,63 @@ async function broadcastChefAnnouncement(data) {
     throw error;
   }
 }
+async function notifyManagerStorageExtensionPending(data) {
+  if (!data.managerId) return;
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: "storage_extension_approved",
+    // Using existing type
+    priority: "high",
+    title: "Storage Extension Request",
+    message: `${data.chefName} has requested a ${data.extensionDays}-day extension for "${data.storageName}". Payment received - awaiting your approval.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      newEndDate: data.newEndDate,
+      chefName: data.chefName
+    },
+    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionLabel: "Review Extension"
+  });
+}
+async function notifyChefStorageExtensionApproved(data) {
+  if (!data.chefId) return;
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "storage_extension_approved",
+    priority: "high",
+    title: "Storage Extension Approved!",
+    message: `Your ${data.extensionDays}-day extension for "${data.storageName}" has been approved. New end date: ${data.newEndDate}.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      newEndDate: data.newEndDate
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Booking"
+  });
+}
+async function notifyChefStorageExtensionRejected(data) {
+  if (!data.chefId) return;
+  return createChefNotification({
+    chefId: data.chefId,
+    type: "storage_extension_rejected",
+    priority: "high",
+    title: "Storage Extension Declined",
+    message: `Your extension request for "${data.storageName}" was declined.${data.reason ? ` Reason: ${data.reason}` : ""} A refund will be processed.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: "View Details"
+  });
+}
 var notificationService;
 var init_notification_service = __esm({
   "server/services/notification.service.ts"() {
@@ -7794,7 +7947,11 @@ var init_notification_service = __esm({
       notifyChefWelcome,
       notifyChefPaymentReceived,
       notifyChefMessage,
-      broadcastChefAnnouncement
+      broadcastChefAnnouncement,
+      // Storage Extension
+      notifyManagerStorageExtensionPending,
+      notifyChefStorageExtensionApproved,
+      notifyChefStorageExtensionRejected
     };
   }
 });
@@ -10159,8 +10316,11 @@ var init_api_response = __esm({
 function getAppBaseUrl(subdomain = "main") {
   const isDevelopment = process.env.NODE_ENV === "development";
   if (isDevelopment) {
-    const port = process.env.VITE_PORT || "5173";
-    return `http://localhost:${port}`;
+    const port = process.env.PORT || "5001";
+    if (subdomain === "main" || !subdomain) {
+      return `http://localhost:${port}`;
+    }
+    return `http://${subdomain}.localhost:${port}`;
   }
   const baseDomain = process.env.APP_BASE_DOMAIN || "localcooks.ca";
   if (subdomain === "main" || !subdomain) {
@@ -10376,13 +10536,40 @@ var init_booking_repository = __esm({
           basePrice: storageListings.basePrice,
           minimumBookingDuration: storageListings.minimumBookingDuration
         }).from(storageBookings).innerJoin(storageListings, eq13(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq13(storageListings.kitchenId, kitchens.id)).where(eq13(storageBookings.chefId, chefId)).orderBy(desc7(storageBookings.startDate));
-        return result.map((row) => ({
-          ...row,
-          totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
-          serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
-          basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
-          minimumBookingDuration: row.minimumBookingDuration || 1
-        }));
+        const bookingIds = result.map((r) => r.id);
+        const paidPenalties = bookingIds.length > 0 ? await db.select({
+          storageBookingId: storageOverstayRecords.storageBookingId,
+          status: storageOverstayRecords.status,
+          finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+          calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+          daysOverdue: storageOverstayRecords.daysOverdue,
+          resolvedAt: storageOverstayRecords.resolvedAt,
+          resolutionType: storageOverstayRecords.resolutionType
+        }).from(storageOverstayRecords).where(
+          and9(
+            sql4`${storageOverstayRecords.storageBookingId} IN (${sql4.join(bookingIds.map((id) => sql4`${id}`), sql4`, `)})`,
+            eq13(storageOverstayRecords.status, "charge_succeeded")
+          )
+        ) : [];
+        const penaltyMap = new Map(paidPenalties.map((p) => [p.storageBookingId, p]));
+        return result.map((row) => {
+          const penalty = penaltyMap.get(row.id);
+          return {
+            ...row,
+            totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
+            serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+            basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
+            minimumBookingDuration: row.minimumBookingDuration || 1,
+            // Paid penalty info
+            paidPenalty: penalty ? {
+              amountCents: penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0,
+              amountDollars: ((penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0) / 100).toFixed(2),
+              daysOverdue: penalty.daysOverdue,
+              paidAt: penalty.resolvedAt,
+              resolutionType: penalty.resolutionType
+            } : null
+          };
+        });
       }
       async getStorageBookingById(id) {
         const [booking] = await db.select({
@@ -10908,11 +11095,1058 @@ var init_overstay_defaults_service = __esm({
   }
 });
 
+// server/services/payment-transactions-service.ts
+var payment_transactions_service_exports = {};
+__export(payment_transactions_service_exports, {
+  addPaymentHistory: () => addPaymentHistory,
+  createPaymentTransaction: () => createPaymentTransaction,
+  findPaymentTransactionByBooking: () => findPaymentTransactionByBooking,
+  findPaymentTransactionById: () => findPaymentTransactionById,
+  findPaymentTransactionByIntentId: () => findPaymentTransactionByIntentId,
+  findPaymentTransactionByMetadata: () => findPaymentTransactionByMetadata,
+  getManagerPaymentTransactions: () => getManagerPaymentTransactions,
+  getPaymentHistory: () => getPaymentHistory,
+  syncExistingPaymentTransactionsFromStripe: () => syncExistingPaymentTransactionsFromStripe,
+  syncStripeAmountsToBookings: () => syncStripeAmountsToBookings,
+  updatePaymentTransaction: () => updatePaymentTransaction
+});
+import { sql as sql5 } from "drizzle-orm";
+async function createPaymentTransaction(params, db2) {
+  const {
+    bookingId,
+    bookingType,
+    chefId,
+    managerId,
+    amount,
+    baseAmount,
+    serviceFee,
+    managerRevenue,
+    currency = "CAD",
+    paymentIntentId,
+    chargeId,
+    paymentMethodId,
+    status = "pending",
+    stripeStatus,
+    metadata = {}
+  } = params;
+  const netAmount = amount;
+  const result = await db2.execute(sql5`
+    INSERT INTO payment_transactions (
+      booking_id,
+      booking_type,
+      chef_id,
+      manager_id,
+      amount,
+      base_amount,
+      service_fee,
+      manager_revenue,
+      refund_amount,
+      net_amount,
+      currency,
+      payment_intent_id,
+      charge_id,
+      payment_method_id,
+      status,
+      stripe_status,
+      metadata
+    ) VALUES (
+      ${bookingId},
+      ${bookingType},
+      ${chefId},
+      ${managerId},
+      ${amount.toString()},
+      ${baseAmount.toString()},
+      ${serviceFee.toString()},
+      ${managerRevenue.toString()},
+      '0',
+      ${netAmount.toString()},
+      ${currency},
+      ${paymentIntentId || null},
+      ${chargeId || null},
+      ${paymentMethodId || null},
+      ${status},
+      ${stripeStatus || null},
+      ${JSON.stringify(metadata)}
+    )
+    RETURNING *
+  `);
+  const record = result.rows[0];
+  await addPaymentHistory(
+    record.id,
+    {
+      previousStatus: null,
+      newStatus: status,
+      eventType: "created",
+      eventSource: "system",
+      description: `Payment transaction created for ${bookingType} booking ${bookingId}`,
+      metadata: { initialAmount: amount, baseAmount, serviceFee, managerRevenue }
+    },
+    db2
+  );
+  return record;
+}
+async function updatePaymentTransaction(transactionId, params, db2) {
+  const currentResult = await db2.execute(sql5`
+    SELECT status, refund_amount, amount
+    FROM payment_transactions
+    WHERE id = ${transactionId}
+  `);
+  if (currentResult.rows.length === 0) {
+    return null;
+  }
+  const current = currentResult.rows[0];
+  const previousStatus = current.status;
+  const currentRefundAmount = parseFloat(current.refund_amount || "0");
+  const currentAmount = parseFloat(current.amount || "0");
+  const updates = [];
+  if (params.status !== void 0) {
+    updates.push(sql5`status = ${params.status}`);
+  }
+  if (params.stripeStatus !== void 0) {
+    updates.push(sql5`stripe_status = ${params.stripeStatus}`);
+  }
+  if (params.paymentIntentId !== void 0) {
+    updates.push(sql5`payment_intent_id = ${params.paymentIntentId}`);
+  }
+  if (params.paymentMethodId !== void 0) {
+    updates.push(sql5`payment_method_id = ${params.paymentMethodId}`);
+  }
+  if (params.chargeId !== void 0) {
+    updates.push(sql5`charge_id = ${params.chargeId}`);
+  }
+  if (params.refundId !== void 0) {
+    updates.push(sql5`refund_id = ${params.refundId}`);
+  }
+  if (params.refundAmount !== void 0) {
+    updates.push(sql5`refund_amount = ${params.refundAmount.toString()}`);
+    const newRefundAmount = params.refundAmount;
+    const netAmount = currentAmount - newRefundAmount;
+    updates.push(sql5`net_amount = ${netAmount.toString()}`);
+  }
+  if (params.refundReason !== void 0) {
+    updates.push(sql5`refund_reason = ${params.refundReason}`);
+  }
+  if (params.failureReason !== void 0) {
+    updates.push(sql5`failure_reason = ${params.failureReason}`);
+  }
+  if (params.paidAt !== void 0) {
+    updates.push(sql5`paid_at = ${params.paidAt}`);
+  }
+  if (params.refundedAt !== void 0) {
+    updates.push(sql5`refunded_at = ${params.refundedAt}`);
+  }
+  if (params.lastSyncedAt !== void 0) {
+    updates.push(sql5`last_synced_at = ${params.lastSyncedAt}`);
+  }
+  if (params.webhookEventId !== void 0) {
+    updates.push(sql5`webhook_event_id = ${params.webhookEventId}`);
+  }
+  if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
+    if (params.stripeAmount !== void 0) {
+      updates.push(sql5`amount = ${params.stripeAmount.toString()}`);
+    }
+    if (params.stripeNetAmount !== void 0) {
+      updates.push(sql5`net_amount = ${params.stripeNetAmount.toString()}`);
+      updates.push(sql5`manager_revenue = ${params.stripeNetAmount.toString()}`);
+    }
+    if (params.stripeProcessingFee !== void 0) {
+      updates.push(sql5`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
+    }
+    if (params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
+      updates.push(sql5`service_fee = ${params.stripePlatformFee.toString()}`);
+    } else if (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0) {
+      const totalFees = params.stripeAmount - params.stripeNetAmount;
+      const processingFee = params.stripeProcessingFee || 0;
+      const actualPlatformFee = Math.max(0, totalFees - processingFee);
+      updates.push(sql5`service_fee = ${actualPlatformFee.toString()}`);
+    }
+    if (params.stripeAmount !== void 0) {
+      const platformFee = params.stripePlatformFee || (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0 ? Math.max(0, params.stripeAmount - params.stripeNetAmount - (params.stripeProcessingFee || 0)) : 0);
+      const baseAmount = params.stripeAmount - platformFee;
+      updates.push(sql5`base_amount = ${baseAmount.toString()}`);
+    }
+    const currentMetadataResult = await db2.execute(sql5`
+      SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
+    `);
+    const currentMetadata = currentMetadataResult.rows[0]?.metadata ? typeof currentMetadataResult.rows[0].metadata === "string" ? JSON.parse(currentMetadataResult.rows[0].metadata) : currentMetadataResult.rows[0].metadata : {};
+    const stripeFees = {
+      processingFee: params.stripeProcessingFee || 0,
+      platformFee: params.stripePlatformFee || 0,
+      syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const updatedMetadata = {
+      ...currentMetadata,
+      stripeFees
+    };
+    updates.push(sql5`metadata = ${JSON.stringify(updatedMetadata)}`);
+  } else if (params.metadata !== void 0) {
+    updates.push(sql5`metadata = ${JSON.stringify(params.metadata)}`);
+  }
+  if (updates.length === 0) {
+    const result2 = await db2.execute(sql5`
+      SELECT * FROM payment_transactions WHERE id = ${transactionId}
+    `);
+    return result2.rows[0];
+  }
+  const result = await db2.execute(sql5`
+    UPDATE payment_transactions
+    SET ${sql5.join(updates, sql5`, `)}, updated_at = NOW()
+    WHERE id = ${transactionId}
+    RETURNING *
+  `);
+  const updated = result.rows[0];
+  if (params.status !== void 0 && params.status !== previousStatus) {
+    const historyMetadata = { ...params.metadata || {} };
+    if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
+      historyMetadata.stripeAmounts = {
+        amount: params.stripeAmount,
+        netAmount: params.stripeNetAmount,
+        processingFee: params.stripeProcessingFee,
+        platformFee: params.stripePlatformFee,
+        syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+    }
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus,
+        newStatus: params.status,
+        eventType: "status_change",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Status changed from ${previousStatus} to ${params.status}${params.stripeAmount !== void 0 ? " (Stripe amounts synced)" : ""}`,
+        stripeEventId: params.webhookEventId,
+        metadata: historyMetadata
+      },
+      db2
+    );
+  }
+  if ((params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) && params.status === void 0) {
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus: updated.status,
+        newStatus: updated.status,
+        eventType: "stripe_sync",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Stripe amounts synced: Amount $${((params.stripeAmount || parseFloat(updated.amount || "0")) / 100).toFixed(2)}, Net $${((params.stripeNetAmount || parseFloat(updated.net_amount || "0")) / 100).toFixed(2)}`,
+        stripeEventId: params.webhookEventId,
+        metadata: {
+          stripeAmounts: {
+            amount: params.stripeAmount,
+            netAmount: params.stripeNetAmount,
+            processingFee: params.stripeProcessingFee,
+            platformFee: params.stripePlatformFee,
+            syncedAt: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        }
+      },
+      db2
+    );
+  }
+  if (params.refundAmount !== void 0 && params.refundAmount > currentRefundAmount) {
+    await addPaymentHistory(
+      transactionId,
+      {
+        previousStatus,
+        newStatus: updated.status,
+        eventType: params.refundAmount === parseFloat(updated.amount || "0") ? "refund" : "partial_refund",
+        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
+        description: `Refund of ${params.refundAmount / 100} ${updated.currency}${params.refundReason ? `: ${params.refundReason}` : ""}`,
+        stripeEventId: params.webhookEventId,
+        metadata: {
+          refundAmount: params.refundAmount,
+          refundReason: params.refundReason,
+          refundId: params.refundId
+        }
+      },
+      db2
+    );
+  }
+  return updated;
+}
+async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) {
+  try {
+    const transactionResult = await db2.execute(sql5`
+      SELECT 
+        pt.id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.base_amount,
+        pt.service_fee,
+        pt.amount as current_amount,
+        pt.manager_revenue as current_manager_revenue
+      FROM payment_transactions pt
+      WHERE pt.payment_intent_id = ${paymentIntentId}
+    `);
+    if (transactionResult.rows.length === 0) {
+      console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
+      return;
+    }
+    const transaction = transactionResult.rows[0];
+    const bookingId = transaction.booking_id;
+    const bookingType = transaction.booking_type;
+    if (bookingType === "bundle") {
+      const kitchenBooking = await db2.execute(sql5`
+        SELECT id, total_price, service_fee
+        FROM kitchen_bookings
+        WHERE id = ${bookingId}
+      `);
+      const storageBookings2 = await db2.execute(sql5`
+        SELECT id, total_price, service_fee
+        FROM storage_bookings
+        WHERE kitchen_booking_id = ${bookingId}
+      `);
+      const equipmentBookings2 = await db2.execute(sql5`
+        SELECT id, total_price, service_fee
+        FROM equipment_bookings
+        WHERE kitchen_booking_id = ${bookingId}
+      `);
+      let totalBaseAmount = parseFloat(transaction.base_amount || "0");
+      if (totalBaseAmount === 0) {
+        const kbAmount = parseFloat(kitchenBooking.rows[0]?.total_price || "0");
+        const sbAmount = storageBookings2.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || "0"), 0);
+        const ebAmount = equipmentBookings2.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || "0"), 0);
+        totalBaseAmount = kbAmount + sbAmount + ebAmount;
+      }
+      if (kitchenBooking.rows.length > 0 && totalBaseAmount > 0) {
+        const kbBase = parseFloat(kitchenBooking.rows[0].total_price || "0");
+        const kbProportion = kbBase / totalBaseAmount;
+        const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
+        const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
+        const kbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * kbProportion) : Math.round((kbStripeAmount - kbStripeNet) * 0.5);
+        await db2.execute(sql5`
+          UPDATE kitchen_bookings
+          SET 
+            total_price = ${kbStripeAmount.toString()},
+            service_fee = ${kbServiceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      }
+      for (const sb of storageBookings2.rows) {
+        const sbBase = parseFloat(sb.total_price || "0");
+        if (totalBaseAmount > 0 && sbBase > 0) {
+          const sbProportion = sbBase / totalBaseAmount;
+          const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
+          const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
+          const sbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * sbProportion) : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
+          await db2.execute(sql5`
+            UPDATE storage_bookings
+            SET 
+              total_price = ${sbStripeAmount.toString()},
+              service_fee = ${sbServiceFee.toString()},
+              updated_at = NOW()
+            WHERE id = ${sb.id}
+          `);
+        }
+      }
+      for (const eb of equipmentBookings2.rows) {
+        const ebBase = parseFloat(eb.total_price || "0");
+        if (totalBaseAmount > 0 && ebBase > 0) {
+          const ebProportion = ebBase / totalBaseAmount;
+          const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
+          const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
+          const ebServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * ebProportion) : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
+          await db2.execute(sql5`
+            UPDATE equipment_bookings
+            SET 
+              total_price = ${ebStripeAmount.toString()},
+              service_fee = ${ebServiceFee.toString()},
+              updated_at = NOW()
+            WHERE id = ${eb.id}
+          `);
+        }
+      }
+    } else {
+      const serviceFee = stripeAmounts.stripePlatformFee > 0 ? stripeAmounts.stripePlatformFee : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
+      if (bookingType === "kitchen") {
+        await db2.execute(sql5`
+          UPDATE kitchen_bookings
+          SET 
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      } else if (bookingType === "storage") {
+        await db2.execute(sql5`
+          UPDATE storage_bookings
+          SET 
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      } else if (bookingType === "equipment") {
+        await db2.execute(sql5`
+          UPDATE equipment_bookings
+          SET 
+            total_price = ${stripeAmounts.stripeAmount.toString()},
+            service_fee = ${serviceFee.toString()},
+            updated_at = NOW()
+          WHERE id = ${bookingId}
+        `);
+      }
+    }
+    console.log(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
+  } catch (error) {
+    console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
+  }
+}
+async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options) {
+  let getStripePaymentAmounts2;
+  const importPaths = [
+    "./stripe-service",
+    // Path 1: Relative without extension (works in some builds)
+    "./stripe-service.js",
+    // Path 2: Relative with .js extension (standard)
+    "../server/services/stripe-service.js"
+    // Path 3: From api/ perspective
+  ];
+  let lastError = null;
+  for (const importPath of importPaths) {
+    try {
+      const mod = await import(importPath);
+      if (mod.getStripePaymentAmounts) {
+        getStripePaymentAmounts2 = mod.getStripePaymentAmounts;
+        break;
+      }
+    } catch (e) {
+      lastError = e;
+      continue;
+    }
+  }
+  if (!getStripePaymentAmounts2) {
+    console.error("[Stripe Sync] Failed to import stripe-service from all paths:", importPaths);
+    throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || "Unknown"}`);
+  }
+  const limit = options?.limit || 1e3;
+  const onlyUnsynced = options?.onlyUnsynced !== false;
+  try {
+    const params = [managerId];
+    const unsyncedFilter = onlyUnsynced ? sql5` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql5``;
+    const result = await db2.execute(sql5`
+      SELECT 
+        pt.id,
+        pt.payment_intent_id,
+        pt.manager_id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.amount as current_amount,
+        pt.manager_revenue as current_manager_revenue,
+        pt.last_synced_at
+      FROM payment_transactions pt
+      WHERE pt.payment_intent_id IS NOT NULL
+        AND pt.status IN ('succeeded', 'processing')
+        AND (
+          pt.manager_id = ${managerId} 
+          OR EXISTS (
+            SELECT 1 FROM kitchen_bookings kb
+            JOIN kitchens k ON kb.kitchen_id = k.id
+            JOIN locations l ON k.location_id = l.id
+            WHERE kb.id = pt.booking_id 
+              AND l.manager_id = ${managerId}
+          )
+        )
+      ${unsyncedFilter}
+      ORDER BY pt.created_at DESC
+      LIMIT ${limit}
+    `);
+    const transactions = result.rows;
+    console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
+    let synced = 0;
+    let failed = 0;
+    const errors = [];
+    for (const transaction of transactions) {
+      const paymentIntentId = transaction.payment_intent_id;
+      if (!paymentIntentId) continue;
+      try {
+        let managerConnectAccountId;
+        try {
+          const managerResult = await db2.execute(sql5`
+            SELECT stripe_connect_account_id 
+            FROM users 
+            WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
+          `);
+          if (managerResult.rows.length > 0) {
+            managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
+          }
+        } catch (error) {
+          console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
+        }
+        const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
+        if (!stripeAmounts) {
+          console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
+          failed++;
+          errors.push({ paymentIntentId, error: "Could not fetch Stripe amounts" });
+          continue;
+        }
+        await updatePaymentTransaction(transaction.id, {
+          stripeAmount: stripeAmounts.stripeAmount,
+          stripeNetAmount: stripeAmounts.stripeNetAmount,
+          stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+          stripePlatformFee: stripeAmounts.stripePlatformFee,
+          lastSyncedAt: /* @__PURE__ */ new Date()
+        }, db2);
+        await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2);
+        synced++;
+        console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
+      } catch (error) {
+        console.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
+        failed++;
+        errors.push({ paymentIntentId, error: error.message || "Unknown error" });
+      }
+    }
+    console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
+    return { synced, failed, errors };
+  } catch (error) {
+    console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
+    throw error;
+  }
+}
+async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
+  const result = await db2.execute(sql5`
+    SELECT * FROM payment_transactions
+    WHERE payment_intent_id = ${paymentIntentId}
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function findPaymentTransactionById(transactionId, db2) {
+  const result = await db2.execute(sql5`
+    SELECT * FROM payment_transactions
+    WHERE id = ${transactionId}
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
+  const result = await db2.execute(sql5`
+    SELECT * FROM payment_transactions
+    WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2) {
+  const result = await db2.execute(sql5`
+    SELECT * FROM payment_transactions
+    WHERE metadata->>${metadataKey} = ${metadataValue}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+  return result.rows[0];
+}
+async function addPaymentHistory(transactionId, history, db2) {
+  await db2.execute(sql5`
+    INSERT INTO payment_history (
+      transaction_id,
+      previous_status,
+      new_status,
+      event_type,
+      event_source,
+      stripe_event_id,
+      description,
+      metadata,
+      created_by
+    ) VALUES (
+      ${transactionId},
+      ${history.previousStatus},
+      ${history.newStatus},
+      ${history.eventType},
+      ${history.eventSource || "system"},
+      ${history.stripeEventId || null},
+      ${history.description || null},
+      ${JSON.stringify(history.metadata || {})},
+      ${history.createdBy || null}
+    )
+  `);
+}
+async function getPaymentHistory(transactionId, db2) {
+  const result = await db2.execute(sql5`
+    SELECT * FROM payment_history
+    WHERE transaction_id = ${transactionId}
+    ORDER BY created_at ASC
+  `);
+  return result.rows;
+}
+async function getManagerPaymentTransactions(managerId, db2, filters) {
+  const whereConditions = [sql5`manager_id = ${managerId}`];
+  if (filters?.status) {
+    whereConditions.push(sql5`status = ${filters.status}`);
+  }
+  if (filters?.startDate) {
+    whereConditions.push(sql5`
+      (
+        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
+        OR (status != 'succeeded' AND created_at >= ${filters.startDate})
+      )
+    `);
+  }
+  if (filters?.endDate) {
+    whereConditions.push(sql5`
+      (
+        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
+        OR (status != 'succeeded' AND created_at <= ${filters.endDate})
+      )
+    `);
+  }
+  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
+  const countResult = await db2.execute(sql5`
+    SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
+  `);
+  const total = parseInt(countResult.rows[0].total);
+  const limit = filters?.limit || 50;
+  const offset = filters?.offset || 0;
+  const result = await db2.execute(sql5`
+    SELECT * FROM payment_transactions
+    ${whereClause}
+    ORDER BY 
+      CASE 
+        WHEN status = 'succeeded' AND paid_at IS NOT NULL 
+        THEN paid_at 
+        ELSE created_at 
+      END DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `);
+  return {
+    transactions: result.rows,
+    total
+  };
+}
+var init_payment_transactions_service = __esm({
+  "server/services/payment-transactions-service.ts"() {
+    "use strict";
+  }
+});
+
+// server/services/stripe-service.ts
+var stripe_service_exports = {};
+__export(stripe_service_exports, {
+  cancelPaymentIntent: () => cancelPaymentIntent,
+  capturePaymentIntent: () => capturePaymentIntent,
+  confirmPaymentIntent: () => confirmPaymentIntent,
+  createPaymentIntent: () => createPaymentIntent,
+  createRefund: () => createRefund,
+  getPaymentIntent: () => getPaymentIntent,
+  getStripePaymentAmounts: () => getStripePaymentAmounts,
+  reverseTransferAndRefund: () => reverseTransferAndRefund,
+  verifyPaymentIntentForBooking: () => verifyPaymentIntentForBooking
+});
+import Stripe from "stripe";
+async function createPaymentIntent(params) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  const {
+    amount,
+    currency = "cad",
+    chefId,
+    kitchenId,
+    metadata = {},
+    statementDescriptor = "LOCALCOOKS",
+    managerConnectAccountId,
+    applicationFeeAmount,
+    enableACSS = true,
+    // Default to true for ACSS debit support
+    enableCards = true,
+    // Default to true for standard card payments
+    useAuthorizationHold = true,
+    // DEPRECATED: No longer used - always uses automatic capture
+    saveCardForFuture = true,
+    // Default to true to save cards for future use
+    customerId
+  } = params;
+  if (amount <= 0) {
+    throw new Error("Payment amount must be greater than 0");
+  }
+  const hasApplicationFee = applicationFeeAmount !== void 0 && applicationFeeAmount !== null;
+  if (hasApplicationFee && !managerConnectAccountId) {
+    throw new Error("managerConnectAccountId is required when applicationFeeAmount is provided");
+  }
+  if (managerConnectAccountId && !hasApplicationFee) {
+  }
+  if (hasApplicationFee && applicationFeeAmount < 0) {
+    throw new Error("Application fee must be 0 or a positive amount");
+  }
+  if (hasApplicationFee && applicationFeeAmount >= amount) {
+    throw new Error("Application fee must be less than total amount");
+  }
+  if (!enableACSS && !enableCards) {
+    throw new Error("At least one payment method must be enabled");
+  }
+  const cleanDescriptor = statementDescriptor.replace(/[<>'"]/g, "").substring(0, 15).toUpperCase();
+  try {
+    const paymentMethodTypes = [];
+    if (enableCards) {
+      paymentMethodTypes.push("card");
+    }
+    if (enableACSS) {
+      paymentMethodTypes.push("acss_debit");
+    }
+    const paymentIntentParams = {
+      amount,
+      currency,
+      payment_method_types: paymentMethodTypes,
+      // Don't auto-confirm - we'll confirm after collecting payment method
+      confirm: false,
+      // Use automatic capture: payments are immediately processed when confirmed
+      capture_method: "automatic",
+      metadata: {
+        booking_type: "kitchen",
+        kitchen_id: kitchenId.toString(),
+        chef_id: chefId.toString(),
+        expected_amount: amount.toString(),
+        // Store expected amount for verification
+        ...metadata
+      }
+    };
+    if (enableCards) {
+      paymentIntentParams.statement_descriptor_suffix = cleanDescriptor.substring(0, 22);
+    } else if (enableACSS) {
+      paymentIntentParams.statement_descriptor = cleanDescriptor;
+    }
+    paymentIntentParams.payment_method_options = {};
+    if (enableACSS) {
+      paymentIntentParams.payment_method_options.acss_debit = {
+        mandate_options: {
+          payment_schedule: "combined",
+          // Creates a mandate for future debits
+          transaction_type: "personal",
+          // Default to personal, can be made configurable
+          interval_description: "Payment for kitchen booking and future bookings as authorized"
+          // Required for 'combined' or 'interval' payment schedules
+        }
+      };
+    }
+    if (saveCardForFuture && enableCards) {
+      paymentIntentParams.setup_future_usage = "off_session";
+    }
+    if (customerId) {
+      paymentIntentParams.customer = customerId;
+    }
+    if (managerConnectAccountId) {
+      paymentIntentParams.transfer_data = {
+        destination: managerConnectAccountId
+      };
+      paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
+      if (hasApplicationFee) {
+        paymentIntentParams.application_fee_amount = applicationFeeAmount;
+        paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
+      }
+    }
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret,
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error creating PaymentIntent:", error);
+    throw new Error(`Failed to create payment intent: ${error.message}`);
+  }
+}
+async function confirmPaymentIntent(paymentIntentId, paymentMethodId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
+      payment_method: paymentMethodId
+    });
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error confirming PaymentIntent:", error);
+    throw new Error(`Failed to confirm payment intent: ${error.message}`);
+  }
+}
+async function getPaymentIntent(paymentIntentId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    if (error.code === "resource_missing") {
+      return null;
+    }
+    console.error("Error retrieving PaymentIntent:", error);
+    throw new Error(`Failed to retrieve payment intent: ${error.message}`);
+  }
+}
+async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"]
+    });
+    if (!paymentIntent.latest_charge) {
+      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
+      return null;
+    }
+    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
+    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+    let balanceTransaction = null;
+    if (charge.balance_transaction) {
+      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
+      balanceTransaction = await stripe.balanceTransactions.retrieve(balanceTransactionId);
+    }
+    const stripeAmount = paymentIntent.amount;
+    let stripeNetAmount = stripeAmount;
+    let stripeProcessingFee = 0;
+    let stripePlatformFee = 0;
+    if (balanceTransaction) {
+      stripeNetAmount = balanceTransaction.net;
+      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+        stripePlatformFee = paymentIntent.application_fee_amount;
+        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+      } else {
+        stripeProcessingFee = balanceTransaction.fee;
+        stripeNetAmount = stripeAmount - stripeProcessingFee;
+      }
+    } else {
+      stripeProcessingFee = Math.round(stripeAmount * 0.029 + 30);
+      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
+        stripePlatformFee = paymentIntent.application_fee_amount;
+        stripeNetAmount = stripeAmount - stripePlatformFee - stripeProcessingFee;
+      } else {
+        stripeNetAmount = stripeAmount - stripeProcessingFee;
+      }
+    }
+    return {
+      stripeAmount,
+      stripeNetAmount,
+      stripeProcessingFee,
+      stripePlatformFee,
+      chargeId
+    };
+  } catch (error) {
+    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
+    return null;
+  }
+}
+async function capturePaymentIntent(paymentIntentId, amountToCapture) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const captureParams = {};
+    if (amountToCapture !== void 0) {
+      captureParams.amount_to_capture = amountToCapture;
+    }
+    const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, captureParams);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error capturing PaymentIntent:", error);
+    throw new Error(`Failed to capture payment intent: ${error.message}`);
+  }
+}
+async function cancelPaymentIntent(paymentIntentId) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
+    return {
+      id: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret || "",
+      status: paymentIntent.status,
+      amount: paymentIntent.amount
+    };
+  } catch (error) {
+    console.error("Error canceling PaymentIntent:", error);
+    throw new Error(`Failed to cancel payment intent: ${error.message}`);
+  }
+}
+async function createRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent.latest_charge) {
+      throw new Error("Payment intent has no charge to refund");
+    }
+    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
+    const refundParams = {
+      charge: chargeId,
+      reason
+    };
+    if (amount !== void 0 && amount > 0) {
+      refundParams.amount = amount;
+    }
+    if (options?.reverseTransfer !== void 0) {
+      refundParams.reverse_transfer = options.reverseTransfer;
+    }
+    if (options?.refundApplicationFee !== void 0) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
+    }
+    const refund = await stripe.refunds.create(refundParams);
+    if (!refund.charge || typeof refund.charge !== "string") {
+      throw new Error("Refund created but charge ID is missing");
+    }
+    if (!refund.status || typeof refund.status !== "string") {
+      throw new Error("Refund created but status is missing");
+    }
+    const refundChargeId = refund.charge;
+    const refundStatus = refund.status;
+    return {
+      id: refund.id,
+      amount: refund.amount,
+      status: refundStatus,
+      charge: refundChargeId
+    };
+  } catch (error) {
+    console.error("Error creating refund:", error);
+    throw new Error(`Failed to create refund: ${error.message}`);
+  }
+}
+async function reverseTransferAndRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
+  }
+  if (!amount || amount <= 0) {
+    throw new Error("Refund amount must be greater than 0");
+  }
+  try {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge"]
+    });
+    if (!paymentIntent.latest_charge) {
+      throw new Error("Payment intent has no charge to refund");
+    }
+    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+    const chargeId = charge.id;
+    const transferId = typeof charge.transfer === "string" ? charge.transfer : charge.transfer?.id;
+    if (!transferId) {
+      throw new Error("No transfer found for this charge to reverse");
+    }
+    const reversalAmount = options?.reverseTransferAmount ?? amount;
+    if (reversalAmount <= 0) {
+      throw new Error("Transfer reversal amount must be greater than 0");
+    }
+    const reversal = await stripe.transfers.createReversal(transferId, {
+      amount: reversalAmount,
+      metadata: options?.transferMetadata || options?.metadata
+    });
+    const refundParams = {
+      charge: chargeId,
+      reason,
+      amount
+    };
+    if (options?.refundApplicationFee !== void 0) {
+      refundParams.refund_application_fee = options.refundApplicationFee;
+    }
+    if (options?.metadata) {
+      refundParams.metadata = options.metadata;
+    }
+    const refund = await stripe.refunds.create(refundParams);
+    if (!refund.charge || typeof refund.charge !== "string") {
+      throw new Error("Refund created but charge ID is missing");
+    }
+    if (!refund.status || typeof refund.status !== "string") {
+      throw new Error("Refund created but status is missing");
+    }
+    return {
+      refundId: refund.id,
+      refundAmount: refund.amount,
+      refundStatus: refund.status,
+      chargeId,
+      transferReversalId: reversal.id
+    };
+  } catch (error) {
+    console.error("Error reversing transfer and refunding:", error);
+    throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
+  }
+}
+async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAmount) {
+  try {
+    if (!stripe) {
+      return { valid: false, status: "error", error: "Stripe is not configured" };
+    }
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!paymentIntent) {
+      return { valid: false, status: "not_found", error: "Payment intent not found" };
+    }
+    if (paymentIntent.metadata?.chef_id !== chefId.toString()) {
+      return { valid: false, status: paymentIntent.status, error: "Payment intent does not belong to this chef" };
+    }
+    const storedExpectedAmount = paymentIntent.metadata?.expected_amount ? parseInt(paymentIntent.metadata.expected_amount) : null;
+    const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
+    const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
+    if (amountDifference > 5) {
+      console.error("Payment amount mismatch:", {
+        paymentIntentAmount: paymentIntent.amount,
+        expectedAmount: amountToCompare,
+        storedExpectedAmount,
+        calculatedExpectedAmount: expectedAmount,
+        difference: amountDifference,
+        differenceDollars: (amountDifference / 100).toFixed(2)
+      });
+      return { valid: false, status: paymentIntent.status, error: "Payment amount does not match booking amount" };
+    }
+    const validStatuses = ["succeeded", "processing"];
+    if (!validStatuses.includes(paymentIntent.status)) {
+      return {
+        valid: false,
+        status: paymentIntent.status,
+        error: `Payment is not in a valid state: ${paymentIntent.status}`
+      };
+    }
+    return { valid: true, status: paymentIntent.status };
+  } catch (error) {
+    console.error("Error verifying PaymentIntent:", error);
+    if (error.code === "resource_missing") {
+      return { valid: false, status: "not_found", error: "Payment intent not found" };
+    }
+    return { valid: false, status: "error", error: error.message };
+  }
+}
+var stripeSecretKey, stripe;
+var init_stripe_service = __esm({
+  "server/services/stripe-service.ts"() {
+    "use strict";
+    stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
+    }
+    stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
+      apiVersion: "2025-12-15.clover"
+    }) : null;
+  }
+});
+
 // server/services/overstay-penalty-service.ts
 var overstay_penalty_service_exports = {};
 __export(overstay_penalty_service_exports, {
   chargeApprovedPenalty: () => chargeApprovedPenalty,
+  createPenaltyPaymentCheckout: () => createPenaltyPaymentCheckout,
   detectOverstays: () => detectOverstays,
+  getAllOverstayRecords: () => getAllOverstayRecords,
+  getChefPendingPenalties: () => getChefPendingPenalties,
   getOverstayHistory: () => getOverstayHistory,
   getOverstayRecord: () => getOverstayRecord,
   getOverstayStats: () => getOverstayStats,
@@ -10924,7 +12158,7 @@ __export(overstay_penalty_service_exports, {
   resolveOverstay: () => resolveOverstay
 });
 import { eq as eq17, and as and10, lt as lt2, not as not2, inArray as inArray3, desc as desc8, asc as asc2 } from "drizzle-orm";
-import Stripe from "stripe";
+import Stripe2 from "stripe";
 async function detectOverstays() {
   const today = /* @__PURE__ */ new Date();
   today.setHours(0, 0, 0, 0);
@@ -11034,6 +12268,19 @@ async function detectOverstays() {
           isInGracePeriod,
           calculatedPenaltyCents
         });
+        try {
+          await sendOverstayNotificationEmails({
+            storageBookingId: booking.id,
+            chefId: booking.chefId,
+            daysOverdue,
+            gracePeriodEndsAt,
+            isInGracePeriod,
+            calculatedPenaltyCents,
+            endDate: new Date(booking.endDate)
+          });
+        } catch (emailError) {
+          logger.error(`[OverstayService] Error sending overstay notification emails for booking ${booking.id}:`, emailError);
+        }
       }
     } catch (error) {
       logger.error(`[OverstayService] Error processing booking ${booking.id}:`, error);
@@ -11072,6 +12319,48 @@ async function getPendingOverstayReviews(locationId) {
   }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).leftJoin(users, eq17(storageBookings.chefId, users.id)).where(
     inArray3(storageOverstayRecords.status, ["detected", "grace_period", "pending_review", "charge_failed"])
   ).orderBy(desc8(storageOverstayRecords.daysOverdue));
+  const results = await query;
+  const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
+  return filtered.map((r) => ({
+    ...r,
+    storageName: r.storageName || "Storage",
+    storageType: r.storageType || "dry",
+    kitchenName: r.kitchenName || "Kitchen",
+    gracePeriodDays: r.gracePeriodDays ?? platformDefaults.gracePeriodDays,
+    penaltyRate: r.penaltyRate?.toString() ?? platformDefaults.penaltyRate.toString(),
+    maxPenaltyDays: r.maxPenaltyDays ?? platformDefaults.maxPenaltyDays,
+    chefInfo: null
+  }));
+}
+async function getAllOverstayRecords(locationId) {
+  const platformDefaults = await getOverstayPlatformDefaults();
+  const query = db.select({
+    overstayId: storageOverstayRecords.id,
+    storageBookingId: storageOverstayRecords.storageBookingId,
+    status: storageOverstayRecords.status,
+    daysOverdue: storageOverstayRecords.daysOverdue,
+    gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    detectedAt: storageOverstayRecords.detectedAt,
+    bookingStartDate: storageBookings.startDate,
+    bookingEndDate: storageBookings.endDate,
+    bookingTotalPrice: storageBookings.totalPrice,
+    storageListingId: storageListings.id,
+    storageName: storageListings.name,
+    storageType: storageListings.storageType,
+    dailyRateCents: storageOverstayRecords.dailyRateCents,
+    gracePeriodDays: storageListings.overstayGracePeriodDays,
+    penaltyRate: storageListings.overstayPenaltyRate,
+    maxPenaltyDays: storageListings.overstayMaxPenaltyDays,
+    kitchenId: kitchens.id,
+    kitchenName: kitchens.name,
+    locationId: kitchens.locationId,
+    chefId: storageBookings.chefId,
+    chefEmail: users.username,
+    stripeCustomerId: storageBookings.stripeCustomerId,
+    stripePaymentMethodId: storageBookings.stripePaymentMethodId
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).leftJoin(users, eq17(storageBookings.chefId, users.id)).orderBy(desc8(storageOverstayRecords.detectedAt));
   const results = await query;
   const filtered = locationId ? results.filter((r) => r.locationId === locationId) : results;
   return filtered.map((r) => ({
@@ -11153,7 +12442,7 @@ async function processManagerDecision(decision) {
   return { success: true };
 }
 async function chargeApprovedPenalty(overstayRecordId) {
-  if (!stripe) {
+  if (!stripe2) {
     return { success: false, error: "Stripe not configured" };
   }
   const record = await getOverstayRecord(overstayRecordId);
@@ -11203,7 +12492,7 @@ async function chargeApprovedPenalty(overstayRecordId) {
     updatedAt: /* @__PURE__ */ new Date()
   }).where(eq17(storageOverstayRecords.id, overstayRecordId));
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
+    const paymentIntent = await stripe2.paymentIntents.create({
       amount: record.finalPenaltyCents,
       currency: "cad",
       customer: customerId,
@@ -11238,11 +12527,82 @@ async function chargeApprovedPenalty(overstayRecordId) {
         `Payment successful: ${paymentIntent.id}`,
         { paymentIntentId: paymentIntent.id, chargeId }
       );
+      try {
+        const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+        let managerId = null;
+        const [storageBooking] = await db.select({ storageListingId: storageBookings.storageListingId, chefId: storageBookings.chefId }).from(storageBookings).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
+        if (storageBooking) {
+          const [listing] = await db.select({ kitchenId: storageListings.kitchenId }).from(storageListings).where(eq17(storageListings.id, storageBooking.storageListingId)).limit(1);
+          if (listing?.kitchenId) {
+            const [kitchen] = await db.select({ locationId: kitchens.locationId }).from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1);
+            if (kitchen?.locationId) {
+              const [location] = await db.select({ managerId: locations.managerId }).from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1);
+              managerId = location?.managerId || null;
+            }
+          }
+        }
+        const ptRecord = await createPaymentTransaction2({
+          bookingId: record.storageBookingId,
+          bookingType: "storage",
+          chefId: storageBooking?.chefId || null,
+          managerId,
+          amount: record.finalPenaltyCents,
+          baseAmount: record.finalPenaltyCents,
+          serviceFee: 0,
+          // No service fee on penalties
+          managerRevenue: record.finalPenaltyCents,
+          currency: "CAD",
+          paymentIntentId: paymentIntent.id,
+          // CRITICAL: Save payment intent for fee syncing
+          chargeId: chargeId || void 0,
+          status: "succeeded",
+          stripeStatus: "succeeded",
+          metadata: {
+            type: "overstay_penalty",
+            overstay_record_id: overstayRecordId.toString(),
+            storage_booking_id: record.storageBookingId.toString(),
+            charged_via: "off_session"
+            // Indicates this was charged directly, not via checkout
+          }
+        }, db);
+        if (ptRecord) {
+          let managerConnectAccountId;
+          if (managerId) {
+            const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq17(users.id, managerId)).limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          }
+          const stripeAmounts = await getStripePaymentAmounts2(paymentIntent.id, managerConnectAccountId);
+          if (stripeAmounts) {
+            await updatePaymentTransaction2(ptRecord.id, {
+              paidAt: /* @__PURE__ */ new Date(),
+              lastSyncedAt: /* @__PURE__ */ new Date(),
+              stripeAmount: stripeAmounts.stripeAmount,
+              stripeNetAmount: stripeAmounts.stripeNetAmount,
+              stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+              stripePlatformFee: stripeAmounts.stripePlatformFee
+            }, db);
+            logger.info(`[OverstayService] Synced Stripe fees for overstay penalty ${overstayRecordId}:`, {
+              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`
+            });
+          }
+        }
+        logger.info(`[OverstayService] Created payment_transactions for overstay penalty ${overstayRecordId}`);
+      } catch (ptError) {
+        logger.error(`[OverstayService] Failed to create payment_transactions for overstay penalty:`, ptError);
+      }
       logger.info(`[OverstayService] Penalty charged successfully`, {
         overstayRecordId,
         paymentIntentId: paymentIntent.id,
         amount: record.finalPenaltyCents
       });
+      try {
+        await sendPenaltyChargedEmail(overstayRecordId, record.finalPenaltyCents, record.daysOverdue);
+      } catch (emailError) {
+        logger.error(`[OverstayService] Error sending penalty charged email:`, emailError);
+      }
       return {
         success: true,
         paymentIntentId: paymentIntent.id,
@@ -11383,7 +12743,228 @@ async function markManagerNotified(overstayRecordId) {
     "Manager notification sent"
   );
 }
-var stripeSecretKey, stripe, overstayPenaltyService;
+async function getChefPendingPenalties(chefId) {
+  const records = await db.select({
+    overstayId: storageOverstayRecords.id,
+    storageBookingId: storageOverstayRecords.storageBookingId,
+    status: storageOverstayRecords.status,
+    daysOverdue: storageOverstayRecords.daysOverdue,
+    calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+    finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+    detectedAt: storageOverstayRecords.detectedAt,
+    penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
+    storageName: storageListings.name,
+    storageType: storageListings.storageType,
+    kitchenName: kitchens.name,
+    bookingEndDate: storageBookings.endDate
+  }).from(storageOverstayRecords).innerJoin(storageBookings, eq17(storageOverstayRecords.storageBookingId, storageBookings.id)).innerJoin(storageListings, eq17(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq17(storageListings.kitchenId, kitchens.id)).where(
+    and10(
+      eq17(storageBookings.chefId, chefId),
+      eq17(storageOverstayRecords.status, "penalty_approved")
+    )
+  ).orderBy(desc8(storageOverstayRecords.penaltyApprovedAt));
+  return records.map((r) => ({
+    ...r,
+    storageName: r.storageName || "Storage",
+    storageType: r.storageType || "dry",
+    kitchenName: r.kitchenName || "Kitchen",
+    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0
+  }));
+}
+async function createPenaltyPaymentCheckout(overstayRecordId, chefId, successUrl, cancelUrl) {
+  if (!stripe2) {
+    return { error: "Stripe not configured" };
+  }
+  try {
+    const [overstayRecord] = await db.select().from(storageOverstayRecords).where(eq17(storageOverstayRecords.id, overstayRecordId)).limit(1);
+    if (!overstayRecord) {
+      return { error: "Overstay record not found" };
+    }
+    const [booking] = await db.select().from(storageBookings).where(eq17(storageBookings.id, overstayRecord.storageBookingId)).limit(1);
+    if (!booking) {
+      return { error: "Storage booking not found" };
+    }
+    if (booking.chefId !== chefId) {
+      return { error: "Unauthorized: This penalty does not belong to you" };
+    }
+    if (overstayRecord.status !== "penalty_approved") {
+      return { error: `Cannot pay penalty in status: ${overstayRecord.status}` };
+    }
+    const [listing] = await db.select().from(storageListings).where(eq17(storageListings.id, booking.storageListingId)).limit(1);
+    const [kitchen] = listing?.kitchenId ? await db.select().from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1) : [null];
+    const [location] = kitchen?.locationId ? await db.select().from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1) : [null];
+    let managerStripeAccountId = null;
+    if (location?.managerId) {
+      const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq17(users.id, location.managerId)).limit(1);
+      managerStripeAccountId = manager?.stripeConnectAccountId || null;
+    }
+    const penaltyAmountCents = overstayRecord.finalPenaltyCents || overstayRecord.calculatedPenaltyCents || 0;
+    const storageName = listing?.name || "Storage";
+    const kitchenName = kitchen?.name || "Kitchen";
+    const managerId = location?.managerId;
+    if (penaltyAmountCents <= 0) {
+      return { error: "Invalid penalty amount" };
+    }
+    const [chef] = await db.select({ email: users.username }).from(users).where(eq17(users.id, chefId)).limit(1);
+    if (!chef) {
+      return { error: "Chef not found" };
+    }
+    const sessionParams = {
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_email: chef.email,
+      line_items: [
+        {
+          price_data: {
+            currency: "cad",
+            product_data: {
+              name: `Overstay Penalty - ${storageName}`,
+              description: `Storage overstay penalty for ${kitchenName}`
+            },
+            unit_amount: penaltyAmountCents
+          },
+          quantity: 1
+        }
+      ],
+      metadata: {
+        type: "overstay_penalty",
+        overstayRecordId: overstayRecordId.toString(),
+        chefId: chefId.toString(),
+        storageBookingId: overstayRecord.storageBookingId.toString(),
+        managerId: managerId?.toString() || ""
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl
+    };
+    if (managerStripeAccountId) {
+      sessionParams.payment_intent_data = {
+        transfer_data: {
+          destination: managerStripeAccountId
+        }
+      };
+    }
+    const session = await stripe2.checkout.sessions.create(sessionParams);
+    await db.update(storageOverstayRecords).set({
+      status: "charge_pending",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq17(storageOverstayRecords.id, overstayRecordId));
+    logger.info(`[OverstayService] Created penalty payment checkout`, {
+      overstayRecordId,
+      chefId,
+      penaltyAmountCents,
+      sessionId: session.id
+    });
+    return { checkoutUrl: session.url };
+  } catch (error) {
+    logger.error(`[OverstayService] Failed to create penalty checkout`, { error, overstayRecordId });
+    return { error: "Failed to create payment session" };
+  }
+}
+async function sendOverstayNotificationEmails(data) {
+  try {
+    const {
+      sendEmail: sendEmail2,
+      generateOverstayDetectedEmail: generateOverstayDetectedEmail2,
+      generateOverstayManagerNotificationEmail: generateOverstayManagerNotificationEmail2
+    } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const [booking] = await db.select({
+      storageListingId: storageBookings.storageListingId,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username
+    }).from(storageBookings).leftJoin(users, eq17(storageBookings.chefId, users.id)).where(eq17(storageBookings.id, data.storageBookingId)).limit(1);
+    if (!booking) {
+      logger.warn(`[OverstayService] No booking found for overstay email: ${data.storageBookingId}`);
+      return;
+    }
+    const [listing] = await db.select({
+      name: storageListings.name,
+      kitchenId: storageListings.kitchenId
+    }).from(storageListings).where(eq17(storageListings.id, booking.storageListingId)).limit(1);
+    if (!listing) {
+      logger.warn(`[OverstayService] No listing found for overstay email: ${booking.storageListingId}`);
+      return;
+    }
+    const [kitchen] = await db.select({
+      name: kitchens.name,
+      locationId: kitchens.locationId
+    }).from(kitchens).where(eq17(kitchens.id, listing.kitchenId)).limit(1);
+    if (!kitchen) {
+      logger.warn(`[OverstayService] No kitchen found for overstay email`);
+      return;
+    }
+    const [location] = await db.select({
+      name: locations.name,
+      managerId: locations.managerId,
+      notificationEmail: locations.notificationEmail
+    }).from(locations).where(eq17(locations.id, kitchen.locationId)).limit(1);
+    if (booking.chefEmail) {
+      const chefEmail = generateOverstayDetectedEmail2({
+        chefEmail: booking.chefEmail,
+        chefName: booking.chefEmail,
+        storageName: listing.name || "Storage",
+        endDate: data.endDate,
+        daysOverdue: data.daysOverdue,
+        gracePeriodEndsAt: data.gracePeriodEndsAt,
+        isInGracePeriod: data.isInGracePeriod,
+        calculatedPenaltyCents: data.calculatedPenaltyCents
+      });
+      await sendEmail2(chefEmail, {
+        trackingId: `overstay_chef_${data.storageBookingId}_${Date.now()}`
+      });
+      logger.info(`[OverstayService] Sent overstay notification email to chef: ${booking.chefEmail}`);
+    }
+    if (location && location.notificationEmail) {
+      const managerEmail = generateOverstayManagerNotificationEmail2({
+        managerEmail: location.notificationEmail,
+        chefName: booking.chefEmail || "Chef",
+        chefEmail: booking.chefEmail || "",
+        storageName: listing.name || "Storage",
+        kitchenName: kitchen.name || "Kitchen",
+        endDate: data.endDate,
+        daysOverdue: data.daysOverdue,
+        gracePeriodEndsAt: data.gracePeriodEndsAt,
+        isInGracePeriod: data.isInGracePeriod,
+        calculatedPenaltyCents: data.calculatedPenaltyCents
+      });
+      await sendEmail2(managerEmail, {
+        trackingId: `overstay_manager_${data.storageBookingId}_${Date.now()}`
+      });
+      logger.info(`[OverstayService] Sent overstay notification email to manager: ${location.notificationEmail}`);
+    }
+  } catch (error) {
+    logger.error(`[OverstayService] Error sending overstay notification emails:`, error);
+  }
+}
+async function sendPenaltyChargedEmail(overstayRecordId, penaltyAmountCents, daysOverdue) {
+  try {
+    const { sendEmail: sendEmail2, generatePenaltyChargedEmail: generatePenaltyChargedEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+    const [record] = await db.select({
+      storageBookingId: storageOverstayRecords.storageBookingId
+    }).from(storageOverstayRecords).where(eq17(storageOverstayRecords.id, overstayRecordId)).limit(1);
+    if (!record) return;
+    const [booking] = await db.select({
+      chefEmail: users.username,
+      storageListingId: storageBookings.storageListingId
+    }).from(storageBookings).leftJoin(users, eq17(storageBookings.chefId, users.id)).where(eq17(storageBookings.id, record.storageBookingId)).limit(1);
+    if (!booking || !booking.chefEmail) return;
+    const [listing] = await db.select({ name: storageListings.name }).from(storageListings).where(eq17(storageListings.id, booking.storageListingId)).limit(1);
+    const email = generatePenaltyChargedEmail2({
+      chefEmail: booking.chefEmail,
+      chefName: booking.chefEmail,
+      storageName: listing?.name || "Storage",
+      penaltyAmountCents,
+      daysOverdue,
+      chargeDate: /* @__PURE__ */ new Date()
+    });
+    await sendEmail2(email, {
+      trackingId: `penalty_charged_${overstayRecordId}_${Date.now()}`
+    });
+    logger.info(`[OverstayService] Sent penalty charged email to chef: ${booking.chefEmail}`);
+  } catch (error) {
+    logger.error(`[OverstayService] Error sending penalty charged email:`, error);
+  }
+}
+var stripeSecretKey2, stripe2, overstayPenaltyService;
 var init_overstay_penalty_service = __esm({
   "server/services/overstay-penalty-service.ts"() {
     "use strict";
@@ -11391,13 +12972,14 @@ var init_overstay_penalty_service = __esm({
     init_schema();
     init_logger();
     init_overstay_defaults_service();
-    stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
+    stripeSecretKey2 = process.env.STRIPE_SECRET_KEY;
+    stripe2 = stripeSecretKey2 ? new Stripe2(stripeSecretKey2, {
       apiVersion: "2025-12-15.clover"
     }) : null;
     overstayPenaltyService = {
       detectOverstays,
       getPendingOverstayReviews,
+      getAllOverstayRecords,
       getOverstayRecord,
       processManagerDecision,
       chargeApprovedPenalty,
@@ -11405,7 +12987,11 @@ var init_overstay_penalty_service = __esm({
       getOverstayHistory,
       getOverstayStats,
       markChefWarningSent,
-      markManagerNotified
+      markManagerNotified,
+      getChefPendingPenalties,
+      createPenaltyPaymentCheckout,
+      sendOverstayNotificationEmails,
+      sendPenaltyChargedEmail
     };
   }
 });
@@ -12260,7 +13846,7 @@ var init_chef_service = __esm({
 });
 
 // server/domains/managers/manager.repository.ts
-import { eq as eq21, and as and14, desc as desc11, sql as sql5, ne as ne4 } from "drizzle-orm";
+import { eq as eq21, and as and14, desc as desc11, sql as sql6, ne as ne4 } from "drizzle-orm";
 var ManagerRepository, managerRepository;
 var init_manager_repository = __esm({
   "server/domains/managers/manager.repository.ts"() {
@@ -12294,11 +13880,11 @@ var init_manager_repository = __esm({
         ];
         if (startDate) {
           const startStr = Array.isArray(startDate) ? startDate[0] : String(startDate);
-          conditions.push(sql5`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
+          conditions.push(sql6`(DATE(${kitchenBookings.bookingDate}) >= ${startStr}::date OR DATE(${kitchenBookings.createdAt}) >= ${startStr}::date)`);
         }
         if (endDate) {
           const endStr = Array.isArray(endDate) ? endDate[0] : String(endDate);
-          conditions.push(sql5`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
+          conditions.push(sql6`(DATE(${kitchenBookings.bookingDate}) <= ${endStr}::date OR DATE(${kitchenBookings.createdAt}) <= ${endStr}::date)`);
         }
         if (locationId) {
           conditions.push(eq21(locations.id, locationId));
@@ -12322,10 +13908,73 @@ var init_manager_repository = __esm({
           // Using username as email fallback if needed, or users.email is ideal but schema uses username often
           createdAt: kitchenBookings.createdAt
         }).from(kitchenBookings).innerJoin(kitchens, eq21(kitchenBookings.kitchenId, kitchens.id)).innerJoin(locations, eq21(kitchens.locationId, locations.id)).leftJoin(users, eq21(kitchenBookings.chefId, users.id)).where(and14(...conditions)).orderBy(desc11(kitchenBookings.createdAt), desc11(kitchenBookings.bookingDate)).limit(limit).offset(offset);
-        logger.info(`[ManagerRepository] Invoices query for manager ${managerId}: Found ${rows.length} invoices`);
+        logger.info(`[ManagerRepository] Kitchen invoices query for manager ${managerId}: Found ${rows.length} invoices`);
+        const storageRows = await db.execute(sql6`
+            SELECT 
+                pt.id as id,
+                sb.start_date as booking_date,
+                NULL as start_time,
+                NULL as end_time,
+                pt.amount as total_price,
+                pt.service_fee as service_fee,
+                pt.status as payment_status,
+                pt.payment_intent_id,
+                pt.currency,
+                k.name as kitchen_name,
+                sl.name as storage_name,
+                l.name as location_name,
+                u.username as chef_name,
+                u.username as chef_email,
+                pt.created_at,
+                pt.metadata,
+                'storage' as booking_type
+            FROM payment_transactions pt
+            JOIN storage_bookings sb ON pt.booking_id = sb.id
+            JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            JOIN kitchens k ON sl.kitchen_id = k.id
+            JOIN locations l ON k.location_id = l.id
+            LEFT JOIN users u ON sb.chef_id = u.id
+            WHERE pt.manager_id = ${managerId}
+              AND pt.booking_type = 'storage'
+              AND pt.status = 'succeeded'
+            ORDER BY pt.created_at DESC
+            LIMIT ${limit}
+        `);
+        const storageInvoices = storageRows.rows.map((row) => {
+          const metadata = row.metadata || {};
+          const isOverstayPenalty = metadata.type === "overstay_penalty";
+          const isStorageExtension = metadata.storage_extension_id != null;
+          let description = row.storage_name || "Storage";
+          if (isOverstayPenalty) {
+            description = `Overstay Penalty - ${row.storage_name || "Storage"}`;
+          } else if (isStorageExtension) {
+            description = `Storage Extension - ${row.storage_name || "Storage"}`;
+          }
+          return {
+            id: row.id,
+            bookingDate: row.booking_date,
+            startTime: row.start_time,
+            endTime: row.end_time,
+            totalPrice: row.total_price,
+            serviceFee: row.service_fee || 0,
+            paymentStatus: row.payment_status === "succeeded" ? "paid" : row.payment_status,
+            paymentIntentId: row.payment_intent_id,
+            currency: row.currency || "CAD",
+            kitchenName: description,
+            locationName: row.location_name,
+            chefName: row.chef_name || "Guest",
+            chefEmail: row.chef_email,
+            createdAt: row.created_at,
+            bookingType: isOverstayPenalty ? "overstay_penalty" : isStorageExtension ? "storage_extension" : "storage"
+          };
+        });
+        const allInvoices = [...rows, ...storageInvoices].sort((a, b) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        }).slice(0, limit);
+        logger.info(`[ManagerRepository] Total invoices for manager ${managerId}: ${allInvoices.length} (${rows.length} kitchen + ${storageInvoices.length} storage)`);
         return {
-          invoices: rows,
-          total: rows.length
+          invoices: allInvoices,
+          total: allInvoices.length
         };
       }
       async getRevenueMetrics(managerId, startDate, endDate, locationId) {
@@ -12343,7 +13992,7 @@ __export(revenue_service_v2_exports, {
   getRevenueByLocationFromTransactions: () => getRevenueByLocationFromTransactions,
   getRevenueMetricsFromTransactions: () => getRevenueMetricsFromTransactions
 });
-import { sql as sql6 } from "drizzle-orm";
+import { sql as sql7 } from "drizzle-orm";
 async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endDate, locationId) {
   try {
     if (managerId === void 0 || managerId === null || isNaN(managerId)) {
@@ -12355,7 +14004,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       params.push(locationId);
     }
     console.log("[Revenue Service V2] getRevenueMetricsFromTransactions params:", { managerId, locationId, startDate, endDate });
-    const tableCheck = await db2.execute(sql6`
+    const tableCheck = await db2.execute(sql7`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -12367,22 +14016,17 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       console.log("[Revenue Service V2] payment_transactions table does not exist, will fallback to legacy method");
       throw new Error("payment_transactions table does not exist");
     }
-    const managerIdParam = sql6`${managerId}`;
-    const countCheck = await db2.execute(sql6`
+    const managerIdParam = sql7`${managerId}`;
+    const countCheck = await db2.execute(sql7`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
-      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
-      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
-      LEFT JOIN locations l ON k.location_id = l.id
-      WHERE (
-        pt.manager_id = ${managerIdParam} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
-      )
-        AND pt.booking_type IN ('kitchen', 'bundle')
+      WHERE pt.manager_id = ${managerIdParam}
+        AND pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')
+        AND (pt.status = 'succeeded' OR pt.status = 'processing')
     `);
     const transactionCount = parseInt(countCheck.rows[0]?.count || "0");
     console.log(`[Revenue Service V2] Found ${transactionCount} payment_transactions for manager ${managerId}`);
-    const bookingCountCheck = await db2.execute(sql6`
+    const bookingCountCheck = await db2.execute(sql7`
       SELECT 
         COUNT(DISTINCT kb.id) as total_bookings,
         COUNT(DISTINCT CASE WHEN pt_kitchen.id IS NOT NULL OR pt_bundle.id IS NOT NULL THEN kb.id END) as bookings_with_transactions
@@ -12410,23 +14054,16 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
       console.log(`[Revenue Service V2] Incomplete payment_transactions coverage (${bookingsWithTransactions}/${totalBookings}), falling back to legacy method`);
       throw new Error("Incomplete payment_transactions coverage");
     }
-    const whereConditions = [sql6`
-      (
-        pt.manager_id = ${managerIdParam} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
-      )
-    `];
-    whereConditions.push(sql6`(pt.status = 'succeeded' OR pt.status = 'processing')`);
-    whereConditions.push(sql6`pt.booking_type IN ('kitchen', 'bundle')`);
-    if (locationId) {
-      whereConditions.push(sql6`l.id = ${locationId}`);
-    }
+    const simpleWhereConditions = [
+      sql7`pt.manager_id = ${managerIdParam}`,
+      sql7`(pt.status = 'succeeded' OR pt.status = 'processing')`,
+      sql7`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
+    ];
     if (startDate || endDate) {
       const start = startDate ? typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0] : null;
       const end = endDate ? typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0] : null;
-      console.log("[Revenue Service V2] Applying date filter:", { startDate: start, endDate: end, managerId });
       if (start && end) {
-        whereConditions.push(sql6`
+        simpleWhereConditions.push(sql7`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
@@ -12436,7 +14073,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (start) {
-        whereConditions.push(sql6`
+        simpleWhereConditions.push(sql7`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date)
@@ -12446,7 +14083,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
           )
         `);
       } else if (end) {
-        whereConditions.push(sql6`
+        simpleWhereConditions.push(sql7`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) <= ${end}::date)
@@ -12457,22 +14094,19 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         `);
       }
     }
-    whereConditions.push(sql6`
+    simpleWhereConditions.push(sql7`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
           SELECT 1 FROM payment_transactions pt2
-          LEFT JOIN kitchen_bookings kb2 ON pt2.booking_id = kb2.id AND pt2.booking_type IN ('kitchen', 'bundle')
-          LEFT JOIN kitchens k2 ON kb2.kitchen_id = k2.id
-          LEFT JOIN locations l2 ON k2.location_id = l2.id
           WHERE pt2.booking_id = pt.booking_id
             AND pt2.booking_type = 'bundle'
-            AND (pt2.manager_id = ${managerId} OR (pt2.manager_id IS NULL AND l2.manager_id = ${managerId}))
+            AND pt2.manager_id = pt.manager_id
         )
       )
     `);
-    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
-    const result = await db2.execute(sql6`
+    const simpleWhereClause = sql7`WHERE ${sql7.join(simpleWhereConditions, sql7` AND `)}`;
+    const result = await db2.execute(sql7`
       SELECT 
         COALESCE(SUM(pt.amount::numeric), 0)::bigint as total_revenue,
         -- Platform fee: use service_fee if available, otherwise calculate as amount - manager_revenue
@@ -12488,22 +14122,20 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
         )::bigint as platform_fee,
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.manager_revenue::numeric ELSE 0 END), 0)::bigint as deposited_manager_revenue,
-        COUNT(DISTINCT pt.booking_id) as booking_count,
-        COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_booking_count,
-        COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN pt.booking_id END) as processing_booking_count,
+        COUNT(DISTINCT CONCAT(pt.booking_id, '-', pt.booking_type)) as booking_count,
+        COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as paid_booking_count,
+        COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as processing_booking_count,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
         -- Actual Stripe fees from database (fetched from Stripe Balance Transaction API)
-        COALESCE(SUM(CASE WHEN pt.stripe_fee::numeric > 0 THEN pt.stripe_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
+        -- Use stripe_processing_fee column which is populated by webhook from Stripe BalanceTransaction
+        COALESCE(SUM(CASE WHEN pt.stripe_processing_fee::numeric > 0 THEN pt.stripe_processing_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
         -- Tax amount from database
         COALESCE(SUM(CASE WHEN pt.tax_amount::numeric > 0 THEN pt.tax_amount::numeric ELSE 0 END), 0)::bigint as actual_tax_amount
       FROM payment_transactions pt
-      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
-      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
-      LEFT JOIN locations l ON k.location_id = l.id
-      ${whereClause}
+      ${simpleWhereClause}
     `);
     const row = result.rows[0] || {};
     console.log("[Revenue Service V2] Query result:", {
@@ -12539,7 +14171,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
     const actualStripeFee = parseNumeric(row.actual_stripe_fee);
     const actualTaxAmount = parseNumeric(row.actual_tax_amount);
     const stripeFee = actualStripeFee > 0 ? actualStripeFee : Math.round(completedPayments * 0.029 + paidBookingCount * 30);
-    const taxAmount = actualTaxAmount > 0 ? actualTaxAmount : platformFee;
+    const taxAmount = actualTaxAmount;
     const netRevenue = totalRevenue - taxAmount - stripeFee;
     console.log("[Revenue Service V2] Fee breakdown:", {
       actualStripeFee,
@@ -12577,7 +14209,7 @@ async function getRevenueMetricsFromTransactions(managerId, db2, startDate, endD
 }
 async function getRevenueByLocationFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql6`
+    const tableCheck = await db2.execute(sql7`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -12587,10 +14219,10 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
     if (!tableCheck.rows[0]?.table_exists) {
       throw new Error("payment_transactions table does not exist");
     }
-    const whereConditions = [sql6`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql6`pt.booking_type IN ('kitchen', 'bundle')`);
-    whereConditions.push(sql6`(pt.status = 'succeeded' OR pt.status = 'processing')`);
-    whereConditions.push(sql6`
+    const whereConditions = [sql7`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql7`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql7`(pt.status = 'succeeded' OR pt.status = 'processing')`);
+    whereConditions.push(sql7`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -12601,8 +14233,8 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
         )
       )
     `);
-    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
-    const result = await db2.execute(sql6`
+    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
+    const result = await db2.execute(sql7`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -12668,7 +14300,7 @@ async function getRevenueByLocationFromTransactions(managerId, db2, startDate, e
 }
 async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDate) {
   try {
-    const tableCheck = await db2.execute(sql6`
+    const tableCheck = await db2.execute(sql7`
       SELECT EXISTS (
         SELECT 1 FROM information_schema.tables 
         WHERE table_schema = 'public' 
@@ -12680,9 +14312,9 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
     }
     const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
     const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-    const whereConditions = [sql6`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql6`pt.booking_type IN ('kitchen', 'bundle')`);
-    whereConditions.push(sql6`
+    const whereConditions = [sql7`pt.manager_id = ${managerId}`];
+    whereConditions.push(sql7`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
+    whereConditions.push(sql7`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
@@ -12693,14 +14325,14 @@ async function getRevenueByDateFromTransactions(managerId, db2, startDate, endDa
         )
       )
     `);
-    whereConditions.push(sql6`
+    whereConditions.push(sql7`
       (
         (pt.status = 'succeeded' AND pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
         OR (pt.status != 'succeeded' AND DATE(pt.created_at) >= ${start}::date AND DATE(pt.created_at) <= ${end}::date)
       )
     `);
-    const whereClause = sql6`WHERE ${sql6.join(whereConditions, sql6` AND `)}`;
-    const result = await db2.execute(sql6`
+    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
+    const result = await db2.execute(sql7`
       SELECT 
         DATE(
           CASE 
@@ -12770,7 +14402,7 @@ __export(revenue_service_exports, {
   getRevenueMetrics: () => getRevenueMetrics,
   getTransactionHistory: () => getTransactionHistory
 });
-import { sql as sql7 } from "drizzle-orm";
+import { sql as sql8 } from "drizzle-orm";
 function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
   if (serviceFeeRate < 0 || serviceFeeRate > 1) {
     console.warn(`Invalid service fee rate: ${serviceFeeRate}, using 0`);
@@ -12781,14 +14413,14 @@ function calculateManagerRevenue(totalRevenue, serviceFeeRate) {
 }
 async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId) {
   try {
-    const whereConditions = [sql7`l.manager_id = ${managerId}`, sql7`kb.status != 'cancelled'`];
+    const whereConditions = [sql8`l.manager_id = ${managerId}`, sql8`kb.status != 'cancelled'`];
     if (locationId) {
-      whereConditions.push(sql7`l.id = ${locationId}`);
+      whereConditions.push(sql8`l.id = ${locationId}`);
     }
-    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
+    const whereClause = sql8`WHERE ${sql8.join(whereConditions, sql8` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const debugQuery = await db2.execute(sql7`
+    const debugQuery = await db2.execute(sql8`
       SELECT 
         COUNT(*) as total_bookings,
         COUNT(CASE WHEN kb.total_price IS NOT NULL THEN 1 END) as bookings_with_price,
@@ -12811,7 +14443,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       startDate,
       endDate
     });
-    const result = await db2.execute(sql7`
+    const result = await db2.execute(sql8`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -12885,15 +14517,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       ${whereClause}
     `);
     const pendingWhereConditions = [
-      sql7`l.manager_id = ${managerId}`,
-      sql7`kb.status != 'cancelled'`,
-      sql7`kb.payment_status = 'processing'`
+      sql8`l.manager_id = ${managerId}`,
+      sql8`kb.status != 'cancelled'`,
+      sql8`kb.payment_status = 'processing'`
     ];
     if (locationId) {
-      pendingWhereConditions.push(sql7`l.id = ${locationId}`);
+      pendingWhereConditions.push(sql8`l.id = ${locationId}`);
     }
-    const pendingWhereClause = sql7`WHERE ${sql7.join(pendingWhereConditions, sql7` AND `)}`;
-    const pendingResult = await db2.execute(sql7`
+    const pendingWhereClause = sql8`WHERE ${sql8.join(pendingWhereConditions, sql8` AND `)}`;
+    const pendingResult = await db2.execute(sql8`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -12918,15 +14550,15 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       pendingAmount: pendingResult.rows[0]?.pending_payments_all || 0
     });
     const completedWhereConditions = [
-      sql7`l.manager_id = ${managerId}`,
-      sql7`kb.status != 'cancelled'`,
-      sql7`kb.payment_status = 'paid'`
+      sql8`l.manager_id = ${managerId}`,
+      sql8`kb.status != 'cancelled'`,
+      sql8`kb.payment_status = 'paid'`
     ];
     if (locationId) {
-      completedWhereConditions.push(sql7`l.id = ${locationId}`);
+      completedWhereConditions.push(sql8`l.id = ${locationId}`);
     }
-    const completedWhereClause = sql7`WHERE ${sql7.join(completedWhereConditions, sql7` AND `)}`;
-    const completedResult = await db2.execute(sql7`
+    const completedWhereClause = sql8`WHERE ${sql8.join(completedWhereConditions, sql8` AND `)}`;
+    const completedResult = await db2.execute(sql8`
       SELECT 
         COALESCE(SUM(
           COALESCE(
@@ -12964,7 +14596,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     }
     if (result.rows.length === 0) {
       console.log("[Revenue Service] No bookings in date range, checking for payments outside date range...");
-      const pendingFeeResult = await db2.execute(sql7`
+      const pendingFeeResult = await db2.execute(sql8`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
           COALESCE(SUM(
@@ -12984,7 +14616,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
         JOIN locations l ON k.location_id = l.id
         ${pendingWhereClause}
       `);
-      const completedFeeResult = await db2.execute(sql7`
+      const completedFeeResult = await db2.execute(sql8`
         SELECT 
           COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
           COALESCE(SUM(
@@ -13048,7 +14680,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     const totalRevenue = typeof row.total_revenue === "string" ? parseInt(row.total_revenue) : row.total_revenue ? parseInt(String(row.total_revenue)) : 0;
     const platformFee = typeof row.platform_fee === "string" ? parseInt(row.platform_fee) : row.platform_fee ? parseInt(String(row.platform_fee)) : 0;
     const totalRevenueWithAllPayments = allCompletedPayments + allPendingPayments;
-    const pendingFeeResult2 = await db2.execute(sql7`
+    const pendingFeeResult2 = await db2.execute(sql8`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as pending_service_fee,
         COALESCE(SUM(
@@ -13068,7 +14700,7 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
       JOIN locations l ON k.location_id = l.id
       ${pendingWhereClause}
     `);
-    const completedFeeResult2 = await db2.execute(sql7`
+    const completedFeeResult2 = await db2.execute(sql8`
       SELECT 
         COALESCE(SUM(COALESCE(kb.service_fee, 0)::numeric), 0)::bigint as completed_service_fee,
         COALESCE(SUM(
@@ -13102,13 +14734,13 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
     let stripeFeeSource = "estimated";
     try {
       const stripeFeeConditions = [
-        sql7`pt.manager_id = ${managerId}`,
-        sql7`pt.status = 'succeeded'`,
-        sql7`pt.stripe_processing_fee IS NOT NULL`,
-        sql7`pt.stripe_processing_fee > 0`
+        sql8`pt.manager_id = ${managerId}`,
+        sql8`pt.status = 'succeeded'`,
+        sql8`pt.stripe_processing_fee IS NOT NULL`,
+        sql8`pt.stripe_processing_fee > 0`
       ];
       if (locationId) {
-        stripeFeeConditions.push(sql7`EXISTS (
+        stripeFeeConditions.push(sql8`EXISTS (
           SELECT 1 FROM kitchen_bookings kb 
           JOIN kitchens k ON kb.kitchen_id = k.id 
           WHERE kb.id = pt.booking_id 
@@ -13116,10 +14748,10 @@ async function getRevenueMetrics(managerId, db2, startDate, endDate, locationId)
           AND k.location_id = ${locationId}
         )`);
       }
-      const stripeFeeResult = await db2.execute(sql7`
+      const stripeFeeResult = await db2.execute(sql8`
         SELECT COALESCE(SUM(pt.stripe_processing_fee::numeric), 0)::bigint as total_stripe_fee
         FROM payment_transactions pt
-        WHERE ${sql7.join(stripeFeeConditions, sql7` AND `)}
+        WHERE ${sql8.join(stripeFeeConditions, sql8` AND `)}
       `);
       const stripeFeeRow = stripeFeeResult.rows[0] || {};
       const storedStripeFee = typeof stripeFeeRow.total_stripe_fee === "string" ? parseInt(stripeFeeRow.total_stripe_fee) || 0 : stripeFeeRow.total_stripe_fee ? parseInt(String(stripeFeeRow.total_stripe_fee)) : 0;
@@ -13166,20 +14798,20 @@ async function getRevenueByLocation(managerId, db2, startDate, endDate) {
       console.error("[Revenue Service] Invalid managerId:", managerId);
       throw new Error("Invalid manager ID");
     }
-    const managerIdParam = sql7`${managerId}`;
-    const whereConditions = [sql7`l.manager_id = ${managerIdParam}`, sql7`kb.status != 'cancelled'`];
+    const managerIdParam = sql8`${managerId}`;
+    const whereConditions = [sql8`l.manager_id = ${managerIdParam}`, sql8`kb.status != 'cancelled'`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql7`DATE(kb.booking_date) >= ${start}::date`);
+      whereConditions.push(sql8`DATE(kb.booking_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql7`DATE(kb.booking_date) <= ${end}::date`);
+      whereConditions.push(sql8`DATE(kb.booking_date) <= ${end}::date`);
     }
-    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
+    const whereClause = sql8`WHERE ${sql8.join(whereConditions, sql8` AND `)}`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql7`
+    const result = await db2.execute(sql8`
       SELECT 
         l.id as location_id,
         l.name as location_name,
@@ -13230,15 +14862,15 @@ async function getRevenueByDate(managerId, db2, startDate, endDate) {
     }
     const start = typeof startDate === "string" ? startDate : startDate ? startDate.toISOString().split("T")[0] : null;
     const end = typeof endDate === "string" ? endDate : endDate ? endDate.toISOString().split("T")[0] : null;
-    const managerIdParam = sql7`${managerId}`;
+    const managerIdParam = sql8`${managerId}`;
     if (!start || !end) {
       console.warn("[Revenue Service] Missing date parameters for getRevenueByDate");
     }
-    const startParam = start ? sql7`${start}::date` : sql7`CURRENT_DATE - INTERVAL '30 days'`;
-    const endParam = end ? sql7`${end}::date` : sql7`CURRENT_DATE`;
+    const startParam = start ? sql8`${start}::date` : sql8`CURRENT_DATE - INTERVAL '30 days'`;
+    const endParam = end ? sql8`${end}::date` : sql8`CURRENT_DATE`;
     const { getServiceFeeRate: getServiceFeeRate2 } = await Promise.resolve().then(() => (init_pricing_service(), pricing_service_exports));
     const serviceFeeRate = await getServiceFeeRate2();
-    const result = await db2.execute(sql7`
+    const result = await db2.execute(sql8`
       SELECT 
         DATE(kb.booking_date)::text as date,
         COALESCE(SUM(
@@ -13297,18 +14929,18 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
       if (status === "canceled") return "canceled";
       return status;
     };
-    const kitchenWhereConditions = [sql7`l.manager_id = ${managerId}`, sql7`kb.status != 'cancelled'`];
+    const kitchenWhereConditions = [sql8`l.manager_id = ${managerId}`, sql8`kb.status != 'cancelled'`];
     if (start) {
-      kitchenWhereConditions.push(sql7`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
+      kitchenWhereConditions.push(sql8`(DATE(kb.booking_date) >= ${start}::date OR DATE(kb.created_at) >= ${start}::date)`);
     }
     if (end) {
-      kitchenWhereConditions.push(sql7`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
+      kitchenWhereConditions.push(sql8`(DATE(kb.booking_date) <= ${end}::date OR DATE(kb.created_at) <= ${end}::date)`);
     }
     if (locationId) {
-      kitchenWhereConditions.push(sql7`l.id = ${locationId}`);
+      kitchenWhereConditions.push(sql8`l.id = ${locationId}`);
     }
-    const kitchenWhereClause = sql7`WHERE ${sql7.join(kitchenWhereConditions, sql7` AND `)}`;
-    const kitchenResult = await db2.execute(sql7`
+    const kitchenWhereClause = sql8`WHERE ${sql8.join(kitchenWhereConditions, sql8` AND `)}`;
+    const kitchenResult = await db2.execute(sql8`
       SELECT 
         kb.id,
         kb.booking_date,
@@ -13428,7 +15060,100 @@ async function getTransactionHistory(managerId, db2, startDate, endDate, locatio
         refundableAmount: Math.max(0, totalPriceCents - ptRefundAmount)
       };
     });
-    let allTransactions = kitchenTransactions;
+    const storageResult = await db2.execute(sql8`
+      SELECT 
+        pt.id as transaction_id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.amount as pt_amount,
+        pt.base_amount as pt_base_amount,
+        pt.service_fee as pt_service_fee,
+        pt.manager_revenue as pt_manager_revenue,
+        pt.refund_amount as pt_refund_amount,
+        pt.status as transaction_status,
+        pt.payment_intent_id as pt_payment_intent_id,
+        pt.currency as pt_currency,
+        pt.created_at,
+        pt.paid_at as pt_paid_at,
+        pt.metadata as pt_metadata,
+        -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
+        COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
+        sb.start_date as booking_date,
+        sb.chef_id,
+        sl.name as storage_name,
+        k.name as kitchen_name,
+        l.id as location_id,
+        l.name as location_name,
+        u.username as chef_name,
+        u.username as chef_email
+      FROM payment_transactions pt
+      JOIN storage_bookings sb ON pt.booking_id = sb.id
+      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+      JOIN kitchens k ON sl.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      LEFT JOIN users u ON sb.chef_id = u.id
+      WHERE pt.manager_id = ${managerId}
+        AND pt.booking_type = 'storage'
+        AND (pt.status = 'succeeded' OR pt.status = 'processing')
+      ORDER BY pt.created_at DESC
+    `);
+    const storageTransactions = storageResult.rows.map((row) => {
+      const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
+      const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
+      const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
+      const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
+      const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
+      const metadata = row.pt_metadata || {};
+      const isOverstayPenalty = metadata.type === "overstay_penalty";
+      const isStorageExtension = metadata.storage_extension_id != null;
+      let description = row.storage_name || "Storage";
+      if (isOverstayPenalty) {
+        description = `Overstay Penalty - ${row.storage_name || "Storage"}`;
+      } else if (isStorageExtension) {
+        description = `Storage Extension - ${row.storage_name || "Storage"}`;
+      }
+      const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
+      const bookingId = parseInt(String(row.booking_id));
+      const estimatedStripeFee = Math.round(ptAmount * 0.029 + 30);
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      const netRevenue = ptAmount - stripeFee;
+      return {
+        id: bookingId,
+        transactionId,
+        bookingId,
+        bookingType: isOverstayPenalty ? "overstay_penalty" : isStorageExtension ? "storage_extension" : "storage",
+        bookingDate: row.booking_date,
+        startTime: null,
+        endTime: null,
+        chefId: row.chef_id != null ? parseInt(String(row.chef_id)) : null,
+        totalPrice: ptAmount,
+        serviceFee: ptServiceFee,
+        platformFee: ptServiceFee,
+        taxAmount: 0,
+        taxRatePercent: 0,
+        stripeFee,
+        // Actual Stripe processing fee (from Stripe API or estimated)
+        managerRevenue: ptManagerRevenue || ptAmount,
+        netRevenue,
+        paymentStatus: mapPaymentStatus(row.transaction_status),
+        paymentIntentId: row.pt_payment_intent_id,
+        status: "confirmed",
+        currency: String(row.pt_currency || "CAD").toUpperCase(),
+        kitchenId: null,
+        kitchenName: row.kitchen_name,
+        storageName: row.storage_name,
+        description,
+        locationId: parseInt(String(row.location_id)),
+        locationName: row.location_name,
+        chefName: row.chef_name || "Guest",
+        chefEmail: row.chef_email,
+        createdAt: row.created_at,
+        paidAt: row.pt_paid_at || null,
+        refundAmount: ptRefundAmount,
+        refundableAmount: Math.max(0, ptAmount - ptRefundAmount)
+      };
+    });
+    let allTransactions = [...kitchenTransactions, ...storageTransactions];
     if (paymentStatus && paymentStatus !== "all") {
       allTransactions = allTransactions.filter((t) => t.paymentStatus === paymentStatus);
     }
@@ -13464,20 +15189,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
     }
     const kitchenMetrics = await getRevenueMetrics(managerId, db2, startDate, endDate, locationId);
     console.log("[Revenue Service] Kitchen metrics:", kitchenMetrics);
-    const whereConditions = [sql7`l.manager_id = ${managerId}`];
+    const whereConditions = [sql8`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      whereConditions.push(sql7`DATE(sb.start_date) >= ${start}::date`);
+      whereConditions.push(sql8`DATE(sb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      whereConditions.push(sql7`DATE(sb.start_date) <= ${end}::date`);
+      whereConditions.push(sql8`DATE(sb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      whereConditions.push(sql7`l.id = ${locationId}`);
+      whereConditions.push(sql8`l.id = ${locationId}`);
     }
-    const whereClause = sql7`WHERE ${sql7.join(whereConditions, sql7` AND `)}`;
-    const storageResult = await db2.execute(sql7`
+    const whereClause = sql8`WHERE ${sql8.join(whereConditions, sql8` AND `)}`;
+    const storageResult = await db2.execute(sql8`
       SELECT 
         COALESCE(SUM(COALESCE(sb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(sb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -13492,20 +15217,20 @@ async function getCompleteRevenueMetrics(managerId, db2, startDate, endDate, loc
       ${whereClause}
         AND sb.status != 'cancelled'
     `);
-    const equipmentWhereConditions = [sql7`l.manager_id = ${managerId}`];
+    const equipmentWhereConditions = [sql8`l.manager_id = ${managerId}`];
     if (startDate) {
       const start = typeof startDate === "string" ? startDate : startDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql7`DATE(eb.start_date) >= ${start}::date`);
+      equipmentWhereConditions.push(sql8`DATE(eb.start_date) >= ${start}::date`);
     }
     if (endDate) {
       const end = typeof endDate === "string" ? endDate : endDate.toISOString().split("T")[0];
-      equipmentWhereConditions.push(sql7`DATE(eb.start_date) <= ${end}::date`);
+      equipmentWhereConditions.push(sql8`DATE(eb.start_date) <= ${end}::date`);
     }
     if (locationId) {
-      equipmentWhereConditions.push(sql7`l.id = ${locationId}`);
+      equipmentWhereConditions.push(sql8`l.id = ${locationId}`);
     }
-    const equipmentWhereClause = sql7`WHERE ${sql7.join(equipmentWhereConditions, sql7` AND `)}`;
-    const equipmentResult = await db2.execute(sql7`
+    const equipmentWhereClause = sql8`WHERE ${sql8.join(equipmentWhereConditions, sql8` AND `)}`;
+    const equipmentResult = await db2.execute(sql8`
       SELECT 
         COALESCE(SUM(COALESCE(eb.total_price, 0)::numeric), 0)::bigint as total_revenue,
         COALESCE(SUM(COALESCE(eb.service_fee, 0)::numeric), 0)::bigint as platform_fee,
@@ -13585,9 +15310,9 @@ __export(stripe_connect_service_exports, {
   getPayouts: () => getPayouts,
   isAccountReady: () => isAccountReady
 });
-import Stripe2 from "stripe";
+import Stripe3 from "stripe";
 async function createConnectAccount(params) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   const {
@@ -13597,7 +15322,7 @@ async function createConnectAccount(params) {
     // Default to Canada
   } = params;
   try {
-    const account = await stripe2.accounts.create({
+    const account = await stripe3.accounts.create({
       type: "express",
       country,
       email,
@@ -13618,11 +15343,11 @@ async function createConnectAccount(params) {
   }
 }
 async function createAccountLink(accountId, refreshUrl, returnUrl) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const accountLink = await stripe2.accountLinks.create({
+    const accountLink = await stripe3.accountLinks.create({
       account: accountId,
       refresh_url: refreshUrl,
       return_url: returnUrl,
@@ -13635,11 +15360,11 @@ async function createAccountLink(accountId, refreshUrl, returnUrl) {
   }
 }
 async function createAccountUpdateLink(accountId, refreshUrl, returnUrl) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const accountLink = await stripe2.accountLinks.create({
+    const accountLink = await stripe3.accountLinks.create({
       account: accountId,
       refresh_url: refreshUrl,
       return_url: returnUrl,
@@ -13652,11 +15377,11 @@ async function createAccountUpdateLink(accountId, refreshUrl, returnUrl) {
   }
 }
 async function isAccountReady(accountId) {
-  if (!stripe2) {
+  if (!stripe3) {
     return false;
   }
   try {
-    const account = await stripe2.accounts.retrieve(accountId);
+    const account = await stripe3.accounts.retrieve(accountId);
     return account.charges_enabled === true && account.payouts_enabled === true;
   } catch (error) {
     console.error("Error checking account readiness:", error);
@@ -13664,11 +15389,11 @@ async function isAccountReady(accountId) {
   }
 }
 async function getAccountStatus(accountId) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const account = await stripe2.accounts.retrieve(accountId);
+    const account = await stripe3.accounts.retrieve(accountId);
     return {
       accountId: account.id,
       chargesEnabled: account.charges_enabled || false,
@@ -13682,11 +15407,11 @@ async function getAccountStatus(accountId) {
   }
 }
 async function getAccount(accountId) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const account = await stripe2.accounts.retrieve(accountId);
+    const account = await stripe3.accounts.retrieve(accountId);
     return account;
   } catch (error) {
     if (error.code === "resource_missing") {
@@ -13697,11 +15422,11 @@ async function getAccount(accountId) {
   }
 }
 async function getPayouts(accountId, limit = 100) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const payouts = await stripe2.payouts.list(
+    const payouts = await stripe3.payouts.list(
       {
         limit
       },
@@ -13716,11 +15441,11 @@ async function getPayouts(accountId, limit = 100) {
   }
 }
 async function getPayout(accountId, payoutId) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const payout = await stripe2.payouts.retrieve(
+    const payout = await stripe3.payouts.retrieve(
       payoutId,
       {
         stripeAccount: accountId
@@ -13736,7 +15461,7 @@ async function getPayout(accountId, payoutId) {
   }
 }
 async function getBalanceTransactions(accountId, startDate, endDate, limit = 100) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
@@ -13760,7 +15485,7 @@ async function getBalanceTransactions(accountId, startDate, endDate, limit = 100
         };
       }
     }
-    const transactions = await stripe2.balanceTransactions.list(
+    const transactions = await stripe3.balanceTransactions.list(
       params,
       {
         stripeAccount: accountId
@@ -13773,11 +15498,11 @@ async function getBalanceTransactions(accountId, startDate, endDate, limit = 100
   }
 }
 async function getAccountBalance(accountId) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const balance = await stripe2.balance.retrieve({
+    const balance = await stripe3.balance.retrieve({
       stripeAccount: accountId
     });
     return balance;
@@ -13787,26 +15512,26 @@ async function getAccountBalance(accountId) {
   }
 }
 async function createDashboardLoginLink(accountId) {
-  if (!stripe2) {
+  if (!stripe3) {
     throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
   }
   try {
-    const loginLink = await stripe2.accounts.createLoginLink(accountId);
+    const loginLink = await stripe3.accounts.createLoginLink(accountId);
     return { url: loginLink.url };
   } catch (error) {
     console.error("Error creating dashboard login link:", error);
     throw new Error(`Failed to create dashboard login link: ${error.message}`);
   }
 }
-var stripeSecretKey2, stripe2;
+var stripeSecretKey3, stripe3;
 var init_stripe_connect_service = __esm({
   "server/services/stripe-connect-service.ts"() {
     "use strict";
-    stripeSecretKey2 = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey2) {
+    stripeSecretKey3 = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey3) {
       console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
     }
-    stripe2 = stripeSecretKey2 ? new Stripe2(stripeSecretKey2, {
+    stripe3 = stripeSecretKey3 ? new Stripe3(stripeSecretKey3, {
       apiVersion: "2025-12-15.clover"
     }) : null;
   }
@@ -13852,7 +15577,7 @@ var init_manager_service = __esm({
           let totalPriceCents = 0;
           if (row.totalPrice != null) {
             totalPriceCents = parseInt(String(row.totalPrice));
-          } else if (row.hourlyRate != null && row.durationHours != null) {
+          } else if ("hourlyRate" in row && row.hourlyRate != null && "durationHours" in row && row.durationHours != null) {
             totalPriceCents = Math.round(parseFloat(String(row.hourlyRate)) * parseFloat(String(row.durationHours)));
           }
           const serviceFeeCents = row.serviceFee != null ? parseInt(String(row.serviceFee)) : 0;
@@ -13909,424 +15634,6 @@ var init_manager_service = __esm({
       }
     };
     managerService = new ManagerService();
-  }
-});
-
-// server/services/stripe-service.ts
-var stripe_service_exports = {};
-__export(stripe_service_exports, {
-  cancelPaymentIntent: () => cancelPaymentIntent,
-  capturePaymentIntent: () => capturePaymentIntent,
-  confirmPaymentIntent: () => confirmPaymentIntent,
-  createPaymentIntent: () => createPaymentIntent,
-  createRefund: () => createRefund,
-  getPaymentIntent: () => getPaymentIntent,
-  getStripePaymentAmounts: () => getStripePaymentAmounts,
-  reverseTransferAndRefund: () => reverseTransferAndRefund,
-  verifyPaymentIntentForBooking: () => verifyPaymentIntentForBooking
-});
-import Stripe3 from "stripe";
-async function createPaymentIntent(params) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  const {
-    amount,
-    currency = "cad",
-    chefId,
-    kitchenId,
-    metadata = {},
-    statementDescriptor = "LOCALCOOKS",
-    managerConnectAccountId,
-    applicationFeeAmount,
-    enableACSS = true,
-    // Default to true for ACSS debit support
-    enableCards = true,
-    // Default to true for standard card payments
-    useAuthorizationHold = true,
-    // DEPRECATED: No longer used - always uses automatic capture
-    saveCardForFuture = true,
-    // Default to true to save cards for future use
-    customerId
-  } = params;
-  if (amount <= 0) {
-    throw new Error("Payment amount must be greater than 0");
-  }
-  const hasApplicationFee = applicationFeeAmount !== void 0 && applicationFeeAmount !== null;
-  if (hasApplicationFee && !managerConnectAccountId) {
-    throw new Error("managerConnectAccountId is required when applicationFeeAmount is provided");
-  }
-  if (managerConnectAccountId && !hasApplicationFee) {
-  }
-  if (hasApplicationFee && applicationFeeAmount < 0) {
-    throw new Error("Application fee must be 0 or a positive amount");
-  }
-  if (hasApplicationFee && applicationFeeAmount >= amount) {
-    throw new Error("Application fee must be less than total amount");
-  }
-  if (!enableACSS && !enableCards) {
-    throw new Error("At least one payment method must be enabled");
-  }
-  const cleanDescriptor = statementDescriptor.replace(/[<>'"]/g, "").substring(0, 15).toUpperCase();
-  try {
-    const paymentMethodTypes = [];
-    if (enableCards) {
-      paymentMethodTypes.push("card");
-    }
-    if (enableACSS) {
-      paymentMethodTypes.push("acss_debit");
-    }
-    const paymentIntentParams = {
-      amount,
-      currency,
-      payment_method_types: paymentMethodTypes,
-      // Don't auto-confirm - we'll confirm after collecting payment method
-      confirm: false,
-      // Use automatic capture: payments are immediately processed when confirmed
-      capture_method: "automatic",
-      metadata: {
-        booking_type: "kitchen",
-        kitchen_id: kitchenId.toString(),
-        chef_id: chefId.toString(),
-        expected_amount: amount.toString(),
-        // Store expected amount for verification
-        ...metadata
-      }
-    };
-    if (enableCards) {
-      paymentIntentParams.statement_descriptor_suffix = cleanDescriptor.substring(0, 22);
-    } else if (enableACSS) {
-      paymentIntentParams.statement_descriptor = cleanDescriptor;
-    }
-    paymentIntentParams.payment_method_options = {};
-    if (enableACSS) {
-      paymentIntentParams.payment_method_options.acss_debit = {
-        mandate_options: {
-          payment_schedule: "combined",
-          // Creates a mandate for future debits
-          transaction_type: "personal",
-          // Default to personal, can be made configurable
-          interval_description: "Payment for kitchen booking and future bookings as authorized"
-          // Required for 'combined' or 'interval' payment schedules
-        }
-      };
-    }
-    if (saveCardForFuture && enableCards) {
-      paymentIntentParams.setup_future_usage = "off_session";
-    }
-    if (customerId) {
-      paymentIntentParams.customer = customerId;
-    }
-    if (managerConnectAccountId) {
-      paymentIntentParams.transfer_data = {
-        destination: managerConnectAccountId
-      };
-      paymentIntentParams.metadata.manager_connect_account_id = managerConnectAccountId;
-      if (hasApplicationFee) {
-        paymentIntentParams.application_fee_amount = applicationFeeAmount;
-        paymentIntentParams.metadata.platform_fee = applicationFeeAmount.toString();
-      }
-    }
-    const paymentIntent = await stripe3.paymentIntents.create(paymentIntentParams);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret,
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error creating PaymentIntent:", error);
-    throw new Error(`Failed to create payment intent: ${error.message}`);
-  }
-}
-async function confirmPaymentIntent(paymentIntentId, paymentMethodId) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe3.paymentIntents.confirm(paymentIntentId, {
-      payment_method: paymentMethodId
-    });
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error confirming PaymentIntent:", error);
-    throw new Error(`Failed to confirm payment intent: ${error.message}`);
-  }
-}
-async function getPaymentIntent(paymentIntentId) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe3.paymentIntents.retrieve(paymentIntentId);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    if (error.code === "resource_missing") {
-      return null;
-    }
-    console.error("Error retrieving PaymentIntent:", error);
-    throw new Error(`Failed to retrieve payment intent: ${error.message}`);
-  }
-}
-async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe3.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"]
-    });
-    if (!paymentIntent.latest_charge) {
-      console.warn(`[Stripe] No charge found for PaymentIntent ${paymentIntentId}`);
-      return null;
-    }
-    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
-    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe3.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
-    let balanceTransaction = null;
-    if (charge.balance_transaction) {
-      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
-      balanceTransaction = await stripe3.balanceTransactions.retrieve(balanceTransactionId);
-    }
-    const stripeAmount = paymentIntent.amount;
-    let stripeNetAmount = stripeAmount;
-    let stripeProcessingFee = 0;
-    let stripePlatformFee = 0;
-    if (balanceTransaction) {
-      stripeNetAmount = balanceTransaction.net;
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
-      } else {
-        stripeProcessingFee = balanceTransaction.fee;
-        stripeNetAmount = stripeAmount - stripeProcessingFee;
-      }
-    } else {
-      stripeProcessingFee = Math.round(stripeAmount * 0.029 + 30);
-      if (managerConnectAccountId && paymentIntent.application_fee_amount) {
-        stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeNetAmount = stripeAmount - stripePlatformFee - stripeProcessingFee;
-      } else {
-        stripeNetAmount = stripeAmount - stripeProcessingFee;
-      }
-    }
-    return {
-      stripeAmount,
-      stripeNetAmount,
-      stripeProcessingFee,
-      stripePlatformFee,
-      chargeId
-    };
-  } catch (error) {
-    console.error(`[Stripe] Error fetching payment amounts for ${paymentIntentId}:`, error);
-    return null;
-  }
-}
-async function capturePaymentIntent(paymentIntentId, amountToCapture) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const captureParams = {};
-    if (amountToCapture !== void 0) {
-      captureParams.amount_to_capture = amountToCapture;
-    }
-    const paymentIntent = await stripe3.paymentIntents.capture(paymentIntentId, captureParams);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error capturing PaymentIntent:", error);
-    throw new Error(`Failed to capture payment intent: ${error.message}`);
-  }
-}
-async function cancelPaymentIntent(paymentIntentId) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe3.paymentIntents.cancel(paymentIntentId);
-    return {
-      id: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || "",
-      status: paymentIntent.status,
-      amount: paymentIntent.amount
-    };
-  } catch (error) {
-    console.error("Error canceling PaymentIntent:", error);
-    throw new Error(`Failed to cancel payment intent: ${error.message}`);
-  }
-}
-async function createRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  try {
-    const paymentIntent = await stripe3.paymentIntents.retrieve(paymentIntentId);
-    if (!paymentIntent.latest_charge) {
-      throw new Error("Payment intent has no charge to refund");
-    }
-    const chargeId = typeof paymentIntent.latest_charge === "string" ? paymentIntent.latest_charge : paymentIntent.latest_charge.id;
-    const refundParams = {
-      charge: chargeId,
-      reason
-    };
-    if (amount !== void 0 && amount > 0) {
-      refundParams.amount = amount;
-    }
-    if (options?.reverseTransfer !== void 0) {
-      refundParams.reverse_transfer = options.reverseTransfer;
-    }
-    if (options?.refundApplicationFee !== void 0) {
-      refundParams.refund_application_fee = options.refundApplicationFee;
-    }
-    if (options?.metadata) {
-      refundParams.metadata = options.metadata;
-    }
-    const refund = await stripe3.refunds.create(refundParams);
-    if (!refund.charge || typeof refund.charge !== "string") {
-      throw new Error("Refund created but charge ID is missing");
-    }
-    if (!refund.status || typeof refund.status !== "string") {
-      throw new Error("Refund created but status is missing");
-    }
-    const refundChargeId = refund.charge;
-    const refundStatus = refund.status;
-    return {
-      id: refund.id,
-      amount: refund.amount,
-      status: refundStatus,
-      charge: refundChargeId
-    };
-  } catch (error) {
-    console.error("Error creating refund:", error);
-    throw new Error(`Failed to create refund: ${error.message}`);
-  }
-}
-async function reverseTransferAndRefund(paymentIntentId, amount, reason = "requested_by_customer", options) {
-  if (!stripe3) {
-    throw new Error("Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.");
-  }
-  if (!amount || amount <= 0) {
-    throw new Error("Refund amount must be greater than 0");
-  }
-  try {
-    const paymentIntent = await stripe3.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge"]
-    });
-    if (!paymentIntent.latest_charge) {
-      throw new Error("Payment intent has no charge to refund");
-    }
-    const charge = typeof paymentIntent.latest_charge === "string" ? await stripe3.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
-    const chargeId = charge.id;
-    const transferId = typeof charge.transfer === "string" ? charge.transfer : charge.transfer?.id;
-    if (!transferId) {
-      throw new Error("No transfer found for this charge to reverse");
-    }
-    const reversalAmount = options?.reverseTransferAmount ?? amount;
-    if (reversalAmount <= 0) {
-      throw new Error("Transfer reversal amount must be greater than 0");
-    }
-    const reversal = await stripe3.transfers.createReversal(transferId, {
-      amount: reversalAmount,
-      metadata: options?.transferMetadata || options?.metadata
-    });
-    const refundParams = {
-      charge: chargeId,
-      reason,
-      amount
-    };
-    if (options?.refundApplicationFee !== void 0) {
-      refundParams.refund_application_fee = options.refundApplicationFee;
-    }
-    if (options?.metadata) {
-      refundParams.metadata = options.metadata;
-    }
-    const refund = await stripe3.refunds.create(refundParams);
-    if (!refund.charge || typeof refund.charge !== "string") {
-      throw new Error("Refund created but charge ID is missing");
-    }
-    if (!refund.status || typeof refund.status !== "string") {
-      throw new Error("Refund created but status is missing");
-    }
-    return {
-      refundId: refund.id,
-      refundAmount: refund.amount,
-      refundStatus: refund.status,
-      chargeId,
-      transferReversalId: reversal.id
-    };
-  } catch (error) {
-    console.error("Error reversing transfer and refunding:", error);
-    throw new Error(`Failed to reverse transfer and refund: ${error.message}`);
-  }
-}
-async function verifyPaymentIntentForBooking(paymentIntentId, chefId, expectedAmount) {
-  try {
-    if (!stripe3) {
-      return { valid: false, status: "error", error: "Stripe is not configured" };
-    }
-    const paymentIntent = await stripe3.paymentIntents.retrieve(paymentIntentId);
-    if (!paymentIntent) {
-      return { valid: false, status: "not_found", error: "Payment intent not found" };
-    }
-    if (paymentIntent.metadata?.chef_id !== chefId.toString()) {
-      return { valid: false, status: paymentIntent.status, error: "Payment intent does not belong to this chef" };
-    }
-    const storedExpectedAmount = paymentIntent.metadata?.expected_amount ? parseInt(paymentIntent.metadata.expected_amount) : null;
-    const amountToCompare = storedExpectedAmount !== null ? storedExpectedAmount : expectedAmount;
-    const amountDifference = Math.abs(paymentIntent.amount - amountToCompare);
-    if (amountDifference > 5) {
-      console.error("Payment amount mismatch:", {
-        paymentIntentAmount: paymentIntent.amount,
-        expectedAmount: amountToCompare,
-        storedExpectedAmount,
-        calculatedExpectedAmount: expectedAmount,
-        difference: amountDifference,
-        differenceDollars: (amountDifference / 100).toFixed(2)
-      });
-      return { valid: false, status: paymentIntent.status, error: "Payment amount does not match booking amount" };
-    }
-    const validStatuses = ["succeeded", "processing"];
-    if (!validStatuses.includes(paymentIntent.status)) {
-      return {
-        valid: false,
-        status: paymentIntent.status,
-        error: `Payment is not in a valid state: ${paymentIntent.status}`
-      };
-    }
-    return { valid: true, status: paymentIntent.status };
-  } catch (error) {
-    console.error("Error verifying PaymentIntent:", error);
-    if (error.code === "resource_missing") {
-      return { valid: false, status: "not_found", error: "Payment intent not found" };
-    }
-    return { valid: false, status: "error", error: error.message };
-  }
-}
-var stripeSecretKey3, stripe3;
-var init_stripe_service = __esm({
-  "server/services/stripe-service.ts"() {
-    "use strict";
-    stripeSecretKey3 = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecretKey3) {
-      console.warn("\u26A0\uFE0F STRIPE_SECRET_KEY not found in environment variables");
-    }
-    stripe3 = stripeSecretKey3 ? new Stripe3(stripeSecretKey3, {
-      apiVersion: "2025-12-15.clover"
-    }) : null;
   }
 });
 
@@ -14761,629 +16068,6 @@ var init_invoice_service = __esm({
     init_db();
     init_schema();
     init_stripe_service();
-  }
-});
-
-// server/services/payment-transactions-service.ts
-var payment_transactions_service_exports = {};
-__export(payment_transactions_service_exports, {
-  addPaymentHistory: () => addPaymentHistory,
-  createPaymentTransaction: () => createPaymentTransaction,
-  findPaymentTransactionByBooking: () => findPaymentTransactionByBooking,
-  findPaymentTransactionById: () => findPaymentTransactionById,
-  findPaymentTransactionByIntentId: () => findPaymentTransactionByIntentId,
-  findPaymentTransactionByMetadata: () => findPaymentTransactionByMetadata,
-  getManagerPaymentTransactions: () => getManagerPaymentTransactions,
-  getPaymentHistory: () => getPaymentHistory,
-  syncExistingPaymentTransactionsFromStripe: () => syncExistingPaymentTransactionsFromStripe,
-  syncStripeAmountsToBookings: () => syncStripeAmountsToBookings,
-  updatePaymentTransaction: () => updatePaymentTransaction
-});
-import { sql as sql8 } from "drizzle-orm";
-async function createPaymentTransaction(params, db2) {
-  const {
-    bookingId,
-    bookingType,
-    chefId,
-    managerId,
-    amount,
-    baseAmount,
-    serviceFee,
-    managerRevenue,
-    currency = "CAD",
-    paymentIntentId,
-    paymentMethodId,
-    status = "pending",
-    stripeStatus,
-    metadata = {}
-  } = params;
-  const netAmount = amount;
-  const result = await db2.execute(sql8`
-    INSERT INTO payment_transactions (
-      booking_id,
-      booking_type,
-      chef_id,
-      manager_id,
-      amount,
-      base_amount,
-      service_fee,
-      manager_revenue,
-      refund_amount,
-      net_amount,
-      currency,
-      payment_intent_id,
-      payment_method_id,
-      status,
-      stripe_status,
-      metadata
-    ) VALUES (
-      ${bookingId},
-      ${bookingType},
-      ${chefId},
-      ${managerId},
-      ${amount.toString()},
-      ${baseAmount.toString()},
-      ${serviceFee.toString()},
-      ${managerRevenue.toString()},
-      '0',
-      ${netAmount.toString()},
-      ${currency},
-      ${paymentIntentId || null},
-      ${paymentMethodId || null},
-      ${status},
-      ${stripeStatus || null},
-      ${JSON.stringify(metadata)}
-    )
-    RETURNING *
-  `);
-  const record = result.rows[0];
-  await addPaymentHistory(
-    record.id,
-    {
-      previousStatus: null,
-      newStatus: status,
-      eventType: "created",
-      eventSource: "system",
-      description: `Payment transaction created for ${bookingType} booking ${bookingId}`,
-      metadata: { initialAmount: amount, baseAmount, serviceFee, managerRevenue }
-    },
-    db2
-  );
-  return record;
-}
-async function updatePaymentTransaction(transactionId, params, db2) {
-  const currentResult = await db2.execute(sql8`
-    SELECT status, refund_amount, amount
-    FROM payment_transactions
-    WHERE id = ${transactionId}
-  `);
-  if (currentResult.rows.length === 0) {
-    return null;
-  }
-  const current = currentResult.rows[0];
-  const previousStatus = current.status;
-  const currentRefundAmount = parseFloat(current.refund_amount || "0");
-  const currentAmount = parseFloat(current.amount || "0");
-  const updates = [];
-  if (params.status !== void 0) {
-    updates.push(sql8`status = ${params.status}`);
-  }
-  if (params.stripeStatus !== void 0) {
-    updates.push(sql8`stripe_status = ${params.stripeStatus}`);
-  }
-  if (params.paymentIntentId !== void 0) {
-    updates.push(sql8`payment_intent_id = ${params.paymentIntentId}`);
-  }
-  if (params.paymentMethodId !== void 0) {
-    updates.push(sql8`payment_method_id = ${params.paymentMethodId}`);
-  }
-  if (params.chargeId !== void 0) {
-    updates.push(sql8`charge_id = ${params.chargeId}`);
-  }
-  if (params.refundId !== void 0) {
-    updates.push(sql8`refund_id = ${params.refundId}`);
-  }
-  if (params.refundAmount !== void 0) {
-    updates.push(sql8`refund_amount = ${params.refundAmount.toString()}`);
-    const newRefundAmount = params.refundAmount;
-    const netAmount = currentAmount - newRefundAmount;
-    updates.push(sql8`net_amount = ${netAmount.toString()}`);
-  }
-  if (params.refundReason !== void 0) {
-    updates.push(sql8`refund_reason = ${params.refundReason}`);
-  }
-  if (params.failureReason !== void 0) {
-    updates.push(sql8`failure_reason = ${params.failureReason}`);
-  }
-  if (params.paidAt !== void 0) {
-    updates.push(sql8`paid_at = ${params.paidAt}`);
-  }
-  if (params.refundedAt !== void 0) {
-    updates.push(sql8`refunded_at = ${params.refundedAt}`);
-  }
-  if (params.lastSyncedAt !== void 0) {
-    updates.push(sql8`last_synced_at = ${params.lastSyncedAt}`);
-  }
-  if (params.webhookEventId !== void 0) {
-    updates.push(sql8`webhook_event_id = ${params.webhookEventId}`);
-  }
-  if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
-    if (params.stripeAmount !== void 0) {
-      updates.push(sql8`amount = ${params.stripeAmount.toString()}`);
-    }
-    if (params.stripeNetAmount !== void 0) {
-      updates.push(sql8`net_amount = ${params.stripeNetAmount.toString()}`);
-      updates.push(sql8`manager_revenue = ${params.stripeNetAmount.toString()}`);
-    }
-    if (params.stripeProcessingFee !== void 0) {
-      updates.push(sql8`stripe_processing_fee = ${params.stripeProcessingFee.toString()}`);
-    }
-    if (params.stripePlatformFee !== void 0 && params.stripePlatformFee > 0) {
-      updates.push(sql8`service_fee = ${params.stripePlatformFee.toString()}`);
-    } else if (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0) {
-      const totalFees = params.stripeAmount - params.stripeNetAmount;
-      const processingFee = params.stripeProcessingFee || 0;
-      const actualPlatformFee = Math.max(0, totalFees - processingFee);
-      updates.push(sql8`service_fee = ${actualPlatformFee.toString()}`);
-    }
-    if (params.stripeAmount !== void 0) {
-      const platformFee = params.stripePlatformFee || (params.stripeAmount !== void 0 && params.stripeNetAmount !== void 0 ? Math.max(0, params.stripeAmount - params.stripeNetAmount - (params.stripeProcessingFee || 0)) : 0);
-      const baseAmount = params.stripeAmount - platformFee;
-      updates.push(sql8`base_amount = ${baseAmount.toString()}`);
-    }
-    const currentMetadataResult = await db2.execute(sql8`
-      SELECT metadata FROM payment_transactions WHERE id = ${transactionId}
-    `);
-    const currentMetadata = currentMetadataResult.rows[0]?.metadata ? typeof currentMetadataResult.rows[0].metadata === "string" ? JSON.parse(currentMetadataResult.rows[0].metadata) : currentMetadataResult.rows[0].metadata : {};
-    const stripeFees = {
-      processingFee: params.stripeProcessingFee || 0,
-      platformFee: params.stripePlatformFee || 0,
-      syncedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    const updatedMetadata = {
-      ...currentMetadata,
-      stripeFees
-    };
-    updates.push(sql8`metadata = ${JSON.stringify(updatedMetadata)}`);
-  } else if (params.metadata !== void 0) {
-    updates.push(sql8`metadata = ${JSON.stringify(params.metadata)}`);
-  }
-  if (updates.length === 0) {
-    const result2 = await db2.execute(sql8`
-      SELECT * FROM payment_transactions WHERE id = ${transactionId}
-    `);
-    return result2.rows[0];
-  }
-  const result = await db2.execute(sql8`
-    UPDATE payment_transactions
-    SET ${sql8.join(updates, sql8`, `)}, updated_at = NOW()
-    WHERE id = ${transactionId}
-    RETURNING *
-  `);
-  const updated = result.rows[0];
-  if (params.status !== void 0 && params.status !== previousStatus) {
-    const historyMetadata = { ...params.metadata || {} };
-    if (params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) {
-      historyMetadata.stripeAmounts = {
-        amount: params.stripeAmount,
-        netAmount: params.stripeNetAmount,
-        processingFee: params.stripeProcessingFee,
-        platformFee: params.stripePlatformFee,
-        syncedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-    }
-    await addPaymentHistory(
-      transactionId,
-      {
-        previousStatus,
-        newStatus: params.status,
-        eventType: "status_change",
-        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-        description: `Status changed from ${previousStatus} to ${params.status}${params.stripeAmount !== void 0 ? " (Stripe amounts synced)" : ""}`,
-        stripeEventId: params.webhookEventId,
-        metadata: historyMetadata
-      },
-      db2
-    );
-  }
-  if ((params.stripeAmount !== void 0 || params.stripeNetAmount !== void 0) && params.status === void 0) {
-    await addPaymentHistory(
-      transactionId,
-      {
-        previousStatus: updated.status,
-        newStatus: updated.status,
-        eventType: "stripe_sync",
-        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-        description: `Stripe amounts synced: Amount $${((params.stripeAmount || parseFloat(updated.amount || "0")) / 100).toFixed(2)}, Net $${((params.stripeNetAmount || parseFloat(updated.net_amount || "0")) / 100).toFixed(2)}`,
-        stripeEventId: params.webhookEventId,
-        metadata: {
-          stripeAmounts: {
-            amount: params.stripeAmount,
-            netAmount: params.stripeNetAmount,
-            processingFee: params.stripeProcessingFee,
-            platformFee: params.stripePlatformFee,
-            syncedAt: (/* @__PURE__ */ new Date()).toISOString()
-          }
-        }
-      },
-      db2
-    );
-  }
-  if (params.refundAmount !== void 0 && params.refundAmount > currentRefundAmount) {
-    await addPaymentHistory(
-      transactionId,
-      {
-        previousStatus,
-        newStatus: updated.status,
-        eventType: params.refundAmount === parseFloat(updated.amount || "0") ? "refund" : "partial_refund",
-        eventSource: params.webhookEventId ? "stripe_webhook" : "system",
-        description: `Refund of ${params.refundAmount / 100} ${updated.currency}${params.refundReason ? `: ${params.refundReason}` : ""}`,
-        stripeEventId: params.webhookEventId,
-        metadata: {
-          refundAmount: params.refundAmount,
-          refundReason: params.refundReason,
-          refundId: params.refundId
-        }
-      },
-      db2
-    );
-  }
-  return updated;
-}
-async function syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2) {
-  try {
-    const transactionResult = await db2.execute(sql8`
-      SELECT 
-        pt.id,
-        pt.booking_id,
-        pt.booking_type,
-        pt.base_amount,
-        pt.service_fee,
-        pt.amount as current_amount,
-        pt.manager_revenue as current_manager_revenue
-      FROM payment_transactions pt
-      WHERE pt.payment_intent_id = ${paymentIntentId}
-    `);
-    if (transactionResult.rows.length === 0) {
-      console.warn(`[Stripe Sync] No payment transaction found for PaymentIntent ${paymentIntentId}`);
-      return;
-    }
-    const transaction = transactionResult.rows[0];
-    const bookingId = transaction.booking_id;
-    const bookingType = transaction.booking_type;
-    if (bookingType === "bundle") {
-      const kitchenBooking = await db2.execute(sql8`
-        SELECT id, total_price, service_fee
-        FROM kitchen_bookings
-        WHERE id = ${bookingId}
-      `);
-      const storageBookings2 = await db2.execute(sql8`
-        SELECT id, total_price, service_fee
-        FROM storage_bookings
-        WHERE kitchen_booking_id = ${bookingId}
-      `);
-      const equipmentBookings2 = await db2.execute(sql8`
-        SELECT id, total_price, service_fee
-        FROM equipment_bookings
-        WHERE kitchen_booking_id = ${bookingId}
-      `);
-      let totalBaseAmount = parseFloat(transaction.base_amount || "0");
-      if (totalBaseAmount === 0) {
-        const kbAmount = parseFloat(kitchenBooking.rows[0]?.total_price || "0");
-        const sbAmount = storageBookings2.rows.reduce((sum, sb) => sum + parseFloat(sb.total_price || "0"), 0);
-        const ebAmount = equipmentBookings2.rows.reduce((sum, eb) => sum + parseFloat(eb.total_price || "0"), 0);
-        totalBaseAmount = kbAmount + sbAmount + ebAmount;
-      }
-      if (kitchenBooking.rows.length > 0 && totalBaseAmount > 0) {
-        const kbBase = parseFloat(kitchenBooking.rows[0].total_price || "0");
-        const kbProportion = kbBase / totalBaseAmount;
-        const kbStripeAmount = Math.round(stripeAmounts.stripeAmount * kbProportion);
-        const kbStripeNet = Math.round(stripeAmounts.stripeNetAmount * kbProportion);
-        const kbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * kbProportion) : Math.round((kbStripeAmount - kbStripeNet) * 0.5);
-        await db2.execute(sql8`
-          UPDATE kitchen_bookings
-          SET 
-            total_price = ${kbStripeAmount.toString()},
-            service_fee = ${kbServiceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      }
-      for (const sb of storageBookings2.rows) {
-        const sbBase = parseFloat(sb.total_price || "0");
-        if (totalBaseAmount > 0 && sbBase > 0) {
-          const sbProportion = sbBase / totalBaseAmount;
-          const sbStripeAmount = Math.round(stripeAmounts.stripeAmount * sbProportion);
-          const sbStripeNet = Math.round(stripeAmounts.stripeNetAmount * sbProportion);
-          const sbServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * sbProportion) : Math.round((sbStripeAmount - sbStripeNet) * 0.5);
-          await db2.execute(sql8`
-            UPDATE storage_bookings
-            SET 
-              total_price = ${sbStripeAmount.toString()},
-              service_fee = ${sbServiceFee.toString()},
-              updated_at = NOW()
-            WHERE id = ${sb.id}
-          `);
-        }
-      }
-      for (const eb of equipmentBookings2.rows) {
-        const ebBase = parseFloat(eb.total_price || "0");
-        if (totalBaseAmount > 0 && ebBase > 0) {
-          const ebProportion = ebBase / totalBaseAmount;
-          const ebStripeAmount = Math.round(stripeAmounts.stripeAmount * ebProportion);
-          const ebStripeNet = Math.round(stripeAmounts.stripeNetAmount * ebProportion);
-          const ebServiceFee = stripeAmounts.stripePlatformFee > 0 ? Math.round(stripeAmounts.stripePlatformFee * ebProportion) : Math.round((ebStripeAmount - ebStripeNet) * 0.5);
-          await db2.execute(sql8`
-            UPDATE equipment_bookings
-            SET 
-              total_price = ${ebStripeAmount.toString()},
-              service_fee = ${ebServiceFee.toString()},
-              updated_at = NOW()
-            WHERE id = ${eb.id}
-          `);
-        }
-      }
-    } else {
-      const serviceFee = stripeAmounts.stripePlatformFee > 0 ? stripeAmounts.stripePlatformFee : Math.max(0, stripeAmounts.stripeAmount - stripeAmounts.stripeNetAmount - stripeAmounts.stripeProcessingFee);
-      if (bookingType === "kitchen") {
-        await db2.execute(sql8`
-          UPDATE kitchen_bookings
-          SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
-            service_fee = ${serviceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      } else if (bookingType === "storage") {
-        await db2.execute(sql8`
-          UPDATE storage_bookings
-          SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
-            service_fee = ${serviceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      } else if (bookingType === "equipment") {
-        await db2.execute(sql8`
-          UPDATE equipment_bookings
-          SET 
-            total_price = ${stripeAmounts.stripeAmount.toString()},
-            service_fee = ${serviceFee.toString()},
-            updated_at = NOW()
-          WHERE id = ${bookingId}
-        `);
-      }
-    }
-    console.log(`[Stripe Sync] Synced Stripe amounts to ${bookingType} booking(s) for PaymentIntent ${paymentIntentId}`);
-  } catch (error) {
-    console.error(`[Stripe Sync] Error syncing Stripe amounts to bookings for ${paymentIntentId}:`, error);
-  }
-}
-async function syncExistingPaymentTransactionsFromStripe(managerId, db2, options) {
-  let getStripePaymentAmounts2;
-  const importPaths = [
-    "./stripe-service",
-    // Path 1: Relative without extension (works in some builds)
-    "./stripe-service.js",
-    // Path 2: Relative with .js extension (standard)
-    "../server/services/stripe-service.js"
-    // Path 3: From api/ perspective
-  ];
-  let lastError = null;
-  for (const importPath of importPaths) {
-    try {
-      const mod = await import(importPath);
-      if (mod.getStripePaymentAmounts) {
-        getStripePaymentAmounts2 = mod.getStripePaymentAmounts;
-        break;
-      }
-    } catch (e) {
-      lastError = e;
-      continue;
-    }
-  }
-  if (!getStripePaymentAmounts2) {
-    console.error("[Stripe Sync] Failed to import stripe-service from all paths:", importPaths);
-    throw new Error(`Cannot import stripe-service from any path. Last error: ${lastError?.message || "Unknown"}`);
-  }
-  const limit = options?.limit || 1e3;
-  const onlyUnsynced = options?.onlyUnsynced !== false;
-  try {
-    const params = [managerId];
-    const unsyncedFilter = onlyUnsynced ? sql8` AND (pt.last_synced_at IS NULL OR pt.metadata->>'stripeFees' IS NULL)` : sql8``;
-    const result = await db2.execute(sql8`
-      SELECT 
-        pt.id,
-        pt.payment_intent_id,
-        pt.manager_id,
-        pt.booking_id,
-        pt.booking_type,
-        pt.amount as current_amount,
-        pt.manager_revenue as current_manager_revenue,
-        pt.last_synced_at
-      FROM payment_transactions pt
-      WHERE pt.payment_intent_id IS NOT NULL
-        AND pt.status IN ('succeeded', 'processing')
-        AND (
-          pt.manager_id = ${managerId} 
-          OR EXISTS (
-            SELECT 1 FROM kitchen_bookings kb
-            JOIN kitchens k ON kb.kitchen_id = k.id
-            JOIN locations l ON k.location_id = l.id
-            WHERE kb.id = pt.booking_id 
-              AND l.manager_id = ${managerId}
-          )
-        )
-      ${unsyncedFilter}
-      ORDER BY pt.created_at DESC
-      LIMIT ${limit}
-    `);
-    const transactions = result.rows;
-    console.log(`[Stripe Sync] Found ${transactions.length} payment transactions to sync for manager ${managerId}`);
-    let synced = 0;
-    let failed = 0;
-    const errors = [];
-    for (const transaction of transactions) {
-      const paymentIntentId = transaction.payment_intent_id;
-      if (!paymentIntentId) continue;
-      try {
-        let managerConnectAccountId;
-        try {
-          const managerResult = await db2.execute(sql8`
-            SELECT stripe_connect_account_id 
-            FROM users 
-            WHERE id = ${transaction.manager_id || managerId} AND stripe_connect_account_id IS NOT NULL
-          `);
-          if (managerResult.rows.length > 0) {
-            managerConnectAccountId = managerResult.rows[0].stripe_connect_account_id;
-          }
-        } catch (error) {
-          console.warn(`[Stripe Sync] Could not fetch manager Connect account:`, error);
-        }
-        const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
-        if (!stripeAmounts) {
-          console.warn(`[Stripe Sync] Could not fetch Stripe amounts for ${paymentIntentId}`);
-          failed++;
-          errors.push({ paymentIntentId, error: "Could not fetch Stripe amounts" });
-          continue;
-        }
-        await updatePaymentTransaction(transaction.id, {
-          stripeAmount: stripeAmounts.stripeAmount,
-          stripeNetAmount: stripeAmounts.stripeNetAmount,
-          stripeProcessingFee: stripeAmounts.stripeProcessingFee,
-          stripePlatformFee: stripeAmounts.stripePlatformFee,
-          lastSyncedAt: /* @__PURE__ */ new Date()
-        }, db2);
-        await syncStripeAmountsToBookings(paymentIntentId, stripeAmounts, db2);
-        synced++;
-        console.log(`[Stripe Sync] Synced transaction ${transaction.id} (PaymentIntent: ${paymentIntentId})`);
-      } catch (error) {
-        console.error(`[Stripe Sync] Error syncing transaction ${transaction.id} (${paymentIntentId}):`, error);
-        failed++;
-        errors.push({ paymentIntentId, error: error.message || "Unknown error" });
-      }
-    }
-    console.log(`[Stripe Sync] Completed: ${synced} synced, ${failed} failed`);
-    return { synced, failed, errors };
-  } catch (error) {
-    console.error(`[Stripe Sync] Error syncing existing transactions:`, error);
-    throw error;
-  }
-}
-async function findPaymentTransactionByIntentId(paymentIntentId, db2) {
-  const result = await db2.execute(sql8`
-    SELECT * FROM payment_transactions
-    WHERE payment_intent_id = ${paymentIntentId}
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function findPaymentTransactionById(transactionId, db2) {
-  const result = await db2.execute(sql8`
-    SELECT * FROM payment_transactions
-    WHERE id = ${transactionId}
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function findPaymentTransactionByBooking(bookingId, bookingType, db2) {
-  const result = await db2.execute(sql8`
-    SELECT * FROM payment_transactions
-    WHERE booking_id = ${bookingId} AND booking_type = ${bookingType}
-    ORDER BY created_at DESC
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function findPaymentTransactionByMetadata(metadataKey, metadataValue, db2) {
-  const result = await db2.execute(sql8`
-    SELECT * FROM payment_transactions
-    WHERE metadata->>${metadataKey} = ${metadataValue}
-    ORDER BY created_at DESC
-    LIMIT 1
-  `);
-  return result.rows[0];
-}
-async function addPaymentHistory(transactionId, history, db2) {
-  await db2.execute(sql8`
-    INSERT INTO payment_history (
-      transaction_id,
-      previous_status,
-      new_status,
-      event_type,
-      event_source,
-      stripe_event_id,
-      description,
-      metadata,
-      created_by
-    ) VALUES (
-      ${transactionId},
-      ${history.previousStatus},
-      ${history.newStatus},
-      ${history.eventType},
-      ${history.eventSource || "system"},
-      ${history.stripeEventId || null},
-      ${history.description || null},
-      ${JSON.stringify(history.metadata || {})},
-      ${history.createdBy || null}
-    )
-  `);
-}
-async function getPaymentHistory(transactionId, db2) {
-  const result = await db2.execute(sql8`
-    SELECT * FROM payment_history
-    WHERE transaction_id = ${transactionId}
-    ORDER BY created_at ASC
-  `);
-  return result.rows;
-}
-async function getManagerPaymentTransactions(managerId, db2, filters) {
-  const whereConditions = [sql8`manager_id = ${managerId}`];
-  if (filters?.status) {
-    whereConditions.push(sql8`status = ${filters.status}`);
-  }
-  if (filters?.startDate) {
-    whereConditions.push(sql8`
-      (
-        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at >= ${filters.startDate})
-        OR (status != 'succeeded' AND created_at >= ${filters.startDate})
-      )
-    `);
-  }
-  if (filters?.endDate) {
-    whereConditions.push(sql8`
-      (
-        (status = 'succeeded' AND paid_at IS NOT NULL AND paid_at <= ${filters.endDate})
-        OR (status != 'succeeded' AND created_at <= ${filters.endDate})
-      )
-    `);
-  }
-  const whereClause = sql8`WHERE ${sql8.join(whereConditions, sql8` AND `)}`;
-  const countResult = await db2.execute(sql8`
-    SELECT COUNT(*) as total FROM payment_transactions ${whereClause}
-  `);
-  const total = parseInt(countResult.rows[0].total);
-  const limit = filters?.limit || 50;
-  const offset = filters?.offset || 0;
-  const result = await db2.execute(sql8`
-    SELECT * FROM payment_transactions
-    ${whereClause}
-    ORDER BY 
-      CASE 
-        WHEN status = 'succeeded' AND paid_at IS NOT NULL 
-        THEN paid_at 
-        ELSE created_at 
-      END DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `);
-  return {
-    transactions: result.rows,
-    total
-  };
-}
-var init_payment_transactions_service = __esm({
-  "server/services/payment-transactions-service.ts"() {
-    "use strict";
   }
 });
 
@@ -16817,19 +17501,36 @@ var init_manager = __esm({
     router14.get("/profile", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
-        const [user] = await db.select({
-          managerProfileData: users.managerProfileData
-        }).from(users).where(eq24(users.id, managerId)).limit(1);
-        if (!user) {
+        const userResults = await db.select().from(users).where(eq24(users.id, managerId)).limit(1);
+        const userData = userResults[0];
+        if (!userData) {
           return res.status(404).json({ error: "Manager profile not found" });
         }
-        const profile = user.managerProfileData || {};
+        const managerLocations = await db.select().from(locations).where(eq24(locations.managerId, managerId));
+        let profile = {};
+        try {
+          const profileData = userData.managerProfileData;
+          if (profileData && typeof profileData === "object" && !Array.isArray(profileData)) {
+            profile = profileData;
+          }
+        } catch {
+        }
+        const stripeStatus = userData.stripeConnectOnboardingStatus || "not_started";
         res.json({
           profileImageUrl: profile.profileImageUrl || null,
           phone: profile.phone || null,
-          displayName: profile.displayName || null
+          displayName: profile.displayName || null,
+          stripeConnectStatus: stripeStatus,
+          locations: managerLocations.map((loc) => ({
+            id: loc.id,
+            name: loc.name,
+            address: loc.address,
+            timezone: loc.timezone,
+            logoUrl: loc.logoUrl
+          }))
         });
       } catch (error) {
+        console.error(`[Manager Profile v2] Error:`, error);
         return errorResponse(res, error);
       }
     });
@@ -17731,6 +18432,30 @@ var init_manager = __esm({
           return res.status(404).json({ error: "Location not found" });
         }
         console.log(`\u2705 Location ${locationId} updated successfully`);
+        if (kitchenLicenseUrl && updates.kitchenLicenseStatus === "pending") {
+          try {
+            const { generateKitchenLicenseSubmittedAdminEmail: generateKitchenLicenseSubmittedAdminEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+            const admins = await db.select({ username: users.username }).from(users).where(eq24(users.role, "admin"));
+            for (const admin2 of admins) {
+              if (admin2.username) {
+                const adminEmail = generateKitchenLicenseSubmittedAdminEmail2({
+                  adminEmail: admin2.username,
+                  managerName: user.username,
+                  managerEmail: user.username,
+                  locationName: updated.name || "Kitchen Location",
+                  locationId,
+                  submittedAt: /* @__PURE__ */ new Date()
+                });
+                await sendEmail(adminEmail, {
+                  trackingId: `kitchen_license_submitted_${locationId}_${Date.now()}`
+                });
+              }
+            }
+            logger.info(`[Manager] Sent kitchen license submission notification to admins for location ${locationId}`);
+          } catch (emailError) {
+            logger.error("Error sending kitchen license submission email to admin:", emailError);
+          }
+        }
         const mappedLocation = {
           ...updated,
           managerId: updated.managerId || updated.manager_id || null,
@@ -17955,6 +18680,19 @@ var init_manager = __esm({
         } catch (emailError) {
           logger.error("Error sending storage extension approval email:", emailError);
         }
+        try {
+          if (extension.chefId) {
+            await notificationService.notifyChefStorageExtensionApproved({
+              chefId: extension.chefId,
+              storageBookingId: extension.storageBookingId,
+              storageName: extension.storageName,
+              extensionDays: extension.extensionDays,
+              newEndDate: extension.newEndDate.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+            });
+          }
+        } catch (notifError) {
+          logger.error("Error sending storage extension approval in-app notification:", notifError);
+        }
         res.json({
           success: true,
           message: "Storage extension approved successfully",
@@ -18081,6 +18819,20 @@ var init_manager = __esm({
         } catch (emailError) {
           logger.error("Error sending storage extension rejection email:", emailError);
         }
+        try {
+          if (extension.chefId) {
+            await notificationService.notifyChefStorageExtensionRejected({
+              chefId: extension.chefId,
+              storageBookingId: extension.storageBookingId,
+              storageName: extension.storageName || "Storage",
+              extensionDays: extension.extensionDays || 0,
+              newEndDate: "",
+              reason: reason || "Extension request declined by manager"
+            });
+          }
+        } catch (notifError) {
+          logger.error("Error sending storage extension rejection in-app notification:", notifError);
+        }
         res.json({
           success: true,
           message: refundResult ? "Storage extension rejected and refund processed successfully." : "Storage extension rejected. Refund will be processed.",
@@ -18102,16 +18854,25 @@ var init_manager = __esm({
     router14.get("/overstays", requireFirebaseAuthWithUser, requireManager, async (req, res) => {
       try {
         const managerId = req.neonUser.id;
+        const includeAll = req.query.includeAll === "true";
         const managerLocations = await db.select({ id: locations.id }).from(locations).where(eq24(locations.managerId, managerId));
         const locationIds = managerLocations.map((l) => l.id);
         if (locationIds.length === 0) {
-          return res.json({ overstays: [], stats: null });
+          return res.json({ overstays: [], pastOverstays: [], stats: null });
         }
-        const allOverstays = await overstayPenaltyService.getPendingOverstayReviews();
-        const filteredOverstays = allOverstays.filter((o) => locationIds.includes(o.locationId));
+        const pendingOverstays = await overstayPenaltyService.getPendingOverstayReviews();
+        const filteredPending = pendingOverstays.filter((o) => locationIds.includes(o.locationId));
+        let pastOverstays = [];
+        if (includeAll) {
+          const allOverstays = await overstayPenaltyService.getAllOverstayRecords();
+          const filteredAll = allOverstays.filter((o) => locationIds.includes(o.locationId));
+          const pendingStatuses = ["detected", "grace_period", "pending_review", "charge_failed"];
+          pastOverstays = filteredAll.filter((o) => !pendingStatuses.includes(o.status));
+        }
         const stats = await overstayPenaltyService.getOverstayStats();
         res.json({
-          overstays: filteredOverstays,
+          overstays: filteredPending,
+          pastOverstays,
           stats
         });
       } catch (error) {
@@ -21218,6 +21979,41 @@ var init_bookings = __esm({
         res.status(500).json({ error: "Failed to fetch bookings" });
       }
     });
+    router18.get("/chef/overstay-penalties", requireChef, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const { getChefPendingPenalties: getChefPendingPenalties2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
+        const penalties = await getChefPendingPenalties2(chefId);
+        res.json(penalties);
+      } catch (error) {
+        logger.error("Error fetching chef overstay penalties:", error);
+        res.status(500).json({ error: "Failed to fetch overstay penalties" });
+      }
+    });
+    router18.post("/chef/overstay-penalties/:id/pay", requireChef, async (req, res) => {
+      try {
+        const chefId = req.neonUser.id;
+        const overstayRecordId = parseInt(req.params.id);
+        if (isNaN(overstayRecordId)) {
+          return res.status(400).json({ error: "Invalid overstay record ID" });
+        }
+        const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5001";
+        const isLocalhost = host.includes("localhost") || host.includes("127.0.0.1");
+        const protocol = isLocalhost ? "http" : req.get("x-forwarded-proto") || "https";
+        const baseUrl = `${protocol}://${host}`;
+        const successUrl = `${baseUrl}/dashboard?penalty_paid=success&overstay_id=${overstayRecordId}`;
+        const cancelUrl = `${baseUrl}/dashboard?penalty_paid=cancelled&overstay_id=${overstayRecordId}`;
+        const { createPenaltyPaymentCheckout: createPenaltyPaymentCheckout2 } = await Promise.resolve().then(() => (init_overstay_penalty_service(), overstay_penalty_service_exports));
+        const result = await createPenaltyPaymentCheckout2(overstayRecordId, chefId, successUrl, cancelUrl);
+        if ("error" in result) {
+          return res.status(400).json({ error: result.error });
+        }
+        res.json({ checkoutUrl: result.checkoutUrl });
+      } catch (error) {
+        logger.error("Error creating penalty payment checkout:", error);
+        res.status(500).json({ error: "Failed to create payment session" });
+      }
+    });
     bookings_default = router18;
   }
 });
@@ -22209,6 +23005,45 @@ var init_admin = __esm({
           updateData.kitchenLicenseApprovedAt = null;
         }
         await db.update(locations).set(updateData).where(eq29(locations.id, locationId));
+        try {
+          const [location] = await db.select({
+            name: locations.name,
+            managerId: locations.managerId,
+            notificationEmail: locations.notificationEmail
+          }).from(locations).where(eq29(locations.id, locationId)).limit(1);
+          if (location && location.managerId) {
+            const [manager] = await db.select({ username: users.username }).from(users).where(eq29(users.id, location.managerId)).limit(1);
+            const managerEmail = location.notificationEmail || manager?.username;
+            const managerName = manager?.username || "Manager";
+            if (managerEmail) {
+              if (status === "approved") {
+                const approvalEmail = generateKitchenLicenseApprovedEmail({
+                  managerEmail,
+                  managerName,
+                  locationName: location.name || "Kitchen Location",
+                  approvedAt: /* @__PURE__ */ new Date()
+                });
+                await sendEmail(approvalEmail, {
+                  trackingId: `kitchen_license_approved_${locationId}_${Date.now()}`
+                });
+                console.log(`\u2705 Sent kitchen license approval email to manager: ${managerEmail}`);
+              } else if (status === "rejected") {
+                const rejectionEmail = generateKitchenLicenseRejectedEmail({
+                  managerEmail,
+                  managerName,
+                  locationName: location.name || "Kitchen Location",
+                  feedback: feedback || void 0
+                });
+                await sendEmail(rejectionEmail, {
+                  trackingId: `kitchen_license_rejected_${locationId}_${Date.now()}`
+                });
+                console.log(`\u2705 Sent kitchen license rejection email to manager: ${managerEmail}`);
+              }
+            }
+          }
+        } catch (emailError) {
+          console.error("Error sending kitchen license status email:", emailError);
+        }
         res.json({ message: "License status updated successfully" });
       } catch (error) {
         console.error("Error updating license status:", error);
@@ -23403,11 +24238,25 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
       allMetadata: metadata
     });
     if (metadata.type === "storage_extension") {
-      logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`);
+      logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`, {
+        paymentIntentId,
+        chargeId
+      });
       await handleStorageExtensionPaymentCompleted(
         session.id,
         paymentIntentId,
+        chargeId,
         metadata
+      );
+    }
+    if (metadata.type === "overstay_penalty") {
+      logger.info(`[Webhook] Processing overstay penalty payment for session ${session.id}`);
+      await handleOverstayPenaltyPaymentCompleted(
+        session.id,
+        paymentIntentId,
+        chargeId,
+        metadata,
+        expandedSession.payment_status
       );
     }
     if (metadata.type === "kitchen_booking" && !metadata.booking_id) {
@@ -23789,7 +24638,7 @@ async function handleCheckoutSessionCompleted(session, webhookEventId) {
     logger.error(`[Webhook] Error handling checkout.session.completed:`, error);
   }
 }
-async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId, metadata) {
+async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId, chargeId, metadata) {
   try {
     const { bookingService: bookingService2 } = await Promise.resolve().then(() => (init_booking_service(), booking_service_exports));
     const storageBookingId = parseInt(metadata.storage_booking_id);
@@ -23839,6 +24688,7 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
     try {
       const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
       const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+      logger.info(`[Webhook] Creating payment_transactions for storage extension with paymentIntentId: ${paymentIntentId}, chargeId: ${chargeId}`);
       const ptRecord = await createPaymentTransaction2({
         bookingId: storageBookingId,
         bookingType: "storage",
@@ -23850,6 +24700,9 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
         managerRevenue: managerReceivesCents || extensionTotalPriceCents - extensionServiceFeeCents,
         currency: "CAD",
         paymentIntentId,
+        // CRITICAL: Must be saved for Stripe fee syncing
+        chargeId,
+        // Also save charge ID
         status: "succeeded",
         stripeStatus: "succeeded",
         metadata: {
@@ -23907,8 +24760,10 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
       }).from(storageBookings).innerJoin(storageListings, eq30(storageBookings.storageListingId, storageListings.id)).innerJoin(kitchens, eq30(storageListings.kitchenId, kitchens.id)).innerJoin(users, eq30(storageBookings.chefId, users.id)).where(eq30(storageBookings.id, storageBookingId)).limit(1);
       if (storageBooking) {
         const [location] = await db.select({
+          id: locations.id,
           notificationEmail: locations.notificationEmail,
-          name: locations.name
+          name: locations.name,
+          managerId: locations.managerId
         }).from(locations).where(eq30(locations.id, storageBooking.locationId)).limit(1);
         if (location?.notificationEmail) {
           const managerEmail = generateStorageExtensionPendingApprovalEmail2({
@@ -23933,6 +24788,22 @@ async function handleStorageExtensionPaymentCompleted(sessionId, paymentIntentId
         });
         await sendEmail2(chefEmail);
         logger.info(`[Webhook] Sent storage extension payment received email to chef: ${storageBooking.chefEmail}`);
+        if (location.managerId) {
+          try {
+            await notificationService.notifyManagerStorageExtensionPending({
+              managerId: location.managerId,
+              locationId: location.id,
+              storageBookingId,
+              storageName: storageBooking.storageName,
+              extensionDays,
+              newEndDate: typeof newEndDate === "string" ? newEndDate : new Date(newEndDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+              chefName: storageBooking.chefEmail
+            });
+            logger.info(`[Webhook] Created in-app notification for manager about storage extension`);
+          } catch (notifError) {
+            logger.error(`[Webhook] Error creating storage extension in-app notification:`, notifError);
+          }
+        }
       }
     } catch (emailError) {
       logger.error(`[Webhook] Error sending storage extension notification emails:`, emailError);
@@ -24087,7 +24958,10 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
         id: kitchenBookings.id,
         kitchenId: kitchenBookings.kitchenId,
         chefId: kitchenBookings.chefId,
-        totalPrice: kitchenBookings.totalPrice
+        totalPrice: kitchenBookings.totalPrice,
+        bookingDate: kitchenBookings.bookingDate,
+        startTime: kitchenBookings.startTime,
+        endTime: kitchenBookings.endTime
       }).from(kitchenBookings).where(eq30(kitchenBookings.paymentIntentId, paymentIntent.id)).limit(1);
       if (booking) {
         const [kitchen] = await db.select({
@@ -24096,18 +24970,47 @@ async function handlePaymentIntentSucceeded(paymentIntent, webhookEventId) {
           locationId: kitchens.locationId
         }).from(kitchens).where(eq30(kitchens.id, booking.kitchenId)).limit(1);
         if (kitchen) {
-          const [location] = await db.select({ id: locations.id, managerId: locations.managerId }).from(locations).where(eq30(locations.id, kitchen.locationId)).limit(1);
+          const [location] = await db.select({
+            id: locations.id,
+            managerId: locations.managerId,
+            notificationEmail: locations.notificationEmail,
+            name: locations.name
+          }).from(locations).where(eq30(locations.id, kitchen.locationId)).limit(1);
           if (location && location.managerId) {
             const [chef] = await db.select({ username: users.username }).from(users).where(eq30(users.id, booking.chefId)).limit(1);
+            const chefName = chef?.username || "Chef";
             await notificationService.notifyPaymentReceived({
               managerId: location.managerId,
               locationId: location.id,
               bookingId: booking.id,
               amount: paymentIntent.amount,
               currency: paymentIntent.currency.toUpperCase(),
-              chefName: chef?.username || "Chef",
+              chefName,
               kitchenName: kitchen.name
             });
+            if (location.notificationEmail) {
+              try {
+                const { sendEmail: sendEmail2, generateBookingPaymentReceivedEmail: generateBookingPaymentReceivedEmail2 } = await Promise.resolve().then(() => (init_email(), email_exports));
+                const paymentEmail = generateBookingPaymentReceivedEmail2({
+                  managerEmail: location.notificationEmail,
+                  chefName,
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.bookingDate,
+                  startTime: booking.startTime,
+                  endTime: booking.endTime,
+                  amountCents: paymentIntent.amount,
+                  currency: paymentIntent.currency.toUpperCase(),
+                  bookingId: booking.id,
+                  locationName: location.name
+                });
+                await sendEmail2(paymentEmail, {
+                  trackingId: `booking_payment_received_${booking.id}_${Date.now()}`
+                });
+                logger.info(`[Webhook] Sent payment received email to manager: ${location.notificationEmail}`);
+              } catch (emailError) {
+                logger.error(`[Webhook] Error sending payment received email:`, emailError);
+              }
+            }
           }
         }
       }
@@ -24456,6 +25359,136 @@ async function handleAccountUpdated(account, webhookEventId) {
       `[Webhook] Error handling account.updated for ${account.id}:`,
       error
     );
+  }
+}
+async function handleOverstayPenaltyPaymentCompleted(sessionId, paymentIntentId, chargeId, metadata, paymentStatus) {
+  try {
+    const overstayRecordId = parseInt(metadata.overstayRecordId);
+    const chefId = parseInt(metadata.chefId);
+    const storageBookingId = parseInt(metadata.storageBookingId);
+    if (isNaN(overstayRecordId)) {
+      logger.error(`[Webhook] Invalid overstayRecordId in metadata:`, metadata);
+      return;
+    }
+    if (paymentStatus !== "paid") {
+      logger.info(`[Webhook] Overstay penalty payment not yet confirmed for session ${sessionId}, status: ${paymentStatus}`);
+      return;
+    }
+    const { storageOverstayRecords: storageOverstayRecords2, storageOverstayHistory: storageOverstayHistory2, storageBookings: storageBookings2, storageListings: storageListings3, kitchens: kitchens3, locations: locations5 } = await Promise.resolve().then(() => (init_schema(), schema_exports));
+    const [overstayRecord] = await db.select().from(storageOverstayRecords2).where(eq30(storageOverstayRecords2.id, overstayRecordId)).limit(1);
+    if (!overstayRecord) {
+      logger.error(`[Webhook] Overstay record ${overstayRecordId} not found`);
+      return;
+    }
+    let managerId = null;
+    if (metadata.managerId) {
+      managerId = parseInt(metadata.managerId) || null;
+    } else {
+      const [booking] = await db.select().from(storageBookings2).where(eq30(storageBookings2.id, overstayRecord.storageBookingId)).limit(1);
+      if (booking) {
+        const [listing] = await db.select().from(storageListings3).where(eq30(storageListings3.id, booking.storageListingId)).limit(1);
+        if (listing?.kitchenId) {
+          const [kitchen] = await db.select().from(kitchens3).where(eq30(kitchens3.id, listing.kitchenId)).limit(1);
+          if (kitchen?.locationId) {
+            const [location] = await db.select().from(locations5).where(eq30(locations5.id, kitchen.locationId)).limit(1);
+            managerId = location?.managerId || null;
+          }
+        }
+      }
+    }
+    const penaltyAmountCents = overstayRecord.finalPenaltyCents || overstayRecord.calculatedPenaltyCents || 0;
+    await db.update(storageOverstayRecords2).set({
+      status: "charge_succeeded",
+      stripePaymentIntentId: paymentIntentId || null,
+      stripeChargeId: chargeId || null,
+      chargeSucceededAt: /* @__PURE__ */ new Date(),
+      resolvedAt: /* @__PURE__ */ new Date(),
+      resolutionType: "paid",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq30(storageOverstayRecords2.id, overstayRecordId));
+    await db.insert(storageOverstayHistory2).values({
+      overstayRecordId,
+      previousStatus: "charge_pending",
+      newStatus: "charge_succeeded",
+      eventType: "charge_attempt",
+      eventSource: "stripe_webhook",
+      description: `Chef paid penalty via Stripe Checkout. Session: ${sessionId}`,
+      metadata: {
+        sessionId,
+        paymentIntentId,
+        chargeId,
+        chefId
+      }
+    });
+    try {
+      const { createPaymentTransaction: createPaymentTransaction2, updatePaymentTransaction: updatePaymentTransaction2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+      const { getStripePaymentAmounts: getStripePaymentAmounts2 } = await Promise.resolve().then(() => (init_stripe_service(), stripe_service_exports));
+      const ptRecord = await createPaymentTransaction2({
+        bookingId: isNaN(storageBookingId) ? overstayRecordId : storageBookingId,
+        bookingType: "storage",
+        // Overstay penalties are related to storage bookings
+        chefId: isNaN(chefId) ? null : chefId,
+        managerId: managerId || null,
+        amount: penaltyAmountCents,
+        baseAmount: penaltyAmountCents,
+        serviceFee: 0,
+        // No service fee on penalties - full amount goes to manager
+        managerRevenue: penaltyAmountCents,
+        currency: "CAD",
+        paymentIntentId,
+        status: "succeeded",
+        stripeStatus: "succeeded",
+        metadata: {
+          checkout_session_id: sessionId,
+          type: "overstay_penalty",
+          overstay_record_id: overstayRecordId.toString(),
+          storage_booking_id: storageBookingId?.toString() || "",
+          charge_id: chargeId || ""
+        }
+      }, db);
+      if (ptRecord && paymentIntentId) {
+        let managerConnectAccountId;
+        if (managerId) {
+          try {
+            const [manager] = await db.select({ stripeConnectAccountId: users.stripeConnectAccountId }).from(users).where(eq30(users.id, managerId)).limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          } catch {
+            logger.warn(`[Webhook] Could not fetch manager Connect account for overstay penalty`);
+          }
+        }
+        const stripeAmounts = await getStripePaymentAmounts2(paymentIntentId, managerConnectAccountId);
+        if (stripeAmounts) {
+          await updatePaymentTransaction2(ptRecord.id, {
+            chargeId,
+            paidAt: /* @__PURE__ */ new Date(),
+            lastSyncedAt: /* @__PURE__ */ new Date(),
+            stripeAmount: stripeAmounts.stripeAmount,
+            stripeNetAmount: stripeAmounts.stripeNetAmount,
+            stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+            stripePlatformFee: stripeAmounts.stripePlatformFee
+          }, db);
+          logger.info(`[Webhook] Synced Stripe amounts for overstay penalty ${overstayRecordId}:`, {
+            amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+            processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`
+          });
+        }
+      }
+      logger.info(`[Webhook] Created payment_transactions record for overstay penalty ${overstayRecordId}`);
+    } catch (ptError) {
+      logger.error(`[Webhook] Failed to create payment_transactions for overstay penalty:`, ptError);
+    }
+    logger.info(`[Webhook] \u2705 Overstay penalty payment completed`, {
+      overstayRecordId,
+      chefId,
+      sessionId,
+      paymentIntentId,
+      chargeId,
+      penaltyAmountCents
+    });
+  } catch (error) {
+    logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
   }
 }
 var router22, webhooks_default;
@@ -27243,6 +28276,7 @@ init_application_repository();
 init_application_service();
 init_chat_service();
 init_notification_service();
+init_email();
 import { and as and8, eq as eq12 } from "drizzle-orm";
 var router7 = Router7();
 var locationRepository = new LocationRepository();
@@ -27652,6 +28686,24 @@ router7.post(
       } catch (notifError) {
         console.error("Error creating application notification:", notifError);
       }
+      try {
+        if (location.notificationEmail && location.managerId) {
+          const managerEmailContent = generateNewKitchenApplicationManagerEmail({
+            managerEmail: location.notificationEmail,
+            chefName: formData.fullName || "Chef",
+            chefEmail: formData.email || "",
+            locationName: location.name || "Kitchen Location",
+            applicationId: application.id,
+            submittedAt: /* @__PURE__ */ new Date()
+          });
+          await sendEmail(managerEmailContent, {
+            trackingId: `kitchen_app_new_${application.id}_${Date.now()}`
+          });
+          console.log(`\u2705 Sent new kitchen application email to manager: ${location.notificationEmail}`);
+        }
+      } catch (emailError) {
+        console.error("Error sending new kitchen application email to manager:", emailError);
+      }
       res.status(201).json({
         success: true,
         application,
@@ -27879,6 +28931,66 @@ router7.patch("/manager/kitchen-applications/:id/status", requireFirebaseAuthWit
         });
       } catch (notifError) {
         console.error("Error creating application approval notification:", notifError);
+      }
+      try {
+        if (application.email) {
+          const location2 = await locationService2.getLocationById(application.locationId);
+          const approvalEmail = generateKitchenApplicationApprovedEmail({
+            chefEmail: application.email,
+            chefName: application.fullName || "Chef",
+            locationName: location2?.name || "Kitchen Location"
+          });
+          await sendEmail(approvalEmail, {
+            trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
+          });
+          console.log(`\u2705 Sent kitchen application approval email to chef: ${application.email}`);
+        }
+      } catch (emailError) {
+        console.error("Error sending kitchen application approval email:", emailError);
+      }
+      try {
+        if (application.chefId) {
+          const location2 = await locationService2.getLocationById(application.locationId);
+          await notificationService.notifyChefApplicationApproved({
+            chefId: application.chefId,
+            kitchenName: location2?.name || "Kitchen",
+            locationName: location2?.name || "Kitchen Location"
+          });
+        }
+      } catch (notifError) {
+        console.error("Error creating chef application approval notification:", notifError);
+      }
+    }
+    if (status === "rejected" && updatedApplication) {
+      try {
+        if (application.email) {
+          const location2 = await locationService2.getLocationById(application.locationId);
+          const rejectionEmail = generateKitchenApplicationRejectedEmail({
+            chefEmail: application.email,
+            chefName: application.fullName || "Chef",
+            locationName: location2?.name || "Kitchen Location",
+            feedback: feedback || void 0
+          });
+          await sendEmail(rejectionEmail, {
+            trackingId: `kitchen_app_rejected_${application.id}_${Date.now()}`
+          });
+          console.log(`\u2705 Sent kitchen application rejection email to chef: ${application.email}`);
+        }
+      } catch (emailError) {
+        console.error("Error sending kitchen application rejection email:", emailError);
+      }
+      try {
+        if (application.chefId) {
+          const location2 = await locationService2.getLocationById(application.locationId);
+          await notificationService.notifyChefApplicationRejected({
+            chefId: application.chefId,
+            kitchenName: location2?.name || "Kitchen",
+            locationName: location2?.name || "Kitchen Location",
+            reason: feedback || void 0
+          });
+        }
+      } catch (notifError) {
+        console.error("Error creating chef application rejection notification:", notifError);
       }
     }
     if (status === "approved" && updatedApplication) {

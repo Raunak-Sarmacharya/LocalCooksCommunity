@@ -16,6 +16,12 @@ import { ApplicationService } from '../../domains/applications/application.servi
 import { sendSystemNotification, notifyTierTransition } from '../../chat-service';
 import { and, eq } from 'drizzle-orm';
 import { notificationService } from '../../services/notification.service';
+import { 
+    sendEmail, 
+    generateNewKitchenApplicationManagerEmail,
+    generateKitchenApplicationApprovedEmail,
+    generateKitchenApplicationRejectedEmail
+} from '../../email';
 
 const router = Router();
 
@@ -527,6 +533,26 @@ router.post('/firebase/chef/kitchen-applications',
                 console.error("Error creating application notification:", notifError);
             }
 
+            // Send email notification to manager about new kitchen application
+            try {
+                if (location.notificationEmail && location.managerId) {
+                    const managerEmailContent = generateNewKitchenApplicationManagerEmail({
+                        managerEmail: location.notificationEmail,
+                        chefName: formData.fullName || 'Chef',
+                        chefEmail: formData.email || '',
+                        locationName: location.name || 'Kitchen Location',
+                        applicationId: application.id,
+                        submittedAt: new Date()
+                    });
+                    await sendEmail(managerEmailContent, {
+                        trackingId: `kitchen_app_new_${application.id}_${Date.now()}`
+                    });
+                    console.log(`✅ Sent new kitchen application email to manager: ${location.notificationEmail}`);
+                }
+            } catch (emailError) {
+                console.error("Error sending new kitchen application email to manager:", emailError);
+            }
+
             res.status(201).json({
                 success: true,
                 application,
@@ -849,6 +875,74 @@ router.patch('/manager/kitchen-applications/:id/status', requireFirebaseAuthWith
                 });
             } catch (notifError) {
                 console.error("Error creating application approval notification:", notifError);
+            }
+
+            // Send email to chef about approval
+            try {
+                if (application.email) {
+                    const location = await locationService.getLocationById(application.locationId);
+                    const approvalEmail = generateKitchenApplicationApprovedEmail({
+                        chefEmail: application.email,
+                        chefName: application.fullName || 'Chef',
+                        locationName: location?.name || 'Kitchen Location'
+                    });
+                    await sendEmail(approvalEmail, {
+                        trackingId: `kitchen_app_approved_${application.id}_${Date.now()}`
+                    });
+                    console.log(`✅ Sent kitchen application approval email to chef: ${application.email}`);
+                }
+            } catch (emailError) {
+                console.error("Error sending kitchen application approval email:", emailError);
+            }
+
+            // Create in-app notification for chef
+            try {
+                if (application.chefId) {
+                    const location = await locationService.getLocationById(application.locationId);
+                    await notificationService.notifyChefApplicationApproved({
+                        chefId: application.chefId,
+                        kitchenName: location?.name || 'Kitchen',
+                        locationName: location?.name || 'Kitchen Location'
+                    });
+                }
+            } catch (notifError) {
+                console.error("Error creating chef application approval notification:", notifError);
+            }
+        }
+
+        // Handle rejection - send email and in-app notification to chef
+        if (status === 'rejected' && updatedApplication) {
+            try {
+                if (application.email) {
+                    const location = await locationService.getLocationById(application.locationId);
+                    const rejectionEmail = generateKitchenApplicationRejectedEmail({
+                        chefEmail: application.email,
+                        chefName: application.fullName || 'Chef',
+                        locationName: location?.name || 'Kitchen Location',
+                        feedback: feedback || undefined
+                    });
+                    await sendEmail(rejectionEmail, {
+                        trackingId: `kitchen_app_rejected_${application.id}_${Date.now()}`
+                    });
+                    console.log(`✅ Sent kitchen application rejection email to chef: ${application.email}`);
+                }
+            } catch (emailError) {
+                console.error("Error sending kitchen application rejection email:", emailError);
+            }
+
+            // Create in-app notification for chef about rejection
+            try {
+                if (application.chefId) {
+                    const location = await locationService.getLocationById(application.locationId);
+                    await notificationService.notifyChefApplicationRejected({
+                        chefId: application.chefId,
+                        kitchenName: location?.name || 'Kitchen',
+                        locationName: location?.name || 'Kitchen Location',
+                        reason: feedback || undefined
+                    });
+                }
+            } catch (notifError) {
+                console.error("Error creating chef application rejection notification:", notifError);
             }
         }
 

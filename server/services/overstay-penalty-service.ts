@@ -19,6 +19,7 @@ import {
   storageOverstayHistory,
   users,
   kitchens,
+  locations,
   type StorageOverstayRecord,
   type OverstayStatus
 } from "@shared/schema";
@@ -257,6 +258,21 @@ export async function detectOverstays(): Promise<OverstayDetectionResult[]> {
           isInGracePeriod,
           calculatedPenaltyCents,
         });
+
+        // Send overstay notification emails
+        try {
+          await sendOverstayNotificationEmails({
+            storageBookingId: booking.id,
+            chefId: booking.chefId,
+            daysOverdue,
+            gracePeriodEndsAt,
+            isInGracePeriod,
+            calculatedPenaltyCents,
+            endDate: new Date(booking.endDate),
+          });
+        } catch (emailError) {
+          logger.error(`[OverstayService] Error sending overstay notification emails for booking ${booking.id}:`, emailError);
+        }
       }
     } catch (error) {
       logger.error(`[OverstayService] Error processing booking ${booking.id}:`, error);
@@ -314,6 +330,67 @@ export async function getPendingOverstayReviews(locationId?: number): Promise<Pe
       inArray(storageOverstayRecords.status, ['detected', 'grace_period', 'pending_review', 'charge_failed'])
     )
     .orderBy(desc(storageOverstayRecords.daysOverdue));
+
+  const results = await query;
+
+  // Filter by location if specified
+  const filtered = locationId 
+    ? results.filter(r => r.locationId === locationId)
+    : results;
+
+  return filtered.map(r => ({
+    ...r,
+    storageName: r.storageName || 'Storage',
+    storageType: r.storageType || 'dry',
+    kitchenName: r.kitchenName || 'Kitchen',
+    gracePeriodDays: r.gracePeriodDays ?? platformDefaults.gracePeriodDays,
+    penaltyRate: r.penaltyRate?.toString() ?? platformDefaults.penaltyRate.toString(),
+    maxPenaltyDays: r.maxPenaltyDays ?? platformDefaults.maxPenaltyDays,
+    chefInfo: null,
+  }));
+}
+
+/**
+ * Get all overstay records (including resolved/past) for manager view
+ */
+export async function getAllOverstayRecords(locationId?: number): Promise<PendingOverstayReview[]> {
+  // Fetch platform defaults for fallback
+  const platformDefaults = await getOverstayPlatformDefaults();
+
+  const query = db
+    .select({
+      overstayId: storageOverstayRecords.id,
+      storageBookingId: storageOverstayRecords.storageBookingId,
+      status: storageOverstayRecords.status,
+      daysOverdue: storageOverstayRecords.daysOverdue,
+      gracePeriodEndsAt: storageOverstayRecords.gracePeriodEndsAt,
+      calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+      finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+      detectedAt: storageOverstayRecords.detectedAt,
+      bookingStartDate: storageBookings.startDate,
+      bookingEndDate: storageBookings.endDate,
+      bookingTotalPrice: storageBookings.totalPrice,
+      storageListingId: storageListings.id,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      dailyRateCents: storageOverstayRecords.dailyRateCents,
+      gracePeriodDays: storageListings.overstayGracePeriodDays,
+      penaltyRate: storageListings.overstayPenaltyRate,
+      maxPenaltyDays: storageListings.overstayMaxPenaltyDays,
+      kitchenId: kitchens.id,
+      kitchenName: kitchens.name,
+      locationId: kitchens.locationId,
+      chefId: storageBookings.chefId,
+      chefEmail: users.username,
+      stripeCustomerId: storageBookings.stripeCustomerId,
+      stripePaymentMethodId: storageBookings.stripePaymentMethodId,
+    })
+    .from(storageOverstayRecords)
+    .innerJoin(storageBookings, eq(storageOverstayRecords.storageBookingId, storageBookings.id))
+    .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+    .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+    .leftJoin(users, eq(storageBookings.chefId, users.id))
+    .orderBy(desc(storageOverstayRecords.detectedAt));
 
   const results = await query;
 
@@ -565,11 +642,116 @@ export async function chargeApprovedPenalty(overstayRecordId: number): Promise<C
         { paymentIntentId: paymentIntent.id, chargeId }
       );
 
+      // CRITICAL: Create payment_transactions record with payment_intent_id for Stripe fee syncing
+      // This ensures all overstay penalties have proper Stripe data for revenue reporting
+      try {
+        const { createPaymentTransaction, updatePaymentTransaction } = await import("./payment-transactions-service");
+        const { getStripePaymentAmounts } = await import("./stripe-service");
+
+        // Get manager ID through the booking chain
+        let managerId: number | null = null;
+        const [storageBooking] = await db
+          .select({ storageListingId: storageBookings.storageListingId, chefId: storageBookings.chefId })
+          .from(storageBookings)
+          .where(eq(storageBookings.id, record.storageBookingId))
+          .limit(1);
+
+        if (storageBooking) {
+          const [listing] = await db
+            .select({ kitchenId: storageListings.kitchenId })
+            .from(storageListings)
+            .where(eq(storageListings.id, storageBooking.storageListingId))
+            .limit(1);
+
+          if (listing?.kitchenId) {
+            const [kitchen] = await db
+              .select({ locationId: kitchens.locationId })
+              .from(kitchens)
+              .where(eq(kitchens.id, listing.kitchenId))
+              .limit(1);
+
+            if (kitchen?.locationId) {
+              const [location] = await db
+                .select({ managerId: locations.managerId })
+                .from(locations)
+                .where(eq(locations.id, kitchen.locationId))
+                .limit(1);
+              managerId = location?.managerId || null;
+            }
+          }
+        }
+
+        const ptRecord = await createPaymentTransaction({
+          bookingId: record.storageBookingId,
+          bookingType: "storage",
+          chefId: storageBooking?.chefId || null,
+          managerId,
+          amount: record.finalPenaltyCents,
+          baseAmount: record.finalPenaltyCents,
+          serviceFee: 0, // No service fee on penalties
+          managerRevenue: record.finalPenaltyCents,
+          currency: "CAD",
+          paymentIntentId: paymentIntent.id, // CRITICAL: Save payment intent for fee syncing
+          chargeId: chargeId || undefined,
+          status: "succeeded",
+          stripeStatus: "succeeded",
+          metadata: {
+            type: "overstay_penalty",
+            overstay_record_id: overstayRecordId.toString(),
+            storage_booking_id: record.storageBookingId.toString(),
+            charged_via: "off_session", // Indicates this was charged directly, not via checkout
+          },
+        }, db);
+
+        // Fetch and sync actual Stripe fees
+        if (ptRecord) {
+          // Get manager's Stripe Connect account for fee lookup
+          let managerConnectAccountId: string | undefined;
+          if (managerId) {
+            const [manager] = await db
+              .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+              .from(users)
+              .where(eq(users.id, managerId))
+              .limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          }
+
+          const stripeAmounts = await getStripePaymentAmounts(paymentIntent.id, managerConnectAccountId);
+          if (stripeAmounts) {
+            await updatePaymentTransaction(ptRecord.id, {
+              paidAt: new Date(),
+              lastSyncedAt: new Date(),
+              stripeAmount: stripeAmounts.stripeAmount,
+              stripeNetAmount: stripeAmounts.stripeNetAmount,
+              stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+              stripePlatformFee: stripeAmounts.stripePlatformFee,
+            }, db);
+            logger.info(`[OverstayService] Synced Stripe fees for overstay penalty ${overstayRecordId}:`, {
+              processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+            });
+          }
+        }
+
+        logger.info(`[OverstayService] Created payment_transactions for overstay penalty ${overstayRecordId}`);
+      } catch (ptError) {
+        logger.error(`[OverstayService] Failed to create payment_transactions for overstay penalty:`, ptError);
+        // Don't fail the charge - the payment succeeded, just logging failed
+      }
+
       logger.info(`[OverstayService] Penalty charged successfully`, {
         overstayRecordId,
         paymentIntentId: paymentIntent.id,
         amount: record.finalPenaltyCents,
       });
+
+      // Send penalty charged email to chef
+      try {
+        await sendPenaltyChargedEmail(overstayRecordId, record.finalPenaltyCents, record.daysOverdue);
+      } catch (emailError) {
+        logger.error(`[OverstayService] Error sending penalty charged email:`, emailError);
+      }
 
       return { 
         success: true, 
@@ -814,10 +996,398 @@ export async function markManagerNotified(overstayRecordId: number): Promise<voi
   );
 }
 
+/**
+ * Get all pending overstay penalties for a specific chef
+ * Returns penalties that are approved and awaiting payment
+ */
+export async function getChefPendingPenalties(chefId: number) {
+  const records = await db
+    .select({
+      overstayId: storageOverstayRecords.id,
+      storageBookingId: storageOverstayRecords.storageBookingId,
+      status: storageOverstayRecords.status,
+      daysOverdue: storageOverstayRecords.daysOverdue,
+      calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+      finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+      detectedAt: storageOverstayRecords.detectedAt,
+      penaltyApprovedAt: storageOverstayRecords.penaltyApprovedAt,
+      storageName: storageListings.name,
+      storageType: storageListings.storageType,
+      kitchenName: kitchens.name,
+      bookingEndDate: storageBookings.endDate,
+    })
+    .from(storageOverstayRecords)
+    .innerJoin(storageBookings, eq(storageOverstayRecords.storageBookingId, storageBookings.id))
+    .innerJoin(storageListings, eq(storageBookings.storageListingId, storageListings.id))
+    .innerJoin(kitchens, eq(storageListings.kitchenId, kitchens.id))
+    .where(
+      and(
+        eq(storageBookings.chefId, chefId),
+        eq(storageOverstayRecords.status, 'penalty_approved')
+      )
+    )
+    .orderBy(desc(storageOverstayRecords.penaltyApprovedAt));
+
+  return records.map(r => ({
+    ...r,
+    storageName: r.storageName || 'Storage',
+    storageType: r.storageType || 'dry',
+    kitchenName: r.kitchenName || 'Kitchen',
+    penaltyAmountCents: r.finalPenaltyCents || r.calculatedPenaltyCents || 0,
+  }));
+}
+
+/**
+ * Create a Stripe Checkout session for chef to pay their penalty
+ */
+export async function createPenaltyPaymentCheckout(
+  overstayRecordId: number,
+  chefId: number,
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ checkoutUrl: string } | { error: string }> {
+  if (!stripe) {
+    return { error: 'Stripe not configured' };
+  }
+
+  try {
+    // Step 1: Get the overstay record
+    const [overstayRecord] = await db
+      .select()
+      .from(storageOverstayRecords)
+      .where(eq(storageOverstayRecords.id, overstayRecordId))
+      .limit(1);
+
+    if (!overstayRecord) {
+      return { error: 'Overstay record not found' };
+    }
+
+    // Step 2: Get the storage booking
+    const [booking] = await db
+      .select()
+      .from(storageBookings)
+      .where(eq(storageBookings.id, overstayRecord.storageBookingId))
+      .limit(1);
+
+    if (!booking) {
+      return { error: 'Storage booking not found' };
+    }
+
+    // Verify the chef owns this penalty
+    if (booking.chefId !== chefId) {
+      return { error: 'Unauthorized: This penalty does not belong to you' };
+    }
+
+    // Verify status is penalty_approved
+    if (overstayRecord.status !== 'penalty_approved') {
+      return { error: `Cannot pay penalty in status: ${overstayRecord.status}` };
+    }
+
+    // Step 3: Get storage listing for name
+    const [listing] = await db
+      .select()
+      .from(storageListings)
+      .where(eq(storageListings.id, booking.storageListingId))
+      .limit(1);
+
+    // Step 4: Get kitchen for name
+    const [kitchen] = listing?.kitchenId ? await db
+      .select()
+      .from(kitchens)
+      .where(eq(kitchens.id, listing.kitchenId))
+      .limit(1) : [null];
+
+    // Step 5: Get location for manager ID
+    const [location] = kitchen?.locationId ? await db
+      .select()
+      .from(locations)
+      .where(eq(locations.id, kitchen.locationId))
+      .limit(1) : [null];
+
+    // Step 6: Get manager's Stripe Connect account ID
+    let managerStripeAccountId: string | null = null;
+    if (location?.managerId) {
+      const [manager] = await db
+        .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+        .from(users)
+        .where(eq(users.id, location.managerId))
+        .limit(1);
+      managerStripeAccountId = manager?.stripeConnectAccountId || null;
+    }
+
+    const penaltyAmountCents = overstayRecord.finalPenaltyCents || overstayRecord.calculatedPenaltyCents || 0;
+    const storageName = listing?.name || 'Storage';
+    const kitchenName = kitchen?.name || 'Kitchen';
+    const managerId = location?.managerId;
+
+    if (penaltyAmountCents <= 0) {
+      return { error: 'Invalid penalty amount' };
+    }
+
+    // Get chef email
+    const [chef] = await db
+      .select({ email: users.username })
+      .from(users)
+      .where(eq(users.id, chefId))
+      .limit(1);
+
+    if (!chef) {
+      return { error: 'Chef not found' };
+    }
+
+    // Create Stripe Checkout session
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+      mode: 'payment',
+      payment_method_types: ['card'],
+      customer_email: chef.email,
+      line_items: [
+        {
+          price_data: {
+            currency: 'cad',
+            product_data: {
+              name: `Overstay Penalty - ${storageName}`,
+              description: `Storage overstay penalty for ${kitchenName}`,
+            },
+            unit_amount: penaltyAmountCents,
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        type: 'overstay_penalty',
+        overstayRecordId: overstayRecordId.toString(),
+        chefId: chefId.toString(),
+        storageBookingId: overstayRecord.storageBookingId.toString(),
+        managerId: managerId?.toString() || '',
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    };
+
+    // If manager has Stripe Connect, use destination charges
+    if (managerStripeAccountId) {
+      sessionParams.payment_intent_data = {
+        transfer_data: {
+          destination: managerStripeAccountId,
+        },
+      };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    // Update record to charge_pending
+    await db
+      .update(storageOverstayRecords)
+      .set({
+        status: 'charge_pending',
+        updatedAt: new Date(),
+      })
+      .where(eq(storageOverstayRecords.id, overstayRecordId));
+
+    logger.info(`[OverstayService] Created penalty payment checkout`, {
+      overstayRecordId,
+      chefId,
+      penaltyAmountCents,
+      sessionId: session.id,
+    });
+
+    return { checkoutUrl: session.url! };
+  } catch (error) {
+    logger.error(`[OverstayService] Failed to create penalty checkout`, { error, overstayRecordId });
+    return { error: 'Failed to create payment session' };
+  }
+}
+
+// ============================================================================
+// OVERSTAY EMAIL NOTIFICATIONS
+// ============================================================================
+
+interface OverstayEmailData {
+  storageBookingId: number;
+  chefId: number | null;
+  daysOverdue: number;
+  gracePeriodEndsAt: Date;
+  isInGracePeriod: boolean;
+  calculatedPenaltyCents: number;
+  endDate: Date;
+}
+
+/**
+ * Send overstay notification emails to chef and manager
+ */
+async function sendOverstayNotificationEmails(data: OverstayEmailData): Promise<void> {
+  try {
+    const { 
+      sendEmail, 
+      generateOverstayDetectedEmail, 
+      generateOverstayManagerNotificationEmail 
+    } = await import("../email");
+
+    // Get storage booking details with chef email from users table
+    const [booking] = await db
+      .select({
+        storageListingId: storageBookings.storageListingId,
+        chefId: storageBookings.chefId,
+        chefEmail: users.username,
+      })
+      .from(storageBookings)
+      .leftJoin(users, eq(storageBookings.chefId, users.id))
+      .where(eq(storageBookings.id, data.storageBookingId))
+      .limit(1);
+
+    if (!booking) {
+      logger.warn(`[OverstayService] No booking found for overstay email: ${data.storageBookingId}`);
+      return;
+    }
+
+    // Get storage listing and kitchen details
+    const [listing] = await db
+      .select({
+        name: storageListings.name,
+        kitchenId: storageListings.kitchenId,
+      })
+      .from(storageListings)
+      .where(eq(storageListings.id, booking.storageListingId))
+      .limit(1);
+
+    if (!listing) {
+      logger.warn(`[OverstayService] No listing found for overstay email: ${booking.storageListingId}`);
+      return;
+    }
+
+    // Get kitchen and location details
+    const [kitchen] = await db
+      .select({
+        name: kitchens.name,
+        locationId: kitchens.locationId,
+      })
+      .from(kitchens)
+      .where(eq(kitchens.id, listing.kitchenId))
+      .limit(1);
+
+    if (!kitchen) {
+      logger.warn(`[OverstayService] No kitchen found for overstay email`);
+      return;
+    }
+
+    // Get location and manager details
+    const [location] = await db
+      .select({
+        name: locations.name,
+        managerId: locations.managerId,
+        notificationEmail: locations.notificationEmail,
+      })
+      .from(locations)
+      .where(eq(locations.id, kitchen.locationId))
+      .limit(1);
+
+    // Send email to chef
+    if (booking.chefEmail) {
+      const chefEmail = generateOverstayDetectedEmail({
+        chefEmail: booking.chefEmail,
+        chefName: booking.chefEmail,
+        storageName: listing.name || 'Storage',
+        endDate: data.endDate,
+        daysOverdue: data.daysOverdue,
+        gracePeriodEndsAt: data.gracePeriodEndsAt,
+        isInGracePeriod: data.isInGracePeriod,
+        calculatedPenaltyCents: data.calculatedPenaltyCents,
+      });
+      await sendEmail(chefEmail, {
+        trackingId: `overstay_chef_${data.storageBookingId}_${Date.now()}`
+      });
+      logger.info(`[OverstayService] Sent overstay notification email to chef: ${booking.chefEmail}`);
+    }
+
+    // Send email to manager
+    if (location && location.notificationEmail) {
+      const managerEmail = generateOverstayManagerNotificationEmail({
+        managerEmail: location.notificationEmail,
+        chefName: booking.chefEmail || 'Chef',
+        chefEmail: booking.chefEmail || '',
+        storageName: listing.name || 'Storage',
+        kitchenName: kitchen.name || 'Kitchen',
+        endDate: data.endDate,
+        daysOverdue: data.daysOverdue,
+        gracePeriodEndsAt: data.gracePeriodEndsAt,
+        isInGracePeriod: data.isInGracePeriod,
+        calculatedPenaltyCents: data.calculatedPenaltyCents,
+      });
+      await sendEmail(managerEmail, {
+        trackingId: `overstay_manager_${data.storageBookingId}_${Date.now()}`
+      });
+      logger.info(`[OverstayService] Sent overstay notification email to manager: ${location.notificationEmail}`);
+    }
+  } catch (error) {
+    logger.error(`[OverstayService] Error sending overstay notification emails:`, error);
+  }
+}
+
+/**
+ * Send penalty charged email to chef
+ */
+async function sendPenaltyChargedEmail(
+  overstayRecordId: number,
+  penaltyAmountCents: number,
+  daysOverdue: number
+): Promise<void> {
+  try {
+    const { sendEmail, generatePenaltyChargedEmail } = await import("../email");
+
+    // Get overstay record with booking details
+    const [record] = await db
+      .select({
+        storageBookingId: storageOverstayRecords.storageBookingId,
+      })
+      .from(storageOverstayRecords)
+      .where(eq(storageOverstayRecords.id, overstayRecordId))
+      .limit(1);
+
+    if (!record) return;
+
+    // Get booking details with chef email from users table
+    const [booking] = await db
+      .select({
+        chefEmail: users.username,
+        storageListingId: storageBookings.storageListingId,
+      })
+      .from(storageBookings)
+      .leftJoin(users, eq(storageBookings.chefId, users.id))
+      .where(eq(storageBookings.id, record.storageBookingId))
+      .limit(1);
+
+    if (!booking || !booking.chefEmail) return;
+
+    // Get storage name
+    const [listing] = await db
+      .select({ name: storageListings.name })
+      .from(storageListings)
+      .where(eq(storageListings.id, booking.storageListingId))
+      .limit(1);
+
+    const email = generatePenaltyChargedEmail({
+      chefEmail: booking.chefEmail,
+      chefName: booking.chefEmail,
+      storageName: listing?.name || 'Storage',
+      penaltyAmountCents,
+      daysOverdue,
+      chargeDate: new Date(),
+    });
+
+    await sendEmail(email, {
+      trackingId: `penalty_charged_${overstayRecordId}_${Date.now()}`
+    });
+    logger.info(`[OverstayService] Sent penalty charged email to chef: ${booking.chefEmail}`);
+  } catch (error) {
+    logger.error(`[OverstayService] Error sending penalty charged email:`, error);
+  }
+}
+
 // Export singleton-style functions
 export const overstayPenaltyService = {
   detectOverstays,
   getPendingOverstayReviews,
+  getAllOverstayRecords,
   getOverstayRecord,
   processManagerDecision,
   chargeApprovedPenalty,
@@ -826,4 +1396,8 @@ export const overstayPenaltyService = {
   getOverstayStats,
   markChefWarningSent,
   markManagerNotified,
+  getChefPendingPenalties,
+  createPenaltyPaymentCheckout,
+  sendOverstayNotificationEmails,
+  sendPenaltyChargedEmail,
 };

@@ -2345,4 +2345,60 @@ router.get("/chef/bookings", requireChef, async (req: Request, res: Response) =>
     }
 });
 
+// ============================================================================
+// CHEF OVERSTAY PENALTY ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /chef/overstay-penalties
+ * Get all pending overstay penalties for the authenticated chef
+ */
+router.get("/chef/overstay-penalties", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const { getChefPendingPenalties } = await import('../services/overstay-penalty-service');
+        const penalties = await getChefPendingPenalties(chefId);
+        res.json(penalties);
+    } catch (error) {
+        logger.error("Error fetching chef overstay penalties:", error);
+        res.status(500).json({ error: "Failed to fetch overstay penalties" });
+    }
+});
+
+/**
+ * POST /chef/overstay-penalties/:id/pay
+ * Create a Stripe Checkout session for the chef to pay their penalty
+ */
+router.post("/chef/overstay-penalties/:id/pay", requireChef, async (req: Request, res: Response) => {
+    try {
+        const chefId = req.neonUser!.id;
+        const overstayRecordId = parseInt(req.params.id);
+
+        if (isNaN(overstayRecordId)) {
+            return res.status(400).json({ error: "Invalid overstay record ID" });
+        }
+
+        // Get base URL for success/cancel URLs
+        const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:5001';
+        const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+        const protocol = isLocalhost ? 'http' : (req.get('x-forwarded-proto') || 'https');
+        const baseUrl = `${protocol}://${host}`;
+
+        const successUrl = `${baseUrl}/dashboard?penalty_paid=success&overstay_id=${overstayRecordId}`;
+        const cancelUrl = `${baseUrl}/dashboard?penalty_paid=cancelled&overstay_id=${overstayRecordId}`;
+
+        const { createPenaltyPaymentCheckout } = await import('../services/overstay-penalty-service');
+        const result = await createPenaltyPaymentCheckout(overstayRecordId, chefId, successUrl, cancelUrl);
+
+        if ('error' in result) {
+            return res.status(400).json({ error: result.error });
+        }
+
+        res.json({ checkoutUrl: result.checkoutUrl });
+    } catch (error) {
+        logger.error("Error creating penalty payment checkout:", error);
+        res.status(500).json({ error: "Failed to create payment session" });
+    }
+});
+
 export default router;

@@ -15,7 +15,7 @@ import { ImageWithReplace } from "@/components/ui/image-with-replace";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
 import { cn } from "@/lib/utils";
-import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 
 // Enterprise-grade Kitchen Card Component
 interface KitchenCardProps {
@@ -27,7 +27,7 @@ interface KitchenCardProps {
 
 function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardProps) {
   const rawImageUrl = kitchen.imageUrl || (kitchen.galleryImages && kitchen.galleryImages.length > 0 ? kitchen.galleryImages[0] : null);
-  const presignedImageUrl = usePresignedImageUrl(rawImageUrl);
+  const imageUrl = rawImageUrl ? getR2ProxyUrl(rawImageUrl) : null;
   const hasImage = !!rawImageUrl;
   const hourlyRateDisplay = kitchen.hourlyRate
     ? `$${(parseFloat(kitchen.hourlyRate) / 100).toFixed(2)}/hr`
@@ -42,9 +42,9 @@ function KitchenCard({ kitchen, locationId, isExpanded, onToggle }: KitchenCardP
               <div className="flex items-center gap-4">
                 {/* Kitchen Thumbnail */}
                 <div className="w-14 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
-                  {presignedImageUrl ? (
+                  {imageUrl ? (
                     <img
-                      src={presignedImageUrl}
+                      src={imageUrl}
                       alt={kitchen.name}
                       className="w-full h-full object-cover"
                       onError={(e) => {

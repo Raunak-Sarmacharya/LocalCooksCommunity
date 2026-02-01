@@ -720,6 +720,79 @@ async function broadcastChefAnnouncement(data: SystemAnnouncementData) {
 }
 
 // ===================================
+// STORAGE EXTENSION NOTIFICATIONS
+// ===================================
+
+interface StorageExtensionNotificationData {
+  chefId?: number;
+  managerId?: number;
+  locationId?: number;
+  storageBookingId: number;
+  storageName: string;
+  extensionDays: number;
+  newEndDate: string;
+}
+
+async function notifyManagerStorageExtensionPending(data: StorageExtensionNotificationData & { chefName: string }) {
+  if (!data.managerId) return;
+  return createManagerNotification({
+    managerId: data.managerId,
+    locationId: data.locationId,
+    type: 'storage_extension_approved', // Using existing type
+    priority: 'high',
+    title: 'Storage Extension Request',
+    message: `${data.chefName} has requested a ${data.extensionDays}-day extension for "${data.storageName}". Payment received - awaiting your approval.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      newEndDate: data.newEndDate,
+      chefName: data.chefName
+    },
+    actionUrl: `/manager/booking-dashboard?view=storage`,
+    actionLabel: 'Review Extension'
+  });
+}
+
+async function notifyChefStorageExtensionApproved(data: StorageExtensionNotificationData) {
+  if (!data.chefId) return;
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'storage_extension_approved',
+    priority: 'high',
+    title: 'Storage Extension Approved!',
+    message: `Your ${data.extensionDays}-day extension for "${data.storageName}" has been approved. New end date: ${data.newEndDate}.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      newEndDate: data.newEndDate
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: 'View Booking'
+  });
+}
+
+async function notifyChefStorageExtensionRejected(data: StorageExtensionNotificationData & { reason?: string }) {
+  if (!data.chefId) return;
+  return createChefNotification({
+    chefId: data.chefId,
+    type: 'storage_extension_rejected',
+    priority: 'high',
+    title: 'Storage Extension Declined',
+    message: `Your extension request for "${data.storageName}" was declined.${data.reason ? ` Reason: ${data.reason}` : ''} A refund will be processed.`,
+    metadata: {
+      storageBookingId: data.storageBookingId,
+      storageName: data.storageName,
+      extensionDays: data.extensionDays,
+      reason: data.reason
+    },
+    actionUrl: `/dashboard?view=bookings`,
+    actionLabel: 'View Details'
+  });
+}
+
+// ===================================
 // EXPORTS
 // ===================================
 
@@ -765,7 +838,12 @@ export const notificationService = {
   notifyChefWelcome,
   notifyChefPaymentReceived,
   notifyChefMessage,
-  broadcastChefAnnouncement
+  broadcastChefAnnouncement,
+  
+  // Storage Extension
+  notifyManagerStorageExtensionPending,
+  notifyChefStorageExtensionApproved,
+  notifyChefStorageExtensionRejected
 };
 
 export type {

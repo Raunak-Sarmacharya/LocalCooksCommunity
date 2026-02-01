@@ -40,6 +40,10 @@ interface ApplicationRequirementsWizardProps {
   hideNavigation?: boolean;
   /** Initial step to show */
   initialStep?: WizardStep;
+  /** Callback when active step changes */
+  onStepChange?: (step: WizardStep, isLastStep: boolean) => void;
+  /** Controlled active step (if provided, component becomes controlled) */
+  activeStepOverride?: WizardStep;
 }
 
 const STEP_ICONS: Record<WizardStep, React.ReactNode> = {
@@ -67,11 +71,28 @@ export function ApplicationRequirementsWizard({
   compact = false,
   hideNavigation = false,
   initialStep = 'step1',
+  onStepChange,
+  activeStepOverride,
 }: ApplicationRequirementsWizardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  const [activeStep, setActiveStep] = useState<WizardStep>(initialStep);
+  const [activeStep, setActiveStepInternal] = useState<WizardStep>(activeStepOverride ?? initialStep);
+  
+  // Sync with controlled prop when provided
+  useEffect(() => {
+    if (activeStepOverride !== undefined) {
+      setActiveStepInternal(activeStepOverride);
+    }
+  }, [activeStepOverride]);
+  
+  // Wrapper to notify parent of step changes
+  const setActiveStep = (step: WizardStep) => {
+    setActiveStepInternal(step);
+    const stepIndex = WIZARD_STEPS.findIndex(s => s.id === step);
+    const isLast = stepIndex === WIZARD_STEPS.length - 1;
+    onStepChange?.(step, isLast);
+  };
   const [requirements, setRequirements] = useState<Partial<LocationRequirements>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<Set<WizardStep>>(new Set());

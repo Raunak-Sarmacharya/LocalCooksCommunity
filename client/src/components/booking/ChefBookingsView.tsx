@@ -44,6 +44,7 @@ import { DEFAULT_TIMEZONE, isBookingUpcoming, isBookingPast } from "@/utils/time
 import { useQuery } from "@tanstack/react-query";
 import { StorageExtensionDialog } from "./StorageExtensionDialog";
 import { ExpiringStorageNotification } from "./ExpiringStorageNotification";
+import { PendingOverstayPenalties } from "../chef/PendingOverstayPenalties";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { format, differenceInDays, startOfToday, isToday, isTomorrow, isThisWeek, startOfDay, parseISO, startOfWeek, addWeeks } from "date-fns";
@@ -586,6 +587,9 @@ export default function ChefBookingsView({
 
   return (
     <div className="space-y-6">
+      {/* Pending Overstay Penalties - Show prominently at top */}
+      <PendingOverstayPenalties />
+
       {/* Expiring Storage Notifications */}
       <ExpiringStorageNotification />
 
@@ -1112,6 +1116,24 @@ export default function ChefBookingsView({
                                 </div>
                               </div>
                             </div>
+
+                            {/* Paid Penalty Section */}
+                            {storageBooking.paidPenalty && (
+                              <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                  <span className="font-medium text-green-800 dark:text-green-200">Overstay Penalty Paid</span>
+                                </div>
+                                <p className="text-sm text-green-700 dark:text-green-300">
+                                  ${storageBooking.paidPenalty.amountDollars} CAD paid on {format(new Date(storageBooking.paidPenalty.paidAt), "MMM d, yyyy")}
+                                  {storageBooking.paidPenalty.daysOverdue > 0 && (
+                                    <span className="text-xs ml-1">
+                                      ({storageBooking.paidPenalty.daysOverdue} day{storageBooking.paidPenalty.daysOverdue !== 1 ? 's' : ''} overdue)
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                            )}
 
                             {isExpiringSoon && (
                               <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">

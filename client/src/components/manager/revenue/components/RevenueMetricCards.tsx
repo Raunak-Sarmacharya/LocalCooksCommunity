@@ -164,8 +164,9 @@ export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsPro
         return null
     }
 
-    // Use the new fields with fallbacks for backwards compatibility
-    const taxAmount = metrics.taxAmount ?? metrics.platformFee ?? 0
+    // Use the new fields - taxAmount is actual tax collected (not platform fee)
+    // Only show tax if explicitly set (don't fall back to platformFee which is service fee)
+    const taxAmount = metrics.taxAmount ?? 0
     const stripeFee = metrics.stripeFee ?? 0
     const netRevenue = metrics.netRevenue ?? (metrics.totalRevenue - taxAmount - stripeFee)
 
@@ -253,13 +254,13 @@ export function RevenueMetricCards({ metrics, isLoading }: RevenueMetricCardsPro
                                             <Info className="h-3 w-3 text-muted-foreground cursor-help" />
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-xs">
-                                            <p className="text-sm">Estimated Stripe processing fee (~2.9% + $0.30 per transaction). Actual fees may vary slightly.</p>
+                                            <p className="text-sm">Actual Stripe processing fee from Stripe Balance Transaction API. Falls back to estimate (~2.9% + $0.30) for older transactions.</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
                             </div>
                             <p className="text-xl font-bold text-violet-600">{formatCurrency(stripeFee)}</p>
-                            <p className="text-xs text-muted-foreground">~2.9% + $0.30/txn</p>
+                            <p className="text-xs text-muted-foreground">From Stripe API</p>
                         </div>
 
                         {/* Completed Payments */}

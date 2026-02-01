@@ -484,17 +484,23 @@ export function OverstayPenaltyQueue() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch overstays
+  const [showPastPenalties, setShowPastPenalties] = useState(false);
+
+  // Fetch overstays (including past if toggled)
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['/api/manager/overstays'],
+    queryKey: ['/api/manager/overstays', showPastPenalties],
     queryFn: async () => {
-      const response = await apiRequest('GET', '/api/manager/overstays');
+      const url = showPastPenalties 
+        ? '/api/manager/overstays?includeAll=true' 
+        : '/api/manager/overstays';
+      const response = await apiRequest('GET', url);
       return response.json();
     },
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const overstays: OverstayRecord[] = data?.overstays || [];
+  const pastOverstays: OverstayRecord[] = data?.pastOverstays || [];
   const stats: OverstayStats | null = data?.stats || null;
 
   // Approve mutation
@@ -651,10 +657,18 @@ export function OverstayPenaltyQueue() {
           <h2 className="text-2xl font-bold">Overstay Penalties</h2>
           <p className="text-muted-foreground">Review and manage storage overstay situations</p>
         </div>
-        <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant={showPastPenalties ? "default" : "outline"} 
+            onClick={() => setShowPastPenalties(!showPastPenalties)}
+          >
+            {showPastPenalties ? "Hide" : "Show"} Past Penalties
+          </Button>
+          <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Overstay List */}
@@ -737,6 +751,55 @@ export function OverstayPenaltyQueue() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Past Penalties Section */}
+      {showPastPenalties && pastOverstays.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-gray-500" />
+            Past Penalties ({pastOverstays.length})
+          </h3>
+          <div className="space-y-3 opacity-75">
+            {pastOverstays.map(overstay => (
+              <Card key={overstay.overstayId} className="border-gray-200">
+                <CardContent className="pt-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Package className="w-4 h-4 text-purple-600" />
+                        <span className="font-medium">{overstay.storageName}</span>
+                        {getStatusBadge(overstay.status)}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {overstay.kitchenName} • {overstay.daysOverdue} days overdue
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Detected: {format(new Date(overstay.detectedAt), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">
+                        {formatCurrency(overstay.finalPenaltyCents || overstay.calculatedPenaltyCents)}
+                      </p>
+                      {overstay.chefEmail && (
+                        <p className="text-xs text-muted-foreground">{overstay.chefEmail}</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showPastPenalties && pastOverstays.length === 0 && (
+        <Card className="mt-8 border-gray-200">
+          <CardContent className="pt-6 text-center">
+            <p className="text-muted-foreground">No past penalties found.</p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

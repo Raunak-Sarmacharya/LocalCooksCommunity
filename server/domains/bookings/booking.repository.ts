@@ -11,7 +11,8 @@ import {
     users,
     pendingStorageExtensions,
     paymentTransactions,
-    chefKitchenApplications
+    chefKitchenApplications,
+    storageOverstayRecords
 } from "@shared/schema";
 import { eq, and, desc, asc, lt, not, inArray, gte, lte, or, sql, ne } from "drizzle-orm";
 import { KitchenBooking, StorageBooking, EquipmentBooking, InsertKitchenBooking } from "./booking.types";
@@ -247,13 +248,47 @@ export class BookingRepository {
             .where(eq(storageBookings.chefId, chefId))
             .orderBy(desc(storageBookings.startDate));
 
-        return result.map(row => ({
-            ...row,
-            totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
-            serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
-            basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
-            minimumBookingDuration: row.minimumBookingDuration || 1,
-        }));
+        // Get paid penalties for these bookings
+        const bookingIds = result.map(r => r.id);
+        const paidPenalties = bookingIds.length > 0 ? await db
+            .select({
+                storageBookingId: storageOverstayRecords.storageBookingId,
+                status: storageOverstayRecords.status,
+                finalPenaltyCents: storageOverstayRecords.finalPenaltyCents,
+                calculatedPenaltyCents: storageOverstayRecords.calculatedPenaltyCents,
+                daysOverdue: storageOverstayRecords.daysOverdue,
+                resolvedAt: storageOverstayRecords.resolvedAt,
+                resolutionType: storageOverstayRecords.resolutionType,
+            })
+            .from(storageOverstayRecords)
+            .where(
+                and(
+                    sql`${storageOverstayRecords.storageBookingId} IN (${sql.join(bookingIds.map(id => sql`${id}`), sql`, `)})`,
+                    eq(storageOverstayRecords.status, 'charge_succeeded')
+                )
+            ) : [];
+
+        // Create a map of booking ID to paid penalty
+        const penaltyMap = new Map(paidPenalties.map(p => [p.storageBookingId, p]));
+
+        return result.map(row => {
+            const penalty = penaltyMap.get(row.id);
+            return {
+                ...row,
+                totalPrice: row.totalPrice ? parseFloat(row.totalPrice.toString()) / 100 : 0,
+                serviceFee: row.serviceFee ? parseFloat(row.serviceFee.toString()) / 100 : 0,
+                basePrice: row.basePrice ? parseFloat(row.basePrice.toString()) : 0,
+                minimumBookingDuration: row.minimumBookingDuration || 1,
+                // Paid penalty info
+                paidPenalty: penalty ? {
+                    amountCents: penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0,
+                    amountDollars: ((penalty.finalPenaltyCents || penalty.calculatedPenaltyCents || 0) / 100).toFixed(2),
+                    daysOverdue: penalty.daysOverdue,
+                    paidAt: penalty.resolvedAt,
+                    resolutionType: penalty.resolutionType,
+                } : null,
+            };
+        });
     }
 
     async getStorageBookingById(id: number) {

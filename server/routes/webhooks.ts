@@ -379,11 +379,27 @@ async function handleCheckoutSessionCompleted(
     });
     
     if (metadata.type === "storage_extension") {
-      logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`);
+      logger.info(`[Webhook] Processing storage extension payment for session ${session.id}`, {
+        paymentIntentId,
+        chargeId,
+      });
       await handleStorageExtensionPaymentCompleted(
         session.id,
         paymentIntentId,
+        chargeId,
         metadata,
+      );
+    }
+
+    // Handle overstay penalty payment
+    if (metadata.type === "overstay_penalty") {
+      logger.info(`[Webhook] Processing overstay penalty payment for session ${session.id}`);
+      await handleOverstayPenaltyPaymentCompleted(
+        session.id,
+        paymentIntentId,
+        chargeId,
+        metadata,
+        expandedSession.payment_status,
       );
     }
 
@@ -923,6 +939,7 @@ async function handleCheckoutSessionCompleted(
 async function handleStorageExtensionPaymentCompleted(
   sessionId: string,
   paymentIntentId: string | undefined,
+  chargeId: string | undefined,
   metadata: Record<string, string>,
 ) {
   try {
@@ -992,6 +1009,9 @@ async function handleStorageExtensionPaymentCompleted(
       const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
       const { getStripePaymentAmounts } = await import("../services/stripe-service");
 
+      // CRITICAL: Log payment intent for debugging
+      logger.info(`[Webhook] Creating payment_transactions for storage extension with paymentIntentId: ${paymentIntentId}, chargeId: ${chargeId}`);
+
       const ptRecord = await createPaymentTransaction({
         bookingId: storageBookingId,
         bookingType: "storage",
@@ -1002,7 +1022,8 @@ async function handleStorageExtensionPaymentCompleted(
         serviceFee: extensionServiceFeeCents,
         managerRevenue: managerReceivesCents || (extensionTotalPriceCents - extensionServiceFeeCents),
         currency: "CAD",
-        paymentIntentId,
+        paymentIntentId, // CRITICAL: Must be saved for Stripe fee syncing
+        chargeId, // Also save charge ID
         status: "succeeded",
         stripeStatus: "succeeded",
         metadata: {
@@ -1084,8 +1105,10 @@ async function handleStorageExtensionPaymentCompleted(
         // Get location notification email
         const [location] = await db
           .select({
+            id: locations.id,
             notificationEmail: locations.notificationEmail,
             name: locations.name,
+            managerId: locations.managerId,
           })
           .from(locations)
           .where(eq(locations.id, storageBooking.locationId))
@@ -1117,6 +1140,24 @@ async function handleStorageExtensionPaymentCompleted(
         });
         await sendEmail(chefEmail);
         logger.info(`[Webhook] Sent storage extension payment received email to chef: ${storageBooking.chefEmail}`);
+
+        // Send in-app notification to manager about pending extension
+        if (location.managerId) {
+          try {
+            await notificationService.notifyManagerStorageExtensionPending({
+              managerId: location.managerId,
+              locationId: location.id,
+              storageBookingId,
+              storageName: storageBooking.storageName,
+              extensionDays,
+              newEndDate: typeof newEndDate === 'string' ? newEndDate : new Date(newEndDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+              chefName: storageBooking.chefEmail,
+            });
+            logger.info(`[Webhook] Created in-app notification for manager about storage extension`);
+          } catch (notifError) {
+            logger.error(`[Webhook] Error creating storage extension in-app notification:`, notifError);
+          }
+        }
       }
     } catch (emailError) {
       logger.error(`[Webhook] Error sending storage extension notification emails:`, emailError as any);
@@ -1319,7 +1360,7 @@ async function handlePaymentIntentSucceeded(
       `[Webhook] Updated booking payment status to 'paid' for PaymentIntent ${paymentIntent.id}`,
     );
 
-    // Create in-app notification for payment received
+    // Create in-app notification and send email for payment received
     try {
       // Find the booking to get manager info
       const [booking] = await db
@@ -1328,6 +1369,9 @@ async function handlePaymentIntentSucceeded(
           kitchenId: kitchenBookings.kitchenId,
           chefId: kitchenBookings.chefId,
           totalPrice: kitchenBookings.totalPrice,
+          bookingDate: kitchenBookings.bookingDate,
+          startTime: kitchenBookings.startTime,
+          endTime: kitchenBookings.endTime,
         })
         .from(kitchenBookings)
         .where(eq(kitchenBookings.paymentIntentId, paymentIntent.id))
@@ -1346,7 +1390,12 @@ async function handlePaymentIntentSucceeded(
 
         if (kitchen) {
           const [location] = await db
-            .select({ id: locations.id, managerId: locations.managerId })
+            .select({ 
+              id: locations.id, 
+              managerId: locations.managerId,
+              notificationEmail: locations.notificationEmail,
+              name: locations.name,
+            })
             .from(locations)
             .where(eq(locations.id, kitchen.locationId))
             .limit(1);
@@ -1358,15 +1407,43 @@ async function handlePaymentIntentSucceeded(
               .where(eq(users.id, booking.chefId as number))
               .limit(1);
 
+            const chefName = chef?.username || "Chef";
+
+            // Create in-app notification
             await notificationService.notifyPaymentReceived({
               managerId: location.managerId,
               locationId: location.id,
               bookingId: booking.id,
               amount: paymentIntent.amount,
               currency: paymentIntent.currency.toUpperCase(),
-              chefName: chef?.username || "Chef",
+              chefName,
               kitchenName: kitchen.name,
             });
+
+            // Send email to manager
+            if (location.notificationEmail) {
+              try {
+                const { sendEmail, generateBookingPaymentReceivedEmail } = await import("../email");
+                const paymentEmail = generateBookingPaymentReceivedEmail({
+                  managerEmail: location.notificationEmail,
+                  chefName,
+                  kitchenName: kitchen.name,
+                  bookingDate: booking.bookingDate,
+                  startTime: booking.startTime,
+                  endTime: booking.endTime,
+                  amountCents: paymentIntent.amount,
+                  currency: paymentIntent.currency.toUpperCase(),
+                  bookingId: booking.id,
+                  locationName: location.name,
+                });
+                await sendEmail(paymentEmail, {
+                  trackingId: `booking_payment_received_${booking.id}_${Date.now()}`
+                });
+                logger.info(`[Webhook] Sent payment received email to manager: ${location.notificationEmail}`);
+              } catch (emailError) {
+                logger.error(`[Webhook] Error sending payment received email:`, emailError);
+              }
+            }
           }
         }
       }
@@ -1887,6 +1964,202 @@ async function handleAccountUpdated(
       `[Webhook] Error handling account.updated for ${account.id}:`,
       error,
     );
+  }
+}
+
+/**
+ * Handle overstay penalty payment completion
+ */
+async function handleOverstayPenaltyPaymentCompleted(
+  sessionId: string,
+  paymentIntentId: string | undefined,
+  chargeId: string | undefined,
+  metadata: Record<string, string>,
+  paymentStatus: string,
+) {
+  try {
+    const overstayRecordId = parseInt(metadata.overstayRecordId);
+    const chefId = parseInt(metadata.chefId);
+    const storageBookingId = parseInt(metadata.storageBookingId);
+
+    if (isNaN(overstayRecordId)) {
+      logger.error(`[Webhook] Invalid overstayRecordId in metadata:`, metadata);
+      return;
+    }
+
+    // Only process if payment is confirmed
+    if (paymentStatus !== "paid") {
+      logger.info(`[Webhook] Overstay penalty payment not yet confirmed for session ${sessionId}, status: ${paymentStatus}`);
+      return;
+    }
+
+    // Get the overstay record to get penalty amount and manager info
+    const { storageOverstayRecords, storageOverstayHistory, storageBookings, storageListings, kitchens, locations } = await import("@shared/schema");
+    
+    // Use separate queries to avoid Drizzle join issues
+    const [overstayRecord] = await db
+      .select()
+      .from(storageOverstayRecords)
+      .where(eq(storageOverstayRecords.id, overstayRecordId))
+      .limit(1);
+
+    if (!overstayRecord) {
+      logger.error(`[Webhook] Overstay record ${overstayRecordId} not found`);
+      return;
+    }
+
+    // Get manager ID through the booking chain
+    let managerId: number | null = null;
+    if (metadata.managerId) {
+      managerId = parseInt(metadata.managerId) || null;
+    } else {
+      // Fallback: look up through booking chain
+      const [booking] = await db
+        .select()
+        .from(storageBookings)
+        .where(eq(storageBookings.id, overstayRecord.storageBookingId))
+        .limit(1);
+      
+      if (booking) {
+        const [listing] = await db
+          .select()
+          .from(storageListings)
+          .where(eq(storageListings.id, booking.storageListingId))
+          .limit(1);
+        
+        if (listing?.kitchenId) {
+          const [kitchen] = await db
+            .select()
+            .from(kitchens)
+            .where(eq(kitchens.id, listing.kitchenId))
+            .limit(1);
+          
+          if (kitchen?.locationId) {
+            const [location] = await db
+              .select()
+              .from(locations)
+              .where(eq(locations.id, kitchen.locationId))
+              .limit(1);
+            managerId = location?.managerId || null;
+          }
+        }
+      }
+    }
+
+    const penaltyAmountCents = overstayRecord.finalPenaltyCents || overstayRecord.calculatedPenaltyCents || 0;
+
+    // Update the overstay record to charge_succeeded
+    await db
+      .update(storageOverstayRecords)
+      .set({
+        status: "charge_succeeded",
+        stripePaymentIntentId: paymentIntentId || null,
+        stripeChargeId: chargeId || null,
+        chargeSucceededAt: new Date(),
+        resolvedAt: new Date(),
+        resolutionType: "paid",
+        updatedAt: new Date(),
+      })
+      .where(eq(storageOverstayRecords.id, overstayRecordId));
+
+    // Create history entry
+    await db
+      .insert(storageOverstayHistory)
+      .values({
+        overstayRecordId,
+        previousStatus: "charge_pending",
+        newStatus: "charge_succeeded",
+        eventType: "charge_attempt",
+        eventSource: "stripe_webhook",
+        description: `Chef paid penalty via Stripe Checkout. Session: ${sessionId}`,
+        metadata: {
+          sessionId,
+          paymentIntentId,
+          chargeId,
+          chefId,
+        },
+      });
+
+    // Create payment_transactions record so it shows in manager payments view
+    try {
+      const { createPaymentTransaction, updatePaymentTransaction } = await import("../services/payment-transactions-service");
+      const { getStripePaymentAmounts } = await import("../services/stripe-service");
+      
+      const ptRecord = await createPaymentTransaction({
+        bookingId: isNaN(storageBookingId) ? overstayRecordId : storageBookingId,
+        bookingType: "storage", // Overstay penalties are related to storage bookings
+        chefId: isNaN(chefId) ? null : chefId,
+        managerId: managerId || null,
+        amount: penaltyAmountCents,
+        baseAmount: penaltyAmountCents,
+        serviceFee: 0, // No service fee on penalties - full amount goes to manager
+        managerRevenue: penaltyAmountCents,
+        currency: "CAD",
+        paymentIntentId,
+        status: "succeeded",
+        stripeStatus: "succeeded",
+        metadata: {
+          checkout_session_id: sessionId,
+          type: "overstay_penalty",
+          overstay_record_id: overstayRecordId.toString(),
+          storage_booking_id: storageBookingId?.toString() || "",
+          charge_id: chargeId || "",
+        },
+      }, db);
+
+      // Fetch and sync actual Stripe fees
+      if (ptRecord && paymentIntentId) {
+        // Get manager's Stripe Connect account for fee lookup
+        let managerConnectAccountId: string | undefined;
+        if (managerId) {
+          try {
+            const [manager] = await db
+              .select({ stripeConnectAccountId: users.stripeConnectAccountId })
+              .from(users)
+              .where(eq(users.id, managerId))
+              .limit(1);
+            if (manager?.stripeConnectAccountId) {
+              managerConnectAccountId = manager.stripeConnectAccountId;
+            }
+          } catch {
+            logger.warn(`[Webhook] Could not fetch manager Connect account for overstay penalty`);
+          }
+        }
+
+        const stripeAmounts = await getStripePaymentAmounts(paymentIntentId, managerConnectAccountId);
+        if (stripeAmounts) {
+          await updatePaymentTransaction(ptRecord.id, {
+            chargeId,
+            paidAt: new Date(),
+            lastSyncedAt: new Date(),
+            stripeAmount: stripeAmounts.stripeAmount,
+            stripeNetAmount: stripeAmounts.stripeNetAmount,
+            stripeProcessingFee: stripeAmounts.stripeProcessingFee,
+            stripePlatformFee: stripeAmounts.stripePlatformFee,
+          }, db);
+          logger.info(`[Webhook] Synced Stripe amounts for overstay penalty ${overstayRecordId}:`, {
+            amount: `$${(stripeAmounts.stripeAmount / 100).toFixed(2)}`,
+            processingFee: `$${(stripeAmounts.stripeProcessingFee / 100).toFixed(2)}`,
+          });
+        }
+      }
+
+      logger.info(`[Webhook] Created payment_transactions record for overstay penalty ${overstayRecordId}`);
+    } catch (ptError) {
+      logger.error(`[Webhook] Failed to create payment_transactions for overstay penalty:`, ptError);
+    }
+
+    logger.info(`[Webhook] ✅ Overstay penalty payment completed`, {
+      overstayRecordId,
+      chefId,
+      sessionId,
+      paymentIntentId,
+      chargeId,
+      penaltyAmountCents,
+    });
+
+  } catch (error) {
+    logger.error(`[Webhook] Error handling overstay penalty payment:`, error);
   }
 }
 

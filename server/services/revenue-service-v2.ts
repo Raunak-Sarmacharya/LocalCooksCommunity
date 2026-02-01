@@ -51,21 +51,16 @@ export async function getRevenueMetricsFromTransactions(
       throw new Error('payment_transactions table does not exist');
     }
 
-    // Check if there are any transactions for this manager (including NULL manager_id resolved through locations)
-    // Explicitly creating SQL chunks for managerId to ensure it's bound correctly
+    // Check if there are any transactions for this manager
+    // Use manager_id directly - works for all booking types
     const managerIdParam = sql`${managerId}`;
     
     const countCheck = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM payment_transactions pt
-      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
-      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
-      LEFT JOIN locations l ON k.location_id = l.id
-      WHERE (
-        pt.manager_id = ${managerIdParam} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
-      )
-        AND pt.booking_type IN ('kitchen', 'bundle')
+      WHERE pt.manager_id = ${managerIdParam}
+        AND pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')
+        AND (pt.status = 'succeeded' OR pt.status = 'processing')
     `);
 
     const transactionCount = parseInt(countCheck.rows[0]?.count || '0');
@@ -111,31 +106,21 @@ export async function getRevenueMetricsFromTransactions(
       throw new Error('Incomplete payment_transactions coverage');
     }
 
-    // Prepare filter conditions
-    const whereConditions = [sql`
-      (
-        pt.manager_id = ${managerIdParam} 
-        OR (pt.manager_id IS NULL AND l.manager_id = ${managerIdParam})
-      )
-    `];
-    whereConditions.push(sql`(pt.status = 'succeeded' OR pt.status = 'processing')`);
-    whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle')`);
-
-    if (locationId) {
-      whereConditions.push(sql`l.id = ${locationId}`);
-    }
+    // Simplified WHERE clause - use manager_id directly from payment_transactions
+    // This works for all booking types (kitchen, storage, equipment, overstay penalties)
+    const simpleWhereConditions = [
+      sql`pt.manager_id = ${managerIdParam}`,
+      sql`(pt.status = 'succeeded' OR pt.status = 'processing')`,
+      sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`
+    ];
 
     // Add date filtering if provided
-    // For succeeded transactions: use paid_at date if available, otherwise use created_at (when payment was captured)
-    // For processing transactions: use created_at date (when booking was made)
     if (startDate || endDate) {
       const start = startDate ? (typeof startDate === 'string' ? startDate : startDate.toISOString().split('T')[0]) : null;
       const end = endDate ? (typeof endDate === 'string' ? endDate : endDate.toISOString().split('T')[0]) : null;
 
-      console.log('[Revenue Service V2] Applying date filter:', { startDate: start, endDate: end, managerId });
-
       if (start && end) {
-        whereConditions.push(sql`
+        simpleWhereConditions.push(sql`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date AND DATE(pt.paid_at) <= ${end}::date)
@@ -145,7 +130,7 @@ export async function getRevenueMetricsFromTransactions(
           )
         `);
       } else if (start) {
-        whereConditions.push(sql`
+        simpleWhereConditions.push(sql`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) >= ${start}::date)
@@ -155,7 +140,7 @@ export async function getRevenueMetricsFromTransactions(
           )
         `);
       } else if (end) {
-        whereConditions.push(sql`
+        simpleWhereConditions.push(sql`
           (
             (pt.status = 'succeeded' AND (
               (pt.paid_at IS NOT NULL AND DATE(pt.paid_at) <= ${end}::date)
@@ -168,22 +153,19 @@ export async function getRevenueMetricsFromTransactions(
     }
 
     // Exclude kitchen transactions that are part of a bundle
-    whereConditions.push(sql`
+    simpleWhereConditions.push(sql`
       NOT (
         pt.booking_type = 'kitchen' 
         AND EXISTS (
           SELECT 1 FROM payment_transactions pt2
-          LEFT JOIN kitchen_bookings kb2 ON pt2.booking_id = kb2.id AND pt2.booking_type IN ('kitchen', 'bundle')
-          LEFT JOIN kitchens k2 ON kb2.kitchen_id = k2.id
-          LEFT JOIN locations l2 ON k2.location_id = l2.id
           WHERE pt2.booking_id = pt.booking_id
             AND pt2.booking_type = 'bundle'
-            AND (pt2.manager_id = ${managerId} OR (pt2.manager_id IS NULL AND l2.manager_id = ${managerId}))
+            AND pt2.manager_id = pt.manager_id
         )
       )
     `);
 
-    const whereClause = sql`WHERE ${sql.join(whereConditions, sql` AND `)}`;
+    const simpleWhereClause = sql`WHERE ${sql.join(simpleWhereConditions, sql` AND `)}`;
 
     const result = await db.execute(sql`
       SELECT 
@@ -201,22 +183,20 @@ export async function getRevenueMetricsFromTransactions(
         )::bigint as platform_fee,
         COALESCE(SUM(pt.manager_revenue::numeric), 0)::bigint as manager_revenue,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.manager_revenue::numeric ELSE 0 END), 0)::bigint as deposited_manager_revenue,
-        COUNT(DISTINCT pt.booking_id) as booking_count,
-        COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN pt.booking_id END) as paid_booking_count,
-        COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN pt.booking_id END) as processing_booking_count,
+        COUNT(DISTINCT CONCAT(pt.booking_id, '-', pt.booking_type)) as booking_count,
+        COUNT(DISTINCT CASE WHEN pt.status = 'succeeded' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as paid_booking_count,
+        COUNT(DISTINCT CASE WHEN pt.status = 'processing' THEN CONCAT(pt.booking_id, '-', pt.booking_type) END) as processing_booking_count,
         COALESCE(SUM(CASE WHEN pt.status = 'succeeded' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as completed_payments,
         COALESCE(SUM(CASE WHEN pt.status = 'processing' THEN pt.amount::numeric ELSE 0 END), 0)::bigint as processing_payments,
         COALESCE(SUM(CASE WHEN pt.status IN ('refunded', 'partially_refunded') THEN pt.refund_amount::numeric ELSE 0 END), 0)::bigint as refunded_amount,
         COALESCE(AVG(pt.amount::numeric), 0)::numeric as avg_booking_value,
         -- Actual Stripe fees from database (fetched from Stripe Balance Transaction API)
-        COALESCE(SUM(CASE WHEN pt.stripe_fee::numeric > 0 THEN pt.stripe_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
+        -- Use stripe_processing_fee column which is populated by webhook from Stripe BalanceTransaction
+        COALESCE(SUM(CASE WHEN pt.stripe_processing_fee::numeric > 0 THEN pt.stripe_processing_fee::numeric ELSE 0 END), 0)::bigint as actual_stripe_fee,
         -- Tax amount from database
         COALESCE(SUM(CASE WHEN pt.tax_amount::numeric > 0 THEN pt.tax_amount::numeric ELSE 0 END), 0)::bigint as actual_tax_amount
       FROM payment_transactions pt
-      LEFT JOIN kitchen_bookings kb ON pt.booking_id = kb.id AND pt.booking_type IN ('kitchen', 'bundle')
-      LEFT JOIN kitchens k ON kb.kitchen_id = k.id
-      LEFT JOIN locations l ON k.location_id = l.id
-      ${whereClause}
+      ${simpleWhereClause}
     `);
 
     const row: any = result.rows[0] || {};
@@ -272,8 +252,9 @@ export async function getRevenueMetricsFromTransactions(
       ? actualStripeFee 
       : Math.round((completedPayments * 0.029) + (paidBookingCount * 30));
     
-    // Tax amount - use actual from database if available, otherwise use platform fee
-    const taxAmount = actualTaxAmount > 0 ? actualTaxAmount : platformFee;
+    // Tax amount - use actual from database (only show if explicitly set, don't fall back to platformFee)
+    // platformFee is the service fee, NOT tax - they are different concepts
+    const taxAmount = actualTaxAmount;
     
     // Net revenue = total - tax - stripe fees
     const netRevenue = totalRevenue - taxAmount - stripeFee;
@@ -339,7 +320,7 @@ export async function getRevenueByLocationFromTransactions(
 
     // Prepare filter conditions
     const whereConditions = [sql`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle')`);
+    whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
     whereConditions.push(sql`(pt.status = 'succeeded' OR pt.status = 'processing')`);
 
     // Exclude kitchen transactions that are part of a bundle
@@ -455,7 +436,7 @@ export async function getRevenueByDateFromTransactions(
 
     // Build conditions including dynamic dates
     const whereConditions = [sql`pt.manager_id = ${managerId}`];
-    whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle')`);
+    whereConditions.push(sql`pt.booking_type IN ('kitchen', 'bundle', 'storage', 'equipment')`);
 
     // Exclude kitchen transactions that are part of a bundle
     whereConditions.push(sql`

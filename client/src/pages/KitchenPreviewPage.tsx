@@ -20,7 +20,7 @@ import useEmblaCarousel from 'embla-carousel-react';
 import kitchenTableIcon from "@assets/kitchen-table.png";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
-import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import ChefDashboardLayout from "@/layouts/ChefDashboardLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -56,15 +56,15 @@ const fadeInUp = {
   }
 };
 
-// Component for individual carousel image with presigned URL
+// Component for individual carousel image with R2 proxy URL
 function CarouselImage({ imageUrl, kitchenName, index }: { imageUrl: string; kitchenName: string; index: number }) {
-  const presignedUrl = usePresignedImageUrl(imageUrl);
+  const proxyUrl = getR2ProxyUrl(imageUrl);
 
   return (
     <div className="flex-[0_0_100%] min-w-0">
       <div className="aspect-[16/9] bg-gray-100">
         <img
-          src={presignedUrl || imageUrl}
+          src={proxyUrl}
           alt={`${kitchenName} - Image ${index + 1}`}
           className="w-full h-full object-cover"
           onError={(e) => {

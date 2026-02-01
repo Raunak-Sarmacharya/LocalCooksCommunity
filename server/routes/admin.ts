@@ -18,6 +18,8 @@ import {
     generateManagerCredentialsEmail,
     generateKitchenSettingsChangeEmail,
     generatePromoCodeEmail,
+    generateKitchenLicenseApprovedEmail,
+    generateKitchenLicenseRejectedEmail,
     sendEmail
 } from "../email";
 import { normalizePhoneForStorage } from "../phone-utils";
@@ -841,6 +843,60 @@ router.put("/locations/:id/kitchen-license", requireFirebaseAuthWithUser, requir
         await db.update(locations)
             .set(updateData)
             .where(eq(locations.id, locationId));
+
+        // Send email notification to manager about license status change
+        try {
+            // Get location and manager details
+            const [location] = await db
+                .select({
+                    name: locations.name,
+                    managerId: locations.managerId,
+                    notificationEmail: locations.notificationEmail,
+                })
+                .from(locations)
+                .where(eq(locations.id, locationId))
+                .limit(1);
+
+            if (location && location.managerId) {
+                // Get manager details
+                const [manager] = await db
+                    .select({ username: users.username })
+                    .from(users)
+                    .where(eq(users.id, location.managerId))
+                    .limit(1);
+
+                const managerEmail = location.notificationEmail || manager?.username;
+                const managerName = manager?.username || 'Manager';
+
+                if (managerEmail) {
+                    if (status === 'approved') {
+                        const approvalEmail = generateKitchenLicenseApprovedEmail({
+                            managerEmail,
+                            managerName,
+                            locationName: location.name || 'Kitchen Location',
+                            approvedAt: new Date()
+                        });
+                        await sendEmail(approvalEmail, {
+                            trackingId: `kitchen_license_approved_${locationId}_${Date.now()}`
+                        });
+                        console.log(`✅ Sent kitchen license approval email to manager: ${managerEmail}`);
+                    } else if (status === 'rejected') {
+                        const rejectionEmail = generateKitchenLicenseRejectedEmail({
+                            managerEmail,
+                            managerName,
+                            locationName: location.name || 'Kitchen Location',
+                            feedback: feedback || undefined
+                        });
+                        await sendEmail(rejectionEmail, {
+                            trackingId: `kitchen_license_rejected_${locationId}_${Date.now()}`
+                        });
+                        console.log(`✅ Sent kitchen license rejection email to manager: ${managerEmail}`);
+                    }
+                }
+            }
+        } catch (emailError) {
+            console.error("Error sending kitchen license status email:", emailError);
+        }
 
         res.json({ message: "License status updated successfully" });
     } catch (error: any) {

@@ -130,6 +130,28 @@ export default function StripeConnectSetup() {
     };
   }, [queryClient, toast, firebaseUser?.uid]);
 
+  // [INDUSTRY STANDARD] Auto-refresh status when user returns to tab
+  // This handles the case where user completes Stripe in another tab and comes back
+  useEffect(() => {
+    let lastHiddenTime = 0;
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        lastHiddenTime = Date.now();
+      } else {
+        // Only refresh if tab was hidden for at least 3 seconds (user likely went to Stripe)
+        const wasHiddenLongEnough = Date.now() - lastHiddenTime > 3000;
+        if (wasHiddenLongEnough && hasStripeAccount && !isOnboardingComplete) {
+          console.log('[Stripe] Tab visible again, checking status...');
+          queryClient.invalidateQueries({ queryKey: ['/api/manager/stripe-connect/status'] });
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [queryClient, hasStripeAccount, isOnboardingComplete]);
+
   // Invalidate user profile query after creating account to refresh the UI
   const handleAccountCreated = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });

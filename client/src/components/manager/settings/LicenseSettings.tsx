@@ -23,6 +23,8 @@ interface Location {
   kitchenLicenseExpiry?: string;
   kitchenLicenseFeedback?: string;
   kitchenLicenseUploadedAt?: string;
+  kitchenTermsUrl?: string;
+  kitchenTermsUploadedAt?: string;
 }
 
 interface LicenseSettingsProps {
@@ -53,6 +55,10 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
   const [licenseFile, setLicenseFile] = useState<File | null>(null);
   const [licenseExpiryDate, setLicenseExpiryDate] = useState<string>(location.kitchenLicenseExpiry || '');
   const [isUploadingLicense, setIsUploadingLicense] = useState(false);
+  
+  // Terms upload state
+  const [termsFile, setTermsFile] = useState<File | null>(null);
+  const [isUploadingTerms, setIsUploadingTerms] = useState(false);
 
   const getDocumentFilename = (url?: string): string => {
     if (!url) return 'No document';
@@ -180,6 +186,77 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
       throw error;
     } finally {
       setIsUploadingLicense(false);
+    }
+  };
+
+  const handleTermsUpload = async (file: File) => {
+    setIsUploadingTerms(true);
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await currentFirebaseUser.getIdToken();
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/files/upload-file', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload terms');
+      }
+
+      const result = await response.json();
+      const termsUrl = result.url;
+
+      const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          kitchenTermsUrl: termsUrl,
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update terms');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+      queryClient.invalidateQueries({ queryKey: ['locationDetails', location.id] });
+      onRefresh();
+
+      toast({
+        title: "Terms Uploaded",
+        description: "Your kitchen terms and policies have been updated.",
+      });
+
+      setTermsFile(null);
+      return termsUrl;
+    } catch (error: any) {
+      console.error('Terms upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload terms",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsUploadingTerms(false);
     }
   };
 
@@ -371,9 +448,123 @@ export default function LicenseSettings({ location, onRefresh }: LicenseSettings
           {location.kitchenLicenseStatus === 'pending' && (
             <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <Clock className="h-4 w-4 text-amber-600" />
-              <span className="text-sm text-amber-700">Your license is pending admin review. You'll be notified once it's approved.</span>
+              <span className="text-sm text-amber-700">Your license is pending admin review. You&apos;ll be notified once it&apos;s approved.</span>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Terms & Policies Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="h-5 w-5 text-slate-500" />
+              <div>
+                <CardTitle className="text-lg">Kitchen Terms & Policies</CardTitle>
+                <CardDescription>Terms and policies that chefs must agree to before booking</CardDescription>
+              </div>
+            </div>
+            {location.kitchenTermsUrl ? (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Uploaded</Badge>
+            ) : (
+              <Badge variant="outline" className="bg-gray-50 text-gray-600">Not Uploaded</Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Current Terms Info */}
+          {location.kitchenTermsUrl && (
+            <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-slate-500" />
+                  <span className="text-sm font-medium">{getDocumentFilename(location.kitchenTermsUrl)}</span>
+                </div>
+                <AuthenticatedDocumentLink
+                  url={location.kitchenTermsUrl}
+                  className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                >
+                  View Document <ExternalLink className="h-3 w-3" />
+                </AuthenticatedDocumentLink>
+              </div>
+              
+              {location.kitchenTermsUploadedAt && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-600">Uploaded:</span>
+                  <span className="text-slate-900">
+                    {new Date(location.kitchenTermsUploadedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Upload Section for Terms */}
+          <div className="space-y-4">
+            <div className={location.kitchenTermsUrl ? 'border-t pt-4' : ''}>
+              <h4 className="font-medium text-slate-900 mb-3">
+                {location.kitchenTermsUrl ? 'Upload New Terms' : 'Upload Terms & Policies'}
+              </h4>
+              
+              <div className="space-y-4">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setTermsFile(file);
+                      }
+                    }}
+                    className="hidden"
+                    id="terms-upload"
+                    disabled={isUploadingTerms}
+                  />
+                  <label
+                    htmlFor="terms-upload"
+                    className={`flex flex-col items-center justify-center cursor-pointer ${isUploadingTerms ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                    <span className="text-sm font-medium text-gray-700 mb-1">
+                      {termsFile ? termsFile.name : 'Click to upload terms document'}
+                    </span>
+                    <span className="text-xs text-gray-500">PDF, DOC, JPG or PNG (max 10MB)</span>
+                  </label>
+                </div>
+
+                {termsFile && (
+                  <Button
+                    onClick={() => handleTermsUpload(termsFile)}
+                    disabled={isUploadingTerms}
+                    className="w-full"
+                  >
+                    {isUploadingTerms ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Terms
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Info about terms */}
+          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <AlertCircle className="h-4 w-4 text-blue-600 mt-0.5" />
+            <span className="text-sm text-blue-700">
+              These terms will be shown to chefs when they apply to book your kitchen. 
+              Include your house rules, cancellation policies, and any other important information.
+            </span>
+          </div>
         </CardContent>
       </Card>
     </div>

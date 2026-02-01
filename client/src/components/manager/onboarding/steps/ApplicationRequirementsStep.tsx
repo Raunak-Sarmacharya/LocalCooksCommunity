@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { CheckCircle, ClipboardList } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ApplicationRequirementsWizard } from "@/components/manager/requirements";
 import { useManagerOnboarding } from "../ManagerOnboardingContext";
 import { OnboardingNavigationFooter } from "../OnboardingNavigationFooter";
+import type { WizardStep } from "@/components/manager/requirements/types";
+
+const WIZARD_STEP_ORDER: WizardStep[] = ['step1', 'step2', 'facility'];
 
 export default function ApplicationRequirementsStep() {
   const {
@@ -15,15 +19,52 @@ export default function ApplicationRequirementsStep() {
     skipCurrentStep
   } = useManagerOnboarding();
 
+  // Track the current wizard tab
+  const [currentWizardStep, setCurrentWizardStep] = useState<WizardStep>('step1');
+
   if (!selectedLocationId) return null;
 
-  const handleSaveAndContinue = async () => {
+  const currentStepIndex = WIZARD_STEP_ORDER.indexOf(currentWizardStep);
+  const isLastWizardStep = currentStepIndex === WIZARD_STEP_ORDER.length - 1;
+  const isFirstWizardStep = currentStepIndex === 0;
+
+  const handleContinue = async () => {
     if (refreshRequirements) {
       await refreshRequirements();
     }
-    setTimeout(() => {
-      handleNext();
-    }, 100);
+    
+    if (isLastWizardStep) {
+      // On last wizard tab, proceed to next onboarding step
+      setTimeout(() => {
+        handleNext();
+      }, 100);
+    } else {
+      // Move to next wizard tab
+      const nextStep = WIZARD_STEP_ORDER[currentStepIndex + 1];
+      setCurrentWizardStep(nextStep);
+    }
+  };
+
+  const handleBackNavigation = () => {
+    if (isFirstWizardStep) {
+      // On first wizard tab, go back to previous onboarding step
+      handleBack();
+    } else {
+      // Move to previous wizard tab
+      const prevStep = WIZARD_STEP_ORDER[currentStepIndex - 1];
+      setCurrentWizardStep(prevStep);
+    }
+  };
+
+  const handleWizardStepChange = (step: WizardStep, _isLastStep: boolean) => {
+    setCurrentWizardStep(step);
+  };
+
+  // Determine button labels based on wizard position
+  const getNextLabel = () => {
+    if (!hasRequirements) return "Save & Continue";
+    if (isLastWizardStep) return "Continue";
+    return "Next Tab";
   };
 
   return (
@@ -51,15 +92,17 @@ export default function ApplicationRequirementsStep() {
         onSaveSuccess={refreshRequirements}
         compact
         hideNavigation
+        activeStepOverride={currentWizardStep}
+        onStepChange={handleWizardStepChange}
       />
 
       <OnboardingNavigationFooter
-        onNext={hasRequirements ? handleNext : handleSaveAndContinue}
-        onBack={handleBack}
+        onNext={handleContinue}
+        onBack={handleBackNavigation}
         onSkip={skipCurrentStep}
-        showBack={!isFirstStep}
+        showBack={!isFirstStep || !isFirstWizardStep}
         showSkip={true}
-        nextLabel={hasRequirements ? "Continue" : "Save & Continue"}
+        nextLabel={getNextLabel()}
         isNextDisabled={!hasRequirements}
       />
     </div>

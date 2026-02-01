@@ -49,7 +49,7 @@ export class ManagerService implements IManagerService {
             let totalPriceCents = 0;
             if (row.totalPrice != null) {
                 totalPriceCents = parseInt(String(row.totalPrice));
-            } else if (row.hourlyRate != null && row.durationHours != null) {
+            } else if ('hourlyRate' in row && row.hourlyRate != null && 'durationHours' in row && row.durationHours != null) {
                 totalPriceCents = Math.round(parseFloat(String(row.hourlyRate)) * parseFloat(String(row.durationHours)));
             }
 

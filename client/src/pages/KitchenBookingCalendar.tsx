@@ -10,17 +10,17 @@ import { StorageSelection } from "@/components/booking/StorageSelection";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
 import { useLocation } from "wouter";
 import { useChefKitchenApplicationForLocation } from "@/hooks/use-chef-kitchen-applications";
-import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { useQuery } from "@tanstack/react-query";
 
-// Component for equipment image with presigned URL
+// Component for equipment image with R2 proxy URL
 function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
-  const presignedUrl = usePresignedImageUrl(imageUrl);
+  const proxyUrl = getR2ProxyUrl(imageUrl);
 
   return (
     <div className="flex-shrink-0">
       <img
-        src={presignedUrl || imageUrl}
+        src={proxyUrl}
         alt={alt}
         className="w-20 h-20 object-cover rounded-lg border border-gray-200"
         onError={(e) => {

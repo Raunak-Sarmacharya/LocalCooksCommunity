@@ -14,6 +14,9 @@ export interface Location {
   address: string;
   notificationEmail?: string;
   notificationPhone?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  preferredContactMethod?: "email" | "phone" | "both";
   kitchenLicenseUrl?: string;
   kitchenLicenseStatus?: string;
   kitchenLicenseApprovedBy?: number;

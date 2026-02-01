@@ -21,6 +21,7 @@ export interface CreatePaymentTransactionParams {
   managerRevenue: number; // Manager revenue in cents (baseAmount - serviceFee)
   currency?: string;
   paymentIntentId?: string;
+  chargeId?: string; // Stripe charge ID for fee syncing
   paymentMethodId?: string;
   status?: TransactionStatus;
   stripeStatus?: string;
@@ -97,6 +98,7 @@ export async function createPaymentTransaction(
     managerRevenue,
     currency = 'CAD',
     paymentIntentId,
+    chargeId,
     paymentMethodId,
     status = 'pending',
     stripeStatus,
@@ -120,6 +122,7 @@ export async function createPaymentTransaction(
       net_amount,
       currency,
       payment_intent_id,
+      charge_id,
       payment_method_id,
       status,
       stripe_status,
@@ -137,6 +140,7 @@ export async function createPaymentTransaction(
       ${netAmount.toString()},
       ${currency},
       ${paymentIntentId || null},
+      ${chargeId || null},
       ${paymentMethodId || null},
       ${status},
       ${stripeStatus || null},

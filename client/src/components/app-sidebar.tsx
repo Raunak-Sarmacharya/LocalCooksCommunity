@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+    AlertTriangle,
     Bell,
     Calendar,
     ChefHat,
@@ -187,6 +188,11 @@ const navData: { navMain: NavGroup[] } = {
                     title: "Payments",
                     url: "payments",
                     icon: CreditCard,
+                },
+                {
+                    title: "Overstay Penalties",
+                    url: "overstays",
+                    icon: AlertTriangle,
                 },
             ],
         },

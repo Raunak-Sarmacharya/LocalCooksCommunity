@@ -22,16 +22,22 @@ type SubdomainType = 'kitchen' | 'chef' | 'admin' | 'main';
  * getAppBaseUrl('kitchen') // => 'https://kitchen.localcooks.ca'
  * 
  * // In development:
- * getAppBaseUrl('kitchen') // => 'http://localhost:5173'
+ * getAppBaseUrl('kitchen') // => 'http://kitchen.localhost:5001'
  */
 export function getAppBaseUrl(subdomain: SubdomainType = 'main'): string {
     const isDevelopment = process.env.NODE_ENV === 'development';
 
     if (isDevelopment) {
-        // Development: Use localhost with Vite port
-        // Port 5173 is the Vite dev server default
-        const port = process.env.VITE_PORT || '5173';
-        return `http://localhost:${port}`;
+        // Development: Use subdomain-based localhost URLs
+        // Port 5001 is the dev server port for subdomain routing
+        const port = process.env.PORT || '5001';
+        
+        if (subdomain === 'main' || !subdomain) {
+            return `http://localhost:${port}`;
+        }
+        
+        // Use subdomain.localhost for proper subdomain routing in dev
+        return `http://${subdomain}.localhost:${port}`;
     }
 
     // Production: Use the configured base domain with subdomain prefix

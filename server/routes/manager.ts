@@ -2714,6 +2714,38 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
 
         console.log(`✅ Location ${locationId} updated successfully`);
 
+        // Send email to admin when manager uploads a new kitchen license
+        if (kitchenLicenseUrl && updates.kitchenLicenseStatus === 'pending') {
+            try {
+                const { generateKitchenLicenseSubmittedAdminEmail } = await import("../email");
+                
+                // Get admin emails
+                const admins = await db
+                    .select({ username: users.username })
+                    .from(users)
+                    .where(eq(users.role, 'admin'));
+                
+                for (const admin of admins) {
+                    if (admin.username) {
+                        const adminEmail = generateKitchenLicenseSubmittedAdminEmail({
+                            adminEmail: admin.username,
+                            managerName: user.username,
+                            managerEmail: user.username,
+                            locationName: (updated as any).name || 'Kitchen Location',
+                            locationId: locationId,
+                            submittedAt: new Date()
+                        });
+                        await sendEmail(adminEmail, {
+                            trackingId: `kitchen_license_submitted_${locationId}_${Date.now()}`
+                        });
+                    }
+                }
+                logger.info(`[Manager] Sent kitchen license submission notification to admins for location ${locationId}`);
+            } catch (emailError) {
+                logger.error("Error sending kitchen license submission email to admin:", emailError);
+            }
+        }
+
         // Map snake_case to camelCase for consistent API response
         const mappedLocation = {
             ...updated,
@@ -3051,6 +3083,21 @@ router.post("/storage-extensions/:id/approve", requireFirebaseAuthWithUser, requ
             logger.error("Error sending storage extension approval email:", emailError);
         }
 
+        // Send in-app notification to chef about approval
+        try {
+            if (extension.chefId) {
+                await notificationService.notifyChefStorageExtensionApproved({
+                    chefId: extension.chefId,
+                    storageBookingId: extension.storageBookingId,
+                    storageName: extension.storageName,
+                    extensionDays: extension.extensionDays,
+                    newEndDate: extension.newEndDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+                });
+            }
+        } catch (notifError) {
+            logger.error("Error sending storage extension approval in-app notification:", notifError);
+        }
+
         res.json({
             success: true,
             message: "Storage extension approved successfully",
@@ -3225,6 +3272,22 @@ router.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requi
             logger.error("Error sending storage extension rejection email:", emailError);
         }
 
+        // Send in-app notification to chef about rejection
+        try {
+            if (extension.chefId) {
+                await notificationService.notifyChefStorageExtensionRejected({
+                    chefId: extension.chefId,
+                    storageBookingId: extension.storageBookingId,
+                    storageName: (extension as any).storageName || 'Storage',
+                    extensionDays: (extension as any).extensionDays || 0,
+                    newEndDate: '',
+                    reason: reason || "Extension request declined by manager",
+                });
+            }
+        } catch (notifError) {
+            logger.error("Error sending storage extension rejection in-app notification:", notifError);
+        }
+
         res.json({
             success: true,
             message: refundResult
@@ -3258,11 +3321,12 @@ import {
 
 /**
  * GET /manager/overstays
- * Get all pending overstay records for manager's locations
+ * Get all overstay records (pending and past) for manager's locations
  */
 router.get("/overstays", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
+        const includeAll = req.query.includeAll === 'true';
 
         // Get manager's location IDs
         const managerLocations = await db
@@ -3273,18 +3337,29 @@ router.get("/overstays", requireFirebaseAuthWithUser, requireManager, async (req
         const locationIds = managerLocations.map(l => l.id);
 
         if (locationIds.length === 0) {
-            return res.json({ overstays: [], stats: null });
+            return res.json({ overstays: [], pastOverstays: [], stats: null });
         }
 
         // Get pending overstays for all manager's locations
-        const allOverstays = await overstayPenaltyService.getPendingOverstayReviews();
-        const filteredOverstays = allOverstays.filter(o => locationIds.includes(o.locationId));
+        const pendingOverstays = await overstayPenaltyService.getPendingOverstayReviews();
+        const filteredPending = pendingOverstays.filter(o => locationIds.includes(o.locationId));
+
+        // Get all overstays (including past/resolved) if requested
+        let pastOverstays: typeof pendingOverstays = [];
+        if (includeAll) {
+            const allOverstays = await overstayPenaltyService.getAllOverstayRecords();
+            const filteredAll = allOverstays.filter(o => locationIds.includes(o.locationId));
+            // Past = all records that are not in pending statuses
+            const pendingStatuses = ['detected', 'grace_period', 'pending_review', 'charge_failed'];
+            pastOverstays = filteredAll.filter(o => !pendingStatuses.includes(o.status));
+        }
 
         // Get stats
         const stats = await overstayPenaltyService.getOverstayStats();
 
         res.json({
-            overstays: filteredOverstays,
+            overstays: filteredPending,
+            pastOverstays,
             stats,
         });
     } catch (error) {

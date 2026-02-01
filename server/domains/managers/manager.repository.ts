@@ -91,14 +91,83 @@ export class ManagerRepository implements IManagerRepository {
             .limit(limit)
             .offset(offset);
 
-        logger.info(`[ManagerRepository] Invoices query for manager ${managerId}: Found ${rows.length} invoices`);
+        logger.info(`[ManagerRepository] Kitchen invoices query for manager ${managerId}: Found ${rows.length} invoices`);
 
-        // Map to simpler response format if needed, but for repository, returning rows is fine.
-        // We will keep the mapping logic in the Service or here. 
-        // Let's return rows and processed by Service to match existing response structure.
+        // Also fetch storage transactions (storage bookings, extensions, overstay penalties)
+        const storageRows = await db.execute(sql`
+            SELECT 
+                pt.id as id,
+                sb.start_date as booking_date,
+                NULL as start_time,
+                NULL as end_time,
+                pt.amount as total_price,
+                pt.service_fee as service_fee,
+                pt.status as payment_status,
+                pt.payment_intent_id,
+                pt.currency,
+                k.name as kitchen_name,
+                sl.name as storage_name,
+                l.name as location_name,
+                u.username as chef_name,
+                u.username as chef_email,
+                pt.created_at,
+                pt.metadata,
+                'storage' as booking_type
+            FROM payment_transactions pt
+            JOIN storage_bookings sb ON pt.booking_id = sb.id
+            JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+            JOIN kitchens k ON sl.kitchen_id = k.id
+            JOIN locations l ON k.location_id = l.id
+            LEFT JOIN users u ON sb.chef_id = u.id
+            WHERE pt.manager_id = ${managerId}
+              AND pt.booking_type = 'storage'
+              AND pt.status = 'succeeded'
+            ORDER BY pt.created_at DESC
+            LIMIT ${limit}
+        `);
+
+        // Map storage rows to match kitchen invoice format
+        const storageInvoices = storageRows.rows.map((row: any) => {
+            const metadata = row.metadata || {};
+            const isOverstayPenalty = metadata.type === 'overstay_penalty';
+            const isStorageExtension = metadata.storage_extension_id != null;
+            
+            let description = row.storage_name || 'Storage';
+            if (isOverstayPenalty) {
+                description = `Overstay Penalty - ${row.storage_name || 'Storage'}`;
+            } else if (isStorageExtension) {
+                description = `Storage Extension - ${row.storage_name || 'Storage'}`;
+            }
+
+            return {
+                id: row.id,
+                bookingDate: row.booking_date,
+                startTime: row.start_time,
+                endTime: row.end_time,
+                totalPrice: row.total_price,
+                serviceFee: row.service_fee || 0,
+                paymentStatus: row.payment_status === 'succeeded' ? 'paid' : row.payment_status,
+                paymentIntentId: row.payment_intent_id,
+                currency: row.currency || 'CAD',
+                kitchenName: description,
+                locationName: row.location_name,
+                chefName: row.chef_name || 'Guest',
+                chefEmail: row.chef_email,
+                createdAt: row.created_at,
+                bookingType: isOverstayPenalty ? 'overstay_penalty' : (isStorageExtension ? 'storage_extension' : 'storage'),
+            };
+        });
+
+        // Combine and sort by created_at
+        const allInvoices = [...rows, ...storageInvoices].sort((a: any, b: any) => {
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        }).slice(0, limit);
+
+        logger.info(`[ManagerRepository] Total invoices for manager ${managerId}: ${allInvoices.length} (${rows.length} kitchen + ${storageInvoices.length} storage)`);
+
         return {
-            invoices: rows,
-            total: rows.length
+            invoices: allInvoices,
+            total: allInvoices.length
         };
     }
 

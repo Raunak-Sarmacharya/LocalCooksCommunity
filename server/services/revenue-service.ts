@@ -969,7 +969,111 @@ export async function getTransactionHistory(
       };
     });
 
-    let allTransactions = kitchenTransactions;
+    // Query for storage transactions (storage bookings, extensions, overstay penalties)
+    const storageResult = await db.execute(sql`
+      SELECT 
+        pt.id as transaction_id,
+        pt.booking_id,
+        pt.booking_type,
+        pt.amount as pt_amount,
+        pt.base_amount as pt_base_amount,
+        pt.service_fee as pt_service_fee,
+        pt.manager_revenue as pt_manager_revenue,
+        pt.refund_amount as pt_refund_amount,
+        pt.status as transaction_status,
+        pt.payment_intent_id as pt_payment_intent_id,
+        pt.currency as pt_currency,
+        pt.created_at,
+        pt.paid_at as pt_paid_at,
+        pt.metadata as pt_metadata,
+        -- Actual Stripe fee from payment_transactions (fetched from Stripe Balance Transaction API)
+        COALESCE(pt.stripe_processing_fee, 0)::bigint as actual_stripe_fee,
+        sb.start_date as booking_date,
+        sb.chef_id,
+        sl.name as storage_name,
+        k.name as kitchen_name,
+        l.id as location_id,
+        l.name as location_name,
+        u.username as chef_name,
+        u.username as chef_email
+      FROM payment_transactions pt
+      JOIN storage_bookings sb ON pt.booking_id = sb.id
+      JOIN storage_listings sl ON sb.storage_listing_id = sl.id
+      JOIN kitchens k ON sl.kitchen_id = k.id
+      JOIN locations l ON k.location_id = l.id
+      LEFT JOIN users u ON sb.chef_id = u.id
+      WHERE pt.manager_id = ${managerId}
+        AND pt.booking_type = 'storage'
+        AND (pt.status = 'succeeded' OR pt.status = 'processing')
+      ORDER BY pt.created_at DESC
+    `);
+
+    const storageTransactions = storageResult.rows.map((row: any) => {
+      const ptAmount = row.pt_amount != null ? parseInt(String(row.pt_amount)) : 0;
+      const ptServiceFee = row.pt_service_fee != null ? parseInt(String(row.pt_service_fee)) : 0;
+      const ptManagerRevenue = row.pt_manager_revenue != null ? parseInt(String(row.pt_manager_revenue)) : 0;
+      const ptRefundAmount = row.pt_refund_amount != null ? parseInt(String(row.pt_refund_amount)) : 0;
+      const actualStripeFee = row.actual_stripe_fee != null ? parseInt(String(row.actual_stripe_fee)) : 0;
+      
+      // Determine if this is an overstay penalty or storage extension
+      const metadata = row.pt_metadata || {};
+      const isOverstayPenalty = metadata.type === 'overstay_penalty';
+      const isStorageExtension = metadata.storage_extension_id != null;
+      
+      let description = row.storage_name || 'Storage';
+      if (isOverstayPenalty) {
+        description = `Overstay Penalty - ${row.storage_name || 'Storage'}`;
+      } else if (isStorageExtension) {
+        description = `Storage Extension - ${row.storage_name || 'Storage'}`;
+      }
+
+      const transactionId = row.transaction_id != null ? parseInt(String(row.transaction_id)) : null;
+      const bookingId = parseInt(String(row.booking_id));
+
+      // Stripe fee - use actual if available, otherwise estimate (2.9% + $0.30)
+      const estimatedStripeFee = Math.round((ptAmount * 0.029) + 30);
+      const stripeFee = actualStripeFee > 0 ? actualStripeFee : estimatedStripeFee;
+      
+      // Net revenue = total - stripe fees (storage doesn't have tax currently)
+      const netRevenue = ptAmount - stripeFee;
+
+      return {
+        id: bookingId,
+        transactionId,
+        bookingId,
+        bookingType: isOverstayPenalty ? 'overstay_penalty' : (isStorageExtension ? 'storage_extension' : 'storage'),
+        bookingDate: row.booking_date,
+        startTime: null,
+        endTime: null,
+        chefId: row.chef_id != null ? parseInt(String(row.chef_id)) : null,
+        totalPrice: ptAmount,
+        serviceFee: ptServiceFee,
+        platformFee: ptServiceFee,
+        taxAmount: 0,
+        taxRatePercent: 0,
+        stripeFee: stripeFee, // Actual Stripe processing fee (from Stripe API or estimated)
+        managerRevenue: ptManagerRevenue || ptAmount,
+        netRevenue: netRevenue,
+        paymentStatus: mapPaymentStatus(row.transaction_status),
+        paymentIntentId: row.pt_payment_intent_id,
+        status: 'confirmed',
+        currency: String(row.pt_currency || 'CAD').toUpperCase(),
+        kitchenId: null,
+        kitchenName: row.kitchen_name,
+        storageName: row.storage_name,
+        description: description,
+        locationId: parseInt(String(row.location_id)),
+        locationName: row.location_name,
+        chefName: row.chef_name || 'Guest',
+        chefEmail: row.chef_email,
+        createdAt: row.created_at,
+        paidAt: row.pt_paid_at || null,
+        refundAmount: ptRefundAmount,
+        refundableAmount: Math.max(0, ptAmount - ptRefundAmount),
+      };
+    });
+
+    let allTransactions = [...kitchenTransactions, ...storageTransactions];
 
     if (paymentStatus && paymentStatus !== 'all') {
       allTransactions = allTransactions.filter((t: { paymentStatus: string; }) => t.paymentStatus === paymentStatus);

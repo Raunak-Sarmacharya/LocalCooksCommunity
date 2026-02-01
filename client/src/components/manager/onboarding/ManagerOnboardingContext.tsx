@@ -304,9 +304,12 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       result['welcome'] = true;
     }
 
-    // Location is complete if location exists AND is selected
+    // Location is complete if location exists AND is selected AND has required files (license + terms)
     if (selectedLocationId && locations.length > 0) {
-      result['location'] = true;
+      const loc = locations.find(l => l.id === selectedLocationId);
+      if (loc?.kitchenLicenseUrl && loc?.kitchenTermsUrl) {
+        result['location'] = true;
+      }
     }
 
     // Kitchen Space is complete if kitchens exist for this location

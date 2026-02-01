@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useKitchenBookings } from "@/hooks/use-kitchen-bookings";
 import { useStoragePricing } from "@/hooks/use-storage-pricing";
-import { usePresignedImageUrl } from "@/hooks/use-presigned-image-url";
+import { getR2ProxyUrl } from "@/utils/r2-url-helper";
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { StorageSelection } from "./StorageSelection";
@@ -55,12 +55,12 @@ interface KitchenBookingSheetProps {
 }
 
 function EquipmentImage({ imageUrl, alt }: { imageUrl: string; alt: string }) {
-  const presignedUrl = usePresignedImageUrl(imageUrl);
+  const proxyUrl = getR2ProxyUrl(imageUrl);
 
   return (
     <div className="flex-shrink-0">
       <img
-        src={presignedUrl || imageUrl}
+        src={proxyUrl}
         alt={alt}
         className="w-16 h-16 object-cover rounded-lg border border-border"
         onError={(e) => {

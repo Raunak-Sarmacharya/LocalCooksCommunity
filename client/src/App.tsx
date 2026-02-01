@@ -66,6 +66,7 @@ const KitchenPreviewPage = lazy(() => import("@/pages/KitchenPreviewPage"));
 const KitchenComparisonPage = lazy(() => import("@/pages/KitchenComparisonPage"));
 const KitchenRequirementsPage = lazy(() => import("@/pages/KitchenRequirementsPage"));
 const StripeConnectReturn = lazy(() => import("@/pages/StripeConnectReturn"));
+const StripeConnectRefresh = lazy(() => import("@/pages/StripeConnectRefresh"));
 const ManagerOverstaysPage = lazy(() => import("@/pages/ManagerOverstaysPage"));
 
 
@@ -382,13 +383,13 @@ function Router() {
           <StripeConnectReturn />
         </Route>
         <Route path="/manager/stripe-connect/refresh">
-          <StripeConnectReturn />
+          <StripeConnectRefresh />
         </Route>
         <Route path="/chef/stripe-connect/return">
           <StripeConnectReturn />
         </Route>
         <Route path="/chef/stripe-connect/refresh">
-          <StripeConnectReturn />
+          <StripeConnectRefresh />
         </Route>
 
         {/* Kitchen Preview Page - Public, no auth required */}

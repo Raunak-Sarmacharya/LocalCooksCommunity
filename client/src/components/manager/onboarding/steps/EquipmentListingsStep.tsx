@@ -296,7 +296,7 @@ export default function EquipmentListingsStep() {
                   <div className="grid grid-cols-2 gap-2">
                     {listings.map(l => (
                       <div key={l.id} className="bg-white rounded p-2 border border-green-200 text-sm">
-                        <p className="font-medium truncate">{l.name}</p>
+                        <p className="font-medium truncate">{l.equipmentType || l.name}</p>
                         <p className="text-xs text-gray-600">
                           {l.availabilityType === 'rental' ? `$${(Number(l.sessionRate) / 100).toFixed(2)}/session` : 'Included'}
                         </p>
