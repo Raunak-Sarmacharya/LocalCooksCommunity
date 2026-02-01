@@ -18,6 +18,11 @@ import { Input } from "@/components/ui/input";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { 
+  EmailAuthProvider, 
+  reauthenticateWithCredential, 
+  updatePassword 
+} from "firebase/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound, Loader2, Shield } from "lucide-react";
 import { useState } from "react";
@@ -89,29 +94,57 @@ export default function ManagerChangePassword() {
     setIsSubmitting(true);
     
     try {
-      // Get Firebase token for authentication
+      // Get current Firebase user
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error("You must be signed in to change your password");
       }
       
-      const token = await currentFirebaseUser.getIdToken();
-      const response = await fetch('/api/manager/change-password', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentPassword: data.currentPassword,
-          newPassword: data.newPassword,
-        }),
-        credentials: 'include',
-      });
+      const userEmail = currentFirebaseUser.email;
+      if (!userEmail) {
+        throw new Error("No email associated with this account. Password change requires an email-based account.");
+      }
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to change password');
+      // Step 1: Re-authenticate user with current password
+      // This is required by Firebase for security-sensitive operations
+      const credential = EmailAuthProvider.credential(userEmail, data.currentPassword);
+      
+      try {
+        await reauthenticateWithCredential(currentFirebaseUser, credential);
+      } catch (reauthError: any) {
+        console.error('Reauthentication failed:', reauthError);
+        
+        // Provide user-friendly error messages for common reauthentication errors
+        if (reauthError.code === 'auth/wrong-password' || reauthError.code === 'auth/invalid-credential') {
+          throw new Error("Current password is incorrect");
+        } else if (reauthError.code === 'auth/too-many-requests') {
+          throw new Error("Too many failed attempts. Please try again later.");
+        } else if (reauthError.code === 'auth/user-mismatch') {
+          throw new Error("Authentication error. Please sign out and sign back in.");
+        } else if (reauthError.code === 'auth/user-not-found') {
+          throw new Error("User account not found. Please sign out and sign back in.");
+        } else {
+          throw new Error("Failed to verify current password. Please try again.");
+        }
+      }
+      
+      // Step 2: Update password using Firebase Auth
+      await updatePassword(currentFirebaseUser, data.newPassword);
+      
+      // Step 3: Mark welcome as seen (password changed) via API
+      try {
+        const token = await currentFirebaseUser.getIdToken();
+        await fetch('/api/auth/seen-welcome', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+        });
+      } catch (seenError) {
+        console.warn('Failed to mark welcome as seen:', seenError);
+        // Non-blocking - continue with success flow
       }
       
       toast({ 
@@ -125,9 +158,19 @@ export default function ManagerChangePassword() {
       
     } catch (error: any) {
       console.error('Password change error:', error);
+      
+      // Handle Firebase-specific errors with user-friendly messages
+      let errorMessage = error.message || 'Failed to change password';
+      
+      if (error.code === 'auth/weak-password') {
+        errorMessage = "New password is too weak. Please use at least 6 characters with a mix of letters, numbers, and symbols.";
+      } else if (error.code === 'auth/requires-recent-login') {
+        errorMessage = "For security reasons, please sign out and sign back in before changing your password.";
+      }
+      
       toast({ 
         title: "Error", 
-        description: error.message || 'Failed to change password',
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {

@@ -137,7 +137,9 @@ export default function ManagerHeader({ sidebarWidth = 256 }: ManagerHeaderProps
   };
 
   // Get user initials and photo URL
-  const userDisplayName = user?.displayName || user?.fullName || null;
+  // Priority for displayName: Firebase Auth > user record from backend
+  const firebaseDisplayName = auth.currentUser?.displayName;
+  const userDisplayName = firebaseDisplayName || user?.displayName || user?.fullName || null;
   const userEmail = user?.email || firebaseUser?.email || null;
   const userUsername = user?.username || null;
   const userPhotoURL = firebaseUser?.photoURL || null;

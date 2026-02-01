@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { updateProfile } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Save, User, Mail, Phone, Loader2, KeyRound } from "lucide-react";
@@ -88,17 +89,23 @@ export default function ManagerProfile() {
   });
 
   // Initialize form fields when data loads
+  // Priority for displayName: Firebase Auth > managerProfile > user record
   useEffect(() => {
     if (user) {
       setUsername(user.username || "");
       setEmail(user.email || firebaseUser?.email || "");
+    }
+    // Set displayName with priority: Firebase Auth displayName first
+    const firebaseDisplayName = auth.currentUser?.displayName;
+    if (firebaseDisplayName) {
+      setDisplayName(firebaseDisplayName);
+    } else if (managerProfile?.displayName) {
+      setDisplayName(managerProfile.displayName);
+    } else if (user?.displayName || user?.fullName) {
       setDisplayName(user.displayName || user.fullName || "");
     }
     if (managerProfile) {
       setPhone(managerProfile.phone || "");
-      if (managerProfile.displayName) {
-        setDisplayName(managerProfile.displayName);
-      }
     }
   }, [user, managerProfile, firebaseUser]);
 
@@ -112,6 +119,19 @@ export default function ManagerProfile() {
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
         throw new Error("Firebase user not available");
+      }
+      
+      // IMPORTANT: Update Firebase Auth displayName if it changed
+      if (profileData.displayName) {
+        try {
+          await updateProfile(currentFirebaseUser, {
+            displayName: profileData.displayName,
+          });
+          console.log('✅ Firebase Auth displayName updated:', profileData.displayName);
+        } catch (firebaseError) {
+          console.error('❌ Failed to update Firebase Auth displayName:', firebaseError);
+          // Continue with Neon update even if Firebase update fails
+        }
       }
       
       const token = await currentFirebaseUser.getIdToken();
@@ -291,7 +311,9 @@ export default function ManagerProfile() {
                   <Button
                     onClick={() => {
                       setUsername(user.username || "");
-                      setDisplayName(user.displayName || user.fullName || "");
+                      // Reset to Firebase Auth displayName first, then fallback
+                      const firebaseDisplayName = auth.currentUser?.displayName;
+                      setDisplayName(firebaseDisplayName || managerProfile?.displayName || user.displayName || user.fullName || "");
                       setPhone(managerProfile?.phone || "");
                     }}
                     variant="outline"

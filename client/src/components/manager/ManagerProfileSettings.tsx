@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useFirebaseAuth } from "@/hooks/use-auth";
 import { auth } from "@/lib/firebase";
+import { updateProfile } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,17 +114,23 @@ export default function ManagerProfileSettings() {
     });
 
     // Initialize form fields
+    // Priority for displayName: Firebase Auth > managerProfile > user record
     useEffect(() => {
         if (user) {
             setUsername(user.username || "");
             setEmail(user.email || firebaseUser?.email || "");
+        }
+        // Set displayName with priority: Firebase Auth displayName first
+        const firebaseDisplayName = auth.currentUser?.displayName;
+        if (firebaseDisplayName) {
+            setDisplayName(firebaseDisplayName);
+        } else if (managerProfile?.displayName) {
+            setDisplayName(managerProfile.displayName);
+        } else if (user?.displayName || user?.fullName) {
             setDisplayName(user.displayName || user.fullName || "");
         }
         if (managerProfile) {
             setPhone(managerProfile.phone || "");
-            if (managerProfile.displayName) {
-                setDisplayName(managerProfile.displayName);
-            }
             if (managerProfile.profileImageUrl) {
                 setAvatarUrl(managerProfile.profileImageUrl);
             }
@@ -154,6 +161,19 @@ export default function ManagerProfileSettings() {
         }) => {
             const currentFirebaseUser = auth.currentUser;
             if (!currentFirebaseUser) throw new Error("Not authenticated");
+
+            // IMPORTANT: Update Firebase Auth displayName if it changed
+            if (profileData.displayName) {
+                try {
+                    await updateProfile(currentFirebaseUser, {
+                        displayName: profileData.displayName,
+                    });
+                    console.log('✅ Firebase Auth displayName updated:', profileData.displayName);
+                } catch (firebaseError) {
+                    console.error('❌ Failed to update Firebase Auth displayName:', firebaseError);
+                    // Continue with Neon update even if Firebase update fails
+                }
+            }
 
             const token = await currentFirebaseUser.getIdToken();
             const response = await fetch("/api/manager/profile", {
@@ -504,6 +524,26 @@ export default function ManagerProfileSettings() {
                                             <Clock className="h-4 w-4 text-slate-400" />
                                             <span>{location.timezone}</span>
                                         </div>
+                                        {/* Primary Contact Info */}
+                                        {(location.contactEmail || location.contactPhone) && (
+                                            <div className="pt-2 mt-2 border-t border-slate-100 space-y-1.5">
+                                                <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                                                    Contact ({location.preferredContactMethod || 'email'})
+                                                </div>
+                                                {location.contactEmail && (
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                        <Mail className="h-3.5 w-3.5 text-slate-400" />
+                                                        <span>{location.contactEmail}</span>
+                                                    </div>
+                                                )}
+                                                {location.contactPhone && (
+                                                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                                                        <Phone className="h-3.5 w-3.5 text-slate-400" />
+                                                        <span>{location.contactPhone}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

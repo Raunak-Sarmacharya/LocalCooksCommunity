@@ -238,7 +238,7 @@ async function notifyNewBooking(data: BookingNotificationData) {
       startTime: data.startTime,
       endTime: data.endTime
     },
-    actionUrl:'/manager/booking/${data.bookingId}',
+    actionUrl: `/manager/booking/${data.bookingId}`,
     actionLabel: 'Review Booking'
   });
 }

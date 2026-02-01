@@ -1533,7 +1533,14 @@ router.get("/profile", requireFirebaseAuthWithUser, requireManager, async (req: 
                 name: loc.name,
                 address: loc.address,
                 timezone: loc.timezone,
-                logoUrl: loc.logoUrl
+                logoUrl: loc.logoUrl,
+                // Primary contact fields
+                contactEmail: loc.contactEmail,
+                contactPhone: loc.contactPhone,
+                preferredContactMethod: loc.preferredContactMethod || 'email',
+                // Notification fields
+                notificationEmail: loc.notificationEmail,
+                notificationPhone: loc.notificationPhone
             }))
         });
     } catch (error) {
@@ -2484,6 +2491,10 @@ router.get("/locations", requireFirebaseAuthWithUser, requireManager, async (req
             ...loc,
             notificationEmail: (loc as any).notificationEmail || (loc as any).notification_email || null,
             notificationPhone: (loc as any).notificationPhone || (loc as any).notification_phone || null,
+            // Primary contact fields
+            contactEmail: (loc as any).contactEmail || (loc as any).contact_email || null,
+            contactPhone: (loc as any).contactPhone || (loc as any).contact_phone || null,
+            preferredContactMethod: (loc as any).preferredContactMethod || (loc as any).preferred_contact_method || 'email',
             cancellationPolicyHours: (loc as any).cancellationPolicyHours || (loc as any).cancellation_policy_hours,
             cancellationPolicyMessage: (loc as any).cancellationPolicyMessage || (loc as any).cancellation_policy_message,
             defaultDailyBookingLimit: (loc as any).defaultDailyBookingLimit || (loc as any).default_daily_booking_limit,
@@ -2643,6 +2654,9 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
             address,
             notificationEmail,
             notificationPhone,
+            contactEmail,
+            contactPhone,
+            preferredContactMethod,
             kitchenLicenseUrl,
             kitchenLicenseStatus,
             kitchenLicenseExpiry,
@@ -2667,6 +2681,33 @@ router.put("/locations/:locationId", requireFirebaseAuthWithUser, requireManager
             } else {
                 updates.notificationPhone = null;
             }
+        }
+
+        // Handle contact fields (primary business contact for manager)
+        if (contactEmail !== undefined) {
+            if (contactEmail && contactEmail.trim() !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+                return res.status(400).json({ error: "Invalid contact email format" });
+            }
+            updates.contactEmail = contactEmail && contactEmail.trim() !== '' ? contactEmail.trim() : null;
+        }
+        if (contactPhone !== undefined) {
+            if (contactPhone && contactPhone.trim() !== '') {
+                const normalized = normalizePhoneForStorage(contactPhone);
+                if (!normalized) {
+                    return res.status(400).json({
+                        error: "Invalid contact phone number format. Please enter a valid phone number (e.g., (416) 123-4567 or +14161234567)"
+                    });
+                }
+                updates.contactPhone = normalized;
+            } else {
+                updates.contactPhone = null;
+            }
+        }
+        if (preferredContactMethod !== undefined) {
+            if (!['email', 'phone', 'both'].includes(preferredContactMethod)) {
+                return res.status(400).json({ error: "Invalid preferred contact method. Must be 'email', 'phone', or 'both'" });
+            }
+            updates.preferredContactMethod = preferredContactMethod;
         }
 
         // Handle kitchen license fields

@@ -22,6 +22,11 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "@/hooks/use-toast";
 import { auth } from "@/lib/firebase";
+import { 
+  EmailAuthProvider, 
+  reauthenticateWithCredential, 
+  updatePassword 
+} from "firebase/auth";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -55,36 +60,42 @@ export default function ChangePassword({ role = 'manager', onSuccess }: ChangePa
     setIsSubmitting(true);
     
     try {
-      // Get Firebase token for authentication
+      // Get current Firebase user
       const currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
-        throw new Error("Firebase user not available");
+        throw new Error("You must be signed in to change your password");
       }
       
-      const token = await currentFirebaseUser.getIdToken();
-      
-      // Use the appropriate endpoint based on role
-      const endpoint = role === 'admin' 
-        ? '/api/admin/change-password' 
-        : '/api/manager/change-password';
-      
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentPassword: data.currentPassword,
-          newPassword: data.newPassword,
-        }),
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to change password');
+      const userEmail = currentFirebaseUser.email;
+      if (!userEmail) {
+        throw new Error("No email associated with this account. Password change requires an email-based account.");
       }
+      
+      // Step 1: Re-authenticate user with current password
+      // This is required by Firebase for security-sensitive operations
+      const credential = EmailAuthProvider.credential(userEmail, data.currentPassword);
+      
+      try {
+        await reauthenticateWithCredential(currentFirebaseUser, credential);
+      } catch (reauthError: any) {
+        console.error('Reauthentication failed:', reauthError);
+        
+        // Provide user-friendly error messages for common reauthentication errors
+        if (reauthError.code === 'auth/wrong-password' || reauthError.code === 'auth/invalid-credential') {
+          throw new Error("Current password is incorrect");
+        } else if (reauthError.code === 'auth/too-many-requests') {
+          throw new Error("Too many failed attempts. Please try again later.");
+        } else if (reauthError.code === 'auth/user-mismatch') {
+          throw new Error("Authentication error. Please sign out and sign back in.");
+        } else if (reauthError.code === 'auth/user-not-found') {
+          throw new Error("User account not found. Please sign out and sign back in.");
+        } else {
+          throw new Error("Failed to verify current password. Please try again.");
+        }
+      }
+      
+      // Step 2: Update password using Firebase Auth
+      await updatePassword(currentFirebaseUser, data.newPassword);
       
       toast.success("Success", { 
         description: "Password changed successfully" 
@@ -100,8 +111,18 @@ export default function ChangePassword({ role = 'manager', onSuccess }: ChangePa
       
     } catch (error: any) {
       console.error('Password change error:', error);
+      
+      // Handle Firebase-specific errors with user-friendly messages
+      let errorMessage = error.message || 'Failed to change password';
+      
+      if (error.code === 'auth/weak-password') {
+        errorMessage = "New password is too weak. Please use at least 6 characters with a mix of letters, numbers, and symbols.";
+      } else if (error.code === 'auth/requires-recent-login') {
+        errorMessage = "For security reasons, please sign out and sign back in before changing your password.";
+      }
+      
       toast.error("Error", { 
-        description: error.message || 'Failed to change password'
+        description: errorMessage
       });
     } finally {
       setIsSubmitting(false);
