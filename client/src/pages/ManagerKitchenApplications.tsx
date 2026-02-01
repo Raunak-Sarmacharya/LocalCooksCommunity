@@ -45,6 +45,7 @@ import { getConversationForApplication, createConversation } from "@/services/ch
 
 import { useLocation } from "wouter";
 import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
+import { parseBusinessInfo } from "@/utils/parseBusinessInfo";
 
 /**
  * Manager Kitchen Applications Page
@@ -189,7 +190,7 @@ export function ManagerKitchenApplicationsContent({
   // Track if we're currently fetching to prevent concurrent fetches
   const isFetchingRef = useRef(false);
   const lastFetchKeyRef = useRef<string>('');
-  
+
   // Use ref to access current filteredApplications without adding to dependencies
   const filteredApplicationsRef = useRef(filteredApplications);
   filteredApplicationsRef.current = filteredApplications;
@@ -198,7 +199,7 @@ export function ManagerKitchenApplicationsContent({
   useEffect(() => {
     if (!managerId) return;
     if (!applicationIdsKey) return; // No applications
-    
+
     // Prevent duplicate fetches for the same data
     const currentKey = `${managerId}:${applicationIdsKey}`;
     if (currentKey === lastFetchKeyRef.current && isFetchingRef.current) {
@@ -213,18 +214,18 @@ export function ManagerKitchenApplicationsContent({
 
       try {
         const counts: Record<number, number> = {};
-        
+
         // Access current applications via ref to avoid dependency issues
         const currentApps = filteredApplicationsRef.current;
-        
+
         // Only fetch for applications that have conversations
         const appsWithConversations = currentApps.filter(app => app.chat_conversation_id);
-        
+
         if (appsWithConversations.length === 0) {
           isFetchingRef.current = false;
           return;
         }
-        
+
         // Use Promise.allSettled for better error handling and parallel fetching
         const results = await Promise.allSettled(
           appsWithConversations.map(async (app) => {
@@ -248,16 +249,16 @@ export function ManagerKitchenApplicationsContent({
         setUnreadCounts(prevCounts => {
           const prevKeys = Object.keys(prevCounts);
           const newKeys = Object.keys(counts);
-          
+
           // Check if counts actually changed
           if (prevKeys.length !== newKeys.length) {
             return counts;
           }
-          
+
           const hasChanges = newKeys.some(
             key => prevCounts[Number(key)] !== counts[Number(key)]
           );
-          
+
           return hasChanges ? counts : prevCounts;
         });
       } finally {
@@ -266,7 +267,7 @@ export function ManagerKitchenApplicationsContent({
     };
 
     fetchUnreadCounts();
-    
+
     // Refresh every 30 seconds
     const interval = setInterval(fetchUnreadCounts, 30000);
     return () => {
@@ -460,7 +461,7 @@ export function ManagerKitchenApplicationsContent({
   // Helper to render custom field value based on type
   const renderCustomFieldValue = (field: any, value: any) => {
     if (value === undefined || value === null || value === '') return <span className="text-gray-400 italic">Not provided</span>;
-    
+
     if (field.type === 'checkbox') {
       if (Array.isArray(value)) {
         return <span className="font-medium">{value.join(', ')}</span>;
@@ -471,16 +472,6 @@ export function ManagerKitchenApplicationsContent({
       return <span className="font-medium">{new Date(value).toLocaleDateString()}</span>;
     }
     return <span className="font-medium">{String(value)}</span>;
-  };
-
-  // Parse business description JSON
-  const parseBusinessInfo = (description: string | null | undefined) => {
-    if (!description) return null;
-    try {
-      return JSON.parse(description);
-    } catch {
-      return { description };
-    }
   };
 
   if (isLoading || isLayoutLoading) {
@@ -862,28 +853,28 @@ export function ManagerKitchenApplicationsContent({
                 </div>
 
                 {/* Step 1 Custom Fields */}
-                {locationRequirements?.tier1_custom_fields && 
-                 Array.isArray(locationRequirements.tier1_custom_fields) && 
-                 locationRequirements.tier1_custom_fields.length > 0 && (
-                  <div>
-                    <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      Additional Step 1 Information
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      {locationRequirements.tier1_custom_fields.map((field: any) => {
-                        const customData = selectedApplication.customFieldsData || {};
-                        const value = customData[field.id];
-                        return (
-                          <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
-                            <div className="text-xs text-gray-500 mb-1">{field.label}</div>
-                            {renderCustomFieldValue(field, value)}
-                          </div>
-                        );
-                      })}
+                {locationRequirements?.tier1_custom_fields &&
+                  Array.isArray(locationRequirements.tier1_custom_fields) &&
+                  locationRequirements.tier1_custom_fields.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Additional Step 1 Information
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {locationRequirements.tier1_custom_fields.map((field: any) => {
+                          const customData = selectedApplication.customFieldsData || {};
+                          const value = customData[field.id];
+                          return (
+                            <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
+                              <div className="text-xs text-gray-500 mb-1">{field.label}</div>
+                              {renderCustomFieldValue(field, value)}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
 
               {/* ========== STEP 2 SECTION ========== */}
@@ -972,30 +963,30 @@ export function ManagerKitchenApplicationsContent({
                   </div>
 
                   {/* Step 2 Custom Fields - from tier_data.tier2_custom_fields_data */}
-                  {locationRequirements?.tier2_custom_fields && 
-                   Array.isArray(locationRequirements.tier2_custom_fields) && 
-                   locationRequirements.tier2_custom_fields.length > 0 && (
-                    <div>
-                      <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Additional Step 2 Information
-                      </h4>
-                      <div className="grid grid-cols-2 gap-3">
-                        {locationRequirements.tier2_custom_fields.map((field: any) => {
-                          // Step 2 custom fields are stored in tier_data.tier2_custom_fields_data
-                          const tierData = selectedApplication.tier_data || {};
-                          const tier2CustomData = tierData.tier2_custom_fields_data || {};
-                          const value = tier2CustomData[field.id];
-                          return (
-                            <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
-                              <div className="text-xs text-gray-500 mb-1">{field.label}</div>
-                              {renderCustomFieldValue(field, value)}
-                            </div>
-                          );
-                        })}
+                  {locationRequirements?.tier2_custom_fields &&
+                    Array.isArray(locationRequirements.tier2_custom_fields) &&
+                    locationRequirements.tier2_custom_fields.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Additional Step 2 Information
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          {locationRequirements.tier2_custom_fields.map((field: any) => {
+                            // Step 2 custom fields are stored in tier_data.tier2_custom_fields_data
+                            const tierData = selectedApplication.tier_data || {};
+                            const tier2CustomData = tierData.tier2_custom_fields_data || {};
+                            const value = tier2CustomData[field.id];
+                            return (
+                              <div key={field.id} className="p-3 bg-white rounded-lg border border-gray-200">
+                                <div className="text-xs text-gray-500 mb-1">{field.label}</div>
+                                {renderCustomFieldValue(field, value)}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               )}
 
@@ -1123,7 +1114,7 @@ function ApplicationCard({
         );
       case 'approved': {
         const tier = application.current_tier ?? 1;
-        
+
         // Case 1: Step 2 Needs Review (Chef submitted Step 2 docs, manager needs to review)
         // current_tier=2 AND tier2_completed_at is set
         if (tier === 2 && application.tier2_completed_at) {

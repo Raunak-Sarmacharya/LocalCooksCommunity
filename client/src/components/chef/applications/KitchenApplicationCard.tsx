@@ -30,6 +30,8 @@ import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { ChefKitchenApplication } from "@shared/schema";
 import { getR2ProxyUrl } from "@/utils/r2-url-helper";
+import { parseBusinessInfo, formatExperience, formatExpiryDate } from "@/utils/parseBusinessInfo";
+import { SecureDocumentLink } from "@/components/common/SecureDocumentLink";
 
 interface KitchenApplicationWithLocation extends ChefKitchenApplication {
   location: {
@@ -76,7 +78,7 @@ export default function KitchenApplicationCard({
   const imageUrl = kitchenImageUrl || app.location?.brandImageUrl;
   const currentStep = (app as any).current_tier ?? 1;
   const tierData = (app as any).tier_data || {};
-  
+
   // Step 2 data is stored in tier_data
   const step2Data = tierData.step2 || tierData.tier2 || {};
 
@@ -112,7 +114,7 @@ export default function KitchenApplicationCard({
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <Card className="overflow-hidden border-border/50 shadow-sm transition-all hover:shadow-md">
         <div className={cn("h-1 w-full", statusConfig.color)} />
-        
+
         {/* Collapsed Header */}
         <CollapsibleTrigger asChild>
           <div className="p-4 cursor-pointer hover:bg-muted/30 transition-colors">
@@ -153,7 +155,7 @@ export default function KitchenApplicationCard({
         {/* Expanded Content */}
         <CollapsibleContent>
           <div className="px-4 pb-4 space-y-5 border-t border-border/50 pt-4">
-            
+
             {/* Application Summary */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="p-2 bg-muted/30 rounded-lg">
@@ -252,22 +254,85 @@ export default function KitchenApplicationCard({
 
                 {/* Business Details */}
                 <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mt-4">Business Details</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="p-2 bg-muted/20 rounded-lg">
-                    <p className="text-[10px] text-muted-foreground uppercase">Kitchen Preference</p>
-                    <p className="text-sm font-medium capitalize">{app.kitchenPreference || 'N/A'}</p>
-                  </div>
-                  <div className="p-2 bg-muted/20 rounded-lg">
-                    <p className="text-[10px] text-muted-foreground uppercase">Cooking Experience</p>
-                    <p className="text-sm font-medium">{app.cookingExperience || 'N/A'}</p>
-                  </div>
-                </div>
-                {app.businessDescription && (
-                  <div className="p-2 bg-muted/20 rounded-lg">
-                    <p className="text-[10px] text-muted-foreground uppercase">Business Description</p>
-                    <p className="text-sm">{app.businessDescription}</p>
-                  </div>
-                )}
+                {(() => {
+                  const businessInfo = parseBusinessInfo(app.businessDescription);
+                  return (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-2 bg-muted/20 rounded-lg">
+                          <p className="text-[10px] text-muted-foreground uppercase">Kitchen Preference</p>
+                          <p className="text-sm font-medium capitalize">{app.kitchenPreference || 'N/A'}</p>
+                        </div>
+                        <div className="p-2 bg-muted/20 rounded-lg">
+                          <p className="text-[10px] text-muted-foreground uppercase">Cooking Experience</p>
+                          <p className="text-sm font-medium">{formatExperience(app.cookingExperience || businessInfo?.experience)}</p>
+                        </div>
+                      </div>
+                      {businessInfo && (
+                        <>
+                          {/* Business Name & Type */}
+                          {(businessInfo.businessName || businessInfo.businessType) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {businessInfo.businessName && (
+                                <div className="p-2 bg-muted/20 rounded-lg">
+                                  <p className="text-[10px] text-muted-foreground uppercase">Business Name</p>
+                                  <p className="text-sm font-medium">{businessInfo.businessName}</p>
+                                </div>
+                              )}
+                              {businessInfo.businessType && (
+                                <div className="p-2 bg-muted/20 rounded-lg">
+                                  <p className="text-[10px] text-muted-foreground uppercase">Business Type</p>
+                                  <p className="text-sm font-medium capitalize">{businessInfo.businessType}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Usage Frequency & Session Duration */}
+                          {(businessInfo.usageFrequency || businessInfo.sessionDuration) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {businessInfo.usageFrequency && (
+                                <div className="p-2 bg-muted/20 rounded-lg">
+                                  <p className="text-[10px] text-muted-foreground uppercase">Usage Frequency</p>
+                                  <p className="text-sm font-medium capitalize">{businessInfo.usageFrequency}</p>
+                                </div>
+                              )}
+                              {businessInfo.sessionDuration && (
+                                <div className="p-2 bg-muted/20 rounded-lg">
+                                  <p className="text-[10px] text-muted-foreground uppercase">Session Duration</p>
+                                  <p className="text-sm font-medium">{businessInfo.sessionDuration} hours</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Certificate Expiry Dates */}
+                          {(businessInfo.foodHandlerCertExpiry || businessInfo.foodEstablishmentCertExpiry) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {businessInfo.foodHandlerCertExpiry && (
+                                <div className="p-2 bg-muted/20 rounded-lg">
+                                  <p className="text-[10px] text-muted-foreground uppercase">Food Handler Cert Expiry</p>
+                                  <p className="text-sm font-medium">{formatExpiryDate(businessInfo.foodHandlerCertExpiry)}</p>
+                                </div>
+                              )}
+                              {businessInfo.foodEstablishmentCertExpiry && (
+                                <div className="p-2 bg-muted/20 rounded-lg">
+                                  <p className="text-[10px] text-muted-foreground uppercase">Establishment Cert Expiry</p>
+                                  <p className="text-sm font-medium">{formatExpiryDate(businessInfo.foodEstablishmentCertExpiry)}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Free-text Description */}
+                          {businessInfo.description && (
+                            <div className="p-2 bg-muted/20 rounded-lg">
+                              <p className="text-[10px] text-muted-foreground uppercase">Description</p>
+                              <p className="text-sm">{businessInfo.description}</p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Step 1 Documents */}
                 <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wider mt-4">Documents</p>
@@ -288,11 +353,12 @@ export default function KitchenApplicationCard({
                           <Badge variant={getDocStatusBadge(app.foodSafetyLicenseStatus).variant} className={cn("text-[10px]", getDocStatusBadge(app.foodSafetyLicenseStatus).className)}>
                             {getDocStatusBadge(app.foodSafetyLicenseStatus).label}
                           </Badge>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                            <a href={app.foodSafetyLicenseUrl} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          </Button>
+                          <SecureDocumentLink
+                            url={app.foodSafetyLicenseUrl}
+                            fileName="Food Safety License"
+                            label="View"
+                            showIcon={false}
+                          />
                         </>
                       ) : (
                         <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
@@ -315,11 +381,12 @@ export default function KitchenApplicationCard({
                           <Badge variant={getDocStatusBadge(app.foodEstablishmentCertStatus).variant} className={cn("text-[10px]", getDocStatusBadge(app.foodEstablishmentCertStatus).className)}>
                             {getDocStatusBadge(app.foodEstablishmentCertStatus).label}
                           </Badge>
-                          <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                            <a href={app.foodEstablishmentCertUrl} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          </Button>
+                          <SecureDocumentLink
+                            url={app.foodEstablishmentCertUrl}
+                            fileName="Establishment Certificate"
+                            label="View"
+                            showIcon={false}
+                          />
                         </>
                       ) : (
                         <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
@@ -372,7 +439,7 @@ export default function KitchenApplicationCard({
                             <div className="p-2 bg-muted/20 rounded-lg">
                               <p className="text-[10px] text-muted-foreground uppercase">Received Date</p>
                               <p className="text-sm font-medium">
-                                {(app as any).government_license_received_date || step2Data.governmentLicenseReceivedDate 
+                                {(app as any).government_license_received_date || step2Data.governmentLicenseReceivedDate
                                   ? new Date((app as any).government_license_received_date || step2Data.governmentLicenseReceivedDate).toLocaleDateString()
                                   : 'N/A'}
                               </p>
@@ -398,13 +465,13 @@ export default function KitchenApplicationCard({
                               // Skip internal fields and already displayed fields
                               if (['governmentLicenseNumber', 'governmentLicenseReceivedDate', 'governmentLicenseExpiryDate'].includes(key)) return null;
                               if (typeof value === 'object' && value !== null) return null;
-                              
+
                               // Format the key for display
                               const displayKey = key
                                 .replace(/([A-Z])/g, ' $1')
                                 .replace(/^./, str => str.toUpperCase())
                                 .trim();
-                              
+
                               return (
                                 <div key={key} className="p-2 bg-muted/20 rounded-lg">
                                   <p className="text-[10px] text-muted-foreground uppercase">{displayKey}</p>
@@ -428,12 +495,12 @@ export default function KitchenApplicationCard({
                                       </span>
                                     </div>
                                     {typeof docValue === 'string' && docValue ? (
-                                      <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
-                                        <a href={docValue} target="_blank" rel="noopener noreferrer">
-                                          <ExternalLink className="h-3 w-3 mr-1" />
-                                          View
-                                        </a>
-                                      </Button>
+                                      <SecureDocumentLink
+                                        url={docValue}
+                                        fileName={docKey.replace(/([A-Z])/g, ' $1').trim()}
+                                        label="View"
+                                        showIcon={false}
+                                      />
                                     ) : (
                                       <Badge variant="outline" className="text-[10px] bg-gray-100">Not Uploaded</Badge>
                                     )}
