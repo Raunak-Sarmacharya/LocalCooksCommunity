@@ -47,6 +47,7 @@ import { getPresignedUrl, deleteFromR2 } from "../r2-storage";
 import { logger } from "../logger";
 import { errorResponse } from "../api-response";
 import { notificationService } from "../services/notification.service";
+import { getAppBaseUrl } from "../config";
 
 import {
     storageBookings as storageBookingsTable,
@@ -291,7 +292,7 @@ router.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async
         console.log('[Revenue Charts] Request params:', { managerId, startDate, endDate, period });
 
         let data;
-        
+
         // Try to use payment_transactions first (actual Stripe data)
         try {
             const { getRevenueByDateFromTransactions } = await import('../services/revenue-service-v2');
@@ -301,7 +302,7 @@ router.get("/revenue/charts", requireFirebaseAuthWithUser, requireManager, async
                 startDate as string,
                 endDate as string
             );
-            
+
             // If payment_transactions returns empty, fallback to booking tables
             if (!data || data.length === 0) {
                 console.log('[Revenue Charts] payment_transactions empty, falling back to booking tables');
@@ -583,7 +584,7 @@ router.post("/stripe-connect/create", requireFirebaseAuthWithUser, requireManage
 
         const { createConnectAccount, createAccountLink, isAccountReady, createDashboardLoginLink } = await import('../services/stripe-connect-service');
 
-        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const baseUrl = getAppBaseUrl('kitchen');
         // Include from=setup in URLs if came from onboarding flow
         const fromParam = fromSetup ? '&from=setup' : '';
         const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromParam}`;
@@ -641,7 +642,7 @@ router.get("/stripe-connect/onboarding-link", requireFirebaseAuthWithUser, requi
         }
 
         const { createAccountLink } = await import('../services/stripe-connect-service');
-        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const baseUrl = getAppBaseUrl('kitchen');
         // Check if request came from setup flow
         const fromSetup = req.query.from === 'setup' ? '&from=setup' : '';
         const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
@@ -680,7 +681,7 @@ router.get("/stripe-connect/dashboard-link", requireFirebaseAuthWithUser, requir
             const link = await createDashboardLoginLink(userRow.stripe_connect_account_id);
             return res.json({ url: link.url });
         } else {
-            const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+            const baseUrl = getAppBaseUrl('kitchen');
             // Check if request came from setup flow
             const fromSetup = req.query.from === 'setup' ? '&from=setup' : '';
             const refreshUrl = `${baseUrl}/manager/stripe-connect/refresh?role=manager${fromSetup}`;
@@ -704,7 +705,7 @@ router.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager
 
         // Get manager's stripe account ID and onboarding status from DB
         const [manager] = await db
-            .select({ 
+            .select({
                 stripeConnectAccountId: users.stripeConnectAccountId,
                 stripeConnectOnboardingStatus: users.stripeConnectOnboardingStatus
             })
@@ -739,7 +740,7 @@ router.get("/stripe-connect/status", requireFirebaseAuthWithUser, requireManager
 
             // Update DB if status changed (sync from Stripe)
             const dbStatus = manager.stripeConnectOnboardingStatus;
-            if ((status === 'complete' && dbStatus !== 'complete') || 
+            if ((status === 'complete' && dbStatus !== 'complete') ||
                 (status !== 'complete' && dbStatus === 'complete')) {
                 await db.update(users)
                     .set({ stripeConnectOnboardingStatus: status === 'complete' ? 'complete' : 'in_progress' })
@@ -832,9 +833,9 @@ router.post("/revenue/sync-stripe", requireFirebaseAuthWithUser, requireManager,
 
         // Then sync existing payment_transactions with Stripe amounts
         const { syncExistingPaymentTransactionsFromStripe } = await import('../services/payment-transactions-service');
-        const syncResult = await syncExistingPaymentTransactionsFromStripe(managerId, db, { 
-            limit, 
-            onlyUnsynced 
+        const syncResult = await syncExistingPaymentTransactionsFromStripe(managerId, db, {
+            limit,
+            onlyUnsynced
         });
 
         console.log(`[Stripe Sync] Stripe sync complete:`, syncResult);
@@ -1908,7 +1909,7 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
         if (status === 'confirmed') {
             const paymentStatus = (booking as any).paymentStatus;
             if (paymentStatus === 'pending') {
-                return res.status(400).json({ 
+                return res.status(400).json({
                     error: "Cannot confirm booking - payment has not been completed. The chef may have abandoned checkout.",
                     paymentStatus: paymentStatus
                 });
@@ -1969,8 +1970,8 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                         if (chefPhone) {
                             const smsContent = generateChefBookingConfirmationSMS({
                                 kitchenName: kitchen.name,
-                                bookingDate: booking.bookingDate instanceof Date 
-                                    ? booking.bookingDate.toISOString() 
+                                bookingDate: booking.bookingDate instanceof Date
+                                    ? booking.bookingDate.toISOString()
                                     : String(booking.bookingDate),
                                 startTime: booking.startTime,
                                 endTime: booking.endTime
@@ -1982,7 +1983,7 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                     }
 
                     logger.info(`[Manager] Booking ${id} confirmed by manager ${user.id}`);
-                    
+
                     // Create in-app notification for confirmed booking
                     try {
                         await notificationService.notifyBookingConfirmed({
@@ -1991,8 +1992,8 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                             bookingId: id,
                             chefName: chef.username || 'Chef',
                             kitchenName: kitchen.name,
-                            bookingDate: booking.bookingDate instanceof Date 
-                                ? booking.bookingDate.toISOString().split('T')[0] 
+                            bookingDate: booking.bookingDate instanceof Date
+                                ? booking.bookingDate.toISOString().split('T')[0]
                                 : String(booking.bookingDate).split('T')[0],
                             startTime: booking.startTime,
                             endTime: booking.endTime
@@ -2006,8 +2007,8 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                         chefEmail: chef.username,
                         chefName: chef.username,
                         kitchenName: kitchen.name,
-                        bookingDate: booking.bookingDate instanceof Date 
-                            ? booking.bookingDate.toISOString() 
+                        bookingDate: booking.bookingDate instanceof Date
+                            ? booking.bookingDate.toISOString()
                             : String(booking.bookingDate),
                         startTime: booking.startTime,
                         endTime: booking.endTime,
@@ -2026,8 +2027,8 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                         if (chefPhone) {
                             const smsContent = generateChefBookingCancellationSMS({
                                 kitchenName: kitchen.name,
-                                bookingDate: booking.bookingDate instanceof Date 
-                                    ? booking.bookingDate.toISOString() 
+                                bookingDate: booking.bookingDate instanceof Date
+                                    ? booking.bookingDate.toISOString()
                                     : String(booking.bookingDate),
                                 startTime: booking.startTime,
                                 endTime: booking.endTime,
@@ -2040,7 +2041,7 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                     }
 
                     logger.info(`[Manager] Booking ${id} cancelled/declined by manager ${user.id}`);
-                    
+
                     // Create in-app notification for cancelled booking
                     try {
                         await notificationService.notifyBookingCancelled({
@@ -2049,8 +2050,8 @@ router.put("/bookings/:id/status", requireFirebaseAuthWithUser, requireManager, 
                             bookingId: id,
                             chefName: chef.username || 'Chef',
                             kitchenName: kitchen.name,
-                            bookingDate: booking.bookingDate instanceof Date 
-                                ? booking.bookingDate.toISOString().split('T')[0] 
+                            bookingDate: booking.bookingDate instanceof Date
+                                ? booking.bookingDate.toISOString().split('T')[0]
                                 : String(booking.bookingDate).split('T')[0],
                             startTime: booking.startTime,
                             endTime: booking.endTime,
@@ -3199,7 +3200,7 @@ router.post("/storage-extensions/:id/reject", requireFirebaseAuthWithUser, requi
 
         res.json({
             success: true,
-            message: refundResult 
+            message: refundResult
                 ? "Storage extension rejected and refund processed successfully."
                 : "Storage extension rejected. Refund will be processed.",
             extension: {
@@ -3235,15 +3236,15 @@ import {
 router.get("/overstays", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
-        
+
         // Get manager's location IDs
         const managerLocations = await db
             .select({ id: locations.id })
             .from(locations)
             .where(eq(locations.managerId, managerId));
-        
+
         const locationIds = managerLocations.map(l => l.id);
-        
+
         if (locationIds.length === 0) {
             return res.json({ overstays: [], stats: null });
         }
@@ -3404,7 +3405,7 @@ router.post("/overstays/:id/charge", requireFirebaseAuthWithUser, requireManager
         const result = await overstayPenaltyService.chargeApprovedPenalty(overstayId);
 
         if (!result.success) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: result.error,
                 message: "Failed to charge penalty. The chef may need to update their payment method.",
             });
@@ -3469,15 +3470,15 @@ router.post("/overstays/:id/resolve", requireFirebaseAuthWithUser, requireManage
 router.get("/overstays-stats", requireFirebaseAuthWithUser, requireManager, async (req: Request, res: Response) => {
     try {
         const managerId = req.neonUser!.id;
-        
+
         // Get manager's location IDs
         const managerLocations = await db
             .select({ id: locations.id })
             .from(locations)
             .where(eq(locations.managerId, managerId));
-        
+
         const locationIds = managerLocations.map(l => l.id);
-        
+
         if (locationIds.length === 0) {
             return res.json({ stats: null });
         }
@@ -3500,11 +3501,11 @@ router.put("/storage-listings/:id/penalty-config", requireFirebaseAuthWithUser, 
     try {
         const listingId = parseInt(req.params.id);
         const managerId = req.neonUser!.id;
-        const { 
-            overstayGracePeriodDays, 
-            overstayPenaltyRate, 
+        const {
+            overstayGracePeriodDays,
+            overstayPenaltyRate,
             overstayMaxPenaltyDays,
-            overstayPolicyText 
+            overstayPolicyText
         } = req.body;
 
         if (isNaN(listingId)) {
@@ -3629,9 +3630,9 @@ router.get("/locations/:id/overstay-penalty-defaults", requireFirebaseAuthWithUs
                 policyText: location.overstayPolicyText,
             },
             platformDefaults,
-            isUsingDefaults: location.overstayGracePeriodDays === null && 
-                            location.overstayPenaltyRate === null && 
-                            location.overstayMaxPenaltyDays === null,
+            isUsingDefaults: location.overstayGracePeriodDays === null &&
+                location.overstayPenaltyRate === null &&
+                location.overstayMaxPenaltyDays === null,
         });
     } catch (error) {
         logger.error("Error getting location overstay penalty defaults:", error);

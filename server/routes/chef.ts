@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import { users } from "@shared/schema";
 import { errorResponse } from "../api-response";
+import { getAppBaseUrl } from "../config";
 
 const router = Router();
 
@@ -50,7 +51,7 @@ router.post("/stripe-connect/create", requireChef, async (req: Request, res: Res
 
         const { createConnectAccount, createAccountLink, isAccountReady } = await import('../services/stripe-connect-service');
 
-        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const baseUrl = getAppBaseUrl('chef');
         const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
         const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
 
@@ -106,7 +107,7 @@ router.get("/stripe-connect/onboarding-link", requireChef, async (req: Request, 
         }
 
         const { createAccountLink } = await import('../services/stripe-connect-service');
-        const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+        const baseUrl = getAppBaseUrl('chef');
         const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh?role=chef`;
         const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true&role=chef`;
 
@@ -143,7 +144,7 @@ router.get("/stripe-connect/dashboard-link", requireChef, async (req: Request, r
             const link = await createDashboardLoginLink(userRow.stripe_connect_account_id);
             return res.json({ url: link.url });
         } else {
-            const baseUrl = process.env.VITE_APP_URL || 'http://localhost:5173';
+            const baseUrl = getAppBaseUrl('chef');
             const refreshUrl = `${baseUrl}/chef/stripe-connect/refresh`;
             const returnUrl = `${baseUrl}/chef/stripe-connect/return?success=true`;
 
