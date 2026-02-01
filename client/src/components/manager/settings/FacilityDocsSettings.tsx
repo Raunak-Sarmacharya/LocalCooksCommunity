@@ -26,6 +26,7 @@ import {
 import { useFileUpload } from '@/hooks/useFileUpload';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
+import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
 
 interface Location {
   id: number;
@@ -53,6 +54,23 @@ async function getAuthHeaders(): Promise<HeadersInit> {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json',
   };
+}
+
+function AuthenticatedDocumentLink({ url, className, children }: { url: string | null | undefined; className?: string; children: React.ReactNode }) {
+  const { url: presignedUrl } = usePresignedDocumentUrl(url);
+  
+  if (!url) return null;
+  
+  return (
+    <a 
+      href={presignedUrl || url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className={className}
+    >
+      {children}
+    </a>
+  );
 }
 
 export default function FacilityDocsSettings({ location }: FacilityDocsSettingsProps) {
@@ -240,14 +258,12 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-emerald-800">Floor Plans Uploaded</p>
-                <a
-                  href={requirements.floor_plans_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <AuthenticatedDocumentLink
+                  url={requirements.floor_plans_url}
                   className="text-xs text-emerald-600 hover:underline truncate block"
                 >
                   View Document
-                </a>
+                </AuthenticatedDocumentLink>
               </div>
               <Button
                 onClick={handleRemoveFloorPlans}
@@ -387,14 +403,12 @@ export default function FacilityDocsSettings({ location }: FacilityDocsSettingsP
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-emerald-800">Ventilation Document Uploaded</p>
-                <a
-                  href={requirements.ventilation_specs_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <AuthenticatedDocumentLink
+                  url={requirements.ventilation_specs_url}
                   className="text-xs text-emerald-600 hover:underline truncate block"
                 >
                   View Document
-                </a>
+                </AuthenticatedDocumentLink>
               </div>
               <Button
                 onClick={handleRemoveVentilationDoc}

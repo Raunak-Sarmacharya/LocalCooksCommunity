@@ -98,8 +98,7 @@ interface EquipmentListing {
   brand?: string;
   model?: string;
   availabilityType: 'included' | 'rental';
-  hourlyRate?: number;
-  dailyRate?: number;
+  sessionRate?: number; // Flat per-session rate in dollars (converted from cents)
   currency?: string;
 }
 
@@ -622,19 +621,12 @@ function EquipmentCard({
             </div>
           ) : (
             <>
-              {equipment.hourlyRate ? (
+              {equipment.sessionRate && equipment.sessionRate > 0 ? (
                 <div>
                   <p className="text-sm font-bold text-foreground">
-                    ${equipment.hourlyRate.toFixed(2)}
+                    ${equipment.sessionRate.toFixed(2)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">per hour</p>
-                </div>
-              ) : equipment.dailyRate ? (
-                <div>
-                  <p className="text-sm font-bold text-foreground">
-                    ${equipment.dailyRate.toFixed(2)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">per day</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">per session</p>
                 </div>
               ) : null}
             </>
@@ -698,7 +690,10 @@ function StorageCard({ storage }: { storage: StorageListing }) {
                   ${storage.basePrice.toFixed(2)}
                 </p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                  {storage.pricingModel === 'per_cubic_foot' ? 'base price' : 'per month'}
+                  {storage.pricingModel === 'per-cubic-foot' ? 'base price' : 
+                   storage.pricingModel === 'daily' ? 'per day' :
+                   storage.pricingModel === 'hourly' ? 'per hour' :
+                   storage.pricingModel === 'monthly-flat' ? 'per month' : 'per day'}
                 </p>
               </div>
             )}
@@ -1185,26 +1180,24 @@ export default function KitchenPreviewPage() {
           if (equipmentResponse.ok) {
             const equipmentData = await equipmentResponse.json();
             setKitchenEquipment({
-              included: (equipmentData.included || []).map((e: EquipmentListing & { hourlyRate?: number; dailyRate?: number }) => ({
+              included: (equipmentData.included || []).map((e: EquipmentListing & { sessionRate?: number }) => ({
                 id: e.id,
                 category: e.category,
                 equipmentType: e.equipmentType,
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
-                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
+                sessionRate: e.sessionRate ? e.sessionRate / 100 : undefined, // Convert cents to dollars
                 currency: e.currency || "CAD",
               })),
-              rental: (equipmentData.rental || []).map((e: EquipmentListing & { hourlyRate?: number; dailyRate?: number }) => ({
+              rental: (equipmentData.rental || []).map((e: EquipmentListing & { sessionRate?: number }) => ({
                 id: e.id,
                 category: e.category,
                 equipmentType: e.equipmentType,
                 brand: e.brand,
                 model: e.model,
                 availabilityType: e.availabilityType,
-                hourlyRate: e.hourlyRate ? e.hourlyRate / 100 : undefined,
-                dailyRate: e.dailyRate ? e.dailyRate / 100 : undefined,
+                sessionRate: e.sessionRate ? e.sessionRate / 100 : undefined, // Convert cents to dollars
                 currency: e.currency || "CAD",
               })),
             });

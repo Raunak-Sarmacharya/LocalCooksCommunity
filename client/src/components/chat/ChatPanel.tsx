@@ -1,10 +1,38 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Loader2, Info } from 'lucide-react';
+import { X, Loader2, Info, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import FacilityDocumentsPanel from './FacilityDocumentsPanel';
 import { useChat } from '@/hooks/use-chat';
+import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
 import { Timestamp } from 'firebase/firestore';
+
+// Authenticated file link component for chat attachments
+function AuthenticatedFileLink({ url, fileName, className }: { url: string | null | undefined; fileName?: string; className?: string }) {
+  const { url: presignedUrl, isLoading } = usePresignedDocumentUrl(url);
+  
+  if (!url) return null;
+  
+  return (
+    <a
+      href={presignedUrl || url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+    >
+      <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20">
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+        ) : (
+          <FileText className="h-4 w-4 text-primary" />
+        )}
+      </div>
+      <span className="text-xs underline truncate max-w-[150px]">
+        {fileName || 'Attached File'}
+      </span>
+    </a>
+  );
+}
 
 // Shadcn Chat Components
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
@@ -199,20 +227,12 @@ export default function ChatPanel({
             >
               {message.type === 'file' ? (
                 <div className="flex flex-col gap-2 p-1">
-                  <span className="text-sm">{message.content}</span>
-                  <a
-                    href={message.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  {message.content && <span className="text-sm">{message.content}</span>}
+                  <AuthenticatedFileLink
+                    url={message.fileUrl}
+                    fileName={message.fileName}
                     className="flex items-center gap-2 p-2 rounded bg-background/50 border hover:bg-background/80 transition-colors group"
-                  >
-                    <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center group-hover:bg-primary/20">
-                      <Info className="h-4 w-4 text-primary" />
-                    </div>
-                    <span className="text-xs underline truncate max-w-[150px]">
-                      {message.fileName || 'Attached File'}
-                    </span>
-                  </a>
+                  />
                 </div>
               ) : (
                 <span className="whitespace-pre-wrap">{message.content}</span>

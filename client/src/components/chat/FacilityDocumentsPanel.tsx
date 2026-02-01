@@ -4,6 +4,7 @@ import { FileText, Paperclip, Loader2, Eye, ChevronsUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { usePresignedDocumentUrl } from '@/hooks/use-presigned-document-url';
 import {
   Collapsible,
   CollapsibleContent,
@@ -84,16 +85,48 @@ export default function FacilityDocumentsPanel({ locationId, onAttachDocuments }
     enabled: !!locationId,
   });
 
-  const handleViewDocument = (document: FacilityDocument) => {
-    window.open(document.url, '_blank');
+  const handleViewDocument = async (document: FacilityDocument) => {
+    try {
+      // Get presigned URL for authenticated access
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        toast({
+          title: 'Authentication Required',
+          description: 'Please log in to view documents.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/files/r2-presigned?url=${encodeURIComponent(document.url)}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        window.open(data.url, '_blank');
+      } else {
+        // Fallback to original URL if presigned URL fails
+        window.open(document.url, '_blank');
+      }
+    } catch (error) {
+      console.error('Error getting presigned URL:', error);
+      // Fallback to original URL
+      window.open(document.url, '_blank');
+    }
   };
 
   const toggleSelection = (docId: string) => {
-      setSelectedDocIds(prev => 
-          prev.includes(docId) 
-          ? prev.filter(id => id !== docId)
-          : [...prev, docId]
-      );
+    setSelectedDocIds(prev =>
+      prev.includes(docId)
+        ? prev.filter(id => id !== docId)
+        : [...prev, docId]
+    );
   };
 
   const handleAttachSelected = () => {
