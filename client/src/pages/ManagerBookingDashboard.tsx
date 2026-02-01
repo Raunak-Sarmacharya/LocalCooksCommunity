@@ -30,12 +30,21 @@ import ManagerLocationsPage from "@/components/manager/ManagerLocationsPage";
 import ManagerRevenueDashboard from "./ManagerRevenueDashboard";
 import UnifiedChatView from "@/components/chat/UnifiedChatView";
 import LocationRequirementsSettings from "@/components/manager/LocationRequirementsSettings";
+import {
+  LicenseSettings,
+  BookingRulesSettings,
+  LocationSettings,
+  KitchensManagement,
+  NotificationsSettings,
+  FacilityDocsSettings,
+} from "@/components/manager/settings";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import ManagerProfileSettings from "@/components/manager/ManagerProfileSettings";
+import { OnboardingStatusBanner } from "@/components/manager/OnboardingStatusBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -141,7 +150,7 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 
-type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile';
+type ViewType = 'my-locations' | 'overview' | 'bookings' | 'availability' | 'settings' | 'applications' | 'pricing' | 'storage-listings' | 'equipment-listings' | 'payments' | 'revenue' | 'messages' | 'profile' | 'kitchens' | 'settings-license' | 'settings-booking-rules' | 'settings-facility-docs' | 'settings-location' | 'application-requirements' | 'notifications';
 
 
 export default function ManagerBookingDashboard() {
@@ -154,7 +163,7 @@ export default function ManagerBookingDashboard() {
   const [activeView, setActiveView] = useState<ViewType>(() => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile'];
+    const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications'];
     if (view && validViews.includes(view as ViewType)) {
       return view as ViewType;
     }
@@ -196,7 +205,10 @@ export default function ManagerBookingDashboard() {
 
   // [REF] Use new hook for consolidated status
   const {
-    showSetupBanner
+    showSetupBanner,
+    showLicenseReviewBanner,
+    isReadyForBookings,
+    missingSteps
   } = useOnboardingStatus(selectedLocation?.id);
 
   // Sync activeView with URL parameters
@@ -204,7 +216,7 @@ export default function ManagerBookingDashboard() {
     const handleLocationChange = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view');
-      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile'];
+      const validViews: ViewType[] = ['my-locations', 'overview', 'bookings', 'availability', 'settings', 'applications', 'pricing', 'storage-listings', 'equipment-listings', 'payments', 'revenue', 'messages', 'profile', 'kitchens', 'settings-license', 'settings-booking-rules', 'settings-facility-docs', 'settings-location', 'application-requirements', 'notifications'];
       if (view && validViews.includes(view as ViewType)) {
         setActiveView(view as ViewType);
       }
@@ -519,27 +531,14 @@ export default function ManagerBookingDashboard() {
       onLocationChange={(loc) => setSelectedLocation(loc as Location)}
       onCreateLocation={showCreateLocationHandler}
     >
-      {/* Onboarding Banner - Replacing Wizard Overlay */}
-      {showSetupBanner && (
-        <div className="bg-blue-600 text-white px-6 py-4 shadow-md mb-6 mx-6 mt-6 rounded-lg flex items-center justify-between animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/20 rounded-full">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg">Complete your kitchen setup</h3>
-              <p className="text-blue-100/90 text-sm">Finish adding your details to start accepting bookings.</p>
-            </div>
-          </div>
-          <Button
-            onClick={handleContinueSetup}
-            variant="secondary"
-            className="font-semibold shadow-lg hover:bg-blue-50"
-          >
-            Continue Setup <ChevronRight className="ml-2 h-4 w-4" />
-          </Button>
-        </div>
-      )}
+      {/* Onboarding Status Banners */}
+      <OnboardingStatusBanner
+        showSetupBanner={showSetupBanner}
+        showLicenseReviewBanner={showLicenseReviewBanner}
+        isReadyForBookings={isReadyForBookings}
+        missingSteps={missingSteps}
+        onContinueSetup={handleContinueSetup}
+      />
 
       {activeView === 'profile' && (
         <ManagerProfileSettings />
@@ -651,6 +650,124 @@ export default function ManagerBookingDashboard() {
             setActiveView('overview');
           }}
         />
+      )}
+
+      {/* New Settings Views - Enterprise-grade modular architecture */}
+      {activeView === 'kitchens' && selectedLocation && (
+        <KitchensManagement
+          location={locationDetails || selectedLocation}
+        />
+      )}
+
+      {activeView === 'kitchens' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <ChefHat className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage kitchens</p>
+        </div>
+      )}
+
+      {activeView === 'settings-license' && selectedLocation && (
+        <LicenseSettings
+          location={locationDetails || selectedLocation}
+          onRefresh={() => {
+            queryClient.invalidateQueries({ queryKey: ['locationDetails', selectedLocation.id] });
+            queryClient.invalidateQueries({ queryKey: ['/api/manager/locations'] });
+          }}
+        />
+      )}
+
+      {activeView === 'settings-license' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage license settings</p>
+        </div>
+      )}
+
+      {activeView === 'settings-booking-rules' && selectedLocation && (
+        <BookingRulesSettings
+          location={locationDetails || selectedLocation}
+          onSave={(updates) => updateLocationSettings.mutate(updates)}
+          isSaving={updateLocationSettings.isPending}
+        />
+      )}
+
+      {activeView === 'settings-booking-rules' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage booking rules</p>
+        </div>
+      )}
+
+      {activeView === 'settings-facility-docs' && selectedLocation && (
+        <FacilityDocsSettings
+          location={locationDetails || selectedLocation}
+        />
+      )}
+
+      {activeView === 'settings-facility-docs' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage facility documents</p>
+        </div>
+      )}
+
+      {activeView === 'settings-location' && selectedLocation && (
+        <LocationSettings
+          location={locationDetails || selectedLocation}
+          onSave={(updates) => updateLocationSettings.mutate(updates)}
+          isSaving={updateLocationSettings.isPending}
+        />
+      )}
+
+      {activeView === 'settings-location' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage location settings</p>
+        </div>
+      )}
+
+      {activeView === 'application-requirements' && selectedLocation && (
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Application Requirements</h2>
+            <p className="text-muted-foreground">
+              Configure what information chefs need to provide when applying to your location.
+            </p>
+          </div>
+          <LocationRequirementsSettings
+            locationId={selectedLocation.id}
+            locationName={selectedLocation.name}
+          />
+        </div>
+      )}
+
+      {activeView === 'application-requirements' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage application requirements</p>
+        </div>
+      )}
+
+      {activeView === 'notifications' && selectedLocation && (
+        <NotificationsSettings
+          location={locationDetails || selectedLocation}
+          onSave={(updates) => updateLocationSettings.mutate(updates)}
+          isSaving={updateLocationSettings.isPending}
+        />
+      )}
+
+      {activeView === 'notifications' && !selectedLocation && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Location</h3>
+          <p className="text-gray-500">Choose a location to manage notification settings</p>
+        </div>
       )}
 
       {/* Create Location Dialog handled via state in parent, but componentized */}

@@ -1,10 +1,10 @@
 import React, { useMemo } from "react";
 import { useLocation } from "wouter";
-import { 
-    CheckCircle2, 
-    Circle, 
-    Clock, 
-    Sparkles, 
+import {
+    CheckCircle2,
+    Circle,
+    Clock,
+    Sparkles,
     ArrowRight,
     Building,
     ChefHat,
@@ -15,7 +15,9 @@ import {
     Package,
     Wrench,
     PartyPopper,
-    AlertCircle
+    AlertCircle,
+    Shield,
+    Rocket
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -108,10 +110,10 @@ export default function CompletionSummaryStep() {
             label: "Kitchen License",
             status: licenseItemStatus,
             isRequired: true,
-            description: licenseItemStatus === 'complete' 
-                ? "Verified" 
-                : licenseItemStatus === 'pending' 
-                    ? "Awaiting verification" 
+            description: licenseItemStatus === 'complete'
+                ? "Verified"
+                : licenseItemStatus === 'pending'
+                    ? "Awaiting verification"
                     : "Upload your license",
             stepId: 'location'
         });
@@ -154,12 +156,33 @@ export default function CompletionSummaryStep() {
         return items;
     }, [selectedLocation, kitchens, hasAvailability, hasRequirements, isStripeOnboardingComplete, storageForm, equipmentForm]);
 
-    // Calculate readiness
+    // Calculate readiness - License pending counts as "done" for onboarding completion
     const requiredItems = setupItems.filter(item => item.isRequired);
-    const completedRequired = requiredItems.filter(item => item.status === 'complete');
-    const readinessPercentage = Math.round((completedRequired.length / requiredItems.length) * 100);
-    const isFullyReady = completedRequired.length === requiredItems.length;
-    const incompleteRequired = requiredItems.filter(item => item.status === 'incomplete' || item.status === 'pending');
+    
+    // For onboarding completion: license pending OR approved counts as done
+    const completedOrPendingRequired = requiredItems.filter(item => 
+        item.status === 'complete' || item.status === 'pending'
+    );
+    
+    // For accepting bookings: only fully complete items count
+    const fullyCompletedRequired = requiredItems.filter(item => item.status === 'complete');
+    
+    // License status helpers
+    const licenseItem = setupItems.find(item => item.id === 'license');
+    const isLicensePending = licenseItem?.status === 'pending';
+    const isLicenseApproved = licenseItem?.status === 'complete';
+    
+    // Onboarding is complete when all steps done (license can be pending)
+    const isOnboardingComplete = completedOrPendingRequired.length === requiredItems.length;
+    
+    // Ready for bookings when ALL items are fully complete (license must be approved)
+    const isFullyReady = fullyCompletedRequired.length === requiredItems.length;
+    
+    // Progress shows completion percentage (pending counts toward progress)
+    const readinessPercentage = Math.round((completedOrPendingRequired.length / requiredItems.length) * 100);
+    
+    // Items that still need action (not complete AND not pending)
+    const incompleteRequired = requiredItems.filter(item => item.status === 'incomplete');
 
     const handleClose = () => {
         setIsOpen(false);
@@ -172,23 +195,34 @@ export default function CompletionSummaryStep() {
             <div className="text-center mb-8">
                 <div className={cn(
                     "inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4",
-                    isFullyReady 
-                        ? "bg-emerald-100 dark:bg-emerald-900/30" 
-                        : "bg-amber-100 dark:bg-amber-900/30"
+                    isFullyReady
+                        ? "bg-emerald-100 dark:bg-emerald-900/30"
+                        : isOnboardingComplete && isLicensePending
+                            ? "bg-amber-100 dark:bg-amber-900/30"
+                            : "bg-slate-100 dark:bg-slate-800"
                 )}>
                     {isFullyReady ? (
                         <PartyPopper className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+                    ) : isOnboardingComplete && isLicensePending ? (
+                        <Shield className="w-7 h-7 text-amber-600 dark:text-amber-400" />
                     ) : (
-                        <Sparkles className="w-7 h-7 text-amber-600 dark:text-amber-400" />
+                        <Sparkles className="w-7 h-7 text-slate-500 dark:text-slate-400" />
                     )}
                 </div>
                 <h2 className="text-lg font-medium text-slate-900 dark:text-slate-100 tracking-tight mb-1">
-                    {isFullyReady ? "You're all set!" : "Almost there"}
+                    {isFullyReady 
+                        ? "You're all set!" 
+                        : isOnboardingComplete && isLicensePending
+                            ? "Setup Complete!"
+                            : "Almost there"
+                    }
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {isFullyReady 
+                    {isFullyReady
                         ? "Your kitchen is ready to accept bookings."
-                        : `Complete ${incompleteRequired.length} more step${incompleteRequired.length > 1 ? 's' : ''} to start accepting bookings.`
+                        : isOnboardingComplete && isLicensePending
+                            ? "Your license is under review. You can accept bookings once approved."
+                            : `Complete ${incompleteRequired.length} more step${incompleteRequired.length > 1 ? 's' : ''} to finish setup.`
                     }
                 </p>
             </div>
@@ -201,15 +235,15 @@ export default function CompletionSummaryStep() {
                         "text-xs font-medium",
                         isFullyReady ? "text-emerald-600 dark:text-emerald-400" : "text-slate-600 dark:text-slate-300"
                     )}>
-                        {completedRequired.length}/{requiredItems.length} required
+                        {completedOrPendingRequired.length}/{requiredItems.length} required
                     </span>
                 </div>
                 <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div 
+                    <div
                         className={cn(
                             "h-full transition-all duration-500 ease-out rounded-full",
-                            isFullyReady 
-                                ? "bg-emerald-500" 
+                            isFullyReady
+                                ? "bg-emerald-500"
                                 : "bg-gradient-to-r from-amber-400 to-amber-500"
                         )}
                         style={{ width: `${readinessPercentage}%` }}
@@ -217,17 +251,62 @@ export default function CompletionSummaryStep() {
                 </div>
             </div>
 
-            {/* Alert for incomplete required items */}
-            {!isFullyReady && incompleteRequired.length > 0 && (
-                <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40">
+            {/* License Under Review Banner - Shows when onboarding complete but license pending */}
+            {isOnboardingComplete && isLicensePending && (
+                <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-amber-50 via-orange-50/50 to-amber-50 dark:from-amber-950/30 dark:via-amber-900/20 dark:to-amber-950/30 border border-amber-200/60 dark:border-amber-800/40">
                     <div className="flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                        <div>
+                        <div className="relative shrink-0">
+                            <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                                <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                            </div>
+                        </div>
+                        <div className="flex-1">
                             <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                                Required to accept bookings
+                                License Under Review
                             </p>
-                            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                                Complete the highlighted steps below to start receiving chef bookings.
+                            <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5">
+                                Your kitchen license is being verified. This typically takes 1-2 business days.
+                            </p>
+                        </div>
+                        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/60 dark:bg-amber-950/40 ring-1 ring-amber-200/60 dark:ring-amber-800/40">
+                            <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            <span className="text-xs font-medium text-amber-700 dark:text-amber-300">Pending</span>
+                        </div>
+                    </div>
+                    
+                    {/* Progress steps */}
+                    <div className="mt-4 pt-3 border-t border-amber-200/40 dark:border-amber-800/30">
+                        <div className="flex items-center gap-4 text-xs">
+                            <div className="flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                <span className="text-slate-600 dark:text-slate-400">Setup Done</span>
+                            </div>
+                            <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600" />
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+                                <span className="text-amber-700 dark:text-amber-300 font-medium">License Review</span>
+                            </div>
+                            <ArrowRight className="w-3 h-3 text-slate-300 dark:text-slate-600" />
+                            <div className="flex items-center gap-1.5 opacity-50">
+                                <Rocket className="w-3.5 h-3.5 text-slate-400" />
+                                <span className="text-slate-400">Accept Bookings</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Alert for incomplete required items - Only when onboarding NOT complete */}
+            {!isOnboardingComplete && incompleteRequired.length > 0 && (
+                <div className="mb-6 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-700/40">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle className="w-5 h-5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                                Complete required steps
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Finish the highlighted steps below to complete your setup.
                             </p>
                         </div>
                     </div>
@@ -237,9 +316,9 @@ export default function CompletionSummaryStep() {
             {/* Setup Checklist - Notion-style */}
             <div className="space-y-1 mb-10">
                 {setupItems.map((item) => (
-                    <SetupItemRow 
-                        key={item.id} 
-                        item={item} 
+                    <SetupItemRow
+                        key={item.id}
+                        item={item}
                         onAction={() => goToStep(item.stepId)}
                     />
                 ))}
@@ -251,17 +330,25 @@ export default function CompletionSummaryStep() {
                     size="lg"
                     onClick={handleClose}
                     className={cn(
-                        "h-12 px-8 text-base font-medium",
-                        isFullyReady 
-                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                            : "bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900 text-white",
-                        "shadow-sm hover:shadow-md transition-all duration-200"
+                        "h-12 px-8 text-base font-medium shadow-sm hover:shadow-md transition-all duration-200",
+                        isFullyReady && "bg-emerald-600 hover:bg-emerald-700",
+                        isOnboardingComplete && isLicensePending && "bg-amber-600 hover:bg-amber-700"
                     )}
                 >
-                    {isFullyReady ? "Go to Dashboard" : "Continue to Dashboard"}
+                    {isFullyReady 
+                        ? "Go to Dashboard" 
+                        : isOnboardingComplete 
+                            ? "Go to Dashboard"
+                            : "Continue to Dashboard"
+                    }
                     <ArrowRight className="ml-2 w-4 h-4" />
                 </Button>
-                {!isFullyReady && (
+                {isOnboardingComplete && isLicensePending && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-xs font-medium">
+                        We'll notify you once your license is approved.
+                    </p>
+                )}
+                {!isOnboardingComplete && (
                     <p className="text-xs text-slate-400 dark:text-slate-500 text-center max-w-xs">
                         You can complete the remaining steps anytime from your dashboard settings.
                     </p>
@@ -280,9 +367,9 @@ function SetupItemRow({ item, onAction }: SetupItemRowProps) {
     const Icon = item.icon;
     const isActionable = item.status === 'incomplete' || item.status === 'pending';
     const isOptionalSkipped = !item.isRequired && item.status === 'skipped';
-    
+
     return (
-        <div 
+        <div
             className={cn(
                 "group flex items-center gap-3 p-3 rounded-lg transition-all duration-200",
                 isActionable && "cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50",
@@ -303,14 +390,14 @@ function SetupItemRow({ item, onAction }: SetupItemRowProps) {
                 ) : item.status === 'incomplete' ? (
                     <div className={cn(
                         "w-8 h-8 rounded-md flex items-center justify-center",
-                        item.isRequired 
-                            ? "bg-red-50 dark:bg-red-950/30 ring-1 ring-red-200 dark:ring-red-800/50" 
+                        item.isRequired
+                            ? "bg-red-50 dark:bg-red-950/30 ring-1 ring-red-200 dark:ring-red-800/50"
                             : "bg-slate-100 dark:bg-slate-800"
                     )}>
                         <Circle className={cn(
                             "w-4 h-4",
-                            item.isRequired 
-                                ? "text-red-400 dark:text-red-500" 
+                            item.isRequired
+                                ? "text-red-400 dark:text-red-500"
                                 : "text-slate-400 dark:text-slate-500"
                         )} />
                     </div>

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
   Save,
@@ -19,6 +20,7 @@ import {
   Settings2,
   Building2,
   AlertCircle,
+  Circle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { auth } from '@/lib/firebase';
@@ -237,81 +239,89 @@ export function ApplicationRequirementsWizard({
         </div>
       )}
 
-      {/* Step Navigation */}
-      <div className="relative bg-slate-50/80 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200/60 dark:border-slate-700/60">
-        <p className="text-xs text-center text-slate-500 dark:text-slate-400 mb-3 font-medium">
-          Click any step to navigate
-        </p>
-        <div className="flex items-center justify-between">
+      {/* Step Navigation - Notion-style Tabs */}
+      <Tabs value={activeStep} onValueChange={(value) => goToStep(value as WizardStep)} className="w-full">
+        <TabsList className="w-full h-auto p-1 bg-slate-100/60 dark:bg-slate-800/40 rounded-lg border border-slate-200/50 dark:border-slate-700/50 grid grid-cols-3 gap-1">
           {WIZARD_STEPS.map((step, index) => {
             const isActive = step.id === activeStep;
             const isCompleted = completedSteps.has(step.id);
-            const isPast = index < currentStepIndex;
+            const stepNumber = index + 1;
+            const showStepNumber = step.id === 'step1' || step.id === 'step2';
             
             return (
-              <button
+              <TabsTrigger
                 key={step.id}
-                onClick={() => goToStep(step.id)}
+                value={step.id}
                 className={cn(
-                  'flex-1 relative flex flex-col items-center gap-2 py-3 px-2 transition-all cursor-pointer group',
-                  'focus:outline-none outline-none rounded-xl',
-                  'hover:bg-white/80 dark:hover:bg-slate-700/50',
-                  isActive && 'z-10 bg-white dark:bg-slate-800 shadow-sm'
+                  'relative flex items-center gap-3 px-3 py-2.5 rounded-md',
+                  isActive 
+                    ? 'bg-white dark:bg-slate-900 shadow-sm' 
+                    : 'hover:bg-white/50 dark:hover:bg-slate-800/50',
+                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-primary/40'
                 )}
               >
-                {/* Step Circle */}
-                <div
-                  className={cn(
-                    'relative flex items-center justify-center h-12 w-12 rounded-xl transition-all duration-300',
-                    'group-hover:scale-105 group-hover:shadow-md',
-                    isActive && 'bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-lg shadow-teal-500/30 scale-110',
-                    !isActive && isCompleted && 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-200 dark:group-hover:bg-emerald-800/50',
-                    !isActive && !isCompleted && 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 group-hover:text-slate-600 dark:group-hover:text-slate-300'
-                  )}
-                >
-                  {isCompleted && !isActive ? (
-                    <CheckCircle2 className="h-5 w-5" />
-                  ) : (
-                    STEP_ICONS[step.id]
-                  )}
-                </div>
-
-                {/* Step Label */}
-                <div className="text-center">
-                  <p
-                    className={cn(
-                      'text-xs font-semibold transition-colors',
-                      isActive && 'text-teal-700 dark:text-teal-400',
-                      !isActive && 'text-slate-500 dark:text-slate-400'
-                    )}
-                  >
-                    {step.title.replace(/Step \d+: /, '')}
-                  </p>
-                  <p
-                    className={cn(
-                      'text-[10px] mt-0.5 max-w-[120px] leading-tight transition-colors hidden sm:block',
-                      isActive && 'text-slate-600 dark:text-slate-400',
-                      !isActive && 'text-slate-400 dark:text-slate-500'
-                    )}
-                  >
-                    {step.description}
-                  </p>
-                </div>
-
-                {/* Connector Line */}
-                {index < WIZARD_STEPS.length - 1 && (
+                {/* Icon with completion indicator */}
+                <div className="relative flex-shrink-0">
                   <div
                     className={cn(
-                      'absolute top-8 left-[calc(50%+28px)] w-[calc(100%-56px)] h-0.5 transition-colors',
-                      isPast || isCompleted ? 'bg-emerald-300 dark:bg-emerald-700' : 'bg-slate-200 dark:bg-slate-700'
+                      'flex items-center justify-center h-8 w-8 rounded-lg',
+                      isActive && 'bg-brand-primary text-white',
+                      !isActive && isCompleted && 'bg-rose-100 dark:bg-rose-900/30 text-brand-primary',
+                      !isActive && !isCompleted && 'bg-slate-200/80 dark:bg-slate-700/60 text-slate-500 dark:text-slate-400'
                     )}
-                  />
+                  >
+                    {STEP_ICONS[step.id]}
+                  </div>
+                  {isCompleted && !isActive && (
+                    <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-green-500 border-2 border-white dark:border-slate-900 flex items-center justify-center">
+                      <CheckCircle2 className="h-2.5 w-2.5 text-white" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Labels */}
+                <div className="flex flex-col items-start text-left min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    {showStepNumber && (
+                      <span
+                        className={cn(
+                          'text-[10px] font-semibold uppercase tracking-wide',
+                          isActive ? 'text-brand-primary' : 'text-slate-400 dark:text-slate-500'
+                        )}
+                      >
+                        Step {stepNumber}
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        'text-[13px] font-medium truncate',
+                        isActive ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'
+                      )}
+                    >
+                      {step.id === 'step1' ? 'Initial Application' : step.id === 'step2' ? 'Kitchen Coordination' : 'Facility Info'}
+                    </span>
+                  </div>
+                  <span
+                    className={cn(
+                      'text-[11px] truncate w-full',
+                      isActive ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500'
+                    )}
+                  >
+                    {step.id === 'step1' && 'What chefs submit first'}
+                    {step.id === 'step2' && 'After initial approval'}
+                    {step.id === 'facility' && 'Docs to share with chefs'}
+                  </span>
+                </div>
+
+                {/* Active indicator */}
+                {isActive && (
+                  <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-brand-primary rounded-full" />
                 )}
-              </button>
+              </TabsTrigger>
             );
           })}
-        </div>
-      </div>
+        </TabsList>
+      </Tabs>
 
       {/* Unsaved Changes Banner */}
       {hasUnsavedChanges && (

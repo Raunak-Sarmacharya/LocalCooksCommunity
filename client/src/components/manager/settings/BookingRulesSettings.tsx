@@ -1,0 +1,555 @@
+/**
+ * Booking Rules Settings Component
+ * Manages cancellation policy, booking limits, minimum window, and overstay penalties
+ */
+
+import { useState, useEffect, useCallback } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { AlertCircle, Clock, Save, Info, Loader2, FileText, Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { auth } from '@/lib/firebase';
+
+interface Location {
+  id: number;
+  name: string;
+  cancellationPolicyHours?: number;
+  cancellationPolicyMessage?: string;
+  defaultDailyBookingLimit?: number;
+  minimumBookingWindowHours?: number;
+  kitchenTermsUrl?: string;
+}
+
+interface BookingRulesSettingsProps {
+  location: Location;
+  onSave: (updates: any) => void;
+  isSaving: boolean;
+}
+
+export default function BookingRulesSettings({ location, onSave, isSaving }: BookingRulesSettingsProps) {
+  const { toast } = useToast();
+  
+  // Cancellation Policy State
+  const [cancellationHours, setCancellationHours] = useState(location.cancellationPolicyHours || 24);
+  const [cancellationMessage, setCancellationMessage] = useState(
+    location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+  );
+
+  // Daily Booking Limit State
+  const [dailyBookingLimit, setDailyBookingLimit] = useState(location.defaultDailyBookingLimit || 2);
+
+  // Minimum Booking Window State
+  const [minimumBookingWindowHours, setMinimumBookingWindowHours] = useState(location.minimumBookingWindowHours || 1);
+
+  // Overstay Penalty Defaults State
+  const [overstayGracePeriodDays, setOverstayGracePeriodDays] = useState<number | null>(null);
+  const [overstayPenaltyRate, setOverstayPenaltyRate] = useState<number | null>(null);
+  const [overstayMaxPenaltyDays, setOverstayMaxPenaltyDays] = useState<number | null>(null);
+  const [overstayPolicyText, setOverstayPolicyText] = useState('');
+  const [isLoadingPenaltyDefaults, setIsLoadingPenaltyDefaults] = useState(true);
+
+  // Terms & Conditions State
+  const [termsFile, setTermsFile] = useState<File | null>(null);
+  const [isUploadingTerms, setIsUploadingTerms] = useState(false);
+
+  // Update state when location changes
+  useEffect(() => {
+    setCancellationHours(location.cancellationPolicyHours || 24);
+    setCancellationMessage(
+      location.cancellationPolicyMessage || "Bookings cannot be cancelled within {hours} hours of the scheduled time."
+    );
+    setDailyBookingLimit(location.defaultDailyBookingLimit || 2);
+    setMinimumBookingWindowHours(location.minimumBookingWindowHours || 1);
+  }, [location]);
+
+  // Fetch overstay penalty defaults
+  const fetchOverstayPenaltyDefaults = useCallback(async () => {
+    if (!location.id) return;
+    
+    setIsLoadingPenaltyDefaults(true);
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await currentFirebaseUser.getIdToken();
+      const response = await fetch(`/api/manager/locations/${location.id}/overstay-penalty-defaults`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch overstay penalty defaults');
+      }
+
+      const data = await response.json();
+      
+      setOverstayGracePeriodDays(data.locationDefaults.gracePeriodDays);
+      setOverstayPenaltyRate(data.locationDefaults.penaltyRate ? data.locationDefaults.penaltyRate * 100 : null);
+      setOverstayMaxPenaltyDays(data.locationDefaults.maxPenaltyDays);
+      setOverstayPolicyText(data.locationDefaults.policyText || '');
+    } catch (error: any) {
+      console.error('Error fetching overstay penalty defaults:', error);
+    } finally {
+      setIsLoadingPenaltyDefaults(false);
+    }
+  }, [location.id]);
+
+  useEffect(() => {
+    fetchOverstayPenaltyDefaults();
+  }, [fetchOverstayPenaltyDefaults]);
+
+  const handleSaveBookingRules = () => {
+    onSave({
+      locationId: location.id,
+      cancellationPolicyHours: cancellationHours,
+      cancellationPolicyMessage: cancellationMessage,
+      defaultDailyBookingLimit: dailyBookingLimit,
+      minimumBookingWindowHours: minimumBookingWindowHours,
+    });
+  };
+
+  const handleSaveOverstayPenaltyDefaults = async () => {
+    if (!location.id) return;
+
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await currentFirebaseUser.getIdToken();
+      
+      const payload = {
+        gracePeriodDays: overstayGracePeriodDays,
+        penaltyRate: overstayPenaltyRate !== null ? overstayPenaltyRate / 100 : null,
+        maxPenaltyDays: overstayMaxPenaltyDays,
+        policyText: overstayPolicyText || null,
+      };
+
+      const response = await fetch(`/api/manager/locations/${location.id}/overstay-penalty-defaults`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save overstay penalty defaults');
+      }
+
+      toast({
+        title: "Success",
+        description: "Overstay penalty defaults updated successfully",
+      });
+    } catch (error: any) {
+      console.error('Error saving overstay penalty defaults:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save overstay penalty settings",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleUploadTerms = async () => {
+    if (!termsFile) return;
+
+    setIsUploadingTerms(true);
+    try {
+      const currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        throw new Error("Firebase user not available");
+      }
+
+      const token = await currentFirebaseUser.getIdToken();
+
+      const formData = new FormData();
+      formData.append('file', termsFile);
+
+      const response = await fetch('/api/files/upload-file', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload terms');
+      }
+
+      const result = await response.json();
+      const termsUrl = result.url;
+
+      const updateResponse = await fetch(`/api/manager/locations/${location.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          kitchenTermsUrl: termsUrl,
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        const errorData = await updateResponse.json();
+        throw new Error(errorData.error || 'Failed to update terms');
+      }
+
+      toast({
+        title: "Terms Uploaded",
+        description: "Your terms and conditions have been uploaded successfully.",
+      });
+
+      setTermsFile(null);
+    } catch (error: any) {
+      console.error('Terms upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Failed to upload terms",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingTerms(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Booking Rules</h2>
+        <p className="text-muted-foreground">
+          Configure cancellation policies, booking limits, and penalties for your location.
+        </p>
+      </div>
+
+      {/* Cancellation Policy */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-blue-600" />
+            <div>
+              <CardTitle className="text-lg">Cancellation Policy</CardTitle>
+              <CardDescription>Configure when chefs can cancel their bookings</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="cancellation-hours">Cancellation Window (Hours)</Label>
+            <Input
+              id="cancellation-hours"
+              type="number"
+              min="0"
+              max="168"
+              value={cancellationHours}
+              onChange={(e) => setCancellationHours(parseInt(e.target.value) || 0)}
+              className="mt-1.5 max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Minimum hours before booking time that cancellation is allowed (0 = no restrictions)
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="cancellation-message">Policy Message</Label>
+            <Textarea
+              id="cancellation-message"
+              value={cancellationMessage}
+              onChange={(e) => setCancellationMessage(e.target.value)}
+              rows={3}
+              className="mt-1.5"
+              placeholder="Bookings cannot be cancelled within {hours} hours of the scheduled time."
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Use {"{hours}"} as a placeholder for the cancellation window
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Daily Booking Limit */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Clock className="h-5 w-5 text-green-600" />
+            <div>
+              <CardTitle className="text-lg">Daily Booking Limit</CardTitle>
+              <CardDescription>Maximum hours a chef can book per day</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="daily-limit">Default Hours per Chef per Day</Label>
+            <Input
+              id="daily-limit"
+              type="number"
+              min="1"
+              max="24"
+              value={dailyBookingLimit}
+              onChange={(e) => setDailyBookingLimit(parseInt(e.target.value) || 2)}
+              className="mt-1.5 max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Maximum hours a chef can book in a single day (1-24 hours)
+            </p>
+          </div>
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+              <p className="text-xs text-blue-800">
+                You can override this limit for specific dates in the Availability calendar.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Minimum Booking Window */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Clock className="h-5 w-5 text-orange-600" />
+            <div>
+              <CardTitle className="text-lg">Minimum Booking Window</CardTitle>
+              <CardDescription>Minimum advance notice required for bookings</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="min-window">Minimum Hours in Advance</Label>
+            <Input
+              id="min-window"
+              type="number"
+              min="0"
+              max="168"
+              value={minimumBookingWindowHours}
+              onChange={(e) => setMinimumBookingWindowHours(parseInt(e.target.value) || 1)}
+              className="mt-1.5 max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Chefs must book at least this many hours before the booking time (0 = no restrictions)
+            </p>
+          </div>
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 text-blue-600 mt-0.5" />
+              <p className="text-xs text-blue-800">
+                Example: With 1 hour, if it's 1:00 PM, chefs can only book times starting from 2:00 PM onwards.
+              </p>
+            </div>
+          </div>
+
+          <Button onClick={handleSaveBookingRules} disabled={isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Save Booking Rules
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Terms & Conditions */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <FileText className="h-5 w-5 text-purple-600" />
+            <div>
+              <CardTitle className="text-lg">Terms & Conditions</CardTitle>
+              <CardDescription>Upload terms that chefs must agree to when booking</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {location.kitchenTermsUrl && (
+            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-slate-500" />
+                <span className="text-sm">Current terms document uploaded</span>
+              </div>
+              <a
+                href={location.kitchenTermsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                View Document
+              </a>
+            </div>
+          )}
+
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
+            <input
+              type="file"
+              accept=".pdf"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  setTermsFile(file);
+                }
+              }}
+              className="hidden"
+              id="terms-upload"
+              disabled={isUploadingTerms}
+            />
+            <label
+              htmlFor="terms-upload"
+              className={`flex flex-col items-center justify-center cursor-pointer ${isUploadingTerms ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Upload className="h-8 w-8 text-gray-400 mb-2" />
+              <span className="text-sm font-medium text-gray-700 mb-1">
+                {termsFile ? termsFile.name : 'Click to upload terms & conditions'}
+              </span>
+              <span className="text-xs text-gray-500">PDF only (max 5MB)</span>
+            </label>
+          </div>
+
+          {termsFile && (
+            <Button onClick={handleUploadTerms} disabled={isUploadingTerms}>
+              {isUploadingTerms ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload Terms
+                </>
+              )}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Overstay Penalty Defaults */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <div>
+              <CardTitle className="text-lg">Storage Overstay Penalty Defaults</CardTitle>
+              <CardDescription>Configure default penalty settings for storage overstays</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLoadingPenaltyDefaults ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-6 w-6 animate-spin text-red-600" />
+              <span className="ml-2 text-sm text-muted-foreground">Loading penalty settings...</span>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="grace-period">Grace Period (Days)</Label>
+                  <Input
+                    id="grace-period"
+                    type="number"
+                    min="0"
+                    max="14"
+                    value={overstayGracePeriodDays ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOverstayGracePeriodDays(val === '' ? null : parseInt(val));
+                    }}
+                    placeholder="Platform default"
+                    className="mt-1.5"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Days before penalties apply (0-14)
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="penalty-rate">Penalty Rate (%)</Label>
+                  <Input
+                    id="penalty-rate"
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="1"
+                    value={overstayPenaltyRate ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOverstayPenaltyRate(val === '' ? null : parseInt(val));
+                    }}
+                    placeholder="Platform default"
+                    className="mt-1.5"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    % of daily rate per day (0-50%)
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="max-penalty">Max Penalty Days</Label>
+                  <Input
+                    id="max-penalty"
+                    type="number"
+                    min="1"
+                    max="90"
+                    value={overstayMaxPenaltyDays ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOverstayMaxPenaltyDays(val === '' ? null : parseInt(val));
+                    }}
+                    placeholder="Platform default"
+                    className="mt-1.5"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Max days to charge penalties (1-90)
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="policy-text">Policy Text (Optional)</Label>
+                <Textarea
+                  id="policy-text"
+                  value={overstayPolicyText}
+                  onChange={(e) => setOverstayPolicyText(e.target.value)}
+                  rows={3}
+                  className="mt-1.5"
+                  placeholder="Custom policy text shown to chefs regarding overstay penalties..."
+                />
+              </div>
+
+              <Button onClick={handleSaveOverstayPenaltyDefaults} variant="destructive">
+                <Save className="mr-2 h-4 w-4" />
+                Save Penalty Defaults
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

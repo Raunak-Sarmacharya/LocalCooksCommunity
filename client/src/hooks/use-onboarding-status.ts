@@ -8,15 +8,20 @@ export interface OnboardingStatus {
     // Global
     isStripeComplete: boolean;
     // Location specific
+    hasUploadedLicense: boolean;
     hasApprovedLicense: boolean;
+    hasPendingLicense: boolean;
+    licenseStatus: 'none' | 'pending' | 'approved' | 'rejected';
     hasKitchens: boolean;
     hasAvailability: boolean;
     hasRequirements: boolean;
 
     // Computed
-    isReadyForBookings: boolean;
+    isOnboardingComplete: boolean; // All steps done (license uploaded, not necessarily approved)
+    isReadyForBookings: boolean;   // Can accept bookings (license approved)
     showOnboardingModal: boolean;
-    showSetupBanner: boolean;
+    showSetupBanner: boolean;      // Show setup banner (onboarding incomplete)
+    showLicenseReviewBanner: boolean; // Show license under review banner
 
     // Missing steps for banner
     missingSteps: string[];
@@ -140,19 +145,41 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
     // Use Stripe API status (more accurate) - account is complete only when charges AND payouts are enabled
     const isStripeComplete = stripeConnectStatus?.status === 'complete' && 
         stripeConnectStatus?.chargesEnabled && stripeConnectStatus?.payoutsEnabled;
-    const hasApprovedLicense = locationData?.kitchen_license_status === 'approved' || locationData?.kitchenLicenseStatus === 'approved'; // handle snake/camel
+    
+    // License status logic - handle snake_case and camelCase
+    const rawLicenseStatus = locationData?.kitchen_license_status || locationData?.kitchenLicenseStatus;
+    const licenseUrl = locationData?.kitchen_license_url || locationData?.kitchenLicenseUrl;
+    
+    // Determine license states
+    const hasUploadedLicense = !!licenseUrl;
+    const hasApprovedLicense = rawLicenseStatus === 'approved';
+    const hasPendingLicense = hasUploadedLicense && rawLicenseStatus === 'pending';
+    const licenseStatus: 'none' | 'pending' | 'approved' | 'rejected' = 
+        !hasUploadedLicense ? 'none' :
+        rawLicenseStatus === 'approved' ? 'approved' :
+        rawLicenseStatus === 'rejected' ? 'rejected' : 'pending';
+    
     const hasKitchens = (kitchens?.length || 0) > 0;
 
-    // Ready State - ALL required items must be complete to accept bookings
-    const isReadyForBookings =
+    // Onboarding Complete = All steps done with license UPLOADED (not necessarily approved)
+    const isOnboardingComplete =
         isStripeComplete &&
-        hasApprovedLicense &&
+        hasUploadedLicense && // Just needs to be uploaded
         hasKitchens &&
         hasAvailability &&
         hasRequirements;
 
-    const missingSteps = [];
-    if (!hasApprovedLicense) missingSteps.push("Upload Kitchen License");
+    // Ready for Bookings = Can accept bookings (license must be APPROVED)
+    const isReadyForBookings =
+        isStripeComplete &&
+        hasApprovedLicense && // Must be approved to accept bookings
+        hasKitchens &&
+        hasAvailability &&
+        hasRequirements;
+
+    // Missing steps for setup banner (only show if onboarding not complete)
+    const missingSteps: string[] = [];
+    if (!hasUploadedLicense) missingSteps.push("Upload Kitchen License");
     if (!hasKitchens) missingSteps.push("Create a Kitchen");
     if (!hasAvailability) missingSteps.push("Set Availability");
     if (!hasRequirements) missingSteps.push("Configure Application Requirements");
@@ -162,20 +189,29 @@ export function useOnboardingStatus(locationId?: number): OnboardingStatus {
         !userData?.manager_onboarding_completed &&
         !userData?.has_seen_welcome;
 
-    const showSetupBanner = !isReadyForBookings;
+    // Show setup banner only if onboarding is NOT complete
+    const showSetupBanner = !isOnboardingComplete;
+    
+    // Show license review banner if onboarding is complete but license is pending
+    const showLicenseReviewBanner = isOnboardingComplete && hasPendingLicense;
 
     const isLoading = isLoadingUser || isLoadingStripe || (!!locationId && (isLoadingLocation || isLoadingKitchens));
 
     return {
         isLoading,
         isStripeComplete,
+        hasUploadedLicense,
         hasApprovedLicense,
+        hasPendingLicense,
+        licenseStatus,
         hasKitchens,
         hasAvailability,
         hasRequirements,
+        isOnboardingComplete,
         isReadyForBookings,
         showOnboardingModal,
         showSetupBanner,
+        showLicenseReviewBanner,
         missingSteps
     };
 }

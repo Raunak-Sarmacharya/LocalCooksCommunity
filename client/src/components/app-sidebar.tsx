@@ -2,11 +2,15 @@
 
 import * as React from "react"
 import {
-    BookOpen,
+    Bell,
     Calendar,
+    ChefHat,
+    ChevronRight,
     Clock,
     CreditCard,
     DollarSign,
+    FileText,
+    Globe,
     MapPin,
     Package,
     Settings,
@@ -15,7 +19,8 @@ import {
     ChevronsUpDown,
     Sparkles,
     LifeBuoy,
-    Send
+    Send,
+    ClipboardList,
 } from "lucide-react"
 
 import {
@@ -28,9 +33,17 @@ import {
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
+    SidebarMenuSub,
+    SidebarMenuSubButton,
+    SidebarMenuSubItem,
     SidebarRail,
     SidebarSeparator,
 } from "@/components/ui/sidebar"
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -40,8 +53,31 @@ import {
 import { cn } from "@/lib/utils"
 import Logo from "@/components/ui/logo"
 
-// Define the navigation items structure
-const data = {
+// Navigation item types
+interface NavItem {
+    title: string;
+    url: string;
+    icon: React.ComponentType<{ className?: string }>;
+}
+
+interface CollapsibleNavItem {
+    title: string;
+    icon: React.ComponentType<{ className?: string }>;
+    items: NavItem[];
+}
+
+interface NavGroup {
+    title: string;
+    items: (NavItem | CollapsibleNavItem)[];
+}
+
+// Type guard for collapsible items
+function isCollapsibleItem(item: NavItem | CollapsibleNavItem): item is CollapsibleNavItem {
+    return 'items' in item && !('url' in item);
+}
+
+// Define the navigation items structure - Enterprise-grade organization
+const navData: { navMain: NavGroup[] } = {
     navMain: [
         {
             title: "Overview",
@@ -59,7 +95,7 @@ const data = {
                 {
                     title: "Messages",
                     url: "messages",
-                    icon: Send, // Using Send as a proxy for MessageCircle if not imported, or update imports
+                    icon: Send,
                 },
                 {
                     title: "Bookings",
@@ -72,9 +108,9 @@ const data = {
             title: "Property",
             items: [
                 {
-                    title: "Settings",
-                    url: "settings",
-                    icon: Settings,
+                    title: "Kitchens",
+                    url: "kitchens",
+                    icon: ChefHat,
                 },
                 {
                     title: "Availability",
@@ -85,6 +121,32 @@ const data = {
                     title: "Pricing",
                     url: "pricing",
                     icon: DollarSign,
+                },
+                {
+                    title: "Property Settings",
+                    icon: Settings,
+                    items: [
+                        {
+                            title: "License",
+                            url: "settings-license",
+                            icon: FileText,
+                        },
+                        {
+                            title: "Booking Rules",
+                            url: "settings-booking-rules",
+                            icon: Clock,
+                        },
+                        {
+                            title: "Facility Docs",
+                            url: "settings-facility-docs",
+                            icon: FileText,
+                        },
+                        {
+                            title: "Location",
+                            url: "settings-location",
+                            icon: Globe,
+                        },
+                    ],
                 },
             ],
         },
@@ -112,6 +174,11 @@ const data = {
                     icon: Users,
                 },
                 {
+                    title: "Application Requirements",
+                    url: "application-requirements",
+                    icon: ClipboardList,
+                },
+                {
                     title: "Revenue",
                     url: "revenue",
                     icon: DollarSign,
@@ -123,17 +190,15 @@ const data = {
                 },
             ],
         },
-    ],
-    navSecondary: [
         {
-            title: "Support",
-            url: "support", // Use a generic support view or modal
-            icon: LifeBuoy,
-        },
-        {
-            title: "Feedback",
-            url: "feedback",
-            icon: Send,
+            title: "Account",
+            items: [
+                {
+                    title: "Notifications",
+                    url: "notifications",
+                    icon: Bell,
+                },
+            ],
         },
     ],
 }
@@ -174,11 +239,65 @@ export function AppSidebar({
                 </SidebarMenu>
             </SidebarHeader>
             <SidebarContent>
-                {data.navMain.map((group) => (
+                {navData.navMain.map((group) => (
                     <SidebarGroup key={group.title}>
                         <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
                         <SidebarMenu>
                             {group.items.map((item) => {
+                                // Handle collapsible items (sub-menus)
+                                if (isCollapsibleItem(item)) {
+                                    const isAnyChildActive = item.items.some(
+                                        (subItem) => activeView === subItem.url
+                                    );
+                                    return (
+                                        <Collapsible
+                                            key={item.title}
+                                            asChild
+                                            defaultOpen={isAnyChildActive}
+                                            className="group/collapsible"
+                                        >
+                                            <SidebarMenuItem>
+                                                <CollapsibleTrigger asChild>
+                                                    <SidebarMenuButton
+                                                        tooltip={item.title}
+                                                        className={cn(
+                                                            isAnyChildActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+                                                        )}
+                                                    >
+                                                        {item.icon && <item.icon className="size-4" />}
+                                                        <span>{item.title}</span>
+                                                        <ChevronRight className="ml-auto size-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                                    </SidebarMenuButton>
+                                                </CollapsibleTrigger>
+                                                <CollapsibleContent>
+                                                    <SidebarMenuSub>
+                                                        {item.items.map((subItem) => {
+                                                            const isSubActive = activeView === subItem.url;
+                                                            return (
+                                                                <SidebarMenuSubItem key={subItem.title}>
+                                                                    <SidebarMenuSubButton
+                                                                        asChild
+                                                                        isActive={isSubActive}
+                                                                    >
+                                                                        <button
+                                                                            onClick={() => onViewChange(subItem.url)}
+                                                                            className="w-full cursor-pointer"
+                                                                        >
+                                                                            <subItem.icon />
+                                                                            <span>{subItem.title}</span>
+                                                                        </button>
+                                                                    </SidebarMenuSubButton>
+                                                                </SidebarMenuSubItem>
+                                                            );
+                                                        })}
+                                                    </SidebarMenuSub>
+                                                </CollapsibleContent>
+                                            </SidebarMenuItem>
+                                        </Collapsible>
+                                    );
+                                }
+
+                                // Handle regular items
                                 const isActive = activeView === item.url;
                                 return (
                                     <SidebarMenuItem key={item.title}>
@@ -188,7 +307,7 @@ export function AppSidebar({
                                             tooltip={item.title}
                                             className={cn(isActive && "text-sidebar-primary-foreground font-medium")}
                                         >
-                                            {item.icon && <item.icon />}
+                                            {item.icon && <item.icon className="size-4" />}
                                             <span>{item.title}</span>
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>

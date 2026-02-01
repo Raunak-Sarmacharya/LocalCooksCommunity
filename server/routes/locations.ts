@@ -272,6 +272,13 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             };
         });
 
+        // Determine if location can accept applications/bookings:
+        // - Kitchen license must be approved
+        // - Must have at least one active kitchen
+        const isLicenseApproved = location.kitchenLicenseStatus === 'approved';
+        const hasActiveKitchens = sanitizedKitchens.length > 0;
+        const canAcceptApplications = isLicenseApproved && hasActiveKitchens;
+
         res.json({
             id: location.id,
             name: location.name,
@@ -284,7 +291,11 @@ router.get('/public/locations/:locationId/details', async (req: Request, res: Re
             customOnboardingLink: location.customOnboardingLink || null,
             kitchens: sanitizedKitchens,
             // Kitchen terms and policies for chef applications
-            kitchenTermsUrl: location.kitchenTermsUrl || null
+            kitchenTermsUrl: location.kitchenTermsUrl || null,
+            // License status for application eligibility (enterprise-grade consistency)
+            kitchenLicenseStatus: location.kitchenLicenseStatus || 'pending',
+            canAcceptApplications,
+            isLicenseApproved
         });
 
     } catch (error) {
