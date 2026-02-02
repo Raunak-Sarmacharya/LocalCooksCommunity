@@ -57,6 +57,7 @@ interface BookingDetails {
     description?: string;
     photos?: string[];
     locationId: number;
+    taxRatePercent?: number;
   };
   location?: {
     id: number;
@@ -754,7 +755,7 @@ export default function BookingDetailsPage() {
                       </div>
                       {(() => {
                         // Use kitchen's tax rate from database
-                        const taxRatePercent = (booking.kitchen as any)?.taxRatePercent || 0;
+                        const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
                         const subtotal = booking.totalPrice || 0;
                         const taxAmount = Math.round((subtotal * taxRatePercent) / 100);
                         
@@ -789,7 +790,7 @@ export default function BookingDetailsPage() {
                         const amount = booking.paymentTransaction.amount || 0;
                         const stripeFee = booking.paymentTransaction.stripeProcessingFee || 0;
                         // Use kitchen's tax rate from database
-                        const taxRatePercent = (booking.kitchen as any)?.taxRatePercent || 0;
+                        const taxRatePercent = booking.kitchen?.taxRatePercent || 0;
                         // Tax = booking.totalPrice * tax_rate / 100 (same formula as transaction history)
                         // booking.totalPrice is the subtotal BEFORE tax (e.g., $100)
                         // booking.paymentTransaction.amount is the total AFTER tax (e.g., $110)

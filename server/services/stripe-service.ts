@@ -338,25 +338,28 @@ export async function getStripePaymentAmounts(
     let stripePlatformFee = 0;
 
     if (balanceTransaction) {
-      // For Stripe Connect payments:
+      // ENTERPRISE STANDARD: balanceTransaction.fee ALWAYS contains the actual Stripe processing fee
+      // This is true for ALL charge types (direct, destination, separate charges and transfers)
+      // Never calculate processing fee - always use the actual value from Stripe
+      stripeProcessingFee = balanceTransaction.fee;
+      
+      // For Stripe Connect destination charges:
       // - Total amount = what customer paid (paymentIntent.amount)
-      // - Application fee (platform fee) = goes to platform account
-      // - Net amount = what goes to connected account (manager) after all fees
-      // - Balance transaction net = amount - application_fee - processing_fee
+      // - Application fee = what platform receives (includes Stripe fee in break-even mode)
+      // - Manager net = total - application_fee (what gets transferred to connected account)
+      // - Platform's balanceTransaction.net = application_fee - stripeProcessingFee (platform's actual take)
+      //
+      // For non-Connect charges:
+      // - Manager net = total - stripeProcessingFee
       
-      // Net amount is what actually gets transferred to the connected account
-      stripeNetAmount = balanceTransaction.net;
-      
-      // If using Stripe Connect, get the application fee (platform fee)
       if (managerConnectAccountId && paymentIntent.application_fee_amount) {
         stripePlatformFee = paymentIntent.application_fee_amount;
-        // For connected accounts: net = amount - platform_fee - processing_fee
-        // Therefore: processing_fee = amount - platform_fee - net
-        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+        // Manager receives the full amount minus the application fee
+        // The application fee covers Stripe processing + platform commission (if any)
+        stripeNetAmount = stripeAmount - stripePlatformFee;
       } else {
-        // No Connect account - query balance transaction from platform account perspective
-        // In this case, net = amount - processing_fee
-        stripeProcessingFee = balanceTransaction.fee;
+        // No Connect account - platform is the merchant
+        // Net = amount - processing_fee
         stripeNetAmount = stripeAmount - stripeProcessingFee;
       }
     } else {
@@ -378,13 +381,15 @@ export async function getStripePaymentAmounts(
         
         const retryBalanceTransaction = await stripe.balanceTransactions.retrieve(retryBalanceTransactionId);
         
-        stripeNetAmount = retryBalanceTransaction.net;
+        // ENTERPRISE STANDARD: Always use balanceTransaction.fee for actual Stripe processing fee
+        stripeProcessingFee = retryBalanceTransaction.fee;
         
         if (managerConnectAccountId && paymentIntent.application_fee_amount) {
           stripePlatformFee = paymentIntent.application_fee_amount;
-          stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+          // Manager receives the full amount minus the application fee
+          stripeNetAmount = stripeAmount - stripePlatformFee;
         } else {
-          stripeProcessingFee = retryBalanceTransaction.fee;
+          // No Connect account - net = amount - processing_fee
           stripeNetAmount = stripeAmount - stripeProcessingFee;
         }
         

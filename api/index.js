@@ -11146,6 +11146,7 @@ __export(payment_transactions_service_exports, {
   getPaymentHistory: () => getPaymentHistory,
   syncExistingPaymentTransactionsFromStripe: () => syncExistingPaymentTransactionsFromStripe,
   syncStripeAmountsToBookings: () => syncStripeAmountsToBookings,
+  syncStripeFees: () => syncStripeFees,
   updatePaymentTransaction: () => updatePaymentTransaction
 });
 import { sql as sql5 } from "drizzle-orm";
@@ -11753,6 +11754,79 @@ async function getManagerPaymentTransactions(managerId, db2, filters) {
     total
   };
 }
+async function syncStripeFees(db2, managerId, limit = 100) {
+  const Stripe6 = (await import("stripe")).default;
+  const stripeSecretKey5 = process.env.STRIPE_SECRET_KEY;
+  if (!stripeSecretKey5) {
+    throw new Error("STRIPE_SECRET_KEY not configured");
+  }
+  const stripe5 = new Stripe6(stripeSecretKey5, {
+    apiVersion: "2025-12-15.clover"
+  });
+  const whereConditions = [
+    sql5`payment_intent_id IS NOT NULL`,
+    sql5`(stripe_processing_fee IS NULL OR stripe_processing_fee = '0')`,
+    sql5`status IN ('succeeded', 'partially_refunded')`
+  ];
+  if (managerId) {
+    whereConditions.push(sql5`manager_id = ${managerId}`);
+  }
+  const whereClause = sql5`WHERE ${sql5.join(whereConditions, sql5` AND `)}`;
+  const result = await db2.execute(sql5`
+    SELECT id, payment_intent_id, amount, manager_id
+    FROM payment_transactions
+    ${whereClause}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `);
+  let synced = 0;
+  let failed = 0;
+  const errors = [];
+  for (const row of result.rows) {
+    const transactionId = row.id;
+    const paymentIntentId = row.payment_intent_id;
+    try {
+      const paymentIntent = await stripe5.paymentIntents.retrieve(paymentIntentId, {
+        expand: ["latest_charge"]
+      });
+      if (!paymentIntent.latest_charge) {
+        errors.push(`Transaction ${transactionId}: No charge found for PaymentIntent ${paymentIntentId}`);
+        failed++;
+        continue;
+      }
+      const charge = typeof paymentIntent.latest_charge === "string" ? await stripe5.charges.retrieve(paymentIntent.latest_charge) : paymentIntent.latest_charge;
+      if (!charge.balance_transaction) {
+        errors.push(`Transaction ${transactionId}: No balance_transaction for charge ${charge.id}`);
+        failed++;
+        continue;
+      }
+      const balanceTransactionId = typeof charge.balance_transaction === "string" ? charge.balance_transaction : charge.balance_transaction.id;
+      const balanceTransaction = await stripe5.balanceTransactions.retrieve(balanceTransactionId);
+      const stripeProcessingFee = balanceTransaction.fee;
+      const stripeAmount = paymentIntent.amount;
+      const stripePlatformFee = paymentIntent.application_fee_amount || 0;
+      const stripeNetAmount = stripePlatformFee > 0 ? stripeAmount - stripePlatformFee : stripeAmount - stripeProcessingFee;
+      await updatePaymentTransaction(
+        transactionId,
+        {
+          stripeAmount,
+          stripeNetAmount,
+          stripeProcessingFee,
+          stripePlatformFee,
+          lastSyncedAt: /* @__PURE__ */ new Date()
+        },
+        db2
+      );
+      console.log(`[Stripe Sync] \u2705 Synced transaction ${transactionId}: fee=${stripeProcessingFee} cents`);
+      synced++;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch (error) {
+      errors.push(`Transaction ${transactionId}: ${error.message}`);
+      failed++;
+    }
+  }
+  return { synced, failed, errors };
+}
 var init_payment_transactions_service = __esm({
   "server/services/payment-transactions-service.ts"() {
     "use strict";
@@ -11949,12 +12023,11 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
     let stripeProcessingFee = 0;
     let stripePlatformFee = 0;
     if (balanceTransaction) {
-      stripeNetAmount = balanceTransaction.net;
+      stripeProcessingFee = balanceTransaction.fee;
       if (managerConnectAccountId && paymentIntent.application_fee_amount) {
         stripePlatformFee = paymentIntent.application_fee_amount;
-        stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+        stripeNetAmount = stripeAmount - stripePlatformFee;
       } else {
-        stripeProcessingFee = balanceTransaction.fee;
         stripeNetAmount = stripeAmount - stripeProcessingFee;
       }
     } else {
@@ -11964,12 +12037,11 @@ async function getStripePaymentAmounts(paymentIntentId, managerConnectAccountId)
       if (retryCharge.balance_transaction) {
         const retryBalanceTransactionId = typeof retryCharge.balance_transaction === "string" ? retryCharge.balance_transaction : retryCharge.balance_transaction.id;
         const retryBalanceTransaction = await stripe.balanceTransactions.retrieve(retryBalanceTransactionId);
-        stripeNetAmount = retryBalanceTransaction.net;
+        stripeProcessingFee = retryBalanceTransaction.fee;
         if (managerConnectAccountId && paymentIntent.application_fee_amount) {
           stripePlatformFee = paymentIntent.application_fee_amount;
-          stripeProcessingFee = stripeAmount - stripePlatformFee - stripeNetAmount;
+          stripeNetAmount = stripeAmount - stripePlatformFee;
         } else {
-          stripeProcessingFee = retryBalanceTransaction.fee;
           stripeNetAmount = stripeAmount - stripeProcessingFee;
         }
         console.log(`[Stripe] \u2705 Retry successful - got actual fee: ${stripeProcessingFee} cents`);
@@ -21342,7 +21414,9 @@ var init_bookings = __esm({
             name: kitchen.name,
             description: kitchen.description,
             photos: kitchen.galleryImages || (kitchen.imageUrl ? [kitchen.imageUrl] : []),
-            locationId: kitchen.locationId
+            locationId: kitchen.locationId,
+            taxRatePercent: kitchen.taxRatePercent || 0
+            // Tax rate for payment breakdown display
           } : null,
           location,
           storageBookings: storageBookingsWithDetails,
@@ -24366,6 +24440,26 @@ var init_admin = __esm({
         console.error("Error simulating fees:", error);
         res.status(500).json({
           error: "Failed to simulate fees",
+          message: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
+    router21.post("/sync-stripe-fees", requireFirebaseAuthWithUser, requireAdmin, async (req, res) => {
+      try {
+        const { managerId, limit = 100 } = req.body;
+        console.log("[Admin] Starting Stripe fee sync...", { managerId, limit });
+        const { syncStripeFees: syncStripeFees2 } = await Promise.resolve().then(() => (init_payment_transactions_service(), payment_transactions_service_exports));
+        const result = await syncStripeFees2(db, managerId, limit);
+        console.log("[Admin] Stripe fee sync completed:", result);
+        res.json({
+          success: true,
+          message: `Synced ${result.synced} transactions, ${result.failed} failed`,
+          ...result
+        });
+      } catch (error) {
+        console.error("Error syncing Stripe fees:", error);
+        res.status(500).json({
+          error: "Failed to sync Stripe fees",
           message: error instanceof Error ? error.message : "Unknown error"
         });
       }
