@@ -198,36 +198,19 @@ export default function EnhancedRegisterForm({ onSuccess, setHasAttemptedLogin, 
       setAuthState('success');
       setShowLoadingOverlay(false);
 
-      // Check if manager and redirect directly, otherwise call onSuccess immediately
-      // Don't delay - the parent component needs to re-render to show welcome screen
-      try {
-        const { auth } = await import('@/lib/firebase');
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          const token = await currentUser.getIdToken();
-          const response = await fetch('/api/user/profile', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const userData = await response.json();
-            // If manager, redirect directly to manager dashboard
-            if (userData.role === 'manager') {
-              console.log('🏢 Manager registered - redirecting to manager dashboard');
-              window.location.href = '/manager/dashboard';
-              return;
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error checking user role after registration:', err);
-      }
-
-      // Call onSuccess immediately for non-managers to trigger welcome screen
-      console.log('🎯 Calling onSuccess to trigger welcome screen');
+      // ENTERPRISE FIX: Don't use hard redirect (window.location.href) for managers
+      // Hard redirects cause full page reloads which lose React state and can cause
+      // race conditions with Firebase auth state initialization on the target page.
+      // Instead, call onSuccess() and let the parent component handle navigation
+      // via React state management (useEffect with proper dependencies).
+      // 
+      // For Google Sign-In, users are typically already email-verified, so we
+      // call onSuccess() immediately to trigger the parent's redirect logic.
+      // The parent (ManagerLogin.tsx or EnhancedAuthPage.tsx) will:
+      // 1. Set hasAttemptedLogin to true
+      // 2. Refresh user data via React Query
+      // 3. The useEffect will detect the authenticated manager and redirect
+      console.log('🎯 Google registration complete - calling onSuccess to trigger parent redirect');
       if (onSuccess) onSuccess();
 
     } catch (e: any) {

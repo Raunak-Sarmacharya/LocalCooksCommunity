@@ -12,7 +12,7 @@ import { motion } from "framer-motion";
 import { Building2, LogIn, UserPlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, Redirect } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AnimatedBackgroundOrbs from "@/components/ui/AnimatedBackgroundOrbs";
 import FadeInSection from "@/components/ui/FadeInSection";
 
@@ -20,6 +20,7 @@ export default function ManagerLogin() {
   // Managers now use Firebase authentication (like chefs)
   const [location, setLocation] = useLocation();
   const { user, loading, logout, refreshUserData } = useFirebaseAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [hasAttemptedLogin, setHasAttemptedLogin] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -346,9 +347,15 @@ export default function ManagerLogin() {
                   />
                 ) : (
                   <EnhancedRegisterForm
-                    onSuccess={() => {
+                    onSuccess={async () => {
+                      console.log('🎯 GOOGLE REGISTRATION SUCCESS - Invalidating cache and refreshing data');
+                      // ENTERPRISE FIX: Invalidate React Query cache to force refetch of user profile
+                      // This ensures the redirect logic has fresh data after Google Sign-In registration
+                      await queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
                       setHasAttemptedLogin(true);
-                      refreshUserData();
+                      await refreshUserData();
+                      // Force refetch after state update to ensure redirect logic has latest data
+                      queryClient.refetchQueries({ queryKey: ["/api/user/profile", user?.uid] });
                     }}
                     setHasAttemptedLogin={setHasAttemptedLogin}
                     onRegistrationStart={handleRegistrationStart}

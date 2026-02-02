@@ -10,10 +10,10 @@ interface ManagerProtectedRouteProps {
 }
 
 export default function ManagerProtectedRoute({ children }: ManagerProtectedRouteProps) {
-  useLocation();
+  const [location] = useLocation();
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
   
-  // Try Firebase auth first
+  // Fetch user profile
   const { data: firebaseUserData, isLoading: firebaseProfileLoading, error: firebaseProfileError } = useQuery({
     queryKey: ["/api/user/profile", firebaseUser?.uid],
     queryFn: async () => {
@@ -55,9 +55,36 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     refetchOnMount: false, // Prevent refetch on mount to avoid loops
   });
 
+  // ENTERPRISE FIX: Fetch manager locations to check if onboarding is needed BEFORE rendering dashboard
+  // This prevents the "flash" of dashboard content before onboarding redirect
+  const { data: managerLocations, isLoading: locationsLoading } = useQuery({
+    queryKey: ["/api/manager/locations", firebaseUser?.uid],
+    queryFn: async () => {
+      if (!firebaseUser) return [];
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return [];
+        const response = await fetch("/api/manager/locations", {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (!response.ok) return [];
+        return response.json();
+      } catch (error) {
+        console.error('ManagerProtectedRoute - Error fetching locations:', error);
+        return [];
+      }
+    },
+    enabled: !!firebaseUser && !!firebaseUserData,
+    staleTime: 30 * 1000,
+  });
+
   // Firebase Auth only - no session fallback
   const user = firebaseUserData;
-  const loading = firebaseLoading || firebaseProfileLoading;
+  // Include locations loading in overall loading state to prevent flash
+  const loading = firebaseLoading || firebaseProfileLoading || (!!firebaseUserData && locationsLoading);
   const error = firebaseProfileError;
   
   const isManager = user?.role === 'manager' || user?.isManager;
@@ -115,8 +142,23 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
     return <Redirect to="/" />;
   }
 
-  // Managers go to dashboard - ManagerOnboardingWizard will show if onboarding is needed
-  // No password change redirect - managers use onboarding wizard for setup
+  // ENTERPRISE FIX: Check if onboarding is needed BEFORE rendering dashboard
+  // This prevents the "flash" of dashboard content before onboarding appears
+  // Only redirect if:
+  // 1. Onboarding is not completed
+  // 2. No locations exist
+  // 3. We're not already on the setup page (avoid redirect loop)
+  const needsOnboarding = !user?.manager_onboarding_completed && 
+                          Array.isArray(managerLocations) && 
+                          managerLocations.length === 0;
+  const isOnSetupPage = location === '/manager/setup' || location.startsWith('/manager/setup');
+  
+  if (needsOnboarding && !isOnSetupPage) {
+    console.log('ManagerProtectedRoute - New manager needs onboarding, redirecting to setup');
+    return <Redirect to="/manager/setup" />;
+  }
+
+  // Managers go to dashboard - ManagerOnboardingWizard wraps for context
   return (
     <ManagerOnboardingWizard>
       {children}

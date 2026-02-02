@@ -325,11 +325,21 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
 
     // Location is complete if location exists AND is selected AND has required files (license + terms)
+    // [ENTERPRISE FIX] Check both camelCase and snake_case field names for compatibility
+    // Also check dbCompletedSteps as fallback for in-session completion before data refresh
     if (selectedLocationId && locations.length > 0) {
-      const loc = locations.find(l => l.id === selectedLocationId);
-      if (loc?.kitchenLicenseUrl && loc?.kitchenTermsUrl) {
+      const loc = locations.find(l => l.id === selectedLocationId) as any;
+      const hasLicense = loc?.kitchenLicenseUrl || loc?.kitchen_license_url;
+      const hasTerms = loc?.kitchenTermsUrl || loc?.kitchen_terms_url;
+      
+      // Primary check: actual data has both URLs
+      // Secondary check: dbCompletedSteps marked true (handles race condition during save)
+      if ((hasLicense && hasTerms) || dbCompletedSteps['location']) {
         result['location'] = true;
       }
+    } else if (dbCompletedSteps['location']) {
+      // Fallback: if dbCompletedSteps says location is done but locations haven't loaded yet
+      result['location'] = true;
     }
 
     // Kitchen Space is complete if kitchens exist for this location
@@ -403,17 +413,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
     }
   }, [currentStepId, isCompleted, hasExistingLocation, isAddingLocation, next]);
 
-  // Auto-open logic: show onboarding if manager hasn't completed it and has no locations
-  useEffect(() => {
-    if (userData && !isLoadingLocations) {
-      const isManagerOnboardingComplete = userData.manager_onboarding_completed;
-      // Only auto-open for managers who haven't completed onboarding AND have no locations
-      if (!isManagerOnboardingComplete && locations.length === 0) {
-        // setIsOpen(true); // OLD MODAL
-        setLocation('/manager/setup');
-      }
-    }
-  }, [userData, isLoadingLocations, locations, setIsOpen]);
+  // ENTERPRISE FIX: Auto-redirect logic moved to ManagerProtectedRoute.tsx
+  // This prevents the "flash" of dashboard content before onboarding redirect
+  // The redirect now happens BEFORE dashboard renders, not after via useEffect
+  // Keeping this comment for documentation purposes
 
   // Auto-populate email fields from account email for new users (no existing location)
   useEffect(() => {
@@ -971,11 +974,64 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         setSelectedLocationId(savedLocationId);
       }
 
-      // [FIX 5] Await query invalidation to ensure data is fresh before navigation
-      await queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
-      
-      // Give React Query time to refetch and update the locations array
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // [ENTERPRISE FIX] Optimistically update the query cache IMMEDIATELY
+      // This ensures completedSteps sees the new URLs without waiting for refetch
+      queryClient.setQueryData(["/api/manager/locations"], (oldData: any) => {
+        if (!oldData) return oldData;
+        
+        // If it's an array of locations
+        if (Array.isArray(oldData)) {
+          return oldData.map((loc: any) => {
+            if (loc.id === savedLocationId) {
+              return {
+                ...loc,
+                name: locationName,
+                address: locationAddress,
+                kitchenLicenseUrl: licenseUrl || loc.kitchenLicenseUrl || loc.kitchen_license_url,
+                kitchenTermsUrl: termsUrl || loc.kitchenTermsUrl || loc.kitchen_terms_url,
+                kitchenLicenseExpiry: licenseExpiryDate || loc.kitchenLicenseExpiry,
+                // Also update snake_case versions for compatibility
+                kitchen_license_url: licenseUrl || loc.kitchen_license_url || loc.kitchenLicenseUrl,
+                kitchen_terms_url: termsUrl || loc.kitchen_terms_url || loc.kitchenTermsUrl,
+              };
+            }
+            return loc;
+          });
+        }
+        return oldData;
+      });
+
+      // For new locations (POST), add to cache if not already there
+      if (method === "POST") {
+        queryClient.setQueryData(["/api/manager/locations"], (oldData: any) => {
+          if (!oldData) return [data];
+          if (Array.isArray(oldData)) {
+            const exists = oldData.some((loc: any) => loc.id === savedLocationId);
+            if (!exists) {
+              return [...oldData, {
+                ...data,
+                kitchenLicenseUrl: licenseUrl,
+                kitchenTermsUrl: termsUrl,
+                kitchen_license_url: licenseUrl,
+                kitchen_terms_url: termsUrl,
+              }];
+            }
+          }
+          return oldData;
+        });
+      }
+
+      console.log('[Onboarding] ✅ Cache updated optimistically with URLs:', { licenseUrl, termsUrl, savedLocationId });
+
+      // [ENTERPRISE FIX] Track step completion FIRST - this sets dbCompletedSteps which triggers completedSteps recalculation
+      await trackStepCompletion(currentStep?.id || 'location');
+
+      // [ENTERPRISE FIX] Allow React to process state updates before navigation
+      // This ensures completedSteps memo recalculates with new dbCompletedSteps value
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Now refetch to ensure server data is in sync (but UI already shows complete)
+      queryClient.refetchQueries({ queryKey: ["/api/manager/locations"] });
 
       // [GUARD 4] Final check - ensure this submission wasn't superseded
       if (submissionIdRef.current !== thisSubmissionId) {
@@ -984,8 +1040,6 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
 
       toast({ title: "Success", description: "Location saved" });
-
-      await trackStepCompletion(currentStep?.id || 'location');
       
       // Clear file state after successful save (files are now persisted to location)
       setLicenseFile(null);
