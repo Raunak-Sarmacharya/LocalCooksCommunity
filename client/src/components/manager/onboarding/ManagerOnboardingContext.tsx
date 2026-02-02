@@ -1350,7 +1350,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         // NOTE: has_seen_welcome is for CHEF onboarding only, not managers
         // Managers use managerOnboardingStepsCompleted in user profile
         if (stepId) {
-          await fetch("/api/manager/onboarding/step", {
+          const response = await fetch("/api/manager/onboarding/step", {
             method: "POST",
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -1361,10 +1361,44 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
               locationId: selectedLocationId || undefined 
             }),
           });
+
+          if (response.ok) {
+            // [ENTERPRISE FIX] Optimistically update user profile cache IMMEDIATELY
+            // This prevents ManagerProtectedRoute from seeing stale data and redirecting back
+            queryClient.setQueryData(["/api/user/profile", firebaseUser?.uid], (oldData: any) => {
+              if (!oldData) return oldData;
+              const currentSteps = oldData.managerOnboardingStepsCompleted || {};
+              return {
+                ...oldData,
+                managerOnboardingStepsCompleted: {
+                  ...currentSteps,
+                  [stepId]: true
+                }
+              };
+            });
+            
+            // Also update the query without uid suffix (some components use this)
+            queryClient.setQueryData(["/api/user/profile"], (oldData: any) => {
+              if (!oldData) return oldData;
+              const currentSteps = oldData.managerOnboardingStepsCompleted || {};
+              return {
+                ...oldData,
+                managerOnboardingStepsCompleted: {
+                  ...currentSteps,
+                  [stepId]: true
+                }
+              };
+            });
+
+            console.log('[Onboarding] ✅ Optimistically updated user profile with step:', stepId);
+          }
         }
 
-        // 2. Invalidate queries to refresh state on next visit
-        queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+        // 2. Allow React to process cache updates before navigation
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // 3. Refetch in background to ensure server sync (but UI already updated)
+        queryClient.refetchQueries({ queryKey: ["/api/user/profile"] });
         queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 
         toast({ 
