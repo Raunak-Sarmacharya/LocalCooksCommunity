@@ -605,8 +605,8 @@ export default function LocationStep() {
           !locationForm.name || 
           !locationForm.address || 
           !isContactValid() ||
-          (!licenseForm.file && !licenseForm.uploadedUrl && !selectedLocation?.kitchenLicenseUrl) || 
-          (!termsForm.file && !termsForm.uploadedUrl && !selectedLocation?.kitchenTermsUrl)
+          (!licenseForm.file && !licenseForm.uploadedUrl && !hasExistingLicense) || 
+          (!termsForm.file && !termsForm.uploadedUrl && !hasExistingTerms)
         }
       />
     </div>

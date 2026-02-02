@@ -198,11 +198,15 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
   const [licenseExpiryDate, setLicenseExpiryDate] = useState("");
   const [uploadingLicense, setUploadingLicense] = useState(false);
   const [licenseUploadedUrl, setLicenseUploadedUrl] = useState<string | null>(null);
+  // [ENTERPRISE FIX] Use ref to avoid stale closure issues (matching terms pattern)
+  const licenseUploadedUrlRef = useRef<string | null>(null);
 
   // Terms Form State
   const [termsFile, setTermsFile] = useState<File | null>(null);
   const [uploadingTerms, setUploadingTerms] = useState(false);
   const [termsUploadedUrl, setTermsUploadedUrl] = useState<string | null>(null);
+  // [ENTERPRISE FIX] Use ref to avoid stale closure issues when reading URL in updateLocation
+  const termsUploadedUrlRef = useRef<string | null>(null);
 
   // Kitchen Form State
   const [showCreateKitchen, setShowCreateKitchen] = useState(false);
@@ -481,9 +485,11 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       
       if (existingLicenseUrl) {
         setLicenseUploadedUrl(existingLicenseUrl);
+        licenseUploadedUrlRef.current = existingLicenseUrl; // Also set ref
       }
       if (existingTermsUrl) {
         setTermsUploadedUrl(existingTermsUrl);
+        termsUploadedUrlRef.current = existingTermsUrl; // Also set ref
       }
       if (existingLicenseExpiry) {
         // Format date for input if needed
@@ -784,11 +790,14 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       if (!res.ok) throw new Error("Upload failed");
       const data = await res.json();
       setLicenseUploadedUrl(data.url);
+      licenseUploadedUrlRef.current = data.url; // Also set ref
       setLicenseFile(file);
+      console.log('[Onboarding] ✅ License file uploaded successfully:', data.url);
       return data.url;
     } catch (error) {
       setLicenseFile(null);
       setLicenseUploadedUrl(null);
+      licenseUploadedUrlRef.current = null;
       throw error;
     } finally {
       setUploadingLicense(false);
@@ -797,6 +806,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
 
   // Immediate upload function for terms file (called from LocationStep)
   const uploadTermsFile = async (file: File): Promise<string | null> => {
+    console.log('[Onboarding] uploadTermsFile called with:', file.name);
     setUploadingTerms(true);
     try {
       const token = await auth.currentUser?.getIdToken();
@@ -807,14 +817,26 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('[Onboarding] Terms upload failed:', res.status, errorText);
+        throw new Error("Upload failed");
+      }
       const data = await res.json();
+      console.log('[Onboarding] ✅ Terms file uploaded successfully:', {
+        url: data.url,
+        fileName: data.fileName,
+        size: data.size
+      });
       setTermsUploadedUrl(data.url);
+      termsUploadedUrlRef.current = data.url; // Also set ref to avoid stale closure
       setTermsFile(file);
       return data.url;
     } catch (error) {
+      console.error('[Onboarding] ❌ Terms upload error:', error);
       setTermsFile(null);
       setTermsUploadedUrl(null);
+      termsUploadedUrlRef.current = null; // Also clear ref on error
       throw error;
     } finally {
       setUploadingTerms(false);
@@ -857,8 +879,13 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       });
 
       // [FIX 1] Use already-uploaded URL if available, don't re-upload
-      // Files are uploaded immediately on selection via uploadLicenseFile/uploadTermsFile
-      let licenseUrl = licenseUploadedUrl;
+      // [ENTERPRISE] Read from ref first (avoids stale closure), then fallback to state
+      let licenseUrl = licenseUploadedUrlRef.current || licenseUploadedUrl;
+      console.log('[Onboarding] License URL sources:', {
+        fromRef: licenseUploadedUrlRef.current,
+        fromState: licenseUploadedUrl,
+        usingUrl: licenseUrl
+      });
       if (!licenseUrl && licenseFile) {
         // Only upload if not already uploaded
         if (!licenseExpiryDate) {
@@ -873,7 +900,23 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
 
       // [FIX 2] Use already-uploaded terms URL if available
-      let termsUrl = termsUploadedUrl;
+      // [ENTERPRISE] Read from ref first (avoids stale closure), then fallback to state
+      let termsUrl = termsUploadedUrlRef.current || termsUploadedUrl;
+      console.log('[Onboarding] Terms URL sources:', {
+        fromRef: termsUploadedUrlRef.current,
+        fromState: termsUploadedUrl,
+        usingUrl: termsUrl
+      });
+      
+      // Also check if selectedLocation has terms (handles returning to step after save)
+      if (!termsUrl && selectedLocationId && locations.length > 0) {
+        const loc = locations.find(l => l.id === selectedLocationId) as any;
+        termsUrl = loc?.kitchenTermsUrl || loc?.kitchen_terms_url || null;
+        if (termsUrl) {
+          console.log('[Onboarding] Using terms URL from existing location:', termsUrl);
+        }
+      }
+      
       if (!termsUrl && termsFile) {
         console.log('[Onboarding] Uploading terms file (fresh):', termsFile.name);
         setUploadingTerms(true);
@@ -939,8 +982,19 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       }
 
       // Include terms URL (pre-uploaded or freshly uploaded)
+      // [ENTERPRISE DEBUG] Log terms URL status for debugging
+      console.log('[Onboarding] Terms URL check:', {
+        termsUrl,
+        termsUploadedUrl,
+        termsFile: termsFile?.name,
+        hasTermsUrl: !!termsUrl
+      });
+      
       if (termsUrl) {
         body.kitchenTermsUrl = termsUrl;
+        console.log('[Onboarding] ✅ Including kitchenTermsUrl in body:', termsUrl);
+      } else {
+        console.warn('[Onboarding] ⚠️ No terms URL to include - terms will not be saved!');
       }
 
       // [FIX 3] Robust POST vs PUT decision - check multiple sources to prevent duplicates
@@ -1440,8 +1494,10 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
       setLicenseFile(null);
       setLicenseExpiryDate("");
       setLicenseUploadedUrl(null);
+      licenseUploadedUrlRef.current = null; // Also clear ref
       setTermsFile(null);
       setTermsUploadedUrl(null);
+      termsUploadedUrlRef.current = null; // Also clear ref
       setIsAddingLocation(true);
       // [ENTERPRISE] Reset submission tracking for new location flow
       lastSubmittedLocationIdRef.current = null;

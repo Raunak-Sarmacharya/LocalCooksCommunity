@@ -89,19 +89,23 @@ const memoryStorage = multer.memoryStorage();
 
 // File filter to only allow certain file types
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Allow PDF, JPG, JPEG, PNG files
+  // Allow PDF, JPG, JPEG, PNG, WebP, and DOC/DOCX files (for terms & policies documents)
   const allowedMimes = [
     'application/pdf',
     'image/jpeg',
     'image/jpg', 
     'image/png',
-    'image/webp'
+    'image/webp',
+    // DOC and DOCX support for terms & policies
+    'application/msword', // .doc
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document' // .docx
   ];
   
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDF, JPG, JPEG, PNG, and WebP files are allowed.'));
+    console.log(`[FileUpload] Rejected file with mimetype: ${file.mimetype}`);
+    cb(new Error('Invalid file type. Only PDF, JPG, JPEG, PNG, WebP, DOC, and DOCX files are allowed.'));
   }
 };
 
