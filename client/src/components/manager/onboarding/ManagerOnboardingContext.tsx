@@ -1346,7 +1346,9 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
         const stepId = currentStep?.id;
         console.log('[Onboarding] Save & Exit from step:', stepId);
 
-        // 1. Mark current step as "seen" (partial progress tracking)
+        // 1. Mark current step as "seen" via manager onboarding step tracking
+        // NOTE: has_seen_welcome is for CHEF onboarding only, not managers
+        // Managers use managerOnboardingStepsCompleted in user profile
         if (stepId) {
           await fetch("/api/manager/onboarding/step", {
             method: "POST",
@@ -1361,15 +1363,7 @@ function ManagerOnboardingLogic({ children, isOpen, setIsOpen }: { children: Rea
           });
         }
 
-        // 2. For welcome step specifically, also mark has_seen_welcome
-        if (stepId === 'welcome') {
-          await fetch("/api/user/has-seen-welcome", {
-            method: "POST",
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
-        }
-
-        // 3. Invalidate queries to refresh state on next visit
+        // 2. Invalidate queries to refresh state on next visit
         queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
         queryClient.invalidateQueries({ queryKey: ["/api/manager/locations"] });
 

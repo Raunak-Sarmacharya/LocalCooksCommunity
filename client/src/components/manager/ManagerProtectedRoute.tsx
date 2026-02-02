@@ -147,8 +147,16 @@ export default function ManagerProtectedRoute({ children }: ManagerProtectedRout
   // Only redirect if:
   // 1. Onboarding is not completed
   // 2. No locations exist
-  // 3. We're not already on the setup page (avoid redirect loop)
+  // 3. Manager has NOT started onboarding (no steps tracked yet)
+  // 4. We're not already on the setup page (avoid redirect loop)
+  //
+  // NOTE: If manager has started onboarding (has any step in managerOnboardingStepsCompleted),
+  // they clicked "Save & Exit" and should be allowed to go to dashboard.
+  // The OnboardingStatusBanner will prompt them to complete setup.
+  const hasStartedOnboarding = user?.managerOnboardingStepsCompleted && 
+                                Object.keys(user.managerOnboardingStepsCompleted).length > 0;
   const needsOnboarding = !user?.manager_onboarding_completed && 
+                          !hasStartedOnboarding &&
                           Array.isArray(managerLocations) && 
                           managerLocations.length === 0;
   const isOnSetupPage = location === '/manager/setup' || location.startsWith('/manager/setup');
